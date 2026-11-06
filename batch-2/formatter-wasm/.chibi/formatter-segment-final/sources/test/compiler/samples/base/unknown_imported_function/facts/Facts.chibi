@@ -1,0 +1,5 @@
+package facts
+import lib "project:unknown_imported_function/lib"
+One :: () -> int { return lib.Missing(1); }
+
+// error: 3:27: Unknown function 'Missing'

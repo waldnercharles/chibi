@@ -1,0 +1,188 @@
+package chibi_cli
+
+import strings "core:strings"
+
+Project :: struct {
+    valid: bool
+    root: string
+    content: string
+    name: string
+    title: string
+    icon: string
+    scene: string
+    needs_migration: bool
+}
+
+ReadProject :: (requested: string, migrate: bool) -> Project {
+    path := requested
+    if path == "" {
+        path = NearestProject()
+    }
+    if path == "" {
+        Error("No project.kdl in this directory or any parent")
+        return {valid: false, root: "", content: "", name: "", title: "", icon: "", scene: "", needs_migration: false}
+    }
+    found := project.inspect(path, migrate)
+    if found.status != 0 {
+        Error(found.error)
+    }
+    return {valid: found.status == 0, root: found.root, content: found.content,
+            name: found.name, title: found.title, icon: found.icon, scene: found.scene,
+            needs_migration: found.needs_migration}
+}
+
+CompilerIdentity :: () -> string {
+    compiler := files.resolve(Compiler())
+    if compiler == "" {
+        return ""
+    }
+    return format_text("{} {}\n", compiler, files.modified(compiler))
+}
+
+Prepare :: (game: Project, artifact: string) -> int {
+    stamp := Join([game.root, "/.chibi/build/compiler"])
+    identity := CompilerIdentity()
+    prepared := files.modified(artifact)
+    if !game.needs_migration && prepared >= 0 && identity != "" && files.kind(stamp) == 1 && files.read(stamp) == identity &&
+       !project.sources_changed(game.root, prepared) {
+        return 0
+    }
+    files.mkdir(Join([game.root, "/.chibi"]))
+    files.mkdir(Join([game.root, "/.chibi/build"]))
+    started := application.now()
+    if application.platform() == "Windows" {
+        started -= 1000000000
+    }
+    status := process.run([Compiler(), "--project-root", game.root, "--output", artifact])
+    if status == 0 {
+        files.touch(artifact, started)
+        files.write(stamp, identity)
+    }
+    return status
+}
+
+Game :: (requested: string, arguments: string[], play: bool) -> int {
+    game := ReadProject(requested, true)
+    if !game.valid {
+        return 2
+    }
+    artifact := Join([game.root, "/.chibi/build/game.chibip"])
+    status := Prepare(game, artifact)
+    if status != 0 || !play {
+        return status
+    }
+    return process.run(Concat([Player(), artifact, "--resource-root", game.root], arguments))
+}
+
+Check :: (options: Options) -> int {
+    game := ReadProject(options.path, false)
+    if !game.valid {
+        return 2
+    }
+    arguments := [Compiler(), "--project-root", game.root, "--check"]
+    if options.explain {
+        arguments = append(arguments, "--explain-costs")
+    }
+    if options.json {
+        arguments = append(arguments, "--json")
+    }
+    return process.run(arguments)
+}
+
+FormatOne :: (requested: string, check: bool) -> int {
+    root := requested
+    packages := root != "" && files.kind(root) == 2 && files.kind(Join([root, "/project.kdl"])) == 0
+    if !packages {
+        game := ReadProject(root, false)
+        if !game.valid {
+            return 2
+        }
+        root = game.root
+    }
+    arguments := [Compiler(), "--project-root", root, "--format"]
+    if check {
+        arguments = append(arguments, "--check")
+    }
+    return process.run(arguments)
+}
+
+Format :: (options: Options, arguments: string[]) -> int {
+    if options.path_count == 0 {
+        return FormatOne("", options.check)
+    }
+    status := 0
+    index := 2
+    while index < length(arguments) {
+        if !Option(arguments[index]) {
+            formatted := FormatOne(arguments[index], options.check)
+            if formatted != 0 {
+                status = formatted
+            }
+        }
+        index += 1
+    }
+    return status
+}
+
+Test :: (options: Options) -> int {
+    status := program.test(Default(options.path, "."))
+    if application.stopped() {
+        return application.interrupt_status()
+    }
+    return status
+}
+
+PrivateProgram :: (name: string) -> string {
+    local := Join([application.bin(), "/", name, sdk.executable_suffix()])
+    if files.find_executable(local) != "" {
+        return local
+    }
+    return Join([application.bin(), "/../libexec/chibi/", name, sdk.executable_suffix()])
+}
+
+NativeDriver :: (share: string, callable: string, arguments: string[]) -> string[] {
+    driver := Join([share, "/tools/native_aot"])
+    compiler := Join([share, "/compiler"])
+    core := Join([share, "/core"])
+    return Concat([PrivateProgram("chibi-build-host"), "--root", driver,
+                   "--source", Join([driver, "/Driver.chibi"]), "--core", core,
+                   "--compiler", compiler, "--compiler-core", core,
+                   "--entry", callable, "--timeout-ms", "900000", "--",
+                   PrivateProgram("chibi-compiler-host"), compiler, core], arguments)
+}
+
+LLVM :: (requested: string) -> string {
+    return Default(requested, application.environment("CHIBI_LLVM_BIN"))
+}
+
+NeedsLLVM :: () -> string {
+    return "pass --llvm DIR, the folder of opt, llc and ld.lld, or set CHIBI_LLVM_BIN"
+}
+
+BuildNative :: (options: Options) -> int {
+    llvm := LLVM(options.llvm)
+    if llvm == "" {
+        Error(Join(["build --native needs LLVM: ", NeedsLLVM()]))
+        return 2
+    }
+    root := files.resolve(Default(options.path, "."))
+    if root == "" {
+        Error(format_text("build --native: cannot find {}", Default(options.path, ".")))
+        return 2
+    }
+    share := files.resolve(Join([application.bin(), "/../share/chibi"]))
+    tools := files.resolve(llvm)
+    if share == "" {
+        Error("native: cannot find the SDK's share/chibi")
+        return 2
+    }
+    if tools == "" {
+        Error(format_text("native: cannot find {}", llvm))
+        return 2
+    }
+    debug := "none"
+    if options.debug {
+        debug = "lines"
+    }
+    return process.run(NativeDriver(share, "Native", [root, tools, options.mode, debug, options.target]))
+}

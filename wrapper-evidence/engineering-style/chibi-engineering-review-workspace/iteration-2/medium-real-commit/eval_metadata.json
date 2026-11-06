@@ -1,0 +1,12 @@
+{
+  "eval_name": "medium-real-commit",
+  "prompt": "Can you give commit 2797053cb a thorough review? It's in the Chibi checkout at /Users/cwaldner/Personal/chibi/.worktrees/review-eval/chibi. Read only; save the review as review.md.",
+  "assertions": [
+    "The review identifies that the change reshapes the parser to fit the VM's call-depth limit and treats it as an architecture issue, with a number (the limit, a depth count or the remaining headroom).",
+    "The review proposes a concrete alternative or target shape for that workaround (for example raising the limit, a different iteration structure, or restoring the removed procedures after a limit change).",
+    "The review flags avoidable work in the change (such as the per-if array allocation in the ParseIf end fixup, or the rescans in the new error message) with a count or estimate.",
+    "Architecture and performance findings come before correctness, test or commit-message findings in the review's ordering.",
+    "Every architecture or performance finding includes a count, estimate or measurement.",
+    "The review does not recommend splitting functions for length or adding defensive checks."
+  ]
+}

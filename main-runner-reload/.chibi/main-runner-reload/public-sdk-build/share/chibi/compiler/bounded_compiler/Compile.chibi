@@ -1,0 +1,295 @@
+package bounded_compiler
+
+import snapshot "project:source_snapshot"
+import analysis "project:analysis_state"
+import routes "project:package_routes"
+import reader "project:signature_reader"
+import binding "project:lexical_binding"
+import named "project:named_binding"
+import constructors "project:type_constructors"
+import lower "project:scalar_lowering"
+import syntax "project:syntax_diagnostics"
+import writer "project:prepared_writer"
+import strings "core:strings"
+
+// An explicit package source snapshot is the complete input. No native source
+// analyzer, package preparer, finalizer or old compiler is reachable from this
+// entry; only the raw parser is native. Stage zero still builds this closure.
+pub Result :: union {
+    Rejected(diagnostic: syntax.Diagnostic) |
+    Compiled(module: u64, function_id: u64, bytes: u8[])
+}
+ScalarSignature :: union {
+    Accepted(storage: int) | Rejected(diagnostic: syntax.Diagnostic)
+}
+
+InputFailure :: (document: int, message: string) -> Result {
+    diagnostic: syntax.Diagnostic = {start: 0, end: 0, line: 1, column: 1,
+                                     document: document, message: message};
+    return Result.Rejected(diagnostic);
+}
+SourceFailure :: (tree: reader.Tree, node: int, document: int, message: string) -> Result {
+    return Result.Rejected(reader.Diagnostic(tree, node, document, message));
+}
+FirstMember :: (tree: reader.Tree, parent: int) -> int {
+    if (parent < 0) {
+        return -1;
+    }
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, text):
+            return reader.NextMember(tree, nodes[parent].first_child);
+    }
+}
+FollowingMember :: (tree: reader.Tree, node: int) -> int {
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, text):
+            return reader.NextMember(tree, nodes[node].next_sibling);
+    }
+}
+
+LexicalEnvironment :: (keys: string[]) -> binding.Environment {
+    scope: binding.Scope = {parent: -1, function: -1, start: 0, end: 0,
+                            line: 1, column: 1, document: 0};
+    symbols: binding.Symbol[] = [];
+    functions: binding.Function[] = [];
+    ids: u64[] = [];
+    return binding.Environment.Tables([scope], symbols, functions, ids, keys);
+}
+SignatureEnvironment :: (lexical: binding.Environment, identity: string, pointer_size: int) -> reader.Environment {
+    types: named.Type[] = [];
+    ids: u64[] = [];
+    entries: named.Entry[] = [];
+    indices: int[] = [];
+    imports: named.Import[] = [];
+    exports: named.Export[] = [];
+    uses: named.Use[] = [];
+    names := named.Environment.Tables(lexical, types, ids, entries, entries, entries,
+                                      indices, imports, exports, uses, identity, 0, false, true, 0);
+    definitions: constructors.Definition[] = [];
+    variants: constructors.RawVariant[] = [];
+    capabilities: constructors.Capability[] = [];
+    functions: constructors.Function[] = [];
+    symbols: constructors.Symbol[] = [];
+    construction := constructors.Environment.Tables(types, ids, definitions, variants,
+                                                    capabilities, functions, symbols, indices);
+    return reader.Environment.Tables(names, construction, pointer_size);
+}
+ReadSignature :: (environment: reader.Environment, tree: reader.Tree, node: int, document: int) -> ScalarSignature {
+    // Preserve the real annotation reader's diagnostics and type semantics.
+    // Reject unsupported shape before invoking it, so arbitrary constructor
+    // declarations never expand this deliberately scalar source contract.
+    if (!reader.Kind(tree, node, "type") ||
+        (reader.Text(tree, node) != "int" && reader.Text(tree, node) != "bool")) {
+        return ScalarSignature.Rejected(reader.Diagnostic(tree, node, document, "bounded compiler requires one ordinary int or bool result"));
+    }
+    switch reader.Signature(environment, tree, node, 0, document) {
+        case .Read(value, has_unit, unit, updated, diagnostics, uses, publications, collection):
+            if (length(diagnostics) != 0) {
+                return ScalarSignature.Rejected(diagnostics[0]);
+            }
+            switch value {
+                case .Typed(storage, container, flags, nominal, parameter):
+                    if ((storage != 1 && storage != 6) || container != 0 || flags != 0 ||
+                        nominal != 0 || parameter != 0 || has_unit ||
+                        length(uses) != 0 || length(publications) != 0) {
+                        return ScalarSignature.Rejected(reader.Diagnostic(tree, node, document, "unsupported bounded result signature"));
+                    }
+                    return ScalarSignature.Accepted(storage);
+            }
+    }
+}
+
+CompileFunction :: (tree: reader.Tree, function: int, document: int,
+                    identity: string, keys: string[], abi: lower.Target,
+                    prepared_abi: u64, opcodes: int[]) -> Result {
+    name_node := reader.Field(tree, function, "name");
+    name := reader.Text(tree, name_node);
+    if (!reader.Kind(tree, name_node, "identifier") || name == "_" || strings.ByteLength(name) > 240) {
+        return SourceFailure(tree, name_node, document, "bounded compiler requires an identifier-named function");
+    }
+    // int(value) is a conversion here; a function of that name would be a call.
+    if (name == "int" || name == "bool") {
+        return SourceFailure(tree, name_node, document, "bounded compiler reserves int and bool for conversions");
+    }
+    parameters := reader.Field(tree, function, "parameters");
+    if (parameters < 0 || FirstMember(tree, parameters) >= 0) {
+        return SourceFailure(tree, function, document, "bounded compiler supports zero-argument functions only");
+    }
+    lexical := LexicalEnvironment(keys);
+    context: binding.Context = {identity: identity, scope: 0, function: -1,
+                                package_scope: 0, has_identity: true, has_documents: true};
+    place := reader.Request(tree, name_node, 0, document, name);
+    request: binding.Request = {name: name, kind: binding.FunctionKind,
+                                start: place.start, end: place.end, line: place.line, column: place.column, document: document};
+    function_id: u64 = 0;
+    switch binding.Declare(lexical, context, request) {
+        case .Existing(symbol, diagnostics):
+            return Result.Rejected(diagnostics[0]);
+        case .Appended(id, diagnostics):
+            if (length(diagnostics) != 0) {
+                return Result.Rejected(diagnostics[0]);
+            }
+            function_id = id;
+    }
+    pointer_size: int = 4;
+    if (abi.pointer_storage == 9) {
+        pointer_size = 8;
+    }
+    environment := SignatureEnvironment(lexical, identity, pointer_size);
+    result_storage: int = 0;
+    signature := reader.Field(tree, function, "results");
+    if (signature < 0) {
+        return SourceFailure(tree, function, document, "bounded compiler requires one ordinary int or bool result");
+    }
+    switch ReadSignature(environment, tree, signature, document) {
+        case .Rejected(diagnostic):
+            return Result.Rejected(diagnostic);
+        case .Accepted(storage):
+            result_storage = storage;
+    }
+    body := reader.Field(tree, function, "body");
+    statement := FirstMember(tree, body);
+    if (statement < 0 || !reader.Kind(tree, statement, "return_statement") ||
+        FollowingMember(tree, statement) >= 0 || reader.Field(tree, statement, "outcome") >= 0) {
+        return SourceFailure(tree, body, document, "bounded function body needs exactly one ordinary return");
+    }
+    expression := reader.Field(tree, statement, "value");
+    if (expression < 0) {
+        return SourceFailure(tree, statement, document, "bounded return requires a scalar expression");
+    }
+    switch ReadExpression(tree, expression, document, result_storage) {
+        case .Rejected(diagnostic):
+            return Result.Rejected(diagnostic);
+        case .Accepted(expressions, literals, expression_ranges, result):
+            result_type: int = 0;
+            if (result_storage == 6) {
+                result_type = 1;
+            }
+            if (expressions[result].type != result_type) {
+                return SourceFailure(tree, expression, document, "bounded return expression differs from its declared result type");
+            }
+            boolean: lower.Type = {storage: 1, container: 0, flags: 0, nominal_slot: -1, parameter_slot: -1};
+            integer: lower.Type = {storage: 6, container: 0, flags: 0, nominal_slot: -1, parameter_slot: -1};
+            symbols: lower.Symbol[] = [];
+            variables: lower.Variable[] = [];
+            ids: u64[] = [];
+            output: lower.Result = {expression: result, type: result_type};
+            ranges := append(expression_ranges, ExpressionRange(tree, function, document));
+            facts := lower.Request.Tables([boolean, integer], expressions, symbols, variables,
+                                          [output], literals, ids, ranges, keys, abi, length(ranges) - 1);
+            plan := lower.Lower(facts);
+            switch plan {
+                case .Rejected(diagnostics):
+                    return SourceFailure(tree, expression, document, diagnostics[0].message);
+                case .Ready(target, variable_ids, defaults, results, slots, locals, origins, documents, code):
+                    module := binding.ID("module", identity);
+                    prepared := Prepare(plan, module, function_id, name, prepared_abi, pointer_size, opcodes);
+                    if (length(prepared) == 0 || length(prepared) > 65536) {
+                        return SourceFailure(tree, function, document, "bounded prepared payload exceeds its output limit");
+                    }
+                    ids: u64[] = [module];
+                    names: string[] = [identity];
+                    starts: int[] = [0];
+                    lengths: int[] = [length(prepared)];
+                    return Result.Compiled(module, function_id,
+                                           writer.Closure(module, ids, names, prepared, starts, lengths));
+            }
+    }
+}
+
+CompileSnapshot :: (source: snapshot.Result, abi: lower.Target,
+                    prepared_abi: u64, opcodes: int[]) -> Result {
+    switch source {
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            return Result.Rejected(diagnostic);
+        case .Accepted(roots, documents, nodes, imports, graph):
+            if (length(imports) != 0) {
+                return InputFailure(imports[0].file, "bounded compiler does not support imports");
+            }
+            switch graph {
+                case .Rejected(error, cycle):
+                    return InputFailure(-1, "bounded compiler requires an accepted package graph");
+                case .Accepted(packages, members, file_packages, order, edges, bindings):
+                    if (length(packages) != 1) {
+                        return InputFailure(-1, "bounded compiler requires one complete package");
+                    }
+            }
+            keys: string[] = [];
+            for (item in documents) {
+                if (item.node_count > 512 || strings.ByteLength(item.key) > 240 ||
+                    strings.ByteLength(item.identity) > 240) {
+                    return InputFailure(-1, "bounded package syntax or identity exceeds its limit");
+                }
+                keys.append(item.key);
+            }
+            function: int = -1;
+            document: int = -1;
+            switch analysis.DocumentsForPackage(source, 0) {
+                case .Missing:
+                    return InputFailure(-1, "bounded compiler has no package document map");
+                case .Mapped(local_to_source_file, source_file_to_local):
+                    for (source_file in local_to_source_file) {
+                        switch analysis.TreeForDocument(source, source_file) {
+                            case .Missing:
+                                return InputFailure(source_file, "bounded compiler has no retained source tree");
+                            case .Parsed(tree, root):
+                                child := FirstMember(tree, root);
+                                while (child >= 0) {
+                                    if (!reader.Kind(tree, child, "package_header")) {
+                                        if (!reader.Kind(tree, child, "function_declaration")) {
+                                            return SourceFailure(tree, child, source_file, "unsupported declaration in bounded package");
+                                        }
+                                        if (function >= 0) {
+                                            return SourceFailure(tree, child, source_file, "bounded package supports exactly one function");
+                                        }
+                                        function = child;
+                                        document = source_file;
+                                    }
+                                    child = FollowingMember(tree, child);
+                                }
+                        }
+                    }
+            }
+            if (function < 0) {
+                return InputFailure(-1, "bounded package needs one function");
+            }
+            switch analysis.TreeForDocument(source, document) {
+                case .Missing:
+                    return InputFailure(document, "bounded compiler lost its retained source tree");
+                case .Parsed(tree, root):
+                    return CompileFunction(tree, function, document, documents[document].identity,
+                                           keys, abi, prepared_abi, opcodes);
+            }
+    }
+}
+
+// `prepared_abi` is the target's prepared header ABI, and `opcodes` the
+// instruction each scalar wire opcode names on it.
+pub Compile :: (project: string, paths: string[], sources: string[], abi: lower.Target,
+                prepared_abi: u64, opcodes: int[]) -> Result {
+    if (length(paths) < 1 || length(paths) > 3 || length(sources) != length(paths)) {
+        return InputFailure(-1, "bounded compiler requires one to three complete source files");
+    }
+    if (strings.ByteLength(project) == 0 || strings.ByteLength(project) > 240 ||
+        abi.schema != 1 || abi.prepared != 26 || (abi.pointer_storage != 7 && abi.pointer_storage != 9) ||
+        prepared_abi == 0 || length(opcodes) != WireOpcodes) {
+        return InputFailure(-1, "unsupported bounded compiler root or target");
+    }
+    inputs: snapshot.Input[] = [];
+    sizes: u64[] = [];
+    index: int = 0;
+    while (index < length(paths)) {
+        if (strings.ByteLength(paths[index]) == 0 || strings.ByteLength(paths[index]) > 240 ||
+            strings.ByteLength(sources[index]) > 1024) {
+            return InputFailure(index, "bounded source path or text exceeds its limit");
+        }
+        input: snapshot.Input = {path: paths[index], text: sources[index], has_path: true, has_text: true};
+        inputs.append(input);
+        sizes.append(u64(strings.ByteLength(sources[index])));
+        index += 1;
+    }
+    options: snapshot.Options = {project: project, has_project: true, has_options: true,
+                                 has_files: true, has_collections: false, file_count: length(inputs), collection_count: 0};
+    collections: routes.Collection[] = [];
+    return CompileSnapshot(snapshot.Build(options, collections, inputs, sizes), abi, prepared_abi, opcodes);
+}

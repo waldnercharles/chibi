@@ -1,0 +1,44 @@
+package facts
+// Arrays of records that hold an array of records, changed by the natives that
+// return a changed copy. These natives once checked the replaced or removed
+// element's layout by comparing the element record's size with the 8-byte
+// array field, so they failed on any element record of another size.
+Item :: struct { id: int; name: string; }
+Holder :: struct { items: Item[]; flag: bool; }
+Wrapper :: struct { holder: Holder; tag: int; }
+Make :: (n: int) -> Holder {
+    items: Item[] = [];
+    i: int = 0;
+    while (i < n) { items = append(items, {id: i, name: format_text("item{}", i)}); i += 1; }
+    return {items: items, flag: true};
+}
+// Ten times the sum of id + 1 over every item, plus the holder count.
+Sum :: (holders: Holder[]) -> int {
+    total: int = 0;
+    for (holder in holders) { for (item in holder.items) { total += item.id + 1; } }
+    return total * 10 + length(holders);
+}
+Set :: () -> int {
+    holders: Holder[] = [Make(1), Make(2)];
+    holders = set_array_elem(holders, 0, Make(3));
+    return Sum(holders);
+}
+RemoveIndex :: () -> int {
+    holders: Holder[] = [Make(1), Make(2), Make(4)];
+    holders = remove_index(holders, 1);
+    return Sum(holders);
+}
+RemoveItem :: () -> int {
+    holders: Holder[] = [Make(1), Make(2)];
+    holders = remove_item(holders, holders[0]);
+    return Sum(holders);
+}
+// The array field sits in a record nested inline in the element.
+SetNested :: () -> int {
+    wrappers: Wrapper[] = [{holder: Make(1), tag: 1}, {holder: Make(2), tag: 2}];
+    replacement: Wrapper = {holder: Make(4), tag: 4};
+    wrappers = set_array_elem(wrappers, 1, replacement);
+    total: int = 0;
+    for (wrapper in wrappers) { total += Sum([wrapper.holder]) * wrapper.tag; }
+    return total;
+}

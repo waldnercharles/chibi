@@ -1,0 +1,710 @@
+{
+  "capture": {
+    "base": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+    "staged_tree": "706782b1239626574a999d1577aec7ea95018478",
+    "snapshot": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation",
+    "build": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build",
+    "math_source_patch_sha256": "f69daa55d0e6a9431a14f42dc008bcf2ee0f09b0364e7b940a1e0f0f32474efe",
+    "helper_patches": [],
+    "source_file_count": 3472,
+    "source_files_manifest_sha256": "6bcaf38f83423b215f29f2ddb885021719dbabd54f0e4af111ca9ffcc9557f8c",
+    "capture_wall_seconds": 5.092145208036527,
+    "accepted_runtime_delta_files_sha256": {
+      "src/execution/call.c": "5b6fb82214b185b9877b67606fa2a9f7f5259b9d98ab718a15ea96b5630322b4",
+      "src/execution/function.c": "ea8757fd7cd7c15b14a1b9829c22fce3aad4a439cdc6f1387220c085983f3545",
+      "src/execution/function.h": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817",
+      "src/execution/host.c": "6ccafee207cf2a1665bea3299f1e8d942e822da54b40754ec92ea5e3333bec48",
+      "src/support/arena.c": "bacef774cc7ea9b038fbb8135086eefb7adb6f639a8a58044699a8800e741ab9",
+      "src/support/arena.h": "e5b5dc6afee8ec5e8b4b5ec65f81b3eaf9e295c1930fc9864843ea28d1a214f1",
+      "src/toolchain/compiler_host.c": "9524b7dedeca70c20dfe825bf976e8bbff7a25b2971ccf67962927ad4eb59965",
+      "src/types/array.c": "9ebffb1ca1a4446800b20fb6c13897f31a3e5ff61edd494ec8798939140f5f0b",
+      "test/support/arena.c": "9603b774c38d5b43631e8e40b8ed759cf405d42fb44697d30814ca581cd80a16",
+      "tools/compiler/runtime.json": "75fc6e2b260600b3877b0bd3a2068902bb050c23210da2d1061c43fcc0f63289"
+    },
+    "environment_flags": {
+      "CC": null,
+      "CXX": null,
+      "CFLAGS": null,
+      "CPPFLAGS": null,
+      "LDFLAGS": null,
+      "CMAKE_C_COMPILER_LAUNCHER": null
+    }
+  },
+  "configure": {
+    "command": [
+      "cmake",
+      "-S",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/test/language",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+      "-DCMAKE_C_COMPILER_LAUNCHER=",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+      "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+      "-DCHIBI_LANGUAGE_TEST_ASSET_COMPILER_HOST=OFF",
+      "-DCHIBI_ENABLE_SANITIZERS=OFF"
+    ],
+    "status": 0,
+    "wall_seconds": 4.19997900002636,
+    "fresh_native_objects": true,
+    "compiler_cache_launcher": ""
+  },
+  "fresh_matched_build": {
+    "command": [
+      "cmake",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build",
+      "--target",
+      "test_language",
+      "chibi-build-host",
+      "chibi-compiler-host",
+      "--parallel",
+      "4"
+    ],
+    "status": 0,
+    "wall_seconds": 33.168961958028376,
+    "fresh_build": true,
+    "copied_old_native_objects": false,
+    "compiler_cache_launcher": "",
+    "helper_patches": [],
+    "binaries": {
+      "test_language": {
+        "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/test_language",
+        "bytes": 15479088,
+        "sha256": "ea8c848adee80c6284d70d25570e7c3580af12caef58bfa0f026a81e9ff34835"
+      },
+      "chibi-build-host": {
+        "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-build-host",
+        "bytes": 1969120,
+        "sha256": "670096ae8a352164f3571815deba00bddaaa2b4764118012b76361587032043e"
+      },
+      "chibi-compiler-host": {
+        "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-compiler-host",
+        "bytes": 1350592,
+        "sha256": "813f3162e4ea1facf0854832c528a085f88f4f83e61be438afc85c52f0b89b67"
+      }
+    }
+  },
+  "target_comparison": {
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-compiler-host",
+      "--target-json",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/target.json"
+    ],
+    "status": 0,
+    "wall_seconds": 0.24391812505200505,
+    "host_sha256": "813f3162e4ea1facf0854832c528a085f88f4f83e61be438afc85c52f0b89b67",
+    "producer_invoked": false,
+    "target_json_sha256": "da01568aa036f6307fe67a4f274ab253d91f00ebf6d080db85e2428383167767",
+    "target_values": 6,
+    "bootstrap_target_exact": true,
+    "seed_target_args_exact": true,
+    "target_canonical_sha256": "400d9618ec769a85bfe29e22e00004dc7d11985b4bc85b21ca2cc59a34b64cb0",
+    "generated_runtime_headers": {
+      "sdk/public/support/support/arena.h": {
+        "source": "src/support/arena.h",
+        "sha256": "e5b5dc6afee8ec5e8b4b5ec65f81b3eaf9e295c1930fc9864843ea28d1a214f1",
+        "matches_source": true
+      },
+      "sdk/private/execution/execution/function.h": {
+        "source": "src/execution/function.h",
+        "sha256": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817",
+        "matches_source": true
+      },
+      "sdk/public/execution_contract/execution/function.h": {
+        "source": "src/execution/function.h",
+        "sha256": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817",
+        "matches_source": true
+      }
+    },
+    "source_symlinks": {
+      "CLAUDE.md": "AGENTS.md"
+    }
+  },
+  "bootstrap_source_inputs": {
+    "bootstrap_manifest": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-bootstrap/bootstrap.json",
+    "bootstrap_manifest_sha256": "25e11f25b9c4cd71a48bdc4a907df76df3ddf2191d75eb1651862d5b3214f73c",
+    "bootstrap_closure_sha256": "f1a6bdffc9d8bec2de2b55f61bad48a2d8593c2a8ab1fc21cca42f46a6497c9c",
+    "seed_compile_json": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/seed/compile.json",
+    "seed_compile_json_sha256": "4558a92058e1cc2178dbe9d77e9516235acc7958a57901900ac2e47b4efb2271",
+    "source_paths_exact_order_match": true,
+    "sources": [
+      {
+        "path": "package_compiler/Compile.chibi",
+        "bytes": 150444,
+        "sha256": "360b53e36073e5355e817652d559d429a5414fe8f698965f1967f203fbdecf0d",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Body.chibi",
+        "bytes": 180925,
+        "sha256": "5a7f9dc60a56264fc55a98baa63c864150e80e5ce35055da726453a2fa405614",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Steps.chibi",
+        "bytes": 312902,
+        "sha256": "7f46d8000590d367884ba8bbf8162fd2fb099cab16cf3ceed5491a32da9d59f0",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Maps.chibi",
+        "bytes": 29459,
+        "sha256": "351d13270cdfffcda31f35026681b33933e9fde05babb221fc963976061add00",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/References.chibi",
+        "bytes": 40733,
+        "sha256": "d73825ac0b16dd082005650699e2bd6a35987592103a553f76fd0b5783414852",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Pointers.chibi",
+        "bytes": 52385,
+        "sha256": "b33a3530e4c4d3cc955d8e5332e4a0946c2b6aa3beeb7018d17e0f974fa34b48",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Tasks.chibi",
+        "bytes": 11882,
+        "sha256": "43c5ec60e6a9d87490dabe19a2ce379cc0a57c40c2d88d9ffeebaa60c0700970",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/TaskResults.chibi",
+        "bytes": 10463,
+        "sha256": "dfb8db278474f39ccec2c5066ae13137d885eca76c430b32dcfe0cc3b86bfef1",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Tree.chibi",
+        "bytes": 2578,
+        "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Number.chibi",
+        "bytes": 29513,
+        "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Optional.chibi",
+        "bytes": 20734,
+        "sha256": "7314b48d92d2daa35348c30ed467b8976189cc83ca36ba31c408678c2604f3a0",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Sequences.chibi",
+        "bytes": 61586,
+        "sha256": "d963c2f14a2350de551c17a71e758bccbab188b6d4b8ea1a929dedf157cafb97",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Queries.chibi",
+        "bytes": 93003,
+        "sha256": "772064ffa7540a34d1beb7070da58d208b5d51e6b5111e9bd23e6fb7648c1b28",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/QueryLoops.chibi",
+        "bytes": 12308,
+        "sha256": "6d731bf9a6a97533119dc83c186119f4ff9070a681bb5be890e9d432198be588",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Behavior.chibi",
+        "bytes": 57051,
+        "sha256": "18ee4b37aaf54288c4be665fecf1fff2bb95e4153dcad0821e82a21e91e30083",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Scalar.chibi",
+        "bytes": 115064,
+        "sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_compiler/Math.chibi",
+        "bytes": 75387,
+        "sha256": "7fa30b00f73316cef388177d0d8120419cd9648f5cb1e48c9ef05411eaf6d691",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "syntax_diagnostics/Diagnostics.chibi",
+        "bytes": 2282,
+        "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "/sdk/core/strings/Strings.chibi",
+        "bytes": 16404,
+        "sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "source_snapshot/Snapshot.chibi",
+        "bytes": 15871,
+        "sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "compiler_syntax/Syntax.chibi",
+        "bytes": 1529,
+        "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_routes/Routes.chibi",
+        "bytes": 7736,
+        "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_syntax/Extract.chibi",
+        "bytes": 4276,
+        "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_graph/Graph.chibi",
+        "bytes": 13271,
+        "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "package_paths/Paths.chibi",
+        "bytes": 2274,
+        "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "lexical_binding/Binding.chibi",
+        "bytes": 8673,
+        "sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "prepared_writer/Writer.chibi",
+        "bytes": 40444,
+        "sha256": "2dcc3d41a4feb3e95855d9de860eaf36b1347ae96bdab0d7bd3280720a838081",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "math_types/Types.chibi",
+        "bytes": 9036,
+        "sha256": "db0a52e91c89b97fa91d121d745c3b5607ecee7f76cf4cb6cda8d4173b592e68",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "math_types/Functions.chibi",
+        "bytes": 4634,
+        "sha256": "745e16490fa4c2fed8980a347a65a5a2debcac0699b8b3aad31bcccf54865d64",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      },
+      {
+        "path": "scalar_facts/Facts.chibi",
+        "bytes": 16982,
+        "sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50",
+        "manifest_exact": true,
+        "seed_text_exact": true
+      }
+    ]
+  },
+  "selected_tests": {
+    "base": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+    "environment": {
+      "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build",
+      "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-compiler-host",
+      "CHIBI_BUILD_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-build-host"
+    },
+    "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation",
+    "binaries": {
+      "test_language": {
+        "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/test_language",
+        "bytes": 15479088,
+        "sha256": "ea8c848adee80c6284d70d25570e7c3580af12caef58bfa0f026a81e9ff34835"
+      },
+      "chibi-build-host": {
+        "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-build-host",
+        "bytes": 1969120,
+        "sha256": "670096ae8a352164f3571815deba00bddaaa2b4764118012b76361587032043e"
+      },
+      "chibi-compiler-host": {
+        "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-compiler-host",
+        "bytes": 1350592,
+        "sha256": "813f3162e4ea1facf0854832c528a085f88f4f83e61be438afc85c52f0b89b67"
+      }
+    },
+    "target_comparison_passed": true,
+    "requested_selectors": [
+      "--semantic",
+      "--program",
+      "--native-calls",
+      "--record-values",
+      "--record-compatibility",
+      "--asset-packaging-chibi",
+      "--package-tests",
+      "--package-compiler-chibi-types",
+      "--record-prepared",
+      "--borrow",
+      "--component-write",
+      "--component-write-layout",
+      "--package-compiler-chibi-sharing"
+    ],
+    "runs": [
+      {
+        "selector": "--semantic",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-semantic"
+        ],
+        "status": 0,
+        "wall_seconds": 0.8796294999774545,
+        "log": "semantic.log",
+        "log_sha256": "ae55c4a3458b9afb524e35ad3bfa4fdb526696ac218768f1d6f86e6dd5855669",
+        "summary": {
+          "passed": 80,
+          "failed": 0,
+          "total": 80,
+          "suites": 0,
+          "assertions": 1113
+        },
+        "policy_wall_seconds": 0.796
+      },
+      {
+        "selector": "--program",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-program"
+        ],
+        "status": 0,
+        "wall_seconds": 0.8015246249269694,
+        "log": "program.log",
+        "log_sha256": "dc8a8f92e817ed7aceb6b2b5cd61655306eda7fb65ec0dcddc9a94c3f0abbf1c",
+        "summary": {
+          "passed": 209,
+          "failed": 0,
+          "total": 209,
+          "suites": 0,
+          "assertions": 14083
+        },
+        "policy_wall_seconds": 0.734
+      },
+      {
+        "selector": "--native-calls",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-native-calls"
+        ],
+        "status": 0,
+        "wall_seconds": 0.3204406250733882,
+        "log": "native-calls.log",
+        "log_sha256": "c16c0236e6a1a7980e96cdda58605cf827197696e8242c852239f789292bb2dc",
+        "summary": {
+          "passed": 7,
+          "failed": 0,
+          "total": 7,
+          "suites": 1,
+          "assertions": 758
+        },
+        "policy_wall_seconds": 0.252
+      },
+      {
+        "selector": "--record-values",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-record-values"
+        ],
+        "status": 0,
+        "wall_seconds": 0.1815085830166936,
+        "log": "record-values.log",
+        "log_sha256": "c62edc4394386c28b59ac3212cf12fb8182d344b24100faf5c86937c4c7f12b2",
+        "summary": {
+          "passed": 15,
+          "failed": 0,
+          "total": 15,
+          "suites": 0,
+          "assertions": 318
+        },
+        "policy_wall_seconds": 0.118
+      },
+      {
+        "selector": "--record-compatibility",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-record-compatibility"
+        ],
+        "status": 0,
+        "wall_seconds": 0.18827929208055139,
+        "log": "record-compatibility.log",
+        "log_sha256": "5efa2d443cafc532700be00cd9c0d1f8b7e8ad5fd5e2709346a8e664fab71da9",
+        "summary": {
+          "passed": 1,
+          "failed": 0,
+          "total": 1,
+          "suites": 0,
+          "assertions": 1480
+        },
+        "policy_wall_seconds": 0.124
+      },
+      {
+        "selector": "--asset-packaging-chibi",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-asset-packaging-chibi"
+        ],
+        "status": 0,
+        "wall_seconds": 4.816190249985084,
+        "log": "asset-packaging-chibi.log",
+        "log_sha256": "7f424efa9914ca00c5530e35a9915d2de89e2731592d70a5e883a075a765a2f3",
+        "summary": {
+          "passed": 4,
+          "failed": 0,
+          "total": 4,
+          "suites": 0,
+          "assertions": 24922
+        },
+        "policy_wall_seconds": 4.753
+      },
+      {
+        "selector": "--package-tests",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-package-tests"
+        ],
+        "status": 0,
+        "wall_seconds": 0.45449124998413026,
+        "log": "package-tests.log",
+        "log_sha256": "da9e801c7f6b43e20ba121ead85600be86731d90d67c6dd4c1c8b536b62c3f4b",
+        "summary": {
+          "passed": 6,
+          "failed": 0,
+          "total": 6,
+          "suites": 0,
+          "assertions": 338
+        },
+        "policy_wall_seconds": 0.398
+      },
+      {
+        "selector": "--package-compiler-chibi-types",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-package-compiler-chibi-types"
+        ],
+        "status": 0,
+        "wall_seconds": 82.21992800012231,
+        "log": "package-compiler-chibi-types.log",
+        "log_sha256": "7d78726b844bee355ad5b92f66cd083aae44a6556c3f178a59dce1f60cd13421",
+        "summary": {
+          "passed": 3,
+          "failed": 0,
+          "total": 3,
+          "suites": 0,
+          "assertions": 19958
+        },
+        "policy_wall_seconds": 82.137
+      },
+      {
+        "selector": "--record-prepared",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-record-prepared"
+        ],
+        "status": 0,
+        "wall_seconds": 0.8728132080286741,
+        "log": "record-prepared.log",
+        "log_sha256": "f3ff5abf6a78cc0cf9891b8afd3cc7dc1fc2a522c44a604c83253a64f72e5bae",
+        "summary": {
+          "passed": 16,
+          "failed": 0,
+          "total": 16,
+          "suites": 0,
+          "assertions": 6089
+        },
+        "policy_wall_seconds": 0.678
+      },
+      {
+        "selector": "--borrow",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-borrow"
+        ],
+        "status": 0,
+        "wall_seconds": 0.38163129216991365,
+        "log": "borrow.log",
+        "log_sha256": "5e613669e87d35b0ab3bed882adca4521b009ea7cba4d1a39713257f6089164c",
+        "summary": {
+          "passed": 31,
+          "failed": 0,
+          "total": 31,
+          "suites": 0,
+          "assertions": 900
+        },
+        "policy_wall_seconds": 0.258
+      },
+      {
+        "selector": "--component-write",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-component-write"
+        ],
+        "status": 0,
+        "wall_seconds": 0.3574520410038531,
+        "log": "component-write.log",
+        "log_sha256": "8f81b43b9ad65db953364a4cb947ef7885de354cbca097f00dc84cbd12c19d1d",
+        "summary": {
+          "passed": 15,
+          "failed": 0,
+          "total": 15,
+          "suites": 0,
+          "assertions": 3344
+        },
+        "policy_wall_seconds": 0.241
+      },
+      {
+        "selector": "--component-write-layout",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-component-write-layout"
+        ],
+        "status": 0,
+        "wall_seconds": 0.340217666933313,
+        "log": "component-write-layout.log",
+        "log_sha256": "2a7ce5b2f8dd471378f576e271aedbb21bbe51439f3c12234bd316a4ad72ad72",
+        "summary": {
+          "passed": 1,
+          "failed": 0,
+          "total": 1,
+          "suites": 0,
+          "assertions": 14
+        },
+        "policy_wall_seconds": 0.248
+      },
+      {
+        "selector": "--package-compiler-chibi-sharing",
+        "command": [
+          "python3",
+          "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+          "tool",
+          "language-package-compiler-chibi-sharing"
+        ],
+        "status": 0,
+        "wall_seconds": 33.35782749997452,
+        "log": "package-compiler-chibi-sharing.log",
+        "log_sha256": "d30044232071e2af704d24a08d136e476c4528f4390e407a3e8baabd6d6eab38",
+        "summary": {
+          "passed": 1,
+          "failed": 0,
+          "total": 1,
+          "suites": 0,
+          "assertions": 193
+        },
+        "policy_wall_seconds": 33.238
+      }
+    ],
+    "source_files_unchanged": true,
+    "binaries_unchanged": true,
+    "not_run": []
+  },
+  "summary": {
+    "selectors_passed": 13,
+    "tests_passed": 389,
+    "assertions": 73510,
+    "policy_wall_seconds_total": 123.975,
+    "outer_wall_seconds_total": 125.17193383327685
+  },
+  "helper_patches": [],
+  "producer_runs": [],
+  "source_files_unchanged_after_validation": true,
+  "binaries_unchanged_after_validation": true,
+  "head_at_finish": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+  "authoritative_working_diff_still_matches_capture": true,
+  "evidence_files_sha256": {
+    "capture.json": "7d8ceaafe8e216c29a2293a1b80b17ae3bafc253a3b03692fb1740f353a6832d",
+    "math-source.patch": "f69daa55d0e6a9431a14f42dc008bcf2ee0f09b0364e7b940a1e0f0f32474efe",
+    "source-files.json": "6bcaf38f83423b215f29f2ddb885021719dbabd54f0e4af111ca9ffcc9557f8c",
+    "configure.json": "f8872486d37d418645c2f8cb571a9afe1b83cc0ebe083a32dfa62a399d9ad9ce",
+    "configure.log": "4c58375922c55143879166d69ce919b0d0bbdb8b5389fddb3da47240331e830d",
+    "build.json": "a3cb803a87fe42e820166b0c43b1b621e4fd346f7bdb7f76d63667215dce30e9",
+    "build.log": "a5a50f6efca4d4852936a6de4540a189f484869536ebc96172712f949b017357",
+    "compile_commands.json": "144ee0331aa52efbc481794d7691f6ae75252e1fab422930d273232888ee4dc2",
+    "matched-runtime-compile-commands.json": "42d298fdea5b71dcea34aa67f2c75ac8ef6b1d5720ecf5245fe358380c1b9c08",
+    "target.json": "da01568aa036f6307fe67a4f274ab253d91f00ebf6d080db85e2428383167767",
+    "target-json.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target-comparison.json": "5760d697a8c762392ed5670e5a702e0091b6c8fca8a9d351d7cf9324498f61ae",
+    "bootstrap-inputs.json": "213a906f5cfedc693fe24525d1f9ba37fc6c92114fe26161ad919106d2301955",
+    "selected-tests.json": "a33a56908e92729099d376d1b7e3d06c784041bafd4be95e0b7e85fb193257f8",
+    "semantic.log": "ae55c4a3458b9afb524e35ad3bfa4fdb526696ac218768f1d6f86e6dd5855669",
+    "program.log": "dc8a8f92e817ed7aceb6b2b5cd61655306eda7fb65ec0dcddc9a94c3f0abbf1c",
+    "native-calls.log": "c16c0236e6a1a7980e96cdda58605cf827197696e8242c852239f789292bb2dc",
+    "record-values.log": "c62edc4394386c28b59ac3212cf12fb8182d344b24100faf5c86937c4c7f12b2",
+    "record-compatibility.log": "5efa2d443cafc532700be00cd9c0d1f8b7e8ad5fd5e2709346a8e664fab71da9",
+    "asset-packaging-chibi.log": "7f424efa9914ca00c5530e35a9915d2de89e2731592d70a5e883a075a765a2f3",
+    "package-tests.log": "da9e801c7f6b43e20ba121ead85600be86731d90d67c6dd4c1c8b536b62c3f4b",
+    "package-compiler-chibi-types.log": "7d78726b844bee355ad5b92f66cd083aae44a6556c3f178a59dce1f60cd13421",
+    "record-prepared.log": "f3ff5abf6a78cc0cf9891b8afd3cc7dc1fc2a522c44a604c83253a64f72e5bae",
+    "borrow.log": "5e613669e87d35b0ab3bed882adca4521b009ea7cba4d1a39713257f6089164c",
+    "component-write.log": "8f81b43b9ad65db953364a4cb947ef7885de354cbca097f00dc84cbd12c19d1d",
+    "component-write-layout.log": "2a7ce5b2f8dd471378f576e271aedbb21bbe51439f3c12234bd316a4ad72ad72",
+    "package-compiler-chibi-sharing.log": "d30044232071e2af704d24a08d136e476c4528f4390e407a3e8baabd6d6eab38"
+  }
+}

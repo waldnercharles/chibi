@@ -1,0 +1,11 @@
+package facts
+
+// A constant shift is exact: a count past the type's width is not reduced
+// before the expression folds, so shifting 1 left by 200 and back by 199 is 2.
+@test
+Calls :: () {
+    typed: i8 = Typed();
+    contextual: i8 = Contextual();
+    assert(typed == 2, "typed operand");
+    assert(contextual == 2, "operand typed from context");
+}

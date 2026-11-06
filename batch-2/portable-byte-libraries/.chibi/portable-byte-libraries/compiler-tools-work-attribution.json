@@ -1,0 +1,67 @@
+{
+  "head": "dea59917c76d665a3a117690b77a6b0717a798b0",
+  "kind": "read-only source attribution, not a new timing or closure-size run",
+  "core_input_counts": [
+    {
+      "revision": "7c6ca2f5d",
+      "core_files": 1,
+      "core_bytes": 16404,
+      "sdk_program_compile_files": 2,
+      "sdk_program_bytes": 12394,
+      "paths": [
+        "packages/core/strings/Strings.chibi"
+      ]
+    },
+    {
+      "revision": "3e2b28dc19fb21961ae06fe99aeb5a8dede35bf0",
+      "core_files": 1,
+      "core_bytes": 16404,
+      "sdk_program_compile_files": 2,
+      "sdk_program_bytes": 12394,
+      "paths": [
+        "packages/core/strings/Strings.chibi"
+      ]
+    },
+    {
+      "revision": "HEAD",
+      "core_files": 11,
+      "core_bytes": 42723,
+      "sdk_program_compile_files": 12,
+      "sdk_program_bytes": 12394,
+      "paths": [
+        "packages/core/bytes/Bytes.chibi",
+        "packages/core/bytes/Tests.chibi",
+        "packages/core/hash/adler32/Adler32.chibi",
+        "packages/core/hash/adler32/Tests.chibi",
+        "packages/core/hash/crc32/Crc32.chibi",
+        "packages/core/hash/crc32/Tests.chibi",
+        "packages/core/hash/fnv/Fnv.chibi",
+        "packages/core/hash/fnv/Tests.chibi",
+        "packages/core/math/bits/Bits.chibi",
+        "packages/core/math/bits/Tests.chibi",
+        "packages/core/strings/Strings.chibi"
+      ]
+    }
+  ],
+  "unchanged_from_3e2": {
+    "tools/toolchain/SDK.chibi": true,
+    "src/host/build_host.c": true,
+    "src/toolchain/compiler_bootstrap.c": true,
+    "tools/compiler/asset_compiler/CompilerSources.txt": true,
+    "tools/compiler/bootstrap/bootstrap.json": true,
+    "tools/compiler/bootstrap/compiler.chibip": true
+  },
+  "bootstrap_recorded_sources": 27,
+  "bootstrap_recorded_source_bytes": 1302412,
+  "bootstrap_private_target_matches": true,
+  "build_program_target": "public build natives plus public text7 and array; private compiler remains text6",
+  "script_compile_behavior": "build_host.compile_input includes every core source plus program; Compile.Link prepares and assembles every package in order; root SDK imports only core:strings",
+  "stages": [
+    "outer build host: matching27-source seed load; CompileClosureWithEffects on SDK.chibi+completecore; execute CompilerTools",
+    "CompilerTools SameTree/CopyTree/Inventory cover complete staged compiler/core resources",
+    "Prepare invokes stagedcompiler --bootstrap: compiler_bootstrap_check performs one27-source fixedpoint compilation even when changed==0",
+    "Prepare invokes stagedbuildhost --entryVerify: matching seed load plus another SDK.chibi+completecore compilation and execution"
+  ],
+  "recovery_attribution": "disk_arguments uses exactly27manifest sources/target, packages_complete checks sibling files only. Neither source list/seed nor this input includes new packages. Clean recovery50s remains failing; no new baseline timing executed.",
+  "compiler_tools_attribution": "adds10core files/26319sourcebytes and5packages/23tests to outer and Verify script compilation, plus public text operation and resource traversal. Closure size and per-stage timings unmeasured; no assertion that extra work alone explains120s failure. Reachability may reduce work but held790 must be separately admitted."
+}

@@ -1,0 +1,9 @@
+package layout_syntax_probe
+import syntax "project:compiler_syntax"
+Main :: () -> int {
+    switch syntax.Parse("package p\nA :: () { value := actor.\nFirst\n().\nSecond(); }\n") {
+        case .Parsed(rows, fields, named, extras, root): print_string("accepted");
+        case .Rejected(diagnostic): print_string(diagnostic.message);
+    }
+    return 0;
+}

@@ -1,0 +1,146 @@
+{
+  "expectations": [
+    {
+      "text": "The review states a minimum-work versus actual-work estimate for the change with concrete numbers (for example call sites or nodes multiplied by bytes scanned).",
+      "passed": true,
+      "evidence": "Brief has explicit 'Minimum work (census, one document)' ('Total: about 10⁵ simple operations and about 0 bytes copied') and 'Actual work' ('Body.chibi needs Σ 2 × start = 390,526,400 ByteAt calls, plus about 95 MB sliced') and a 'Gap' line: 'about 5 × 10⁸ operations against about 10⁵, so about 5,000×'."
+    },
+    {
+      "text": "The review flags LineOf/ColumnOf rescanning the text from the start for every call site, gives a quantified cost (a count or operation estimate), and recommends using the row/column SnapshotNode already stores.",
+      "passed": true,
+      "evidence": "[PERF] CallCensus.chibi:30-31,76-96 'LineOf and ColumnOf rescan the document from byte 0 for every call site'. Cost: '390,526,400 calls for Body.chibi and 2,488,538,616 across tools/compiler, against zero'. Fix: 'read forest[node].row + 1 and forest[node].column + 1 at the point of use'."
+    },
+    {
+      "text": "The review flags the per-element xstrdup/free in pin_array_count_type as needless allocation and recommends comparing in place.",
+      "passed": true,
+      "evidence": "[PERF] src/types/array.c:128-135 'duplicates every element's type name onto the heap only to compare it'. Fix: 'compare `value.type_name` in place ... Delete the xstrdup/free pair'."
+    },
+    {
+      "text": "The review flags the per-site strings.Concat(\"call:\", callee) key building (allocation per site and/or the pointless prefix) as waste or a design defect.",
+      "passed": true,
+      "evidence": "[PERF] CallCensus.chibi:28-29 'builds a prefixed string per call site only to use it as a map key'. Cost: 'one allocation and copy per site (1,777 in Body.chibi)'. Evidence: 'every key starts with the same \"call:\", so the prefix distinguishes nothing'."
+    },
+    {
+      "text": "The review flags CallSite's derivable or flag fields (offset/line/column copies or the is_dead list-membership bool) as a representation problem.",
+      "passed": true,
+      "evidence": "[SIMPLIFY] CallCensus.chibi:7-14,45-64 'CallSite stores five facts derivable from `node`, and `is_dead` encodes list membership that LiveSites filters and copies'. Fix: 'the census is `int[]` of node indices ... Delete is_dead, MarkDead and LiveSites'."
+    },
+    {
+      "text": "The review flags CountCallsInForest as a layer that only forwards and should be deleted.",
+      "passed": true,
+      "evidence": "In the [SIMPLIFY] no-consumer finding: 'CountCallsInForest (:40-42) is a forwarding wrapper with a duplicate doc comment and goes regardless'. 'What I would delete' lists 'CountCallsInForest (forwarder)'."
+    },
+    {
+      "text": "The review sketches a concrete target shape for the census (for example sites as node indices, or derived counts) instead of only listing defects.",
+      "passed": true,
+      "evidence": "'## Target shape' sketches 'call_callee: int[]', 'call_node: int[]' and a dense per-callee histogram, plus a syntactic fallback 'CallNodes :: (forest, node_start, node_end) -> int[]', and lists what each shape deletes."
+    },
+    {
+      "text": "The review addresses comparing forest[index].kind against the string \"call_expression\", either as a finding or explicitly left alone with a stated reason about the forest's string-kind representation.",
+      "passed": true,
+      "evidence": "'What I would leave alone': '`forest[index].kind == \"call_expression\"` ... compares kinds as strings. That is the package-wide representation (`SnapshotNode.kind: string`, `Is` at Tree.chibi:51, hundreds of callers). Interning kinds belongs in its own change, and one compare per node is about 10⁵ operations'."
+    },
+    {
+      "text": "Architecture and performance findings come before correctness or bug findings in the review's ordering, or bugs are kept in a clearly separate secondary section.",
+      "passed": true,
+      "evidence": "Order: Brief → Target shape → Findings ([PERF], [PERF], [SIMPLIFY], [ARCH], [SIMPLIFY], [PERF], [SIMPLIFY], [STYLE], [TEST]) → a separate '## Correctness notes' section holding the five bugs. The Brief and Target shape only cross-reference it ('see Correctness notes')."
+    },
+    {
+      "text": "Every performance finding states the work removed or its scale (a count, an estimate or a measurement).",
+      "passed": true,
+      "evidence": "All three [PERF] findings state their scale. LineOf/ColumnOf: '390,526,400 calls for Body.chibi'. Concat key: '1,777 in Body.chibi ... about 95 MB copied'. C xstrdup: 'per element: strlen + malloc + memcpy + strcmp + free, against one strcmp ... For packed arrays (stride > 0), O(count) against O(1)'. The C finding has no magnitude because the function has no caller ('Element count unknown (no caller)'), but it states the work removed."
+    },
+    {
+      "text": "The review does not recommend SIMD, threading or micro-optimizations (unrolling, branch hints) for this code.",
+      "passed": true,
+      "evidence": "No SIMD, threading, unrolling or branch hints anywhere. The packed-array early return ('return strcmp(owner->type_name, type_name) ? 0 : array->count') is an algorithmic O(count)→O(1) change, not a micro-optimization."
+    },
+    {
+      "text": "The review does not recommend splitting functions for length or adding defensive NULL checks.",
+      "passed": true,
+      "evidence": "No function-splitting advice. The [STYLE] finding recommends replacing the silent NULL guard with 'assert(array && type_name)', which follows the repo's fail-fast rule and isn't a defensive check. 'Leave alone' explicitly declines to change the neighboring '!array' early returns."
+    }
+  ],
+  "summary": {
+    "passed": 12,
+    "failed": 0,
+    "total": 12,
+    "pass_rate": 1.0
+  },
+  "claims": [
+    {
+      "claim": "Body.chibi is 191,198 bytes with about 1,777 call sites; Steps.chibi is 330,011 bytes with about 3,438 sites",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git cat-file -s HEAD:... gives 191198 and 330011. Re-running the stated regex (identifier/dotted name followed by '(', minus if/while/for/switch/return/case, strings and comments masked) gives 1,777 and 3,438."
+    },
+    {
+      "claim": "tools/compiler holds 77 .chibi files totalling 2,267,948 bytes",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git ls-tree -r -l HEAD tools/compiler filtered to .chibi: 77 files, 2,267,948 bytes."
+    },
+    {
+      "claim": "Σ 2 × start over Body.chibi's call sites = 390,526,400 ByteAt calls",
+      "type": "factual",
+      "verified": true,
+      "evidence": "The reproduced regex census sums to exactly 390,526,400. This is exact only under the review's regex methodology; real call_expression node starts may differ slightly."
+    },
+    {
+      "claim": "SnapshotNode stores row and column (Snapshot.chibi:37-38), and 16 sites in package_compiler read row + 1 / column + 1",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Snapshot.chibi lines 37-38 are 'row: int;' and 'column: int;'. There are 16 'row + 1' and 16 'column + 1' occurrences across 7 package_compiler files."
+    },
+    {
+      "claim": "core:strings has no Concat (only Concatenate at Strings.chibi:551), and Slice takes (start, count) at Strings.chibi:23",
+      "type": "factual",
+      "verified": true,
+      "evidence": "packages/core/strings/Strings.chibi:551 'pub Concatenate :: (a: string[])', line 23 'pub Slice :: (value: string, start: int, count: int)'. The only strings.Concat in the tree is CallCensus.chibi:28."
+    },
+    {
+      "claim": "Packed arrays synthesize every element's type_name from the owner (array.c:361-364)",
+      "type": "factual",
+      "verified": true,
+      "evidence": "array.c:361-364 builds 'pin_value value = { .type = owner->element_type, .type_name = owner->type_name, ... }'."
+    },
+    {
+      "claim": "The build break comes from strings.Concat because 'this file compiles with every package_compiler build'",
+      "type": "quality",
+      "verified": false,
+      "evidence": "The build does break, but the first failure is earlier. asset_compiler/CompilerSources.txt lists 18 of the 19 package_compiler files and omits CallCensus.chibi, and compiler_bootstrap.c:384-414 rejects the package with '... is in the package of a compiler source but ... does not list it' before compiling. The review misses this blocker."
+    }
+  ],
+  "timing": {
+    "total_tokens": 151545,
+    "duration_ms": 601734,
+    "total_duration_seconds": 601.7,
+    "executor_duration_seconds": 601.7
+  },
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "assertion": "The review flags LineOf/ColumnOf rescanning the text from the start for every call site, gives a quantified cost (a count or operation estimate), and recommends using the row/column SnapshotNode already stores.",
+        "reason": "A symbolic formula passes ('about 2·k·n native calls' in the baseline), so this doesn't separate a review that measured the real input (390,526,400 ByteAt calls for Body.chibi) from one that didn't. Require at least one number tied to a real file if that difference matters."
+      },
+      {
+        "assertion": "The review addresses comparing forest[index].kind against the string \"call_expression\", either as a finding or explicitly left alone with a stated reason about the forest's string-kind representation.",
+        "reason": "Ambiguous: the baseline's 'use Is(forest, index, \"call_expression\")' finding addresses the line but not the string-kind representation, and a literal reading would pass it. Say whether the finding has to be about the string comparison or representation itself."
+      },
+      {
+        "assertion": "The review does not recommend splitting functions for length or adding defensive NULL checks.",
+        "reason": "Both runs recommend assert(array && type_name), which follows the repo's fail-fast rule. Say explicitly that asserts are fine and silent early returns are not, so a grader doesn't count the assert as a defensive check."
+      },
+      {
+        "reason": "No assertion covers the most severe defect, which only the baseline found: CallCensus.chibi isn't listed in asset_compiler/CompilerSources.txt (18 of 19 package_compiler files are listed), so the bootstrap source-completeness check (compiler_bootstrap.c:384-414) rejects the package before it compiles. The with-skill run attributes the build break only to strings.Concat. Add an assertion for it."
+      },
+      {
+        "reason": "The correctness bugs both runs found (Slice given an end where it takes a count, the whole-forest walk against one document's text, assert(matches++ ...) changing the result in debug builds, the nonexistent strings.Concat) have no assertions. They don't discriminate today, but without them a skill that drops correctness coverage would still score full marks."
+      },
+      {
+        "reason": "Non-discriminating in this iteration: the xstrdup/free, Concat-key, CallSite-fields, CountCallsInForest, no-SIMD and no-split/NULL assertions pass for both configurations. Only the min-vs-actual-work, kind-string and ordering assertions separate them."
+      }
+    ],
+    "overall": "Perf and architecture coverage is solid, but most assertions pass for the baseline as well. The assertions that discriminate check quantification and ordering. The largest gap is the unasserted CompilerSources.txt build break, which the with-skill run missed."
+  }
+}

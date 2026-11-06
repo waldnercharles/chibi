@@ -1,0 +1,260 @@
+package source_format
+
+import strings "core:strings"
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+import directives "project:source_directives"
+
+FunctionDefinition :: (kind: int) -> bool {
+    return kind == diag.FunctionDeclaration || kind == diag.LambdaExpression || kind == diag.ForeignFunction;
+}
+
+FunctionBodyOwner :: (rows: diag.Node[], node: int) -> bool {
+    return KindOf(rows, node) == diag.CallableBody && FunctionDefinition(ParentKind(rows, node));
+}
+
+FunctionStatement :: (rows: diag.Node[], body: int) -> int {
+    statement: int = -1;
+    child := FirstChild(rows, body);
+    while (child >= 0) {
+        kind := rows[child].kind;
+        if (kind != tk.OpenBrace && kind != tk.CloseBrace && kind != tk.Semicolon && kind != diag.Comment) {
+            if (statement >= 0) { return -1; }
+            statement = child;
+        }
+        child = rows[child].next_sibling;
+    }
+    return statement;
+}
+
+// A lambda with untyped parameters and a block needs `fn` to disambiguate its
+// header from grouping. An arrow or result annotation already disambiguates it.
+OptionalFunctionKeyword :: (rows: diag.Node[], fields: int[], owner: int) -> bool {
+    if (rows[owner].kind != diag.LambdaExpression) { return true; }
+    if (ChildByField(rows, fields, owner, diag.FieldResults) >= 0) { return true; }
+    body := ChildByField(rows, fields, owner, diag.FieldBody);
+    if (body >= 0 && KindOf(rows, FirstChild(rows, body)) != tk.OpenBrace) { return true; }
+    parameters := ChildByField(rows, fields, owner, diag.FieldParameters);
+    child := FirstChild(rows, parameters);
+    while (child >= 0) {
+        if (rows[child].kind == diag.Parameter && ChildByField(rows, fields, child, diag.FieldType) < 0) { return false; }
+        child = rows[child].next_sibling;
+    }
+    return true;
+}
+
+UntypedFunctionParameters :: (rows: diag.Node[], fields: int[], parameters: int) -> bool {
+    child := FirstChild(rows, parameters);
+    while (child >= 0) {
+        if (rows[child].kind == diag.Parameter && ChildByField(rows, fields, child, diag.FieldType) < 0) { return true; }
+        child = rows[child].next_sibling;
+    }
+    return false;
+}
+
+// Signature token policies are preserve=0, omit=1, always=2. Body policies are
+// preserve=0, block=1, expression=2. Edits are emitted in source order. A body
+// with nested callables stays a block so overlapping edits cannot create a
+// second-pass change. Statement-to-return conversion requests semantic proof.
+FunctionSyntax :: (source: string, rows: diag.Node[], fields: int[], named: bool[], tokens: Token[],
+                   body_mode: int, keyword_mode: int, arrow_mode: int)
+    -> (text: string, needs_semantics: bool, notes: string) {
+    count := length(rows);
+    first := resize([int(0)], count);
+    comments := resize([false], count);
+    protected := resize([false], count);
+    nested := resize([false], count);
+    prefix := resize([""], count);
+    dropped := resize([false], count);
+    join_until := resize([int(0)], count);
+    replacements := resize([""], count);
+    replace_end := resize([int(0)], count);
+    verbatim := false;
+    for (token in tokens) {
+        node := token.node;
+        first[node] = node + 1;
+        if (token.comment) {
+            next_verbatim := directives.Apply(text_slice(source, token.start, token.end - token.start), verbatim);
+            comments[node] = true;
+            protected[node] = verbatim || next_verbatim;
+            verbatim = next_verbatim;
+        } else { protected[node] = verbatim; }
+    }
+    at := count - 1;
+    while (at >= 0) {
+        parent := rows[at].parent;
+        if (parent >= 0) {
+            if (first[at] > 0 && (first[parent] == 0 || first[at] < first[parent])) { first[parent] = first[at]; }
+            comments[parent] = comments[parent] || comments[at];
+            protected[parent] = protected[parent] || protected[at];
+            nested[parent] = nested[parent] || nested[at] || FunctionDefinition(rows[at].kind);
+        }
+        at -= 1;
+    }
+    changed := false;
+    needs_semantics := false;
+    skipped := 0;
+    for (owner in 0..<count) {
+        if (!FunctionDefinition(rows[owner].kind)) { continue; }
+        if (protected[owner]) { skipped += 1; continue; }
+        parameters := ChildByField(rows, fields, owner, diag.FieldParameters);
+        results := ChildByField(rows, fields, owner, diag.FieldResults);
+        body := ChildByField(rows, fields, owner, diag.FieldBody);
+        keyword: int = -1;
+        arrow: int = -1;
+        body_arrow: int = -1;
+        child := rows[owner].first_child;
+        while (child >= 0) {
+            if (rows[child].kind == diag.Fn) { keyword = child; }
+            else if (rows[child].kind == tk.ArrowRight) { arrow = child; }
+            else if (rows[child].kind == tk.FatArrow) { body_arrow = child; }
+            child = rows[child].next_sibling;
+        }
+        if (keyword_mode == 2 && keyword < 0 && parameters >= 0 && first[parameters] > 0) {
+            prefix[first[parameters] - 1] = "fn ";
+            changed = true;
+        } else if (keyword_mode == 1 && keyword >= 0) {
+            if (OptionalFunctionKeyword(rows, fields, owner)) {
+                dropped[keyword] = true;
+                changed = true;
+            } else { skipped += 1; }
+        }
+        if (arrow_mode == 2 && results >= 0 && arrow < 0 && first[results] > 0) {
+            prefix[first[results] - 1] = strings.Concatenate([prefix[first[results] - 1], "-> "]);
+            changed = true;
+        } else if (arrow_mode == 1 && arrow >= 0 && results >= 0 && parameters >= 0) {
+            gap := text_slice(source, rows[parameters].end, rows[results].start - rows[parameters].end);
+            if (!comments[results] && !strings.Contains(gap, "//") && !strings.Contains(gap, "/*")) {
+                join_until[arrow] = rows[results].start;
+                changed = true;
+            } else { skipped += 1; }
+        }
+        if (body_mode == 1 && body_arrow >= 0) {
+            dropped[body_arrow] = true;
+            changed = true;
+        }
+        if (body < 0 || body_mode == 0 || comments[body] || nested[body] || first[body] == 0) { continue; }
+        braced := KindOf(rows, FirstChild(rows, body)) == tk.OpenBrace;
+        if ((body_mode == 1 && braced) || (body_mode == 2 && !braced)) { continue; }
+        statement := FunctionStatement(rows, body);
+        if (statement < 0) { continue; }
+        kind := rows[statement].kind;
+        expression := -1;
+        if (kind == diag.ReturnStatement) {
+            if (ChildByField(rows, fields, statement, diag.FieldOutcome) >= 0) { continue; }
+            expression = ChildByField(rows, fields, statement, diag.FieldValue);
+        } else if (kind == diag.ExpressionStatement && results < 0) {
+            expression = FirstChild(rows, statement);
+            needs_semantics = true;
+        }
+        if (expression < 0 || rows[expression].kind == diag.ArgumentList) { continue; }
+        value := text_slice(source, rows[expression].start, rows[expression].end - rows[expression].start);
+        replacement := strings.Concatenate(["=> ", value, ";"]);
+        if (rows[owner].kind == diag.LambdaExpression) { replacement = strings.Concatenate(["=> ", value]); }
+        if (body_mode == 1) { replacement = strings.Concatenate(["{ return ", value, "; }"]); }
+        replacements[first[body] - 1] = replacement;
+        replace_end[first[body] - 1] = rows[body].end;
+        if (body_arrow >= 0) { dropped[body_arrow] = true; }
+        if (body_mode == 2 && keyword_mode == 1 && keyword >= 0 &&
+            !OptionalFunctionKeyword(rows, fields, owner)) {
+            dropped[keyword] = true;
+            skipped -= 1;
+        }
+        if (body_mode == 1 && rows[owner].kind == diag.LambdaExpression && results < 0 &&
+            UntypedFunctionParameters(rows, fields, parameters)) {
+            if (keyword < 0 && prefix[first[parameters] - 1] == "") {
+                prefix[first[parameters] - 1] = "fn ";
+            } else if (keyword >= 0 && dropped[keyword]) {
+                dropped[keyword] = false;
+                skipped += 1;
+            }
+        }
+        changed = true;
+    }
+    if (!changed) {
+        notes := "";
+        if (skipped > 0) { notes = "Function style preserved protected or commented signatures and required fn keywords."; }
+        return (source, false, notes);
+    }
+    out: string[] = [];
+    copied := 0;
+    for (token in tokens) {
+        if (token.start < copied) { continue; }
+        if (join_until[token.node] > 0) {
+            out.append(" ");
+            copied = join_until[token.node];
+            continue;
+        }
+        out.append(text_slice(source, copied, token.start - copied));
+        node := token.node;
+        out.append(prefix[node]);
+        if (replace_end[node] > 0) {
+            out.append(replacements[node]);
+            copied = replace_end[node];
+        } else {
+            if (!dropped[node]) { out.append(text_slice(source, token.start, token.end - token.start)); }
+            copied = token.end;
+        }
+    }
+    out.append(text_slice(source, copied, text_byte_length(source) - copied));
+    notes := "";
+    if (skipped > 0) { notes = "Function style preserved protected or commented signatures and required fn keywords."; }
+    return (strings.Join(out, ""), needs_semantics, notes);
+}
+
+FunctionDelimiter :: (rows: diag.Node[], node: int) -> bool {
+    kind := rows[node].kind;
+    parent := ParentOf(rows, node);
+    if (FunctionDefinition(KindOf(rows, parent))) {
+        return kind == diag.Fn || kind == tk.ArrowRight || kind == tk.FatArrow;
+    }
+    if ((kind == tk.OpenBrace || kind == tk.CloseBrace) && FunctionBodyOwner(rows, parent)) { return true; }
+    if (kind == tk.Return || kind == tk.FatArrow) {
+        return (KindOf(rows, parent) == diag.ReturnStatement || KindOf(rows, parent) == diag.ExpressionStatement) &&
+               FunctionBodyOwner(rows, ParentOf(rows, parent));
+    }
+    return false;
+}
+
+CanonicalFunctionKind :: (rows: diag.Node[], node: int) -> int {
+    if (rows[node].kind == diag.ExpressionStatement && FunctionBodyOwner(rows, rows[node].parent) &&
+        FunctionStatement(rows, rows[node].parent) == node) { return diag.ReturnStatement; }
+    return rows[node].kind;
+}
+
+CanonicalFunctionField :: (rows: diag.Node[], fields: int[], node: int) -> int {
+    parent := ParentOf(rows, node);
+    if (KindOf(rows, parent) == diag.ExpressionStatement && CanonicalFunctionKind(rows, parent) == diag.ReturnStatement &&
+        node == FirstChild(rows, parent)) { return diag.FieldValue; }
+    return fields[node];
+}
+
+NextFunctionRow :: (rows: diag.Node[], at: int) -> int {
+    while (at < length(rows) && (rows[at].start == rows[at].end || rows[at].kind == tk.Semicolon ||
+                               FunctionDelimiter(rows, at))) { at += 1; }
+    return at;
+}
+
+// This proof permits only function delimiters and a sole expression/return body
+// normalization. A transform that changed statement kind ALSO needs typed proof.
+SameFunctionTree :: (original: string, a: diag.Node[], a_fields: int[], a_named: bool[],
+                     rewritten: string, b: diag.Node[], b_fields: int[], b_named: bool[]) -> bool {
+    a_depths := Depths(a);
+    b_depths := Depths(b);
+    i := NextFunctionRow(a, 0);
+    j := NextFunctionRow(b, 0);
+    while (i < length(a) && j < length(b)) {
+        if (a_depths[i] != b_depths[j] || CanonicalFunctionKind(a, i) != CanonicalFunctionKind(b, j) ||
+            a_named[i] != b_named[j] || CanonicalFunctionField(a, a_fields, i) != CanonicalFunctionField(b, b_fields, j)) {
+            return false;
+        }
+        if (a[i].first_child < 0 && b[j].first_child < 0) {
+            size := a[i].end - a[i].start;
+            if (size != b[j].end - b[j].start ||
+                text_slice(original, a[i].start, size) != text_slice(rewritten, b[j].start, size)) { return false; }
+        }
+        i = NextFunctionRow(a, i + 1);
+        j = NextFunctionRow(b, j + 1);
+    }
+    return i == length(a) && j == length(b);
+}

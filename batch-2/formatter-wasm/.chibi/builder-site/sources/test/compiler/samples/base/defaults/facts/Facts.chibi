@@ -1,0 +1,8 @@
+package facts
+Add :: (a: int, b: int = -10, c: i64 = 0x10) -> i64 { return i64(a + b) + c; }
+Greet :: (name: string = "you", loud: bool = true) -> string {
+    if (loud) { return format_text("HI {}", name); }
+    return name;
+}
+Use :: () -> i64 { return Add(1) + Add(1, 2) + Add(1, 2, 3); }
+Hello :: () -> string { return Greet(); }

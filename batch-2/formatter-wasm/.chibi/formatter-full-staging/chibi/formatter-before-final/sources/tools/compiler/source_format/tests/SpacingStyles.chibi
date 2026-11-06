@@ -1,0 +1,156 @@
+package source_format_tests
+
+import format "project:source_format"
+
+@test
+PrecedenceSpacingKeepsProductsTogether :: () {
+    o := format.Defaults();
+    o.operator_spacing = 1;
+    With(o, "package p\nA :: (a: int, b: int, c: int, d: int) -> int { return a * b + c * d; }\n",
+         "package p\nA :: (a: int, b: int, c: int, d: int) -> int {\n    return a*b + c*d;\n}\n");
+}
+
+@test
+OperatorFamiliesOverrideTheGlobalProfile :: () {
+    o := format.Defaults();
+    o.operator_spacing = 1;
+    o.space_multiplicative = 3;
+    o.space_additive = 1;
+    o.space_comparison = 1;
+    o.space_logical = 3;
+    o.space_bitwise = 1;
+    o.space_assignment = 1;
+    With(o, "package p\nA :: () { x := a * b + c / d; yes := a == b && c != d; bits := a & b ^ c; }\n",
+         "package p\nA :: () {\n    x:=a  *  b+c  /  d;\n    yes:=a==b  &&  c!=d;\n    bits:=a&b ^c;\n}\n");
+}
+
+@test
+RangesHaveIndependentSpacing :: () {
+    o := format.Defaults();
+    o.space_range = 2;
+    With(o, "package p\nA :: () { for (index in 0..<4) { Call(index); } }\n",
+         "package p\nA :: () {\n    for (index in 0 ..< 4) {\n        Call(index);\n    }\n}\n");
+}
+
+@test
+PreservesAuthoredOperatorGapCounts :: () {
+    o := format.Defaults();
+    o.operator_spacing = 2;
+    With(o, "package p\nA :: () { value := a*b  +   c * d; }\n",
+         "package p\nA :: () {\n    value := a*b  +   c * d;\n}\n");
+}
+
+@test
+CallDeclarationAndControlParenSpacingAreSeparate :: () {
+    o := format.Defaults();
+    o.space_before_declaration_parens = 2;
+    o.space_before_call_parens = 3;
+    o.space_before_control_parens = 1;
+    With(o, "package p\nA :: (ready: bool) { if (ready) { Call(ready); } }\n",
+         "package p\nA :: (ready: bool) {\n    if(ready) {\n        Call  (ready);\n    }\n}\n");
+    // Make the declaration-specific override visibly different from baseline.
+    o.space_before_declaration_parens = 3;
+    With(o, "package p\nA :: (ready: bool) {}\n", "package p\nA ::  (ready: bool) {}\n");
+}
+
+@test
+ParenInteriorsUseTheirSyntaxContext :: () {
+    o := format.Defaults();
+    o.space_inside_parameter_parens = 2;
+    o.space_inside_call_parens = 3;
+    o.space_inside_grouping_parens = 2;
+    o.space_inside_control_parens = 3;
+    With(o, "package p\nA :: (ready: bool) { if (ready) { Call((ready)); } }\n",
+         "package p\nA :: ( ready: bool ) {\n    if (  ready  ) {\n        Call(  ( ready )  );\n    }\n}\n");
+}
+
+@test
+ArrayIndexAndTypeBracketsAreSeparate :: () {
+    o := format.Defaults();
+    o.space_inside_array_brackets = 3;
+    o.space_inside_index_brackets = 2;
+    o.space_inside_type_brackets = 2;
+    With(o, "package p\nA :: (values: int[]) { data := [1, 2]; value := values[0]; }\n",
+         "package p\nA :: (values: int[ ]) {\n    data := [  1, 2  ];\n    value := values[ 0 ];\n}\n");
+}
+
+@test
+EmptyDelimiterInteriorsAreIndependent :: () {
+    o := format.Defaults();
+    o.space_inside_empty_parens = 2;
+    o.space_inside_empty_brackets = 2;
+    o.space_inside_empty_record_braces = 3;
+    With(o, "package p\nA :: () { Call(); values := []; value: R = {}; }\n",
+         "package p\nA :: ( ) {\n    Call( );\n    values := [ ];\n    value: R = {  };\n}\n");
+}
+
+@test
+TypeFieldAndNamedArgumentColonsAreSeparate :: () {
+    o := format.Defaults();
+    o.space_before_type_colon = 2;
+    o.space_after_type_colon = 1;
+    o.space_before_field_colon = 3;
+    o.space_after_field_colon = 1;
+    o.space_before_named_argument_colon = 2;
+    o.space_after_named_argument_colon = 3;
+    o.space_inside_record_braces = 2;
+    With(o, "package p\nA :: (value: int) { Call(Name: value); object := {x: value}; }\n",
+         "package p\nA :: (value :int) {\n    Call(Name :  value);\n    object := { x  :value };\n}\n");
+}
+
+@test
+ArrowsDeclarationSeparatorsAndCommasHavePolicies :: () {
+    o := format.Defaults();
+    o.space_around_arrows = 1;
+    o.space_around_declaration_separator = 1;
+    o.space_before_comma = 2;
+    o.space_after_comma = 3;
+    With(o, "package p\nA :: (a: int, b: int) -> int { return Call(a, b); }\n",
+         "package p\nA::(a: int ,  b: int)->int {\n    return Call(a ,  b);\n}\n");
+}
+
+@test
+UnaryAndPostfixSpacingKeepsDistinctOperators :: () {
+    o := format.Defaults();
+    o.space_after_unary = 2;
+    o.space_before_postfix = 2;
+    With(o, "package p\nA :: (value: int) { negative := -value; inverted := ~value; pointer: ^int = &value; dereferenced := pointer^; optional: int? = none; item := values[0]; }\n",
+         "package p\nA :: (value: int) {\n    negative := - value;\n    inverted := ~ value;\n    pointer: ^ int = & value;\n    dereferenced := pointer^;\n    optional: int ? = none;\n    item := values [0];\n}\n");
+}
+
+@test
+CompactSpacingRetainsLexicallyRequiredSeparators :: () {
+    o := format.Defaults();
+    o.space_logical = 1;
+    o.space_comparison = 1;
+    o.space_assignment = 1;
+    o.space_after_unary = 1;
+    o.space_before_postfix = 1;
+    With(o, "package p\nA :: () { yes := a and b; no := not a; pointer^ = value; optional! = value; }\n",
+         "package p\nA :: () {\n    yes:=a and b;\n    no:=not a;\n    pointer^ =value;\n    optional! =value;\n}\n");
+}
+
+@test
+SpacingPoliciesLeaveProtectedRegionsAlone :: () {
+    o := format.Defaults();
+    o.space_assignment = 1;
+    o.space_additive = 1;
+    With(o, "package p\nA :: () {\n    // chibi fmt: off\n    kept := a  +  b;\n    // chibi fmt: on\n    changed := a + b;\n}\n",
+         "package p\nA :: () {\n    // chibi fmt: off\n    kept := a  +  b;\n    // chibi fmt: on\n    changed:=a+b;\n}\n");
+}
+
+@test
+CaseColonsHaveTheirOwnBeforeAndAfterSpacing :: () {
+    o := format.Defaults();
+    o.keep_one_line_blocks = true;
+    o.space_before_case_colon = 2;
+    o.space_after_case_colon = 3;
+    With(o, "package p\nA :: (value: int) {\n    switch value {\n        case 1: { Call(); }\n    }\n}\n",
+         "package p\nA :: (value: int) {\n    switch value {\n        case 1 :  { Call(); }\n    }\n}\n");
+}
+
+@test
+DefaultSpacingPreservesPostfixAndBinaryCaretMeaning :: () {
+    With(format.Defaults(), "package p\nA :: () { field := value?.member; unwrapped := optional!; pointed := pointer^; bits := a ^ b; }\n",
+         "package p\nA :: () {\n    field := value?.member;\n    unwrapped := optional!;\n    pointed := pointer^;\n    bits := a ^ b;\n}\n");
+}

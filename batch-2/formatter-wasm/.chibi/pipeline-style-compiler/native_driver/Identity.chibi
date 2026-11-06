@@ -1,0 +1,176 @@
+package native_driver
+
+import json "core:encoding/json"
+import os "core:os"
+import strings "core:strings"
+
+CliIdentity :: struct {
+    valid: bool;
+    problem: string;
+    version: string;
+    build: string;
+    project: string;
+    formats: string[];
+    versions: string[];
+    system: string;
+    processors: string[];
+    backends: string[];
+    backends_valid: bool;
+}
+
+SdkFolder :: () -> string {
+    program := os.ProgramPath();
+    if (program == "") { return ""; }
+    folder := os.RealPath(strings.Concatenate([Directory(program), "/../share/chibi"]));
+    if (folder == "" || !os.IsDirectory(folder)) { return ""; }
+    return folder;
+}
+
+IdentityLayout :: () -> bool {
+    if (SdkFolder() != "") { return true; }
+    folder := Directory(os.ProgramPath());
+    return os.IsFile(strings.Concatenate([folder, "/chibi_engine_metadata.json"]));
+}
+
+CompilerProgram :: () -> string {
+    program := os.ProgramPath();
+    // The graph's sdk directory owns its metadata and its native compiler.
+    // Installed bin/chibi uses the packaged companion alias instead.
+    folder := Directory(program);
+    if (!IdentityLayout() || os.IsFile(strings.Concatenate([folder, "/chibi_engine_metadata.json"]))) { return program; }
+    suffix := "";
+    if (os.Platform() == "Windows") { suffix = ".exe"; }
+    return strings.Concatenate([folder, "/chibi-compile", suffix]);
+}
+
+IdentityMachine :: () -> string {
+    if (os.Platform() == "Darwin") { return "arm64"; }
+    if (os.Platform() == "Windows") { return "AMD64"; }
+    return "x86_64";
+}
+
+// Installed identity fields distinguish an unavailable capability from broken
+// packaging. LLVM discovery remains the native doctor's own tool check.
+InspectIdentity :: () -> bool {
+    identity := ReadIdentity();
+    broken := false;
+    if (!identity.valid) {
+        Complain(identity.problem);
+        broken = Report("sdk", "broken", "no valid build identity");
+    } else {
+        Report("sdk", "supported", format_text("chibi {}, build {}", identity.version, identity.build));
+    }
+    compiler := CompilerProgram();
+    if (os.FindExecutable(compiler) == "") {
+        broken = Report("compiler", "broken", strings.Concatenate(["missing ", compiler])) || broken;
+    } else {
+        probe := os.Capture([compiler, "--help"]);
+        if (probe.status != 0) {
+            broken = Report("compiler", "broken", strings.Concatenate([compiler, " --help failed"])) || broken;
+        } else { Report("compiler", "supported", compiler); }
+    }
+    if (identity.valid) {
+        machine := IdentityMachine();
+        if (identity.system == "" || length(identity.processors) == 0) {
+            broken = Report("platform", "broken", "the build identity names no platform") || broken;
+        } else if (identity.system != os.Platform() || !Contains(identity.processors, machine)) {
+            others := "";
+            if (length(identity.processors) > 1) { others = " and others"; }
+            Report("platform", "unavailable", format_text("built for {} {}{}, running on {} {}",
+                   identity.system, identity.processors[0], others, os.Platform(), machine));
+        } else { Report("platform", "supported", format_text("{} {}", identity.system, machine)); }
+        if (!identity.backends_valid) {
+            broken = Report("native backend", "broken", "the build identity names no backends") || broken;
+        } else if (Contains(identity.backends, "native")) {
+            Report("native backend", "supported", "LLVM");
+        } else { Report("native backend", "unavailable", "the build identity names no LLVM backend"); }
+    }
+    return broken;
+}
+
+// The identity has a fixed set of scalar fields. Format records are read once
+// in the JSON parser's canonical name order.
+IdentityField :: (fields: json.JsonField[], name: string) -> string {
+    for (field in fields) {
+        if (field.key == name) { return field.value; }
+    }
+    return "";
+}
+
+IdentityInteger :: (value: string) -> bool {
+    first := 0;
+    if (strings.HasPrefix(value, "-")) { first = 1; }
+    if (strings.ByteLength(value) == first) { return false; }
+    for (index in first..<strings.ByteLength(value)) {
+        byte := strings.ByteAt(value, index);
+        if (byte < 48 || byte > 57) { return false; }
+    }
+    return true;
+}
+
+IdentityNames :: struct { valid: bool; values: string[]; }
+
+IdentityStrings :: (encoded: string) -> IdentityNames {
+    values: string[] = [];
+    if (!strings.HasPrefix(encoded, "[")) { return {valid: false, values: values}; }
+    for (value in json.JsonItems(encoded)) {
+        if (!strings.HasPrefix(value, "\"")) { return {valid: false, values: []}; }
+        values.append(json.JsonText(value));
+    }
+    return {valid: true, values: values};
+}
+
+ReadIdentity :: () -> CliIdentity {
+    folder := SdkFolder();
+    if (folder == "") { folder = strings.Concatenate([Directory(os.ProgramPath()), "/../share/chibi"]); }
+    path := strings.Concatenate([folder, "/engine.json"]);
+    found: CliIdentity = {valid: false, problem: strings.Concatenate(["Invalid build identity ", path]),
+                          version: "", build: "unpackaged", project: "", formats: [], versions: [],
+                          system: "", processors: [], backends: [], backends_valid: false};
+    read := os.ReadText(path);
+    if (read.error != nil) { return found; }
+    fields := json.JsonFields(read.text);
+    version := IdentityField(fields, "sdk_version");
+    project := IdentityField(fields, "project_version");
+    build := IdentityField(fields, "build_id");
+    if (!strings.HasPrefix(version, "\"") || !IdentityInteger(project) ||
+        (build != "" && !strings.HasPrefix(build, "\""))) { return found; }
+    formats := json.JsonFields(IdentityField(fields, "artifact_formats"));
+    if (length(formats) == 0) { return found; }
+    for (format in formats) {
+        own := json.JsonFields(format.value);
+        number := IdentityField(own, "version");
+        if (!IdentityInteger(number)) { return found; }
+        found.formats.append(format.key);
+        found.versions.append(number);
+    }
+    found.version = json.JsonText(version);
+    found.project = project;
+    if (build != "") { found.build = json.JsonText(build); }
+    found.system = json.JsonText(IdentityField(fields, "system"));
+    processors := IdentityStrings(IdentityField(fields, "processors"));
+    found.processors = processors.values;
+    backends := IdentityStrings(IdentityField(fields, "backends"));
+    found.backends_valid = backends.valid;
+    found.backends = backends.values;
+    found.valid = true;
+    found.problem = "";
+    return found;
+}
+
+Version :: () -> int {
+    if (!IdentityLayout()) { return DevelopmentVersion(); }
+    identity := ReadIdentity();
+    if (!identity.valid) { Complain(identity.problem); return 1; }
+    Say(format_text("chibi {}", identity.version));
+    Say(format_text("build: {}", identity.build));
+    Say(format_text("compiler: {}", CompilerProgram()));
+    Say(format_text("project format: {}", identity.project));
+    parts: string[] = ["artifact formats:"];
+    for (index in 0..<length(identity.formats)) {
+        if (index != 0) { parts.append(","); }
+        parts.append(format_text(" {} {}", identity.formats[index], identity.versions[index]));
+    }
+    Say(strings.Concatenate(parts));
+    return 0;
+}

@@ -1,0 +1,210 @@
+package toolchain
+
+import os "core:os"
+import strings "core:strings"
+import sha "core:hash/sha256"
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+Contains :: (text: string, part: string) -> bool {
+    return strings.Partition(text, part).head != text;
+}
+// Removes a file, link or directory tree; true when nothing is left.
+RemoveTree :: (path: string) -> bool {
+    if (os.IsDirectory(path)) {
+        listed := os.List(path);
+        if (listed.error) {
+            return false;
+        }
+        for (name in listed.names) {
+            if (!RemoveTree(Join([path, "/", name]))) {
+                return false;
+            }
+        }
+    }
+    failed := os.Remove(path);
+    return !failed;
+}
+// Where unpacked third-party archives live, one directory per SHA-256:
+// .git/chibi/third_party in the clone's Git directory, which all of its
+// worktrees share, or .chibi/third_party in a checkout without Git.
+ThirdPartyCache :: () -> string {
+    git := os.Capture(["git", "-C", os.Root(), "rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    if (git.status == 0) {
+        return Join([strings.TrimSpace(git.stdout), "/chibi/third_party"]);
+    }
+    return Join([os.Root(), "/.chibi/third_party"]);
+}
+// This host's target as third_party/archives.tsv names it.
+ThirdPartyTarget :: () -> string {
+    uname := os.Capture(["uname", "-m"]);
+    if (uname.status != 0) {
+        return "";
+    }
+    machine := strings.TrimSpace(uname.stdout);
+    family := "linux";
+    if (os.Platform() == "Darwin") {
+        family = "macos";
+    }
+    if (machine == "arm64" || machine == "aarch64") {
+        return Join([family, "-arm64"]);
+    }
+    return Join([family, "-x64"]);
+}
+// Downloads one archive with the GitHub CLI, checks its SHA-256 and
+// unpacks it into cache/SHA256. Another build may publish it first.
+ThirdPartyArchive :: (cache: string, buildDir: string, repository: string, release: string,
+                      asset: string, sha256: string) -> bool {
+    destination := Join([cache, "/", sha256]);
+    partial := Join([destination, ".", sha.Hex(os.RealPath(buildDir)), ".partial"]);
+    file := Join([partial, "/", asset]);
+    tree := Join([partial, "/tree"]);
+    if (!RemoveTree(partial)) {
+        return false;
+    }
+    made := os.MakeDirectory(tree);
+    if (made) {
+        return false;
+    }
+    os.Print(Join(["downloading ", asset, " from ", repository, " ", release]));
+    ok := os.Run(["gh", "release", "download", release, "--repo", repository,
+                  "--pattern", asset, "--dir", partial]) == 0;
+    if (ok) {
+        hashed := os.HashFile(file);
+        if (hashed.error || hashed.digest != sha256) {
+            os.Print(Join([asset, " does not match the SHA-256 third_party/archives.tsv pins"]));
+            ok = false;
+        }
+    }
+    ok = ok && os.Run(["tar", "-xzf", file, "-C", tree]) == 0;
+    if (ok) {
+        moved := os.Rename(tree, destination);
+        ok = !moved || os.IsFile(Join([destination, "/third-party.cmake"]));
+    }
+    return RemoveTree(partial) && ok;
+}
+// Makes sure the cache holds every archive third_party/archives.tsv lists
+// for this host's target; cmake/third_party.cmake picks the build's variant.
+ThirdParty :: (cache: string, buildDir: string, requested: string) -> bool {
+    target := ThirdPartyTarget();
+    repository := "";
+    manifest := os.ReadText(Join([os.Root(), "/third_party/archives.tsv"]));
+    if (manifest.error) {
+        os.Print("third_party/archives.tsv cannot be read");
+        return false;
+    }
+    for (line in strings.Lines(manifest.text)) {
+        if (strings.HasPrefix(line, "# repository ")) {
+            repository = strings.Partition(line, "# repository ").tail;
+        }
+        if (strings.HasPrefix(line, "#") || strings.Partition(line, "\t").head != target) {
+            continue;
+        }
+        variant := strings.Partition(strings.Partition(line, "\t").tail, "\t").head;
+        if (requested != "" && variant != requested) { continue; }
+        release := strings.Partition(strings.Partition(strings.Partition(line, "\t").tail, "\t").tail, "\t").head;
+        sha256 := strings.Partition(strings.Partition(strings.Partition(line, "\t").tail, "\t").tail, "\t").tail;
+        asset := Join(["third-party-", target, "-", variant, ".tar.gz"]);
+        if (!os.IsFile(Join([cache, "/", sha256, "/third-party.cmake"])) &&
+            !ThirdPartyArchive(cache, buildDir, repository, release, asset, sha256)) {
+            return false;
+        }
+    }
+    return true;
+}
+// Removes unpacked archives that no worktree of this clone pins, so the
+// cache holds only what its checkouts can link. Downloads in progress
+// (".partial") stay. Without Git nothing is pruned.
+PruneThirdParty :: (cache: string) -> bool {
+    worktrees := os.Capture(["git", "-C", os.Root(), "worktree", "list", "--porcelain"]);
+    if (worktrees.status != 0) {
+        return true;
+    }
+    pinned := "|";
+    for (line in strings.Lines(worktrees.stdout)) {
+        if (!strings.HasPrefix(line, "worktree ")) {
+            continue;
+        }
+        pins := os.ReadText(Join([strings.Partition(line, "worktree ").tail, "/third_party/archives.tsv"]));
+        if (pins.error) {
+            continue;
+        }
+        for (row in strings.Lines(pins.text)) {
+            if (!strings.HasPrefix(row, "#")) {
+                pinned = Join([pinned, strings.Partition(strings.Partition(strings.Partition(row, "\t").tail, "\t").tail, "\t").tail, "|"]);
+            }
+        }
+    }
+    cached := os.List(cache);
+    if (cached.error) {
+        return false;
+    }
+    for (name in cached.names) {
+        if (!Contains(name, ".") && !Contains(pinned, Join(["|", name, "|"])) &&
+            !RemoveTree(Join([cache, "/", name]))) {
+            return false;
+        }
+    }
+    return true;
+}
+// Prepares only the third-party archives, for a build the Chibi graph
+// (tools/toolchain/Graph.chibi) compiles instead of CMake.
+PrepareThirdParty :: (buildDir: string, variant: string) -> int {
+    cache := ThirdPartyCache();
+    made := os.MakeDirectory(buildDir);
+    if (made) {
+        os.Print("cannot prepare the third-party archives");
+        return 1;
+    }
+    made = os.MakeDirectory(cache);
+    if (made || !ThirdParty(cache, buildDir, variant) || !PruneThirdParty(cache)) {
+        os.Print("cannot prepare the third-party archives");
+        return 1;
+    }
+    return 0;
+}
+// The folder of vendored libraries (lib/chibi-vendor) in the Release archive
+// this host's target pins, "" when none is pinned.
+VendorFolder :: () -> string {
+    target := ThirdPartyTarget();
+    manifest := os.ReadText(Join([os.Root(), "/third_party/archives.tsv"]));
+    if (manifest.error) {
+        return "";
+    }
+    for (line in strings.Lines(manifest.text)) {
+        if (strings.HasPrefix(line, "#") || strings.Partition(line, "\t").head != target) {
+            continue;
+        }
+        variant := strings.Partition(strings.Partition(line, "\t").tail, "\t").head;
+        if (variant == "release") {
+            sha256 := strings.Partition(strings.Partition(strings.Partition(line, "\t").tail, "\t").tail, "\t").tail;
+            return Join([ThirdPartyCache(), "/", sha256, "/lib/chibi-vendor"]);
+        }
+    }
+    return "";
+}
+Build :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) == 2 && arguments[0] == "vendor") {
+        // Prepares the archives and prints where the Release one keeps its libraries.
+        status := PrepareThirdParty(arguments[1], "release");
+        folder := VendorFolder();
+        if (status != 0 || folder == "") {
+            os.Print("no vendored libraries are pinned for this host");
+            return 1;
+        }
+        os.Print(folder);
+        return 0;
+    }
+    if ((length(arguments) != 2 && length(arguments) != 3) || arguments[0] != "third-party") {
+        os.Print("usage: third-party BUILD_DIR [release] | vendor BUILD_DIR");
+        return 2;
+    }
+    variant := "";
+    if (length(arguments) == 3) {
+        variant = arguments[2];
+        if (variant != "release") { os.Print("third-party: the optional variant must be release"); return 2; }
+    }
+    return PrepareThirdParty(arguments[1], variant);
+}

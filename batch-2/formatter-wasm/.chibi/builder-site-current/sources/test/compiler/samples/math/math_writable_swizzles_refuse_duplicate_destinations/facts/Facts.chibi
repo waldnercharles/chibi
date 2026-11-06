@@ -1,0 +1,4 @@
+package facts
+Bad :: () { v := vec3(1, 2, 3); v.xx = vec2(4, 5); }
+
+// error: 2:33: a writable swizzle cannot repeat a destination component

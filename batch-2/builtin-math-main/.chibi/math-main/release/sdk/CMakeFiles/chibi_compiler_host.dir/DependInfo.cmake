@@ -1,0 +1,29 @@
+
+# Consider dependencies only in project.
+set(CMAKE_DEPENDS_IN_PROJECT_ONLY OFF)
+
+# The set of languages for which implicit dependencies are needed:
+set(CMAKE_DEPENDS_LANGUAGES
+  )
+
+# The set of dependency files which are needed:
+set(CMAKE_DEPENDS_DEPENDENCY_FILES
+  "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/support/sha256.c" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/support/sha256.c.o" "gcc" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/support/sha256.c.o.d"
+  "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_artifact.c" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_artifact.c.o" "gcc" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_artifact.c.o.d"
+  "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_bootstrap.c" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_bootstrap.c.o" "gcc" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_bootstrap.c.o.d"
+  "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_host.c" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_host.c.o" "gcc" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_host.c.o.d"
+  "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_json.c" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_json.c.o" "gcc" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_json.c.o.d"
+  "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_syntax.c" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_syntax.c.o" "gcc" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_syntax.c.o.d"
+  "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_target.c" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_target.c.o" "gcc" "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/toolchain/compiler_target.c.o.d"
+  )
+
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_LINKED_INFO_FILES
+  )
+
+# Targets to which this target links which contain Fortran sources.
+set(CMAKE_Fortran_TARGET_FORWARD_LINKED_INFO_FILES
+  )
+
+# Fortran module output directory.
+set(CMAKE_Fortran_TARGET_MODULE_DIR "")

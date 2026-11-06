@@ -1,0 +1,188 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Semantic emitter regressions: these inspect LLVM text, not machine code or
+// the runtime's native ABI. Every @test runs on bytecode and SLJIT.
+Code :: (op: int, type: int, output: int, left: int, right: int, target: int, literal: i64) -> native.Instruction {
+    return {op: op, type: type, output: output, left: left, right: right, target: target, literal: literal};
+}
+Function :: (result: int, parameters: int, first_slot: int, slots: int, first_code: int,
+             code: int, first_argument: int, arguments: int) -> native.Function {
+    return {result: result, first_parameter: 0, parameters: parameters, first_slot: first_slot,
+            slots: slots, first_local: 0, locals: 0, first_code: first_code, code: code,
+            first_argument: first_argument, arguments: arguments};
+}
+Emit :: (functions: native.Function[], parameters: int[], slots: int[],
+         code: native.Instruction[], arguments: int[]) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(abi.LinuxX64(), functions, parameters, slots, empty, code,
+                       arguments, records, empty, texts, source, texts, empty, empty, false, 1);
+}
+Emitted :: (result: native.Result) -> string {
+    switch result {
+        case .Rejected(instruction, message):
+            assert(false, "valid module must emit LLVM");
+            return "";
+        case .Emitted(text):
+            return text;
+    }
+}
+Rejects :: (result: native.Result, expected: string) {
+    switch result {
+        case .Rejected(instruction, message):
+            assert(message == expected, "rejection diagnostic differs");
+        case .Emitted(text):
+            assert(false, "malformed module emitted LLVM");
+    }
+}
+// Main returns Pick(7, true, 9); Pick returns its third argument.
+Calls :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 6, 0, 0, 0, 0, 7),
+            Code(native.Constant, 1, 1, 0, 0, 0, 1),
+            Code(native.Constant, 6, 2, 0, 0, 0, 9),
+            Code(native.Call, 6, 3, 1, 0, 3, 0),
+            Code(native.Publish, 6, 0, 3, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0),
+            Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Argument, 6, 0, 2, 0, 0, 0),
+            Code(native.Publish, 6, 0, 0, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+CallModule :: (code: native.Instruction[], arguments: int[]) -> native.Result {
+    return Emit([Function(6, 0, 0, 4, 0, 7, 0, 3), Function(6, 3, 4, 1, 7, 4, 3, 0)],
+                [6, 1, 6], [6, 1, 6, 6, 6], code, arguments);
+}
+Signature: string : "native call differs from its callee's signature";
+Output: string : "native scalar output has an invalid type or multiple definitions";
+ChangedCall :: (item: native.Instruction, message: string) {
+    code := Calls();
+    code[4] = item;
+    Rejects(CallModule(code, [0, 1, 2]), message);
+}
+@test
+CallsKeepDefinitionsAndArgumentOrder :: () {
+    text := Emitted(CallModule(Calls(), [0, 1, 2]));
+    assert(strings.Contains(text, "define i32 @chibi_scalar() #0 {"));
+    assert(strings.Contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1, i32 %arg2) #0 {"));
+    assert(strings.Contains(text, "%v4 = call i32 @chibi_scalar.1(i32 %c4_0, i1 %c4_1, i32 %c4_2)"));
+    assert(strings.Contains(text, "%c4_0 = load i32, ptr %s0\n  %c4_1 = load i1, ptr %s1\n  %c4_2 = load i32, ptr %s2"));
+    assert(strings.Contains(text, "store i32 %arg2, ptr %s0"));
+}
+@test
+SwappedCallArgumentsAreRejected :: () {
+    Rejects(CallModule(Calls(), [1, 0, 2]), Signature);
+}
+@test
+MissingCallArgumentsAreRejected :: () {
+    Rejects(CallModule(Calls(), [0, 1]), "unsupported native scalar signature or table size");
+}
+@test
+CallArgumentOutsideSlotsIsRejected :: () {
+    Rejects(CallModule(Calls(), [0, 1, 4]), Signature);
+}
+@test
+CalleePastFunctionsIsRejected :: () {
+    ChangedCall(Code(native.Call, 6, 3, 2, 0, 3, 0), Signature);
+}
+@test
+NegativeCalleeIsRejected :: () {
+    ChangedCall(Code(native.Call, 6, 3, -1, 0, 3, 0), Signature);
+}
+@test
+WrongCallArityIsRejected :: () {
+    ChangedCall(Code(native.Call, 6, 3, 1, 0, 2, 0), Signature);
+}
+@test
+WrongCallArgumentRangeIsRejected :: () {
+    ChangedCall(Code(native.Call, 6, 3, 1, 1, 3, 0), Signature);
+}
+@test
+WrongCallResultTypeIsRejected :: () {
+    ChangedCall(Code(native.Call, 1, 3, 1, 0, 3, 0), Output);
+}
+@test
+RedefinedCallOutputIsRejected :: () {
+    ChangedCall(Code(native.Call, 6, 2, 1, 0, 3, 0), Output);
+}
+@test
+NoncanonicalBoolArgumentIsRejected :: () {
+    code := Calls();
+    code[2] = Code(native.Constant, 1, 1, 0, 0, 0, 2);
+    Rejects(CallModule(code, [0, 1, 2]), "native constant is outside its type");
+}
+@test
+CallArgumentMustBeDefinedBeforeUse :: () {
+    code := Calls();
+    earlier := code[3];
+    code[3] = code[4];
+    code[4] = earlier;
+    Rejects(CallModule(code, [0, 1, 2]), "native call argument is not defined on every path");
+}
+// Exact float bits, including a double NaN payload. The module widens 1.5f,
+// compares it to NaN, converts both doubles to int, narrows NaN and converts
+// 1.5f to byte. It returns the narrowed NaN.
+Floats :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 10, 0, 0, 0, 0, 1069547520),
+            Code(native.Constant, 11, 1, 0, 0, 0, 9221120237041090561),
+            Code(native.Convert, 11, 2, 0, 10, 0, 0),
+            Code(native.Ne, 11, 3, 2, 1, 0, 0),
+            Code(native.Convert, 6, 4, 1, 11, 0, 0),
+            Code(native.Convert, 6, 5, 2, 11, 0, 0),
+            Code(native.Convert, 10, 6, 1, 11, 0, 0),
+            Code(native.Convert, 3, 7, 0, 10, 0, 0),
+            Code(native.Publish, 10, 0, 6, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+FloatModule :: (code: native.Instruction[]) -> native.Result {
+    empty: int[] = [];
+    return Emit([Function(10, 0, 0, 8, 0, 11, 0, 0)], empty,
+                [10, 11, 11, 1, 6, 6, 10, 3], code, empty);
+}
+@test
+FloatsKeepBitsAndSaturatingConversions :: () {
+    text := Emitted(FloatModule(Floats()));
+    assert(strings.Contains(text, "store float 0.0, ptr %result0"));
+    assert(strings.Contains(text, "%v1 = bitcast i32 1069547520 to float"));
+    assert(strings.Contains(text, "%v2 = bitcast i64 9221120237041090561 to double"));
+    assert(strings.Contains(text, "%v3 = fpext float %a3 to double"));
+    assert(strings.Contains(text, "%v4 = fcmp une double %a4, %b4"));
+    assert(strings.Contains(text, "%v5 = call i32 @llvm.fptosi.sat.i32.f64(double %a5)"));
+    assert(strings.Contains(text, "%v6 = call i32 @llvm.fptosi.sat.i32.f64(double %a6)"));
+    assert(strings.Contains(text, "%v7 = fptrunc double %a7 to float"));
+    assert(strings.Contains(text, "%v8 = call i8 @llvm.fptoui.sat.i8.f32(float %a8)"));
+    assert(strings.Count(text, "declare i32 @llvm.fptosi.sat.i32.f64(double)\n") == 1);
+    assert(strings.Count(text, "declare i8 @llvm.fptoui.sat.i8.f32(float)\n") == 1);
+}
+ChangedFloat :: (index: int, item: native.Instruction, message: string) {
+    code := Floats();
+    code[index] = item;
+    Rejects(FloatModule(code), message);
+}
+@test
+FloatConstantMustFit32Bits :: () {
+    ChangedFloat(1, Code(native.Constant, 10, 0, 0, 0, 0, 4294967296), "native constant is outside its type");
+}
+@test
+FloatNegationIsRejected :: () {
+    ChangedFloat(3, Code(native.Neg, 11, 2, 1, 0, 0, 0), "native scalar operand type mismatch");
+}
+@test
+FloatRemainderIsRejected :: () {
+    ChangedFloat(3, Code(native.Mod, 11, 2, 1, 1, 0, 0), "native scalar operand type mismatch");
+}
+@test
+IntegerStraightToFloatIsRejected :: () {
+    ChangedFloat(3, Code(native.Convert, 10, 6, 4, 6, 0, 0), "native conversion is not one the backend implements");
+}
+@test
+BoolToDoubleIsRejected :: () {
+    ChangedFloat(3, Code(native.Convert, 11, 2, 3, 1, 0, 0), "native conversion is not one the backend implements");
+}

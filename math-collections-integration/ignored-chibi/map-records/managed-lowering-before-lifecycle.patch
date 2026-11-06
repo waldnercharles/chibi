@@ -1,0 +1,49 @@
+diff --git a/tools/compiler/scalar_llvm/Emit.chibi b/tools/compiler/scalar_llvm/Emit.chibi
+index 467ed31b9..596be9048 100644
+--- a/tools/compiler/scalar_llvm/Emit.chibi
++++ b/tools/compiler/scalar_llvm/Emit.chibi
+@@ -2734,6 +2734,16 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                         // earlier value during the first sequence of sets.
+                         for (index in 0..<operand.count) {
+                             kept := stack[base + index];
++                            held := slots[shape.first_slot + kept];
++                            if (TrackedRecord(managed, held)) {
++                                if (Holds(fresh, kept)) { fresh = Without(fresh, kept); }
++                                else {
++                                    owned := RecordRefs(rows, declared, held, kept, slot, true);
++                                    slots.extend(owned.slot_types);
++                                    body.extend(owned.code);
++                                    slot += length(owned.slot_types);
++                                }
++                            }
+                             if (slots[shape.first_slot + kept] == abi.TextStorage) {
+                                 if (Holds(fresh, kept)) {
+                                     fresh = Without(fresh, kept);
+@@ -2753,6 +2763,19 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                             slot += 1;
+                         }
+                     } else {
++                        if (op == facts.MapSet) {
++                            kept := stack[base + 2];
++                            held := slots[shape.first_slot + kept];
++                            if (TrackedRecord(managed, held)) {
++                                if (Holds(fresh, kept)) { fresh = Without(fresh, kept); }
++                                else {
++                                    owned := RecordRefs(rows, declared, held, kept, slot, true);
++                                    slots.extend(owned.slot_types);
++                                    body.extend(owned.code);
++                                    slot += length(owned.slot_types);
++                                }
++                            }
++                        }
+                         if (op == facts.MapSet || op == facts.MapDelete) {
+                             slots.append(type);
+                             body.append(Op(native.Deref, type, slot, stack[base], 0, 0));
+@@ -2773,6 +2796,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                         if (op != facts.MapSet && op != facts.MapDelete && Holds(fresh, stack[base])) {
+                             pending.append(stack[base]);
+                         }
++                        retained_record = (op == facts.MapGet || op == facts.MapValueAt) && TrackedRecord(managed, type);
+                         // A string read borrows from its map. Retain it before
+                         // a fresh input map is dropped, then track the result
+                         // as fresh so the statement either keeps or releases it.

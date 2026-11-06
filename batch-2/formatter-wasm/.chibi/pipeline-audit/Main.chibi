@@ -1,0 +1,79 @@
+package pipeline_audit
+
+import format "project:source_format"
+import strings "core:strings"
+
+Main :: () -> int {
+    CombinedPoliciesRemainStableAndProtectDirectives();
+    AlignmentParagraphsAndTrailingCommasCompose();
+    InactiveSemanticPoliciesMustNotRejectSafeSelections();
+    print_string("PASS combined profiles, directives and 18 alignment/paragraph/comma combinations\n");
+    return 0;
+}
+
+@test
+InactiveSemanticPoliciesMustNotRejectSafeSelections :: () {
+    source := "package p\nFirst  :: () {\n a:=Read();\n b:=2;\n}\nSecond  :: () {}\n";
+    expected := "package p\nFirst  :: () {\n a:=Read();\n    b := 2;\n}\nSecond  :: () {}\n";
+    for (config in ["binding_types=omit_redundant", "imports=sort", "numeric_base=decimal", "function_body=expression"]) {
+        parsed := format.ParseOptions(format.Defaults(), config);
+        assert(parsed.error == "", "audit semantic policy parses");
+        options := parsed.options;
+        options.start_line = 4; options.end_line = 4; options.range_scope = 1;
+        output := Run(source, options);
+        if (output != expected) { print_string(format_text("SELECTION {} FIRST:\n{}EXPECTED:\n{}", config, output, expected)); }
+        assert(output == expected, "inactive semantic options cannot prevent safe selected whitespace");
+    }
+}
+
+Run :: (source: string, options: format.Options) -> string {
+    switch format.Format(source, options) {
+        case .Rejected(message): print_string(message); assert(false, "audit source formats");
+        case .Formatted(text, notes): return text;
+    }
+    return "";
+}
+
+@test
+CombinedPoliciesRemainStableAndProtectDirectives :: () {
+    source := "package p\nSink :: (x: int) {}\nTwice :: (x: int) -> int { return x * 2; }\nMain :: () -> int {\n    // chibi fmt: off\nodd:=  1; next:=2;\n// chibi fmt: on\n    a: int = 12345; // first\n    longer: int = 2; // second\n    if (a < 0) { return 0; }\n    result := Twice(a) + longer;\n    Sink(result);\n    return result;\n}\n";
+    for (profile in 0..<4) {
+        options := format.Profile(profile);
+        options.numeric_separators = 2;
+        options.expression_parens = 2;
+        options.control_parens = 1;
+        options.function_keyword = 2;
+        options.return_arrow = 1;
+        options.declaration_type_alignment = 3;
+        options.comment_alignment = 3;
+        output := Run(source, options);
+        assert(strings.Contains(output, "// chibi fmt: off\nodd:=  1; next:=2;\n// chibi fmt: on"), "combined policies preserve protected source bytes");
+        again := Run(output, options);
+        if (again != output) { print_string(format_text("PROFILE {} FIRST:\n{}\nSECOND:\n{}", profile, output, again)); }
+        assert(again == output, "profiles and token transforms compose to a fixed point");
+    }
+}
+
+@test
+AlignmentParagraphsAndTrailingCommasCompose :: () {
+    source := "package p\nMain :: () {\nfirst := [1, 2, 3];\nsecond := [4, 5, 6];\ntotal := first[0] + second[0];\nother := first[1] + second[1];\nSend(total, other, 3);\nSave(total, other, 4);\nrows := [[1, 200], [30, 4]];\n}\n";
+    for (commas in 1..<3) {
+        for (alignment in 1..<4) {
+            for (paragraphs in 0..<3) {
+                options := format.Defaults();
+                options.trailing_commas = commas;
+                options.assignment_alignment = alignment;
+                options.statement_paragraphs = paragraphs;
+                options.paragraph_density = 2;
+                options.data_alignment = 3;
+                options.preferred_width = 30;
+                options.arrays_layout = 3;
+                options.arguments_layout = 3;
+                output := Run(source, options);
+                again := Run(output, options);
+                if (again != output) { print_string(format_text("COMBINATION {},{},{} FIRST:\n{}\nSECOND:\n{}", commas, alignment, paragraphs, output, again)); }
+                assert(again == output, "alignment paragraphs and commas compose to a fixed point");
+            }
+        }
+    }
+}

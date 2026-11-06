@@ -1,0 +1,60 @@
+{
+  "accepted": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+  "previous": "47090810d50211c04a81443aabc28fb5dd44af98",
+  "paths": 10,
+  "checks": [
+    {
+      "path": "src/execution/call.c",
+      "exact_accepted_blob": true,
+      "sha256": "5b6fb82214b185b9877b67606fa2a9f7f5259b9d98ab718a15ea96b5630322b4"
+    },
+    {
+      "path": "src/execution/function.c",
+      "exact_accepted_blob": true,
+      "sha256": "ea8757fd7cd7c15b14a1b9829c22fce3aad4a439cdc6f1387220c085983f3545"
+    },
+    {
+      "path": "src/execution/function.h",
+      "exact_accepted_blob": true,
+      "sha256": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817"
+    },
+    {
+      "path": "src/execution/host.c",
+      "exact_accepted_blob": true,
+      "sha256": "6ccafee207cf2a1665bea3299f1e8d942e822da54b40754ec92ea5e3333bec48"
+    },
+    {
+      "path": "src/support/arena.c",
+      "exact_accepted_blob": true,
+      "sha256": "bacef774cc7ea9b038fbb8135086eefb7adb6f639a8a58044699a8800e741ab9"
+    },
+    {
+      "path": "src/support/arena.h",
+      "exact_accepted_blob": true,
+      "sha256": "e5b5dc6afee8ec5e8b4b5ec65f81b3eaf9e295c1930fc9864843ea28d1a214f1"
+    },
+    {
+      "path": "src/toolchain/compiler_host.c",
+      "exact_previous_profiles_plus_accepted_storage_hunk": true,
+      "sha256": "3620dea7a62a7a8f552c84bc3f40ea54fe97c374143962605d99ab837e2783fb"
+    },
+    {
+      "path": "src/types/array.c",
+      "exact_accepted_blob": true,
+      "sha256": "9ebffb1ca1a4446800b20fb6c13897f31a3e5ff61edd494ec8798939140f5f0b"
+    },
+    {
+      "path": "test/support/arena.c",
+      "exact_accepted_blob": true,
+      "sha256": "9603b774c38d5b43631e8e40b8ed759cf405d42fb44697d30814ca581cd80a16"
+    },
+    {
+      "path": "tools/compiler/runtime.json",
+      "exact_accepted_blob": true,
+      "sha256": "75fc6e2b260600b3877b0bd3a2068902bb050c23210da2d1061c43fcc0f63289"
+    }
+  ],
+  "compiler_closure_helper_unchanged": true,
+  "runtime_evidence": "Earlier receipts are historical. Arena layout changed; rebuild matching headers, native objects and hosts before fresh runtime checks.",
+  "no_heavy_producer_started": true
+}

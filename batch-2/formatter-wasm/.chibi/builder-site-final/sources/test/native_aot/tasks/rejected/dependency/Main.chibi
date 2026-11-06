@@ -1,0 +1,12 @@
+package task_dependency
+Main :: () -> int {
+    value := 0;
+    Worker(&value);
+    yield
+    return 0;
+}
+Worker :: (value: ^int) -> int {
+    yield
+    value^ = 1;
+    return 0;
+}

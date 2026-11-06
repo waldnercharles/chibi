@@ -1,0 +1,15 @@
+package review_map_reference
+Main :: () -> int {
+    values: [int: int] = [1: 10, 2: 20];
+    assert(Walk(&values) == 30);
+    return 0;
+}
+Walk :: (values: ^([int: int])) -> int {
+    total: int = 0;
+    for (value in values) {
+        Clear(values);
+        total += value;
+    }
+    return total;
+}
+Clear :: (values: ^([int: int])) { values^ = [:]; }

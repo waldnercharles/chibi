@@ -1,0 +1,137 @@
+package endian
+
+pub InvalidOffset: int : 1;
+pub ShortBuffer: int : 2;
+
+// offset is the requested byte offset. InvalidOffset means it is negative or
+// beyond the buffer; ShortBuffer means too few bytes remain at that position.
+@error
+pub Error :: struct {
+    kind: int;
+    offset: int;
+}
+
+Fits :: (size: int, offset: int, width: int) -> bool {
+    return offset >= 0 && offset <= size && width <= size - offset;
+}
+
+Read :: (data: u8[], offset: int, width: int, little: bool) -> u64 {
+    value: u64 = 0;
+    for index in 0..<width {
+        shift := (width - 1 - index) * 8;
+        if little {
+            shift = index * 8;
+        }
+        value |= u64(data[offset + index]) << u32(shift);
+    }
+    return value;
+}
+
+Write :: (data: ^(u8[]), offset: int, width: int, value: u64, little: bool) -> bool {
+    if !Fits(length(data^), offset, width) {
+        return false;
+    }
+    for index in 0..<width {
+        shift := (width - 1 - index) * 8;
+        if little {
+            shift = index * 8;
+        }
+        data^[offset + index] = u8((value >> u32(shift)) & 255);
+    }
+    return true;
+}
+
+RangeFailure :: (size: int, offset: int) -> Error {
+    if offset < 0 || offset > size {
+        return {kind: InvalidOffset, offset: offset};
+    }
+    return {kind: ShortBuffer, offset: offset};
+}
+
+// Checked, unaligned reads in explicit wire order. A failed read returns zero
+// and a typed error. The error is nil on success. O(1), no temporary buffers.
+pub ReadU16LE :: (data: u8[], offset: int) -> (value: u16, error: Error?) {
+    if !Fits(length(data), offset, 2) {
+        return (u16(0), RangeFailure(length(data), offset));
+    }
+    return (u16(Read(data, offset, 2, true)), nil);
+}
+
+pub ReadU16BE :: (data: u8[], offset: int) -> (value: u16, error: Error?) {
+    if !Fits(length(data), offset, 2) {
+        return (u16(0), RangeFailure(length(data), offset));
+    }
+    return (u16(Read(data, offset, 2, false)), nil);
+}
+
+pub ReadU32LE :: (data: u8[], offset: int) -> (value: u32, error: Error?) {
+    if !Fits(length(data), offset, 4) {
+        return (u32(0), RangeFailure(length(data), offset));
+    }
+    return (u32(Read(data, offset, 4, true)), nil);
+}
+
+pub ReadU32BE :: (data: u8[], offset: int) -> (value: u32, error: Error?) {
+    if !Fits(length(data), offset, 4) {
+        return (u32(0), RangeFailure(length(data), offset));
+    }
+    return (u32(Read(data, offset, 4, false)), nil);
+}
+
+pub ReadU64LE :: (data: u8[], offset: int) -> (value: u64, error: Error?) {
+    if !Fits(length(data), offset, 8) {
+        return (u64(0), RangeFailure(length(data), offset));
+    }
+    return (Read(data, offset, 8, true), nil);
+}
+
+pub ReadU64BE :: (data: u8[], offset: int) -> (value: u64, error: Error?) {
+    if !Fits(length(data), offset, 8) {
+        return (u64(0), RangeFailure(length(data), offset));
+    }
+    return (Read(data, offset, 8, false), nil);
+}
+
+// Validate the complete range before mutation. Failure leaves data unchanged.
+// Success returns nil; detaching a value copy can cost O(length(data)).
+pub WriteU16LE :: (data: ^(u8[]), offset: int, value: u16) -> Error? {
+    if Write(data, offset, 2, u64(value), true) {
+        return nil;
+    }
+    return RangeFailure(length(data^), offset);
+}
+
+pub WriteU16BE :: (data: ^(u8[]), offset: int, value: u16) -> Error? {
+    if Write(data, offset, 2, u64(value), false) {
+        return nil;
+    }
+    return RangeFailure(length(data^), offset);
+}
+
+pub WriteU32LE :: (data: ^(u8[]), offset: int, value: u32) -> Error? {
+    if Write(data, offset, 4, u64(value), true) {
+        return nil;
+    }
+    return RangeFailure(length(data^), offset);
+}
+
+pub WriteU32BE :: (data: ^(u8[]), offset: int, value: u32) -> Error? {
+    if Write(data, offset, 4, u64(value), false) {
+        return nil;
+    }
+    return RangeFailure(length(data^), offset);
+}
+
+pub WriteU64LE :: (data: ^(u8[]), offset: int, value: u64) -> Error? {
+    if Write(data, offset, 8, value, true) {
+        return nil;
+    }
+    return RangeFailure(length(data^), offset);
+}
+
+pub WriteU64BE :: (data: ^(u8[]), offset: int, value: u64) -> Error? {
+    if Write(data, offset, 8, value, false) {
+        return nil;
+    }
+    return RangeFailure(length(data^), offset);
+}

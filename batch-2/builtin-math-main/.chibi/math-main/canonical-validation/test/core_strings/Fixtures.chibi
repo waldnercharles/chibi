@@ -1,0 +1,26 @@
+package core_strings
+
+import strings "core:strings"
+
+// Invalid UTF-8 bytes must remain bytes in the fixture.
+RawByte :: (value: int) -> string {
+    text := format_text("{:c}", value);
+    assert(strings.ByteLength(text) == 1);
+    assert(strings.ByteAt(text, 0) == value);
+    return text;
+}
+
+AssertParts :: (actual: string[], expected: string[], view: string) {
+    assert(length(actual) == length(expected));
+    for i in 0..<length(expected) {
+        assert(actual[i] == expected[i]);
+    }
+    assert(format_text("{}:{}", length(actual), strings.Join(actual, "|")) == view);
+}
+
+AssertBytes :: (value: string, expected: int[]) {
+    assert(strings.ByteLength(value) == length(expected));
+    for i in 0..<length(expected) {
+        assert(strings.ByteAt(value, i) == expected[i]);
+    }
+}

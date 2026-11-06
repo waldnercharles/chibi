@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_fields.a "CMakeFiles/chibi_fields.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/fields/program.c.o" "CMakeFiles/chibi_fields.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/fields/prepared.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_fields.a

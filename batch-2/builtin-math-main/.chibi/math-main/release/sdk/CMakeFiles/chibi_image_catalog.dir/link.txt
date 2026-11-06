@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_image_catalog.a "CMakeFiles/chibi_image_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/images/catalog.c.o" "CMakeFiles/chibi_image_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/images/sky.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_image_catalog.a

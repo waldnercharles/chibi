@@ -1,0 +1,17 @@
+{
+  "base": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+  "tree": "fba3459185d196c22d68b6208c7ed5d233d8a118",
+  "full_patch_sha256": "ba7e8b19dd5fa7ca444baa9b7cf45bf9d8a1a025971db014737c5ec9d2a32b7e",
+  "production_patch_sha256": "9f9d500f3b9be1e9f908f57bc2fc2e9585c3476109511abcdcc99d62fe0247fe",
+  "production_patch_matches_706_f69": true,
+  "gc_fixture_sha256": "70926648c833dc7236021c97a77bb0984f7194e342f11e9a5d86f060188f588c",
+  "private_gc_proof": "runtime308-gc-effects-build/receipt.json",
+  "writer_pr": {
+    "url": "https://github.com/waldnercharles/chibi/pull/802",
+    "commit": "43eec64f98e6fb288935dacfcbf86296dbc43b02",
+    "tree": "ee4e5e7a065e79db159b28e6c9d8101664d85b00",
+    "status": "ready for review; not merged; native seed gates pending"
+  },
+  "protected_706_f69_unchanged": true,
+  "status": "math production inputs unchanged; updated test and staged evidence documentation only"
+}

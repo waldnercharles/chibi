@@ -1,0 +1,9 @@
+package facts
+
+Read :: () -> int {
+    earlier: bool? = false;
+    invalid: int? = true;
+    return 0;
+}
+
+// error: 5:5: optional value differs from its payload type

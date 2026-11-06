@@ -1,0 +1,12 @@
+package facts
+
+// A pointer parameter passed on to a function of another file stays a
+// reference to the caller's location, so the native lane accepts it.
+Cursor :: struct {
+    pos: int;
+    final: int;
+}
+
+Step :: (c: ^Cursor) {
+    c.pos += 1;
+}

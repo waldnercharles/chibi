@@ -1,0 +1,24 @@
+package facts
+
+// logic
+@test
+Calls :: () {
+    a1_0: int = 4;
+    r1: bool = Even(a1_0);
+    e1: bool = true;
+    assert(r1 == e1, "Even call 1");
+    a2_0: int = -4;
+    r2: bool = Even(a2_0);
+    e2: bool = false;
+    assert(r2 == e2, "Even call 2");
+    a3_0: int = 2;
+    a3_1: int = 4;
+    r3: bool = Both(a3_0, a3_1);
+    e3: bool = true;
+    assert(r3 == e3, "Both call 3");
+    a4_0: int = 3;
+    a4_1: int = 3;
+    r4: bool = Both(a4_0, a4_1);
+    e4: bool = true;
+    assert(r4 == e4, "Both call 4");
+}

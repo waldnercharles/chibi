@@ -1,0 +1,213 @@
+package source_format
+
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+
+BlockOrdinary: int : 0;
+BlockFunction: int : 1;
+BlockBranch: int : 2;
+BlockLoop: int : 3;
+BlockArm: int : 4;
+BlockType: int : 5;
+BlockForeign: int : 6;
+BlockWhen: int : 7;
+
+AlignmentScope :: (rows: diag.Node[], node: int) -> bool {
+    kind := KindOf(rows, node);
+    return IsBlock(rows, node) || kind == diag.StructExpression || kind == diag.ArrayExpression ||
+           kind == diag.MapExpression || kind == diag.ArgumentList || kind == diag.ParameterList;
+}
+
+BlockKind :: (rows: diag.Node[], node: int) -> int {
+    kind := KindOf(rows, node);
+    if (kind == diag.ForeignBlock) { return BlockForeign; }
+    if (kind == diag.DeclarationBlock) { return BlockWhen; }
+    if (kind == diag.CallableBody) { return BlockFunction; }
+    if (kind == diag.RecordBody || kind == diag.ComponentBody || kind == diag.UnionDeclaration) { return BlockType; }
+    if (kind == diag.Block) {
+        parent := ParentKind(rows, node);
+        if (parent == diag.IfStatement) { return BlockBranch; }
+        if (parent == diag.WhileStatement || parent == diag.ForStatement) { return BlockLoop; }
+        if (parent == diag.SwitchArm) { return BlockArm; }
+    }
+    return BlockOrdinary;
+}
+
+BlockBracePolicy :: (kind: int, options: Options) -> int {
+    policy := 0;
+    if (kind == BlockFunction) { policy = options.function_braces; }
+    else if (kind == BlockBranch || kind == BlockLoop || kind == BlockArm) { policy = options.control_braces; }
+    else if (kind == BlockType) { policy = options.type_braces; }
+    else if (kind == BlockForeign) { policy = options.foreign_braces; }
+    else if (kind == BlockWhen) { policy = options.when_braces; }
+    if (policy > 0) { return policy - 1; }
+    return options.brace_placement;
+}
+
+BlockShortPolicy :: (kind: int, options: Options) -> int {
+    policy := 0;
+    if (kind == BlockFunction) { policy = options.short_functions; }
+    else if (kind == BlockBranch) { policy = options.short_branches; }
+    else if (kind == BlockLoop) { policy = options.short_loops; }
+    else if (kind == BlockArm) { policy = options.short_case_arms; }
+    if (policy > 0) { return policy; }
+    if (options.keep_one_line_blocks) { return 2; }
+    return 1;
+}
+
+BlockEmptyPolicy :: (kind: int, options: Options) -> int {
+    policy := 0;
+    if (kind == BlockFunction) { policy = options.empty_function_blocks; }
+    else if (kind == BlockBranch || kind == BlockLoop || kind == BlockArm) { policy = options.empty_control_blocks; }
+    else if (kind == BlockType) { policy = options.empty_type_blocks; }
+    if (policy > 0) { return policy - 1; }
+    return options.empty_blocks;
+}
+
+ListKind :: (rows: diag.Node[], token: Token) -> int {
+    parent := ParentKind(rows, token.node);
+    if (parent == diag.ArgumentList) { return 1; }
+    if (parent == diag.ParameterList) { return 2; }
+    if (parent == diag.ArrayExpression || parent == diag.MapExpression) { return 3; }
+    if (parent == diag.StructExpression) { return 4; }
+    if (parent == diag.PatternBindings || parent == diag.QueryList || parent == diag.PrototypeBases) { return 5; }
+    return 0;
+}
+
+ListPolicy :: (kind: int, options: Options) -> int {
+    policy := 0;
+    if (kind == 1) { policy = options.arguments_layout; }
+    else if (kind == 2) { policy = options.parameters_layout; }
+    else if (kind == 3) { policy = options.arrays_layout; }
+    else if (kind == 4) { policy = options.records_layout; }
+    else if (kind == 5) { policy = options.bindings_layout; }
+    if (policy > 0) { return policy - 1; }
+    return options.list_layout;
+}
+
+ListConfiguredWidth :: (kind: int, options: Options) -> int {
+    width := 0;
+    if (kind == 1) { width = options.arguments_width; }
+    else if (kind == 2) { width = options.parameters_width; }
+    else if (kind == 3) { width = options.arrays_width; }
+    else if (kind == 4) { width = options.records_width; }
+    return width;
+}
+
+ListWidth :: (kind: int, options: Options) -> int {
+    width := ListConfiguredWidth(kind, options);
+    if (width > 0) { return width; }
+    if (options.preferred_width > 0) { return options.preferred_width; }
+    return 80;
+}
+
+WrapGroup :: (rows: diag.Node[], token: Token, options: Options) -> bool {
+    kind := ListKind(rows, token);
+    return options.preferred_width > 0 || (kind > 0 && (ListPolicy(kind, options) > 0 ||
+           ListConfiguredWidth(kind, options) > 0 || options.max_items_per_line > 0));
+}
+
+// Width of each list item at its first token. Delimiter scopes use token
+// indices, so nested lists do not rescan the parent item or source text.
+ListItems :: (rows: diag.Node[], tokens: Token[], group: int[], pair: int[], prefix: int[]) -> int[] {
+    widths := resize([int(0)], length(tokens));
+    next := resize([int(0)], length(tokens));
+    index := length(tokens) - 1;
+    while (index >= 0) {
+        open := group[index];
+        if (open >= 0 && ListKind(rows, tokens[open]) > 0) {
+            own_comma := rows[tokens[index].node].kind == tk.Comma &&
+                         ParentOf(rows, tokens[index].node) == ParentOf(rows, tokens[open].node);
+            if (index == pair[open] || own_comma) { next[open] = index; }
+            first := index == open + 1;
+            if (index > open + 1) {
+                before := tokens[index - 1];
+                first = rows[before.node].kind == tk.Comma &&
+                        ParentOf(rows, before.node) == ParentOf(rows, tokens[open].node);
+            }
+            if (first && next[open] > index) {
+                widths[index] = prefix[next[open] - 1] - prefix[index] + tokens[index].end - tokens[index].start;
+            }
+        }
+        index -= 1;
+    }
+    return widths;
+}
+
+// Inline candidates contain only direct simple statements. One pass per
+// block's direct child list visits each child once across the whole tree.
+InlineBlockItems :: (rows: diag.Node[], enders: bool[]) -> int[] {
+    items := resize([int(0)], length(rows));
+    comments := resize([false], length(rows));
+    at := length(rows) - 1;
+    while (at >= 0) {
+        comments[at] = comments[at] || rows[at].kind == diag.Comment;
+        parent := rows[at].parent;
+        if (parent >= 0) { comments[parent] = comments[parent] || comments[at]; }
+        at -= 1;
+    }
+    for (node in 0..<length(rows)) {
+        if (!IsBlock(rows, node)) { continue; }
+        count := 0;
+        blocked := false;
+        child := rows[node].first_child;
+        while (child >= 0) {
+            kind := rows[child].kind;
+            if (comments[child] || kind == diag.IfStatement || kind == diag.WhileStatement ||
+                kind == diag.ForStatement || kind == diag.SwitchStatement || kind == diag.FunctionDeclaration ||
+                kind == diag.Block) { blocked = true; }
+            if (enders[kind]) { count += 1; }
+            child = rows[child].next_sibling;
+        }
+        if (!blocked) { items[node] = count + 1; }
+    }
+    return items;
+}
+
+CompactCaseEnds :: (rows: diag.Node[], fields: int[], tokens: Token[], items: int[], options: Options) -> int[] {
+    result := resize([int(0)], length(tokens));
+    mode := options.short_case_arms;
+    if (mode == 0) {
+        if (options.keep_one_line_blocks) { mode = 2; }
+        else { return result; }
+    }
+    if (mode == 1) { return result; }
+    ranges := LayoutTokenRanges(rows, tokens);
+    for (index in 0..<length(tokens)) {
+        if (!tokens[index].case_open) { continue; }
+        body := ChildByField(rows, fields, rows[tokens[index].node].parent, diag.FieldBody);
+        if (body < 0 || items[body] <= 0 || (options.max_inline_statements > 0 &&
+            items[body] - 1 > options.max_inline_statements)) { continue; }
+        last := ranges.last[body] - 1;
+        if (last < index) { continue; }
+        if (mode == 2 && rows[tokens[index].node].row != rows[tokens[last].node].row) { continue; }
+        result[index] = last + 1;
+    }
+    return result;
+}
+
+// Source columns are measured once. Binding names are ASCII; tab stops use the
+// configured editor display width rather than treating a tab as one byte.
+SourceColumns :: (bytes: int[], tokens: Token[], tab_width: int) -> (starts: int[], ends: int[]) {
+    columns := resize([int(0)], length(tokens));
+    ends := resize([int(0)], length(tokens));
+    at := 0;
+    column := 0;
+    for (index in 0..<length(tokens)) {
+        while (at < tokens[index].start) {
+            if (bytes[at] == 10 || bytes[at] == 13) { column = 0; }
+            else if (bytes[at] == 9) { column += tab_width - column % tab_width; }
+            else { column += 1; }
+            at += 1;
+        }
+        columns[index] = column;
+        while (at < tokens[index].end) {
+            if (bytes[at] == 10 || bytes[at] == 13) { column = 0; }
+            else if (bytes[at] == 9) { column += tab_width - column % tab_width; }
+            else { column += 1; }
+            at += 1;
+        }
+        ends[index] = column;
+    }
+    return (columns, ends);
+}

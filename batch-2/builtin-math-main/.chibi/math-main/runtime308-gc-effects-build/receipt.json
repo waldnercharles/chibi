@@ -1,0 +1,549 @@
+{
+  "status": "PASS",
+  "admission_identity": {
+    "admission_sha256": "90fe3edb4ea72eb9d17d4015795f98dce60593567865700b7f4e5b0877560c59",
+    "planned_commands_sha256": "7206c36b8585add4b943fb9badec9f75ab80a16884d1fd35228934d6f4a7cddd",
+    "source_manifest_sha256": "b2d4049fc1f26ee0f63dfa3c18c5517d803ce7a537aa87886e640ad267febc80"
+  },
+  "source_admission": {
+    "status": "source admission only; replay not executed",
+    "base": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+    "captured_working_diff_sha256": "c3fc3e703d46777789b57bee53b6c869d1fc3a78687ee92aa5926a4cb4aaed4a",
+    "reviewed_local_commit": "a1135ab93ada44ebbbd9a7e137ce5b254ae39e0a",
+    "provided_patch": "/Users/cwaldner/Personal/chibi/.worktrees/array-argument-effects/chibi/.chibi/argument-effects/evidence/pointer-write-diagnosis/shared-write-effects.patch",
+    "provided_patch_sha256": "e497dda37cd4cd57222040b82fbabb6df8f7439508ba7258164166bf4e93298c",
+    "applied_hunks": [
+      "@@ -4894,7 +4894,8 @@ EffectsStep :: (step: Step, effects: int) -> Step {",
+      "@@ -4905,7 +4906,8 @@ WriteStep :: (step: Step, node: int, writes: bool) -> Step {"
+    ],
+    "applied_numstat": [
+      "4\t2\ttools/compiler/package_compiler/Steps.chibi"
+    ],
+    "only_production_file_delta": [
+      "tools/compiler/package_compiler/Steps.chibi"
+    ],
+    "changed_region": "WriteStep and its immediately preceding effect-summary comment only",
+    "steps_before_sha256": "7f46d8000590d367884ba8bbf8162fd2fb099cab16cf3ceed5491a32da9d59f0",
+    "steps_after_sha256": "a0a09a1594962cb119a402161814563a85c83b7cfe74b067e311730e8259aa75",
+    "actual_private_delta_sha256": "3b7b643a0a079f9c4e6f983a98222d8d8f18e0dba90db81d8e333b9b3751e931",
+    "pressure_fixture_sha256": "70926648c833dc7236021c97a77bb0984f7194e342f11e9a5d86f060188f588c",
+    "source_file_count": 3472,
+    "source_manifest_before_sha256": "eb9e44f9331a4c08d7e125252aa44d000eff130fcfa22efec0194132b816bc9b",
+    "source_manifest_after_sha256": "b2d4049fc1f26ee0f63dfa3c18c5517d803ce7a537aa87886e640ad267febc80",
+    "source_paths_exact_match": true,
+    "source_path_count": 30,
+    "changed_source_texts_against_f1a": [
+      "package_compiler/Steps.chibi"
+    ],
+    "source_comparisons": [
+      {
+        "path": "package_compiler/Compile.chibi",
+        "new_bytes": 150444,
+        "new_sha256": "360b53e36073e5355e817652d559d429a5414fe8f698965f1967f203fbdecf0d",
+        "f1a_bytes": 150444,
+        "f1a_sha256": "360b53e36073e5355e817652d559d429a5414fe8f698965f1967f203fbdecf0d",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Body.chibi",
+        "new_bytes": 180925,
+        "new_sha256": "5a7f9dc60a56264fc55a98baa63c864150e80e5ce35055da726453a2fa405614",
+        "f1a_bytes": 180925,
+        "f1a_sha256": "5a7f9dc60a56264fc55a98baa63c864150e80e5ce35055da726453a2fa405614",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Steps.chibi",
+        "new_bytes": 312995,
+        "new_sha256": "a0a09a1594962cb119a402161814563a85c83b7cfe74b067e311730e8259aa75",
+        "f1a_bytes": 312902,
+        "f1a_sha256": "7f46d8000590d367884ba8bbf8162fd2fb099cab16cf3ceed5491a32da9d59f0",
+        "text_matches_f1a": false,
+        "text_matches_seed": false
+      },
+      {
+        "path": "package_compiler/Maps.chibi",
+        "new_bytes": 29459,
+        "new_sha256": "351d13270cdfffcda31f35026681b33933e9fde05babb221fc963976061add00",
+        "f1a_bytes": 29459,
+        "f1a_sha256": "351d13270cdfffcda31f35026681b33933e9fde05babb221fc963976061add00",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/References.chibi",
+        "new_bytes": 40733,
+        "new_sha256": "d73825ac0b16dd082005650699e2bd6a35987592103a553f76fd0b5783414852",
+        "f1a_bytes": 40733,
+        "f1a_sha256": "d73825ac0b16dd082005650699e2bd6a35987592103a553f76fd0b5783414852",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Pointers.chibi",
+        "new_bytes": 52385,
+        "new_sha256": "b33a3530e4c4d3cc955d8e5332e4a0946c2b6aa3beeb7018d17e0f974fa34b48",
+        "f1a_bytes": 52385,
+        "f1a_sha256": "b33a3530e4c4d3cc955d8e5332e4a0946c2b6aa3beeb7018d17e0f974fa34b48",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Tasks.chibi",
+        "new_bytes": 11882,
+        "new_sha256": "43c5ec60e6a9d87490dabe19a2ce379cc0a57c40c2d88d9ffeebaa60c0700970",
+        "f1a_bytes": 11882,
+        "f1a_sha256": "43c5ec60e6a9d87490dabe19a2ce379cc0a57c40c2d88d9ffeebaa60c0700970",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/TaskResults.chibi",
+        "new_bytes": 10463,
+        "new_sha256": "dfb8db278474f39ccec2c5066ae13137d885eca76c430b32dcfe0cc3b86bfef1",
+        "f1a_bytes": 10463,
+        "f1a_sha256": "dfb8db278474f39ccec2c5066ae13137d885eca76c430b32dcfe0cc3b86bfef1",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Tree.chibi",
+        "new_bytes": 2578,
+        "new_sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a",
+        "f1a_bytes": 2578,
+        "f1a_sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Number.chibi",
+        "new_bytes": 29513,
+        "new_sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2",
+        "f1a_bytes": 29513,
+        "f1a_sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Optional.chibi",
+        "new_bytes": 20734,
+        "new_sha256": "7314b48d92d2daa35348c30ed467b8976189cc83ca36ba31c408678c2604f3a0",
+        "f1a_bytes": 20734,
+        "f1a_sha256": "7314b48d92d2daa35348c30ed467b8976189cc83ca36ba31c408678c2604f3a0",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Sequences.chibi",
+        "new_bytes": 61586,
+        "new_sha256": "d963c2f14a2350de551c17a71e758bccbab188b6d4b8ea1a929dedf157cafb97",
+        "f1a_bytes": 61586,
+        "f1a_sha256": "d963c2f14a2350de551c17a71e758bccbab188b6d4b8ea1a929dedf157cafb97",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Queries.chibi",
+        "new_bytes": 93003,
+        "new_sha256": "772064ffa7540a34d1beb7070da58d208b5d51e6b5111e9bd23e6fb7648c1b28",
+        "f1a_bytes": 93003,
+        "f1a_sha256": "772064ffa7540a34d1beb7070da58d208b5d51e6b5111e9bd23e6fb7648c1b28",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/QueryLoops.chibi",
+        "new_bytes": 12308,
+        "new_sha256": "6d731bf9a6a97533119dc83c186119f4ff9070a681bb5be890e9d432198be588",
+        "f1a_bytes": 12308,
+        "f1a_sha256": "6d731bf9a6a97533119dc83c186119f4ff9070a681bb5be890e9d432198be588",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Behavior.chibi",
+        "new_bytes": 57051,
+        "new_sha256": "18ee4b37aaf54288c4be665fecf1fff2bb95e4153dcad0821e82a21e91e30083",
+        "f1a_bytes": 57051,
+        "f1a_sha256": "18ee4b37aaf54288c4be665fecf1fff2bb95e4153dcad0821e82a21e91e30083",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Scalar.chibi",
+        "new_bytes": 115064,
+        "new_sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b",
+        "f1a_bytes": 115064,
+        "f1a_sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_compiler/Math.chibi",
+        "new_bytes": 75387,
+        "new_sha256": "7fa30b00f73316cef388177d0d8120419cd9648f5cb1e48c9ef05411eaf6d691",
+        "f1a_bytes": 75387,
+        "f1a_sha256": "7fa30b00f73316cef388177d0d8120419cd9648f5cb1e48c9ef05411eaf6d691",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "syntax_diagnostics/Diagnostics.chibi",
+        "new_bytes": 2282,
+        "new_sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1",
+        "f1a_bytes": 2282,
+        "f1a_sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "/sdk/core/strings/Strings.chibi",
+        "new_bytes": 16404,
+        "new_sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df",
+        "f1a_bytes": 16404,
+        "f1a_sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "source_snapshot/Snapshot.chibi",
+        "new_bytes": 15871,
+        "new_sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622",
+        "f1a_bytes": 15871,
+        "f1a_sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "compiler_syntax/Syntax.chibi",
+        "new_bytes": 1529,
+        "new_sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4",
+        "f1a_bytes": 1529,
+        "f1a_sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_routes/Routes.chibi",
+        "new_bytes": 7736,
+        "new_sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228",
+        "f1a_bytes": 7736,
+        "f1a_sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_syntax/Extract.chibi",
+        "new_bytes": 4276,
+        "new_sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146",
+        "f1a_bytes": 4276,
+        "f1a_sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_graph/Graph.chibi",
+        "new_bytes": 13271,
+        "new_sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da",
+        "f1a_bytes": 13271,
+        "f1a_sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "package_paths/Paths.chibi",
+        "new_bytes": 2274,
+        "new_sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30",
+        "f1a_bytes": 2274,
+        "f1a_sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "lexical_binding/Binding.chibi",
+        "new_bytes": 8673,
+        "new_sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1",
+        "f1a_bytes": 8673,
+        "f1a_sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "prepared_writer/Writer.chibi",
+        "new_bytes": 40444,
+        "new_sha256": "2dcc3d41a4feb3e95855d9de860eaf36b1347ae96bdab0d7bd3280720a838081",
+        "f1a_bytes": 40444,
+        "f1a_sha256": "2dcc3d41a4feb3e95855d9de860eaf36b1347ae96bdab0d7bd3280720a838081",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "math_types/Types.chibi",
+        "new_bytes": 9036,
+        "new_sha256": "db0a52e91c89b97fa91d121d745c3b5607ecee7f76cf4cb6cda8d4173b592e68",
+        "f1a_bytes": 9036,
+        "f1a_sha256": "db0a52e91c89b97fa91d121d745c3b5607ecee7f76cf4cb6cda8d4173b592e68",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "math_types/Functions.chibi",
+        "new_bytes": 4634,
+        "new_sha256": "745e16490fa4c2fed8980a347a65a5a2debcac0699b8b3aad31bcccf54865d64",
+        "f1a_bytes": 4634,
+        "f1a_sha256": "745e16490fa4c2fed8980a347a65a5a2debcac0699b8b3aad31bcccf54865d64",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      },
+      {
+        "path": "scalar_facts/Facts.chibi",
+        "new_bytes": 16982,
+        "new_sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50",
+        "f1a_bytes": 16982,
+        "f1a_sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50",
+        "text_matches_f1a": true,
+        "text_matches_seed": true
+      }
+    ],
+    "f1a_reuse_permitted": false,
+    "f1a_use_in_planned_replay": false,
+    "frozen_runtime308_tree": "706782b1239626574a999d1577aec7ea95018478",
+    "frozen_runtime308_patch_sha256": "f69daa55d0e6a9431a14f42dc008bcf2ee0f09b0364e7b940a1e0f0f32474efe",
+    "protected_artifacts_sha256": {
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-bootstrap/bootstrap.json": "25e11f25b9c4cd71a48bdc4a907df76df3ddf2191d75eb1651862d5b3214f73c",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-bootstrap/compiler.chibip": "f1a6bdffc9d8bec2de2b55f61bad48a2d8593c2a8ab1fc21cca42f46a6497c9c",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/seed/compile.json": "4558a92058e1cc2178dbe9d77e9516235acc7958a57901900ac2e47b4efb2271",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/seed/compiler.chibip": "f1a6bdffc9d8bec2de2b55f61bad48a2d8593c2a8ab1fc21cca42f46a6497c9c",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/receipt.json": "2cd33936835421c2f7110a87e1ce17baca2a342b22848a87c42df924ed22daa6",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/source-files.json": "6bcaf38f83423b215f29f2ddb885021719dbabd54f0e4af111ca9ffcc9557f8c",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/initial-failure/hashes.json": "374460edaab7e2dc424ba726d7d98353935a05a0bb9d382991f19d2154d27f2e",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/lifecycle-fixed-receipt.json": "b7ab004c7635dbbe17e87e86f190007555564f4173bab627f90d6641a111aa84",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/lifecycle-fixed-native.log": "5e5d0685d79ecb8c3f38ba7175f6a3b76bd8b9c1cbf1ba9ebaadf8cca9a9d958",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/receipt.json": "01a31deaeff6cbd26ef0cfbea1059fe2398df5eb3d4d689b115314dbaf57131a",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/capture.json": "fdfcf0ca14da5e83cae636d57dd08788878f9a4990e6bebce5ee8abdaffe7156",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/initial-failure/test_language": "74f01c55fb3b145339be348c55d3a265545b1c397c2324eb19e1207801948ca8",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/initial-failure/package_compiler_chibi.c": "404f48acb258b11705d2ecc8441771c17950aa1fe13c3758a32f2721555394bc",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/test_language": "ea8c848adee80c6284d70d25570e7c3580af12caef58bfa0f026a81e9ff34835",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-build-host": "670096ae8a352164f3571815deba00bddaaa2b4764118012b76361587032043e",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-compiler-host": "813f3162e4ea1facf0854832c528a085f88f4f83e61be438afc85c52f0b89b67"
+    },
+    "protected_artifacts_unchanged": true,
+    "authoritative_compiler_sources_unchanged": true,
+    "admission_wall_seconds": 3.7537670000456274,
+    "commands": {
+      "configure": [
+        "cmake",
+        "-S",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-validation/test/language",
+        "-B",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_C_COMPILER_LAUNCHER=",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+        "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+        "-DCHIBI_LANGUAGE_TEST_ASSET_COMPILER_HOST=OFF",
+        "-DCHIBI_ENABLE_SANITIZERS=OFF"
+      ],
+      "build": [
+        "cmake",
+        "--build",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build",
+        "--target",
+        "test_language",
+        "--parallel",
+        "4"
+      ],
+      "policy": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-validation/tools/test_policy.py",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build/test_language",
+        "--package-compiler-chibi-math-native"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-validation",
+      "environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build"
+      }
+    },
+    "commands_executed": [],
+    "producer_required": false,
+    "source_fixture_route": [
+      "package_compiler_chibi.cmake embeds the current Steps.chibi bytes into PACKAGE_COMPILER_SOURCE_INPUTS",
+      "prepare_backends constructs fresh source snapshots and authoring_packages_prepare compiles compiler packages in memory for BYTECODE and SLJIT",
+      "catalog_compile_sources_native invokes CompileBehaviorsWithCatalog on the fresh fixture for NativeMath variants only",
+      "execution_prepared_read checks emitted NativeMath modules on both target VMs; no seed loader or self-bootstrap test is selected"
+    ]
+  },
+  "configure": {
+    "command": [
+      "cmake",
+      "-S",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-validation/test/language",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+      "-DCMAKE_C_COMPILER_LAUNCHER=",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+      "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+      "-DCHIBI_LANGUAGE_TEST_ASSET_COMPILER_HOST=OFF",
+      "-DCHIBI_ENABLE_SANITIZERS=OFF"
+    ],
+    "status": 0,
+    "wall_seconds": 5.449806666933,
+    "admitted_command_exact": true
+  },
+  "strict_build": {
+    "command": [
+      "cmake",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build",
+      "--target",
+      "test_language",
+      "--parallel",
+      "4"
+    ],
+    "status": 0,
+    "wall_seconds": 29.606460083043203,
+    "admitted_command_exact": true,
+    "strict_flags_unchanged": true,
+    "fresh_build": true,
+    "unexpected_producer_diagnostics": [],
+    "binary": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build/test_language",
+    "binary_bytes": 15479088,
+    "binary_sha256": "ee4572c397aee09ea70473f1d8893e95fd528fc359a3fb3b689343119740d5cf"
+  },
+  "embedded_steps_identity": {
+    "header": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build/testing/include/package_compiler_chibi_source.h",
+    "header_sha256": "120278c2d3ab09da47257cfce5092f1dd470c4b1370ff0ef30fd8adc6aa2c131",
+    "embedded_steps_sha256": "a0a09a1594962cb119a402161814563a85c83b7cfe74b067e311730e8259aa75",
+    "private_steps_sha256": "a0a09a1594962cb119a402161814563a85c83b7cfe74b067e311730e8259aa75",
+    "matches_private_source": true,
+    "matches_f1a": false
+  },
+  "selected_test": {
+    "selector": "--package-compiler-chibi-math-native",
+    "command": [
+      "python3",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-validation/tools/test_policy.py",
+      "native",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build/test_language",
+      "--package-compiler-chibi-math-native"
+    ],
+    "status": 0,
+    "wall_seconds": 37.80855704192072,
+    "admitted_command_exact": true,
+    "binary_sha256": "ee4572c397aee09ea70473f1d8893e95fd528fc359a3fb3b689343119740d5cf",
+    "log_sha256": "0cbeb90a64962ca94e3423f2e08f5d71cfd9e5ee969fbc050faafb474a4d4112",
+    "pressure_records": [
+      {
+        "backend": "BYTECODE",
+        "collection_marks": 850,
+        "mask": 63,
+        "calls": 3,
+        "path": "C oracle -> BYTECODE"
+      },
+      {
+        "backend": "SLJIT",
+        "collection_marks": 850,
+        "mask": 63,
+        "calls": 3,
+        "path": "C oracle -> SLJIT"
+      },
+      {
+        "backend": "BYTECODE",
+        "collection_marks": 431,
+        "mask": 63,
+        "calls": 3,
+        "path": "BYTECODE compiler -> BYTECODE"
+      },
+      {
+        "backend": "SLJIT",
+        "collection_marks": 431,
+        "mask": 63,
+        "calls": 3,
+        "path": "BYTECODE compiler -> SLJIT"
+      },
+      {
+        "backend": "BYTECODE",
+        "collection_marks": 431,
+        "mask": 63,
+        "calls": 3,
+        "path": "SLJIT compiler -> BYTECODE"
+      },
+      {
+        "backend": "SLJIT",
+        "collection_marks": 431,
+        "mask": 63,
+        "calls": 3,
+        "path": "SLJIT compiler -> SLJIT"
+      }
+    ],
+    "summary": {
+      "passed": 1,
+      "failed": 0,
+      "total": 1,
+      "suites": 0,
+      "assertions": 741
+    },
+    "policy_wall_seconds": 37.321,
+    "pressure_log_requirements_passed": true,
+    "all_original_and_pressure_paths_completed": true,
+    "runtime_execution_count": 12,
+    "source_files_unchanged": true,
+    "binary_unchanged": true,
+    "protected_artifacts_unchanged": true,
+    "admission_unchanged": true
+  },
+  "contract_results": {
+    "original_runtime_paths": 6,
+    "pressure_runtime_paths": 6,
+    "c_oracle_paths_per_variant": 2,
+    "authored_compiler_target_paths_per_variant": 4,
+    "every_pressure_path_positive_marks": true,
+    "every_runtime_mask": 63,
+    "every_runtime_native_calls": 3,
+    "backend_entry_and_no_fallback_assertions_passed": true,
+    "declarations_effects_points_watches_parity_passed": true
+  },
+  "preserved": {
+    "source_admission_and_commands": true,
+    "authoritative_compiler_sources": true,
+    "f1a_pair": true,
+    "runtime308_706_f69_source_proof_binaries": true,
+    "initial_gc_failure_archive": true,
+    "lifecycle_fixed_effect_failure_source_and_binary": true
+  },
+  "source_edits": [],
+  "additional_source_overlays": [],
+  "f1a_reuse": false,
+  "producer_runs": [],
+  "evidence_files_sha256": {
+    "admission.json": "90fe3edb4ea72eb9d17d4015795f98dce60593567865700b7f4e5b0877560c59",
+    "planned-commands.json": "7206c36b8585add4b943fb9badec9f75ab80a16884d1fd35228934d6f4a7cddd",
+    "execution-admission-identity.json": "b6a46bf783fa37e438f760c04070ae33d033625906cc30d67ae72fe890edc625",
+    "captured-working.patch": "c3fc3e703d46777789b57bee53b6c869d1fc3a78687ee92aa5926a4cb4aaed4a",
+    "write-step-effects.patch": "e497dda37cd4cd57222040b82fbabb6df8f7439508ba7258164166bf4e93298c",
+    "admitted-production-delta.patch": "3b7b643a0a079f9c4e6f983a98222d8d8f18e0dba90db81d8e333b9b3751e931",
+    "source-files-before-effects.json": "eb9e44f9331a4c08d7e125252aa44d000eff130fcfa22efec0194132b816bc9b",
+    "source-files-after-effects.json": "b2d4049fc1f26ee0f63dfa3c18c5517d803ce7a537aa87886e640ad267febc80",
+    "configure.json": "c9c29d9a1e6e5d85a445cac216001724c11436665ae68c462eea73afdf63eea2",
+    "configure.log": "2a0a4ceae38a73b42b7af1fd3d3bfe0bbcc0c3a0275cd0271c5fb5422029dc6c",
+    "build.json": "a8723acfd93c439f1a17fe17d2020ae088cd12c7da42879dfec2548ad8ae95f0",
+    "build.log": "4d22639cf7946dadd9e15eda3b8ad7e47b1d506a5eb39b42a74bdbec51646526",
+    "compile_commands.json": "14b625f436a88ac5948b71a81def49f2b785c3f91b6b40da77c9d343016ad178",
+    "strict-fixture-command.json": "eb1f2bd3987cd234a23eea91ec75bd4b988b76eaa93ba6d7de51ad368ba9231c",
+    "embedded-steps-identity.json": "9a0dcaab0244ef982a4f0d266b77ed3565fba3514c76c652cd786fe5cab75b2e",
+    "math-native.json": "b291e7be92130f1e8b21abc76fe36212cf4f9373a8d08630c480b5e52af07778",
+    "math-native.log": "0cbeb90a64962ca94e3423f2e08f5d71cfd9e5ee969fbc050faafb474a4d4112"
+  }
+}

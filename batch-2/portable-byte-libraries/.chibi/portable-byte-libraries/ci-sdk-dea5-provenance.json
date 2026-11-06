@@ -1,0 +1,9 @@
+{
+  "head": "dea59917c76d665a3a117690b77a6b0717a798b0",
+  "run_id": 40717623622,
+  "job_id": 122919503007,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-ci-sdk-job.log",
+  "log_sha256": "b9d407f17bcadb07651e2d2ff68a23454c3d37368c18768c4d3c95d0a22d36a4",
+  "diagnosis": "CompilerTools 120-second operation timeout at build_sdk.c:782; no timeout changes applied",
+  "source_line": 1086
+}

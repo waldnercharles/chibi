@@ -1,0 +1,63 @@
+{
+  "accepted_at": "2026-11-03T04:15:19.508890+00:00",
+  "url": "http://127.0.0.1:8766/chibi/formatter/",
+  "browser_preview_url": "http://127.0.0.1:8768/chibi/formatter/",
+  "site": "/Users/cwaldner/Personal/chibi/.worktrees/formatter-wasm/chibi/.chibi/formatter-segment-final",
+  "previous_site": "/Users/cwaldner/Personal/chibi/.worktrees/formatter-wasm/chibi/.chibi/formatter-full-final-reflow",
+  "build": {
+    "format": 1,
+    "target": "wasm32-unknown-emscripten",
+    "source_revision": "db6b9f6c1e1b494b0206840d4ff43b3da0dc1168",
+    "inputs_sha256": "9503c2657a5bd65b6572bd4bf4a01d07a5c8c8beaee245028f92bca0a6f46c3e",
+    "compiler_sha256": "ca55770532ba76ce037809149e04e7e908afd477c3245ea8473c22a2ef7c5b27",
+    "files_sha256": "64271b6343dd3f32e644d34985893aaf1f48ac4a0b191c0c31289aef1b4d1688",
+    "context_files_sha256": "fd724052859a8369d070da69200ffff01acfdea78871c2627bf196de8a1ea843",
+    "javascript_sha256": "1dd3094093006bb01e4f21c14e9923e9b40e08dd1593bd1b1350e967f5129dd6",
+    "wasm_sha256": "e77c5cc933c99ef656c563e917ec8a213798cb060c7be4f3ce7be951a9b913b5"
+  },
+  "settings": 173,
+  "profiles": 4,
+  "wasm_bytes": 4501913,
+  "validation": {
+    "native": {
+      "passed": 256,
+      "failed": 0,
+      "private": 32,
+      "public": 224,
+      "seconds": 118.06,
+      "concurrent_with_wasm_build": true,
+      "log": ".chibi/formatter-segment-native-accepted.log"
+    },
+    "wasm": {
+      "passed": 25,
+      "failed": 0,
+      "seconds": 1.59844725,
+      "project_code_and_5000_uniform_statement_fixed_point_seconds": 0.163096875,
+      "log": ".chibi/formatter-segment-wasm.log"
+    },
+    "javascript": {
+      "passed": 44,
+      "failed": 0,
+      "seconds": 0.106636917,
+      "log": ".chibi/formatter-segment-javascript.log"
+    },
+    "build_seconds": 283.89,
+    "browser": [
+      "173 controls rendered",
+      "Logical groups (SEGMENT) selected",
+      "published object-overlap example adds gap before root initialization",
+      "identifier-similarity example adds gap before srcPixels",
+      "two inserted lines visible",
+      "no console warnings or errors"
+    ],
+    "http": {
+      "8766_build_and_wasm_hash": true,
+      "8768_build_and_wasm_hash": true
+    }
+  },
+  "screenshot": "/Users/cwaldner/Personal/chibi/.worktrees/formatter-wasm/chibi/.chibi/formatter-segment-browser.png",
+  "algorithm_reference": "docs/formatter-segment-algorithm.md",
+  "original_java_source_recovered": false,
+  "local_uncommitted": true,
+  "github_pages_published": false
+}

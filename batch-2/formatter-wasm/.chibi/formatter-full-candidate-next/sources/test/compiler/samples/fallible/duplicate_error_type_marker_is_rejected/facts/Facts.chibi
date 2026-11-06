@@ -1,0 +1,4 @@
+package facts
+@error @error Failure :: struct { code: int; }
+
+// error: 2:8: Duplicate attribute '@error'

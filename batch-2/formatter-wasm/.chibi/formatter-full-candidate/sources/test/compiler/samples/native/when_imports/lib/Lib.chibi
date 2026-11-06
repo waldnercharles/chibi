@@ -1,0 +1,21 @@
+package lib
+
+import target "core:target"
+
+// Each branch imports its own package under one alias, and only the kept
+// branch's binds, in the VM and in native code alike.
+when target.Native == 1 {
+    import pick "project:when_imports/native"
+} else {
+    import pick "project:when_imports/vm"
+}
+
+// Never kept, so core:sys/windows is not compiled: a native program for any
+// other system would refuse its kernel32 imports.
+when target.Os == 99 {
+    import windows "core:sys/windows"
+}
+
+pub Which :: () -> int {
+    return pick.Which()
+}

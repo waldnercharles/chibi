@@ -1,0 +1,177 @@
+{
+  "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+  "tree": "b6429211937c6f280ee51cd38599cc45f036e94d",
+  "tracked_clean_before": true,
+  "commands": [
+    {
+      "name": "build",
+      "command": [
+        "make",
+        "wasm-language-build",
+        "WASM_BUILD_DIR=.chibi/integration/wasm",
+        "JOBS=4"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 22.79137408407405,
+      "log": ".chibi/integration/wasm-complete-initializers-build.log",
+      "log_sha256": "bc324db2d17ebfa5a84af60d4fc2359c7f2404e7f1f4a39053a9a0727ab0b6eb",
+      "summaries": []
+    },
+    {
+      "name": "package-math",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-math"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.7882737079635262,
+      "log": ".chibi/integration/wasm-complete-initializers-package-math.log",
+      "log_sha256": "449a1b34776aef617a7d4ba4dcfe601ba86d87a4aaa9e0b4f842de97f47c3f38",
+      "summaries": [
+        "Running: package_math_runs_shipped_authored_tests MATH_TESTS backend=BYTECODE tests=29 prepare_ms=102.334",
+        "MATH_TESTS backend=WASM tests=29 prepare_ms=33.979",
+        "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 4132",
+        "Test command wall time: 0.672s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "compiler-fixture",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--compiler-fixture"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 2.5030631669797003,
+      "log": ".chibi/integration/wasm-complete-initializers-compiler-fixture.log",
+      "log_sha256": "5a927b20cf45724a518e4da72071ea3c95b20884e50e4e2dd110f6863a50e6c5",
+      "summaries": [
+        "Summary: Passed: 9 Failed: 0 Total: 9 Suites: 0 Asserts: 414",
+        "Test command wall time: 2.337s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "package-imports",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-imports"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 0.4608474588021636,
+      "log": ".chibi/integration/wasm-complete-initializers-package-imports.log",
+      "log_sha256": "7cf4f3464f199e005712fcd20f34d128694c8f14e0b39ee5ac9caead2b5230d8",
+      "summaries": [
+        "Summary: Passed: 4 Failed: 14 Total: 18 Suites: 0 Asserts: 925",
+        "Test command wall time: 0.378s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "package-core",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-core"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 47.10379516589455,
+      "log": ".chibi/integration/wasm-complete-initializers-package-core.log",
+      "log_sha256": "9b2e037990c0bb22365eb41e422a1a38b6df4412b139077ae150d7fef887c66f",
+      "summaries": [
+        "Summary: Passed: 5 Failed: 1 Total: 6 Suites: 0 Asserts: 12770",
+        "Test command wall time: 47.028s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "docs-markdown",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--docs-markdown"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 4.053484291071072,
+      "log": ".chibi/integration/wasm-complete-initializers-docs-markdown.log",
+      "log_sha256": "dbd3fcef0d92ee195b3645b7593b4173207774eccfb234e0ca3d20652e9017f0",
+      "summaries": [
+        "Summary: Passed: 14 Failed: 0 Total: 14 Suites: 0 Asserts: 1778",
+        "Test command wall time: 3.752s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "packed",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--packed"
+      ],
+      "exit_code": 2,
+      "wall_seconds": 0.6647264170460403,
+      "log": ".chibi/integration/wasm-complete-initializers-packed.log",
+      "log_sha256": "762a5623ba2d7326a8f8462686bcf4f43d2b3dce3528e907670d0fdac4bad630",
+      "summaries": [
+        "Test command wall time: 0.489s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "package-compiler-chibi-imports",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-compiler-chibi-imports"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 60.26768033299595,
+      "log": ".chibi/integration/wasm-complete-initializers-package-compiler-chibi-imports.log",
+      "log_sha256": "366cbcd43d3e73860b6925e7a73247a7e56cf44badbdbec8a0913500f4c2f805",
+      "summaries": [
+        "Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 17453",
+        "Test command wall time: 60.149s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "package-compiler-chibi-imports-compiled",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-compiler-chibi-imports-compiled"
+      ],
+      "exit_code": 1,
+      "wall_seconds": 22.858516624895856,
+      "log": ".chibi/integration/wasm-complete-initializers-package-compiler-chibi-imports-compiled.log",
+      "log_sha256": "8b68e711d2d6e5fe4ce3e646d7394ad6e0793ceff3271ec02f5f3c56c61ca39a",
+      "summaries": [
+        "Summary: Passed: 0 Failed: 2 Total: 2 Suites: 0 Asserts: 15",
+        "Test command wall time: 22.618s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    }
+  ],
+  "tracked_clean_after": true,
+  "wasm_sha256": "d5e296905f84868b6fb6e65f28c29ef17f34819adef3cdb366a6bec1b661dd60",
+  "all_requested_checks_passed": false
+}

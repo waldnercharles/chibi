@@ -1,0 +1,28 @@
+{
+  "head": "dea59917c76d665a3a117690b77a6b0717a798b0",
+  "workflow_run": 40717623622,
+  "job": 122919502433,
+  "job_url": "https://github.com/waldnercharles/chibi/actions/runs/40717623622/job/122919502433",
+  "status": "completed",
+  "conclusion": "success",
+  "native_build": [
+    "2026-10-28T16:08:13.5172107Z Running: native_build_links_a_program_and_reuses_it (OK) (0.074893 secs)",
+    "2026-10-28T16:08:13.5172805Z Running: native_build_adds_line_tables_with_g (OK) (0.104288 secs)",
+    "2026-10-28T16:08:13.5173538Z Running: native_build_keeps_prior_programs_and_never_falls_back (OK) (0.136516 secs)",
+    "2026-10-28T16:08:13.5174188Z Running: native_build_rejects_missing_and_failing_tools (OK) (0.079860 secs)",
+    "2026-10-28T16:08:13.5174680Z Running: native_build_links_macos_and_windows_programs (OK) (0.126522 secs)",
+    "2026-10-28T16:08:13.5175187Z Running: native_build_refuses_what_an_interrupted_build_left (OK) (0.073474 secs)",
+    "2026-10-28T16:08:13.5175693Z Running: native_build_refuses_an_incomplete_output (OK) (0.119866 secs)",
+    "2026-10-28T16:08:13.5176474Z Running: native_build_runs_with_llvm_and_no_c_compiler (OK) (0.103850 secs)",
+    "2026-10-28T16:08:13.5176936Z Running: native_build_links_other_targets_with_llvm (OK) (0.122253 secs)",
+    "2026-10-28T16:08:13.5177421Z Running: native_export_ships_libraries_the_player_binds (OK) (0.061467 secs)",
+    "2026-10-28T16:08:13.5177896Z ===============================================================",
+    "2026-10-28T16:08:13.5178285Z Summary: Passed: 10 Failed: 0 Total: 10 Suites: 0 Asserts: 130",
+    "2026-10-28T16:08:13.5327782Z Test command wall time: 583.286s; includes in-test fixture setup; external configuration/build excluded."
+  ],
+  "portable_policy": [
+    "2026-10-28T16:17:52.4252550Z Test policy: {\"event\": \"selector\", \"exit_code\": 0, \"name\": \"language-package-portable\", \"observed_finish\": 2063.99661583, \"start\": 2063.448444005, \"status\": \"passed\"}",
+    "2026-10-28T16:17:52.4253815Z Test policy: {\"event\": \"selector\", \"exit_code\": 0, \"name\": \"language-package-portable-compiler\", \"observed_finish\": 2127.564815711, \"start\": 2063.996968473, \"status\": \"passed\"}"
+  ],
+  "qualification": "This receipt belongs to dea59917; subsequent accepted-main merges require affected validation on their own candidate."
+}

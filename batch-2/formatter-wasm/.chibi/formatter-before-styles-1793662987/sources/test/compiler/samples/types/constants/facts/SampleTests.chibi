@@ -1,0 +1,22 @@
+package facts
+
+// constants
+@test
+Calls :: () {
+    a1_0: int = 3;
+    r1: int = Sum(a1_0);
+    e1: int = 148;
+    assert(r1 == e1, "Sum call 1");
+    r2: int = Hidden();
+    e2: int = 1;
+    assert(r2 == e2, "Hidden call 2");
+    r3: int = Limits();
+    e3: int = -1;
+    assert(r3 == e3, "Limits call 3");
+    r4: int = Scale();
+    e4: int = 200;
+    assert(r4 == e4, "Scale call 4");
+    r5: int = Tripled();
+    e5: int = 6;
+    assert(r5 == e5, "Tripled call 5");
+}

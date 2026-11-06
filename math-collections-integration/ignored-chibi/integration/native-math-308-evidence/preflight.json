@@ -1,0 +1,58 @@
+{
+  "purpose": "fresh accepted308 runtime focused native Math validation; only optional asset-host CMake block omitted",
+  "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+  "tree": "cfb02134ea9f59bbfe1023808ee2489439ae7aee",
+  "accepted_runtime": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+  "authoritative_tracked_status": "",
+  "snapshot_revision": "b87afaea2-dirty",
+  "snapshot_status": " M test/language/CMakeLists.txt\n",
+  "tracked_files_compared": 3473,
+  "only_changed_tracked_paths": [
+    "test/language/CMakeLists.txt"
+  ],
+  "helper_diff_sha256": "69062a481869920fc8585c1531556f5dda7dee9d422abde4f9d3ee70f108e163",
+  "selected_files_unchanged": {
+    "test/language/package_math.c": "11da76c495693d9f0018983f96bcb95c8a7b145a3f51e022a6eed3d361c6a138",
+    "test/language/native_calls.c": "b6974a81a8da35a9b7746d2baf97f7c11f82de80c8225e50abb45f9fd60fb690",
+    "test/language/package_compiler_chibi.c": "0cf124b9ce8ee904dd2ef56ef2847f6cf5dd96a942a8a3b8be748adfd1c2e32f",
+    "test/language/package_imports.c": "63bfb8f61eaef80fbc0ee45179567f5200146618f76855e81b8cc978a8b28f35",
+    "test/language/package_snapshot_chibi.c": "3fe3410523fabf67107b2295d6a951586ce07e03734992b61fba3d00fdf28029",
+    "test/language/record_publication.c": "c74dd85958c97c0aa23fbc8e219e96be910b8146640796d391b4b91de3deb637",
+    "test/language/main.c": "bc13d3f31cb57e57b73ca22f90cc3b68a342b604bb51c6d62002ad0571264e00",
+    "test/language/compiler_fixture.c": "67685b1785a3fd0077edc6934b4a43d981e15c5215aa6594be590818a00d4d05",
+    "test/language/backend.h": "b83f8e968605a439907cda3f3571036b0f35a47863e7a8dc0f9f94255bc4c917",
+    "src/toolchain/compiler_target.c": "266ed2bcc132c29c6e1a30f3f34445be36ba29fa113c902697b566b76081424c",
+    "src/toolchain/compiler_target.h": "d323ebaad3106802f95692b4a3194b5a63800252231bf974f74c48906ab12ffa",
+    "src/support/arena.h": "e5b5dc6afee8ec5e8b4b5ec65f81b3eaf9e295c1930fc9864843ea28d1a214f1",
+    "src/support/arena.c": "bacef774cc7ea9b038fbb8135086eefb7adb6f639a8a58044699a8800e741ab9",
+    "src/execution/function.h": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817",
+    "src/execution/prepared.h": "02d219f2f7d637efdcb6abacd1e3b78c9e8eba1207463373295dfa5c445c4254",
+    "packages/core/math/MathTests.chibi": "1c9f59feda2c92a4de28c809a767e7930737937482c80a90a823fb396647b2f7",
+    "packages/core/math/Spring.chibi": "daf53c43e1a6a88ad42c1a0845d579472bd11503fbe2444fa233d7f7a3f20531",
+    "packages/core/math/Math.chibi": "afe0c72e8e10906688665b192a690905425988b200cb81ae4bd195a95ad1e249",
+    "packages/core/math/SpringTests.chibi": "a0b2a976dbdd7162de61764518b6a3d5df47291dfa558d636927965ff2ac4872",
+    "packages/core/math/ease/Ease.chibi": "7a79ea4d808bb49289e99cb59f7196c0b0469210b576bfd44620a2c700112680",
+    "packages/core/math/ease/EaseTests.chibi": "f2eb762274fa0303a52f86d968d80feee5b95eba2dc67507adc7022d870cec68"
+  },
+  "checked_bootstrap": {
+    "bootstrap.json": "812635d0e2c0c5336071dda2394b881dfcd1ed8aef17999d92511a506f5d2485",
+    "compiler.chibip": "bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a"
+  },
+  "no_artifact_or_object_substitution": true,
+  "historical699_matched_math_and_benchmark_sources": {
+    "test/language/package_math.c": "11da76c495693d9f0018983f96bcb95c8a7b145a3f51e022a6eed3d361c6a138",
+    "packages/core/math/MathTests.chibi": "1c9f59feda2c92a4de28c809a767e7930737937482c80a90a823fb396647b2f7",
+    "packages/core/math/Spring.chibi": "daf53c43e1a6a88ad42c1a0845d579472bd11503fbe2444fa233d7f7a3f20531",
+    "packages/core/math/Math.chibi": "afe0c72e8e10906688665b192a690905425988b200cb81ae4bd195a95ad1e249",
+    "packages/core/math/SpringTests.chibi": "a0b2a976dbdd7162de61764518b6a3d5df47291dfa558d636927965ff2ac4872",
+    "packages/core/math/ease/Ease.chibi": "7a79ea4d808bb49289e99cb59f7196c0b0469210b576bfd44620a2c700112680",
+    "packages/core/math/ease/EaseTests.chibi": "f2eb762274fa0303a52f86d968d80feee5b95eba2dc67507adc7022d870cec68"
+  },
+  "historical699_is_not_new_runtime_proof": true,
+  "raw_standalone_target_json_not_captured": true,
+  "benchmark_settings": {
+    "loops": 128,
+    "invocations": 16,
+    "trials": 3
+  }
+}

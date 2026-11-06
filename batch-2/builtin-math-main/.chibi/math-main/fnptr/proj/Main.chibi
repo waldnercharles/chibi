@@ -1,0 +1,9 @@
+package scalar
+foreign import libc "system:c"
+foreign libc {
+    dlsym :: (handle: rawptr, name: cstring) -> rawptr
+}
+Main :: () -> int {
+    absolute: fn(n: i32) -> i32 = dlsym(0, "abs");
+    return absolute(-42) + 1;
+}

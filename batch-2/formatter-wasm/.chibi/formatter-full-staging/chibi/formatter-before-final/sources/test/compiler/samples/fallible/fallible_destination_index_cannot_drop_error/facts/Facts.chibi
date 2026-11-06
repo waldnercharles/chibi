@@ -1,0 +1,6 @@
+package facts
+@error Failure :: struct { code: int; }
+Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }
+Use :: () { values: int[] = [0, 0, 0, 0, 0, 0, 0, 0]; values[Read().value] = 1; }
+
+// error: 4:62: Error result is ignored on a reachable path; check, report, store or return it

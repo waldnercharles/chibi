@@ -1,0 +1,5 @@
+package facts
+U :: union { A | B }
+One :: (u: U) -> int { switch u { case: return 2; case: return 3; } return 1; }
+
+// error: 3:51: Duplicate default arm

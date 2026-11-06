@@ -1,0 +1,28 @@
+package facts
+Node :: struct { kind: string; start: int; end: int; }
+ReadSyntax :: () -> (nodes: Node[], fields: string[], named: bool[], clean: bool) {
+    node: Node = {kind: "word", start: 3, end: 7};
+    return([node], ["body"], [true], true);
+}
+Forward :: () -> (nodes: Node[], fields: string[], named: bool[], clean: bool) {
+    result := ReadSyntax();
+    return(result.nodes, result.fields, result.named, result.clean);
+}
+Use :: () -> int {
+    original := Forward();
+    nodes := original.nodes; fields := original.fields; named := original.named;
+    changed := nodes[0]; changed.kind = "changed"; changed.start = 99;
+    nodes[0] = changed; fields[0] = "changed"; named[0] = false;
+    if !original.clean { return -1; }
+    if original.nodes[0].kind != "word" { return -2; }
+    if original.fields[0] != "body" { return -3; }
+    if !original.named[0] { return -4; }
+    if nodes[0].kind != "changed" || nodes[0].start != 99 { return -5; }
+    if fields[0] != "changed" || named[0] { return -6; }
+    return original.nodes[0].start * 100 + original.nodes[0].end * 10 + length(original.fields);
+}
+Defaults :: () -> (nodes: Node[], fields: string[], named: bool[], clean: bool) { return; }
+DefaultSize :: () -> int {
+    result := Defaults(); if result.clean { return -1; }
+    return length(result.nodes) + length(result.fields) + length(result.named);
+}

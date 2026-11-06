@@ -1,0 +1,22 @@
+native-driver-cache 1
+target aarch64-apple-darwin
+entry Main
+mode 2
+lines false
+static false
+shared false
+compiler /Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/chibi-cli-probe-relocation/program-sdk/bin/chibi
+compiler-sha256 14bf4aa9191419bb05f9078bf051f9322e7b79e16f5c2088c59a81579d4abee1
+opt /private/tmp/chibi-llvm22/opt
+opt-sha256 2bd5eaa23de1e47480d02ac50d9376df0e071130d995e34f1fd3f2b76d1bb3d6
+llc /private/tmp/chibi-llvm22/llc
+llc-sha256 71ae3605805a8667d8875d11e9945be073baf6449a2468561a16086c90b03136
+linker /private/tmp/chibi-llvm22/ld64.lld
+linker-sha256 b46796ecf50def5ccf45ffefafd29f83854fb2f7789c0d7f00ec1270b33eb1a8
+collection core=/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/chibi-cli-probe-relocation/program-sdk/share/chibi/core
+source Hello.chibi
+source-sha256 df368dc7eedb0dc11027c95f6cda5207774975117270108146a6c1c233d471a8
+key 95dafa34be212c91bb5168524f1767a506b6f50fb6eacc396b033a0d460319b0
+output-kind executable
+linkage dynamic libSystem
+program-sha256 dfe441e165954269228b73e728989a105a24b318701f02d198bb54697ebb6da2

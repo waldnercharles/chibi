@@ -1,0 +1,146 @@
+{
+  "normal_prefix": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/sdk-installed",
+  "relocated_prefix": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/sdk-relocated",
+  "hidden_prefix": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/sdk-installed-hidden",
+  "sdk_pin": "19488b5e2e85d874fd3d29458e404eea54a75faf2a9d5330a3fc638722ec1387",
+  "sdk_source": {
+    "dirty": true,
+    "revision": "21ba81a0aa0e84a0d880d98fc53d574896bcedb4",
+    "snapshot_sha256": "b14606518bfaddcc01fe5e865e02b4e28abdbb2899135413613bd5b4cde217da"
+  },
+  "inventory_entries": 1287,
+  "inventory_sha256": "76f030d30425d370bc7be995621f08bb16ba01ddbb4b99892e31bfdeb835cd98",
+  "clone_equals_normal": true,
+  "clone_seconds": 1.0543562499806285,
+  "steps": [
+    {
+      "name": "configure",
+      "command": [
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/language-relocated",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCHIBI_INSTALLED_SDK=ON",
+        "-DChibi_DIR=/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/sdk-relocated/lib/cmake/Chibi",
+        "--trace-expand",
+        "--trace-source=/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/sdk-relocated/lib/cmake/Chibi/ChibiConfig.cmake"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/byte-verifier-relocated-configure-21ba.log",
+      "seconds": 3.4462195420637727,
+      "exit_code": 0,
+      "original_unavailable": true
+    },
+    {
+      "name": "build",
+      "command": [
+        "cmake",
+        "--build",
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/language-relocated",
+        "--target",
+        "test_language",
+        "--parallel",
+        "3"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/byte-verifier-relocated-build-21ba.log",
+      "seconds": 10.123544417088851,
+      "exit_code": 0,
+      "original_unavailable": true
+    },
+    {
+      "name": "portable",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-portable"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/byte-verifier-relocated-portable-21ba.log",
+      "seconds": 0.9057043748907745,
+      "exit_code": 0,
+      "original_unavailable": true
+    },
+    {
+      "name": "compiler",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-portable-compiler"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/byte-verifier-relocated-compiler-21ba.log",
+      "seconds": 18.26031875004992,
+      "exit_code": 0,
+      "original_unavailable": true
+    },
+    {
+      "name": "asset-host",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-asset-compiler-host"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/byte-verifier-relocated-asset-host-21ba.log",
+      "seconds": 27.900893917074427,
+      "exit_code": 0,
+      "original_unavailable": true
+    },
+    {
+      "name": "cli-version",
+      "command": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/sdk-relocated/bin/chibi",
+        "version"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/byte-verifier-relocated-cli-version-21ba.log",
+      "seconds": 0.24504458298906684,
+      "exit_code": 0,
+      "original_unavailable": true
+    },
+    {
+      "name": "cli-test",
+      "command": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/sdk-relocated/bin/chibi",
+        "test",
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/relocated-consumer"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/byte-verifier-relocated-cli-test-21ba.log",
+      "seconds": 0.720751500222832,
+      "exit_code": 0,
+      "original_unavailable": true
+    }
+  ],
+  "passed": true,
+  "original_restored": true,
+  "original_hidden": true,
+  "resolved_core_source_dir": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/sdk-relocated/share/chibi/core",
+  "cache_and_build_use_relocated_sdk": true,
+  "authored_test_matrix": [
+    [
+      "BYTECODE",
+      "BYTECODE"
+    ],
+    [
+      "BYTECODE",
+      "SLJIT"
+    ],
+    [
+      "SLJIT",
+      "BYTECODE"
+    ],
+    [
+      "SLJIT",
+      "SLJIT"
+    ]
+  ],
+  "tests_per_matrix_combination": 23,
+  "target_backend_no_fallback_assertions_passed": true,
+  "external_public_import_tests": 1,
+  "total_seconds": 61.60968508408405,
+  "normal_postproof_inventory_unchanged": true,
+  "relocated_postproof_inventory_unchanged": true
+}

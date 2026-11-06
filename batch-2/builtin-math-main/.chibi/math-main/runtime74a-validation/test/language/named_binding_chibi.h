@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_NAMED_BINDING_CHIBI_H
+#define CHIBI_TEST_NAMED_BINDING_CHIBI_H
+void test_language_named_binding_chibi();
+#endif

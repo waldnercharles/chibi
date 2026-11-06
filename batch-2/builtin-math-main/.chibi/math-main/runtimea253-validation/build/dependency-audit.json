@@ -1,0 +1,2948 @@
+{
+  "target": "test_language",
+  "command_count": 543,
+  "compile_count": 487,
+  "archives": 55,
+  "links": 1,
+  "producers": 0,
+  "fresh_objects_before": 0,
+  "strict_project_flags": true,
+  "additional_warning_exceptions": false,
+  "canonical_vendor_w": [
+    "third_party/yyjson/yyjson.c",
+    "third_party/ckdl/src/bigint.c",
+    "third_party/ckdl/src/compat.c",
+    "third_party/ckdl/src/emitter.c",
+    "third_party/ckdl/src/parser.c",
+    "third_party/ckdl/src/str.c",
+    "third_party/ckdl/src/tokenizer.c",
+    "third_party/ckdl/src/utf8.c",
+    "third_party/fmt/fmt.c"
+  ],
+  "ccache": false,
+  "sanitizers": false,
+  "sources": [
+    {
+      "source": "test/language/headless_consumer.c",
+      "sha256": "f7bc73a4cbd354ec6c203bd6012c29204e8c93315176c9953f1055a23992fb39",
+      "object": "CMakeFiles/test_behavior_consumer.dir/headless_consumer.c.o",
+      "command_sha256": "0650dda3cbf808c46c26cd9b9cbb2b9feddb317bd29bde709d492dfa2e3a864c"
+    },
+    {
+      "source": "test/language/main.c",
+      "sha256": "e3c94400bfaf571224cd2c4908b0b4ba816041aedd49a5f4a4658e6c0cebc6c6",
+      "object": "CMakeFiles/test_language.dir/main.c.o",
+      "command_sha256": "5bdec1fe286facb3b089669f84ee47460031ff1aaac852223881a5d2c67fc118"
+    },
+    {
+      "source": "test/language/inferred_string_arrays.c",
+      "sha256": "974dc1a3c1d019d8c97b54361b843ad8f121024a03fae375685bee05fa277cec",
+      "object": "CMakeFiles/test_language.dir/inferred_string_arrays.c.o",
+      "command_sha256": "99e12bd02d5e12636d572e428bcb489e1f13d4a595d32096bff4f5548e7d9931"
+    },
+    {
+      "source": "test/language/build_workflow.c",
+      "sha256": "f9af5f4c23f28ae03107c875e17e21dfa805177982bf41769b95fd7e1137ab6f",
+      "object": "CMakeFiles/test_language.dir/build_workflow.c.o",
+      "command_sha256": "d561d58e6325f0f5d5263cea4e79479830eaf77c85b6050ea8a4f1e894d2271c"
+    },
+    {
+      "source": "test/language/record_publication.c",
+      "sha256": "c74dd85958c97c0aa23fbc8e219e96be910b8146640796d391b4b91de3deb637",
+      "object": "CMakeFiles/test_language.dir/record_publication.c.o",
+      "command_sha256": "5a0fc07cf21865987b18ecb16dd1673f2acb8f9e5c02ca9961f0ab73a7fc81fd"
+    },
+    {
+      "source": "test/language/outliner_projection.c",
+      "sha256": "04f5a4917d25cf08ded4bd57afd9e6e24fabccd5499631df80298dfd7514257b",
+      "object": "CMakeFiles/test_language.dir/outliner_projection.c.o",
+      "command_sha256": "1d9680d31ea6d8e087ffd16d48f5d6d4c6811de00dc6746fec4efe3a13f187e9"
+    },
+    {
+      "source": "test/language/row_array.c",
+      "sha256": "e9b2a6f42ed4a3fc4040468592c78b5aab97b74d8fbd848da8beb0b1c2fd1c0f",
+      "object": "CMakeFiles/test_language.dir/row_array.c.o",
+      "command_sha256": "13a5bdeb6bfc95681a599ea5c786ef9c901c80b2d39caa0a0e91386b9ba8b4bf"
+    },
+    {
+      "source": "test/language/record_compatibility.c",
+      "sha256": "8e1f9f5c7610806c6c8b219a49ff85b38cf71b820de5201c5e3aeae53f01c006",
+      "object": "CMakeFiles/test_language.dir/record_compatibility.c.o",
+      "command_sha256": "42129daa58b93c41b25d69a7f914b6922a17277a4b554320011a3a572b5c432a"
+    },
+    {
+      "source": "test/language/record_state.c",
+      "sha256": "f87b0e85bf569c062c54f1830c62ab8969865ea5e8e0bb774f92a5e0ad96fb53",
+      "object": "CMakeFiles/test_language.dir/record_state.c.o",
+      "command_sha256": "a39f30dd69d17473bd3311470f7b799acf659af5239b020bbcd4c0e8695f20b3"
+    },
+    {
+      "source": "test/language/record_document.c",
+      "sha256": "f88d636251f4fe5fde25612bbcef5d4a9e09a4d6a5427fcb14322011b33d48c0",
+      "object": "CMakeFiles/test_language.dir/record_document.c.o",
+      "command_sha256": "215b7cf13445fe333e3d18d056672c21f34307089a57ef1c3a2192c7d94504ec"
+    },
+    {
+      "source": "test/language/record_producer.c",
+      "sha256": "a290ad549fb31ddd80a502cefe127041fe86a45c6ae87185a6be18b696b4d1d7",
+      "object": "CMakeFiles/test_language.dir/record_producer.c.o",
+      "command_sha256": "93cb07e8f890f40f32bfcf12a66d4cbceb3582230bb61e50d9f387469edff689"
+    },
+    {
+      "source": "test/language/record_prepared_runtime.c",
+      "sha256": "41c9009a20b0ebb13a385dca0d95adb187ecae5442710af4669355b0ede68681",
+      "object": "CMakeFiles/test_language.dir/record_prepared_runtime.c.o",
+      "command_sha256": "040b221eb3759344141a00f461affde279a4366f815c24dc1b5fc71d195c35ab"
+    },
+    {
+      "source": "test/language/record_runtime.c",
+      "sha256": "2808c0571fc31195768dc6c595ab894e288a10e8f1dd4c9d5511a4d544fefe22",
+      "object": "CMakeFiles/test_language.dir/record_runtime.c.o",
+      "command_sha256": "358e4b741fa745b5158f095e3f71df28067b163777d8dc7becd1bbded2d7b9d4"
+    },
+    {
+      "source": "test/language/record_semantic.c",
+      "sha256": "0045935549a8a95a0aebf69aba8a8b3d494e8c46b2e2153b380d8e375a763d49",
+      "object": "CMakeFiles/test_language.dir/record_semantic.c.o",
+      "command_sha256": "0a3d122ca936cfee3efb4c8c7b0dd2d2bdcddddaa6c582a1e2d8fa006313487d"
+    },
+    {
+      "source": "test/language/record_values.c",
+      "sha256": "fc463d61527b879568ecb2c15f5012641c1808ba5513b3e707d1d91c9e0c2302",
+      "object": "CMakeFiles/test_language.dir/record_values.c.o",
+      "command_sha256": "6404d50765a827c7c7810a0ae0984c5cf0856f3108ec1c81a187f7808ac8e743"
+    },
+    {
+      "source": "test/language/record_prepared.c",
+      "sha256": "f5fcf0898bc4ef42d6556dd6b0d686121c2c12c0bc1f8f28404fe31b058adbe7",
+      "object": "CMakeFiles/test_language.dir/record_prepared.c.o",
+      "command_sha256": "9e5ec416c02dd4dd99003e5ebd47cb313c48f703ca7751afbc5720e234e5f21b"
+    },
+    {
+      "source": "test/language/runtime_attribution.c",
+      "sha256": "3d3776a5e7b9c86cf8e43f2007c6ad2cd4546f2eab229433d02268dd9591dbea",
+      "object": "CMakeFiles/test_language.dir/runtime_attribution.c.o",
+      "command_sha256": "5caab5f4bf7728a1af8f94ee406a4d070e28d6b15e95e670d55feff08355deb6"
+    },
+    {
+      "source": "test/language/syntax.c",
+      "sha256": "b1d258fae97b7f4a4e081484f6850f55ba6d409a5596976e8d12de8ea8fd0e66",
+      "object": "CMakeFiles/test_language.dir/syntax.c.o",
+      "command_sha256": "1e1b7c5152bbfb0e618b94b43d99ed89fbbeb3628b3db69a46fec3f25c2b9cc3"
+    },
+    {
+      "source": "test/language/semantic.c",
+      "sha256": "66d02679a18f8c3825df863e76b9a3db6bca942b251d169ee8b76a26e964d86d",
+      "object": "CMakeFiles/test_language.dir/semantic.c.o",
+      "command_sha256": "afe9a3d054a8646bdec093a253783e6e16f9457a1164a60e20256199e4a3708c"
+    },
+    {
+      "source": "test/language/execution.c",
+      "sha256": "28d7dc339e564507444d185ee0d43cd0505939c35127e062053418d9990e63c5",
+      "object": "CMakeFiles/test_language.dir/execution.c.o",
+      "command_sha256": "62a0583e201ea43c915b24b74ea61e18493b1019712582e1e39726c77623c871"
+    },
+    {
+      "source": "test/language/program.c",
+      "sha256": "838dd98ab4846f210f833fd8fbea8cb53582768fd95275a5e8a3e8651483ecfd",
+      "object": "CMakeFiles/test_language.dir/program.c.o",
+      "command_sha256": "286500ff3dc61d309fbfc9276a13346e836b237c8875f9cb4080f6f8896546e2"
+    },
+    {
+      "source": "test/language/retention.c",
+      "sha256": "a98c96ce904e72892e5f246839abf849765f41e62f40b9d97b36519faeb23049",
+      "object": "CMakeFiles/test_language.dir/retention.c.o",
+      "command_sha256": "dbfedfdbd9747a0647aa59235d4474c880def4439c913404f6ea62790bb7a39e"
+    },
+    {
+      "source": "test/language/capture.c",
+      "sha256": "80002725abc724781e7870083e845064f8e4431d20d9b90063a051ce5bebb9e1",
+      "object": "CMakeFiles/test_language.dir/capture.c.o",
+      "command_sha256": "dd79d6a5a279699a9df5fdde76e0239522f96f19a0d2028da3245067040f0e4b"
+    },
+    {
+      "source": "test/language/query_boundary.c",
+      "sha256": "3c4fcf891b60c3bc91f49799ac9edcb94f62edaec86dc7b064ee486381ce6e4d",
+      "object": "CMakeFiles/test_language.dir/query_boundary.c.o",
+      "command_sha256": "eeb7355f2f2f2929df1639f3165a57d21f74788f0255ab370d0507832d93d4d4"
+    },
+    {
+      "source": "test/language/query_values.c",
+      "sha256": "ae16995ee2fd65b61e11f6535e55db657436086e5931bdb0fb9b963e3de15701",
+      "object": "CMakeFiles/test_language.dir/query_values.c.o",
+      "command_sha256": "75a609eee9a873ebbd3f165374e28416d1e3d7e90ebef6df354b791afad06a5b"
+    },
+    {
+      "source": "test/language/query_migration.c",
+      "sha256": "dd6c415170f97b7f547ee68424badf36fb71b100a19e8a112917dcffb5587d08",
+      "object": "CMakeFiles/test_language.dir/query_migration.c.o",
+      "command_sha256": "c6a34e382b53c15fd7295516cfa20eeabb1da83c006eee6023ad0eeab93d950a"
+    },
+    {
+      "source": "test/language/incremental.c",
+      "sha256": "9f44e35012ba1a83ba674a2680fc0f9f12551a30168dc7fbda38a45d32391d4b",
+      "object": "CMakeFiles/test_language.dir/incremental.c.o",
+      "command_sha256": "a432798197a52d672a661789e9e6c8dcd0801b4c2e517dbe1c4077cc45418fd9"
+    },
+    {
+      "source": "test/language/operations.c",
+      "sha256": "faa85cb0f5a4ec85937491f058a6139a9f3cebced733316592d6d00792287274",
+      "object": "CMakeFiles/test_language.dir/operations.c.o",
+      "command_sha256": "90885ec12f608bf8d3f18341fb05fdbae43eed9223d3347b68c227b67d74a918"
+    },
+    {
+      "source": "test/language/modules.c",
+      "sha256": "72f5a045b54335ec700985b5af3bcd04d6d21d5d3c9555676505cd329c0eb74e",
+      "object": "CMakeFiles/test_language.dir/modules.c.o",
+      "command_sha256": "397ea9cff961ce91b9aca436d1115d2636eb5eff6196c333844fef6362224e98"
+    },
+    {
+      "source": "test/language/native_calls.c",
+      "sha256": "b6974a81a8da35a9b7746d2baf97f7c11f82de80c8225e50abb45f9fd60fb690",
+      "object": "CMakeFiles/test_language.dir/native_calls.c.o",
+      "command_sha256": "1fc4a3453aaa41164c9f27664ad53e7e8c979dd3437af810ef88fc6dde84a165"
+    },
+    {
+      "source": "test/language/ranges.c",
+      "sha256": "a5d70fd94d84ee710f3abde11375b1cdae0b78eb17f4e862e2374a84d33d99a7",
+      "object": "CMakeFiles/test_language.dir/ranges.c.o",
+      "command_sha256": "fe75c84c0af65625da8c2ccc2252d9f3a201be5c65e946afebe580ef82a9c48d"
+    },
+    {
+      "source": "test/language/scalarize.c",
+      "sha256": "bdc0b08069246602ecea6b111e09ec3804be3ec31c85595634907f1a478ac5da",
+      "object": "CMakeFiles/test_language.dir/scalarize.c.o",
+      "command_sha256": "477bd87f1a46b70cd1e159fa129a830aef8653b2980df446149059c500968e04"
+    },
+    {
+      "source": "test/language/component_write.c",
+      "sha256": "3714c72d6819acfcbf9c41b81686607aaef82a6758047de281f35317a088e54a",
+      "object": "CMakeFiles/test_language.dir/component_write.c.o",
+      "command_sha256": "92dc7a0d1ec9c6c9858d5f396ba643a88dcce90cfa09771538119d3c4fcdd6bc"
+    },
+    {
+      "source": "test/language/component_write_source.c",
+      "sha256": "d91f704bb2cac9c029c9822f7007f970fa600dc95cc64c90f0f790139fa84707",
+      "object": "CMakeFiles/test_language.dir/component_write_source.c.o",
+      "command_sha256": "a7e16993d1d38a20d6e312b432b6b9a63528363c239470892086634823d8ecec"
+    },
+    {
+      "source": "test/language/component_write_ir.c",
+      "sha256": "b9c0121bf9a98cc49356312c7bb04f859d58da821b308ef8a133ce9f437128b9",
+      "object": "CMakeFiles/test_language.dir/component_write_ir.c.o",
+      "command_sha256": "4e68d5ed30f71ac477b42c7c866ba59e4954aa6cc6b5f1b068ccd88706999594"
+    },
+    {
+      "source": "test/language/borrow.c",
+      "sha256": "46421277898d146dedc91baa55d6dbf0871169cf85f81482de0eb83bfa3fc91d",
+      "object": "CMakeFiles/test_language.dir/borrow.c.o",
+      "command_sha256": "63e60ab469037ccc568c0c731365f605310c719f74c668b7cb9b7506f01148a4"
+    },
+    {
+      "source": "test/language/reductions.c",
+      "sha256": "bb37e590180addf9a5b6b7cd71fbcc5203bccdd4a22fcdd86bf67bc8ca9f36c9",
+      "object": "CMakeFiles/test_language.dir/reductions.c.o",
+      "command_sha256": "9043237d7fbe74fe81d055de005869b47eb71a5104220f76f69ff7e3b4abb5a4"
+    },
+    {
+      "source": "test/language/benchmark.c",
+      "sha256": "b042943bb62cc39d04cd63d6f3902d651f1ab27ec77cc57b83e068fcb0c8e8f0",
+      "object": "CMakeFiles/test_language.dir/benchmark.c.o",
+      "command_sha256": "014357638fc03500b44737aaeee8366aa24de3951763ca4b9e79ed1f26992de2"
+    },
+    {
+      "source": "test/language/activation_cache.c",
+      "sha256": "5050858a8d2d0b99da241b27b32e93582b6bd83652226cd59ed5b1156ef91783",
+      "object": "CMakeFiles/test_language.dir/activation_cache.c.o",
+      "command_sha256": "fce58b07d96cfd73db86e0b9e01b1bc04990cfb20fb1f1019859abc9d0017d53"
+    },
+    {
+      "source": "test/language/activation_benchmark.c",
+      "sha256": "144792257f00acee3c6e2cf88124c59b375445a3dcdcfc738786a5ef49fe50e6",
+      "object": "CMakeFiles/test_language.dir/activation_benchmark.c.o",
+      "command_sha256": "6df1c1b782f015f7a3e4c6b46db437731d3142ce95853ef51bab708068397f98"
+    },
+    {
+      "source": "test/language/binding_benchmark.c",
+      "sha256": "e042163c595d9cde2945d20035dd8529e54acd0dcfa706935beb3a02c51b4040",
+      "object": "CMakeFiles/test_language.dir/binding_benchmark.c.o",
+      "command_sha256": "fa5cc0f7313134dc33bfcc159b537c0eabe17e059022d199d686a22c3a8c207b"
+    },
+    {
+      "source": "test/language/borrow_benchmark.c",
+      "sha256": "2f69669178546fbb7e1a6ff6f5051ac6eeea54df47271eef425283a656384f77",
+      "object": "CMakeFiles/test_language.dir/borrow_benchmark.c.o",
+      "command_sha256": "ef1b120925e04869929d6ba4abc1f5602549001f5173e172e914c4c534f717c9"
+    },
+    {
+      "source": "test/language/incremental_benchmark.c",
+      "sha256": "d4c4cd43789cb423caebea7c02ba4ed93cef3ac42342a53be25dae96ea337bff",
+      "object": "CMakeFiles/test_language.dir/incremental_benchmark.c.o",
+      "command_sha256": "ed08cd9e2dc77b9d077348e9835b889ccf60190330800e9d00cc21862ecdddf4"
+    },
+    {
+      "source": "test/language/wasm.c",
+      "sha256": "5486168e0bb9c591d4fa5c14ae7c87f1c03a42b99cad7211c3e53087f1503e3d",
+      "object": "CMakeFiles/test_language.dir/wasm.c.o",
+      "command_sha256": "c70f85530e3001fd102ac5fb6e323e34bc6b0f4e79e4f58f0d8d23d7d6072296"
+    },
+    {
+      "source": "test/language/headless.c",
+      "sha256": "de38ee7f6ce28785ae1becbb12f406387cf681f5c5289b334727c0085dc2d5f1",
+      "object": "CMakeFiles/test_language.dir/headless.c.o",
+      "command_sha256": "fa66d7e05a0975133801e68e5742f1fa606d5478af52403ae3ea1f881af15b4a"
+    },
+    {
+      "source": "test/language/prepared.c",
+      "sha256": "5a097bdeff6b36ffa8d1583b170c1dfb2ababcc3fa82a020754cfdc624b441f1",
+      "object": "CMakeFiles/test_language.dir/prepared.c.o",
+      "command_sha256": "e4ff649c8a9872df7fe39638b7b15057002c1418c2b5ca0f2370a68f04f0b9e7"
+    },
+    {
+      "source": "test/language/format.c",
+      "sha256": "230d7f9846fe2678b8c86102d429bac303ea4d223d2006fb6e282621bd3f4129",
+      "object": "CMakeFiles/test_language.dir/format.c.o",
+      "command_sha256": "aa116f0008b3fb0288ba0e7276c282349d1a4b2f161dddb6d6cc9fed5a3812ba"
+    },
+    {
+      "source": "test/language/navigation.c",
+      "sha256": "ba130d47e279882b36007f96140094313f76994dfd2257bc6fde4e37c74afae4",
+      "object": "CMakeFiles/test_language.dir/navigation.c.o",
+      "command_sha256": "02992053131bc3028397ca28fd03b61f5cfe057443607b378447a6d06d94e36d"
+    },
+    {
+      "source": "test/language/publication.c",
+      "sha256": "73d2458733dac481c09e07400ff9f6a29a1edfc97d0eb063548a84395d3d137d",
+      "object": "CMakeFiles/test_language.dir/publication.c.o",
+      "command_sha256": "58e910a8bf6cc9294a6c4290e26f76c359629d5e15a63cacf14fee82bef93734"
+    },
+    {
+      "source": "test/language/field_runtime.c",
+      "sha256": "54470a20b248d8b8f0e4c1ae3ad588348d480833984fdc09e1edeae119093ca7",
+      "object": "CMakeFiles/test_language.dir/field_runtime.c.o",
+      "command_sha256": "ebc616e9bdf456d58380de9b995e933a443190fb6fc23a096d53f1638099e9e9"
+    },
+    {
+      "source": "test/language/prototype.c",
+      "sha256": "f9232554be09fdc2399cd45b6ddf758feaea0120485027ff01ecb90698449a81",
+      "object": "CMakeFiles/test_language.dir/prototype.c.o",
+      "command_sha256": "fcc73bf31840146b55513a70797cdd2dad317388f06e346997b0115a6ef8e49a"
+    },
+    {
+      "source": "test/language/ui.c",
+      "sha256": "5e689cc94eee644b29ac0c084bc50d0d95dd20d1addbfae16c71e9e60ed72f21",
+      "object": "CMakeFiles/test_language.dir/ui.c.o",
+      "command_sha256": "e7079d8fc9bce7c597848d6af6378c01d755683984ffeebfa69f024a78ea5b35"
+    },
+    {
+      "source": "test/language/text_format.c",
+      "sha256": "a42e5ab1dffb8cf3a8ee5c4268373a0e6152b94717f8354de5c5ef8052327d66",
+      "object": "CMakeFiles/test_language.dir/text_format.c.o",
+      "command_sha256": "2bd93e891df45ce79dbec2622d7710fe84962f487449aefb2a1d198226e7ffa0"
+    },
+    {
+      "source": "test/language/graph_model.c",
+      "sha256": "331dfc63ae74f0e4ce2648c74558cf3f5e182149e8d86e2a5ee757f9769b50ea",
+      "object": "CMakeFiles/test_language.dir/graph_model.c.o",
+      "command_sha256": "6c146c0aef97bce460d61d926f02f8467934ae314ba71b7df73066b26e33868c"
+    },
+    {
+      "source": "test/language/graph_authoring.c",
+      "sha256": "586e581a785d37c67cb6a82bfc1ec10f8e8c4f3715562bedd9c8e8669acb2fdb",
+      "object": "CMakeFiles/test_language.dir/graph_authoring.c.o",
+      "command_sha256": "845e4fa6590a923b0dbbf7d79bc5f573ffd70d55c01784f3fd512702049019a2"
+    },
+    {
+      "source": "test/authoring/model_runtime.c",
+      "sha256": "a2e3f0d2c850d772bd9ffbc5aa9123e3c6d368ca8119fab85034f6ebded442a0",
+      "object": "CMakeFiles/test_language.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/test/authoring/model_runtime.c.o",
+      "command_sha256": "08ade2280f7b07a0a3be2f4b826d4f896bf94503ffe0c1146e4ce68b34bbfb19"
+    },
+    {
+      "source": "test/language/packages.c",
+      "sha256": "f778df4dac2716919fb5ff95d5c67d0ec9d7e24bee88e0aec3b877ae2ce83224",
+      "object": "CMakeFiles/test_language.dir/packages.c.o",
+      "command_sha256": "532d843ce260ed37968d31a1184639ad628df05f5a229baaf095108a37655f4a"
+    },
+    {
+      "source": "test/language/package_syntax.c",
+      "sha256": "a20a6753e4f752bc36be2147fd7956bb930bf7e0ab2df34cade780014bbf0baa",
+      "object": "CMakeFiles/test_language.dir/package_syntax.c.o",
+      "command_sha256": "a728b13c2c2c91df773eaa3df7c5864e807fa9983ca1159b827a2954d34f80dc"
+    },
+    {
+      "source": "test/language/package_execution.c",
+      "sha256": "37ab0929089601f6bafc91056e813e119e24e9541e09c28922516322bf6b023c",
+      "object": "CMakeFiles/test_language.dir/package_execution.c.o",
+      "command_sha256": "6727a6f73a43a34feb77a29404218faf9a9c6d3e4b353d8f5ae6de3400dabc8d"
+    },
+    {
+      "source": "test/language/package_resolution.c",
+      "sha256": "6008398ccd571d26c952e53777352eb0ae2ca1ee5b1b60389cf6cc17f1b30451",
+      "object": "CMakeFiles/test_language.dir/package_resolution.c.o",
+      "command_sha256": "28297df9a815764d1f981aa4372417a3932d70f292bd97e232f00f57dc830b4a"
+    },
+    {
+      "source": "test/language/package_imports.c",
+      "sha256": "63bfb8f61eaef80fbc0ee45179567f5200146618f76855e81b8cc978a8b28f35",
+      "object": "CMakeFiles/test_language.dir/package_imports.c.o",
+      "command_sha256": "e019ab758d5e2b203dfd1dff9481b3962d3aa7f9f455831f3890025e59cae7fb"
+    },
+    {
+      "source": "test/language/package_files.c",
+      "sha256": "6ff9ab3cc38c6101088e09e6e5b04bb18322acb67a1beb46de700777a693c97c",
+      "object": "CMakeFiles/test_language.dir/package_files.c.o",
+      "command_sha256": "cf2b7d0bed2a9e039b39f3c45f30b85660b44225c32a96a016fc33ff8185bc11"
+    },
+    {
+      "source": "test/language/package_core.c",
+      "sha256": "addb10c23de06fd588b19b247ecb69bb1d645fda3ae6acc7b439aa54c9f7d9eb",
+      "object": "CMakeFiles/test_language.dir/package_core.c.o",
+      "command_sha256": "464ee9424429303d39ee60b5af4ea2b07c62dc545f0e3eda43823b9d0de5a1af"
+    },
+    {
+      "source": "test/language/package_tests.c",
+      "sha256": "02b8c422ec8d503b2f2ec7a82ce006a5122d92ffc11976d50230ece115f6ed04",
+      "object": "CMakeFiles/test_language.dir/package_tests.c.o",
+      "command_sha256": "53ed8f3255bb16dd014a5dba93a2aac769465a4187575f903a691dffae571c69"
+    },
+    {
+      "source": "test/language/package_graph_chibi.c",
+      "sha256": "973222752dcc299cd4450d8c64ac11f37ec7bb5bd91f3baf51f5f8d72f74206e",
+      "object": "CMakeFiles/test_language.dir/package_graph_chibi.c.o",
+      "command_sha256": "bba847d0094f805e1e1eb2a27e2742b87f241ed74aed61e2e69fcb3f05a3914b"
+    },
+    {
+      "source": "test/language/docs_markdown.c",
+      "sha256": "53169f6ef8d5acdb0b9a87e3c23ebd39453fb512cb1bcf26c897bb43a52f22ff",
+      "object": "CMakeFiles/test_language.dir/docs_markdown.c.o",
+      "command_sha256": "920e8edaced9ce373ec8d63ae231b3b34041b6b03a8cc16f8f90201d18c2a3b6"
+    },
+    {
+      "source": "test/language/syntax_corpus.c",
+      "sha256": "a40224377880efcdc8dd8aa190a0c76298cf888dce51ba1e7fd8bdd5d4a3a869",
+      "object": "CMakeFiles/test_language.dir/syntax_corpus.c.o",
+      "command_sha256": "973fdf476373ca5c4f2f2bfe74516b5c8be68c30fd53f8f05ed9673bec4563f7"
+    },
+    {
+      "source": "test/language/syntax_chibi.c",
+      "sha256": "b6b6d2a64c1764a39c15313fff4e8dec53c9db0747ccaafeadecac66a9c189dc",
+      "object": "CMakeFiles/test_language.dir/syntax_chibi.c.o",
+      "command_sha256": "0a3d779b156cb4f41e1ea45979adefedef1b607b5cbefb5769f8de4ffd50dcd4"
+    },
+    {
+      "source": "test/language/compiler_fixture.c",
+      "sha256": "67685b1785a3fd0077edc6934b4a43d981e15c5215aa6594be590818a00d4d05",
+      "object": "CMakeFiles/test_language.dir/compiler_fixture.c.o",
+      "command_sha256": "b4907ee31edc01786410a0de1895477b80c6948ad0454d0f8344d4e1d5429a73"
+    },
+    {
+      "source": "test/language/package_syntax_chibi.c",
+      "sha256": "c352aaa78ee1fde62e349af0eb45f8264ce3c69712e1cc24b71625cdd9292d50",
+      "object": "CMakeFiles/test_language.dir/package_syntax_chibi.c.o",
+      "command_sha256": "98033da7bfd4b9fca08bd5c0683557a5483093f4bbc40e23c94fd75e58fe513e"
+    },
+    {
+      "source": "test/language/package_paths_chibi.c",
+      "sha256": "7c84ec22b313eab0484c7d3fe8e1a736ed18db9d1706427cf6c9875be4871938",
+      "object": "CMakeFiles/test_language.dir/package_paths_chibi.c.o",
+      "command_sha256": "f03ea2f45b65db61b239d628cdcafc7a0f62b187c52fdd7835ddc834db2b9dd8"
+    },
+    {
+      "source": "test/language/source_tokenizer_chibi.c",
+      "sha256": "b8cf082fcf3a3f2babb2ede1d6678cc04ccef8903f3176958b28f9ad225cf098",
+      "object": "CMakeFiles/test_language.dir/source_tokenizer_chibi.c.o",
+      "command_sha256": "22035798c062f0ac7d2043095f58cf681c61f52dd4d84ef391c26dad7c78a15d"
+    },
+    {
+      "source": "test/language/package_routes_chibi.c",
+      "sha256": "d7d0381502fb7d5760ab3138b2b75482c1a54e6f3d0c4e644573ee46e2d0a3cd",
+      "object": "CMakeFiles/test_language.dir/package_routes_chibi.c.o",
+      "command_sha256": "65198b26ec9e651a667a556aab6e9350366bbe0dcb9bc9a0431ff30d740a6c0f"
+    },
+    {
+      "source": "test/language/package_snapshot_chibi.c",
+      "sha256": "3fe3410523fabf67107b2295d6a951586ce07e03734992b61fba3d00fdf28029",
+      "object": "CMakeFiles/test_language.dir/package_snapshot_chibi.c.o",
+      "command_sha256": "a8cf42fb44aca030625bd3d5b218003e8d817dfadcaa92d1e8714042b817a5fb"
+    },
+    {
+      "source": "test/language/compiler_artifact_chibi.c",
+      "sha256": "2a11257e6e27c405d0cb34634f6e9dd2257cab42a29fee04ed50cd1016dcfaff",
+      "object": "CMakeFiles/test_language.dir/compiler_artifact_chibi.c.o",
+      "command_sha256": "c0ed5ff62e6a0e0699cc64ae96141e46550468c824c423b297f000d752e0d555"
+    },
+    {
+      "source": "test/language/bounded_compiler_chibi.c",
+      "sha256": "7eeb0142d3a73c06472fc36829de4da1f3c682aeedee7f7ed9efa0544453d067",
+      "object": "CMakeFiles/test_language.dir/bounded_compiler_chibi.c.o",
+      "command_sha256": "bf52fc108d9f7d3dc5c1cb61d8bdb95334ee2d3598d53a2bb5423e4fb9513952"
+    },
+    {
+      "source": "test/language/prepared_writer_chibi.c",
+      "sha256": "7345f05b16b9c65f6caa3929b75b14edaa366ba6abdc2eea2d1773c239eb8439",
+      "object": "CMakeFiles/test_language.dir/prepared_writer_chibi.c.o",
+      "command_sha256": "2665750049b9ec6e1cd937d266ba859fa4844783800215c43bd046eea5b33c40"
+    },
+    {
+      "source": "test/language/shader_source_chibi.c",
+      "sha256": "799a6432fa5ef221553840b174f7d00e10789b5e735959633fc19e53cf996a0b",
+      "object": "CMakeFiles/test_language.dir/shader_source_chibi.c.o",
+      "command_sha256": "0733c0733955d235a3946fa031e32eb4f646ed9f51c0f6255608829d2fccad19"
+    },
+    {
+      "source": "test/language/asset_packaging_chibi.c",
+      "sha256": "023728f7d98e506245e80dd8be6f915b9400699cf737b7c48cd19a3b73d90b6a",
+      "object": "CMakeFiles/test_language.dir/asset_packaging_chibi.c.o",
+      "command_sha256": "9e6ac98b9c56d411f48dbd5b4b64306bae04de39553b90702d3d0c1cf6138520"
+    },
+    {
+      "source": "test/language/package_compiler_chibi.c",
+      "sha256": "c9b5faed7efd992d9a5ced8bedd16663c21d91a3ba20c2eae518e64d3941b505",
+      "object": "CMakeFiles/test_language.dir/package_compiler_chibi.c.o",
+      "command_sha256": "f141d6a917b1a40582f6e12ecc9e04f5625f7e3b4ac835aef5a7f1fefe3a9d9a"
+    },
+    {
+      "source": "src/host/native_libraries.c",
+      "sha256": "3b41f1c25733b5ac34b3808a75b4dc2295ce77b0f875207b0de9ba546acbfe12",
+      "object": "CMakeFiles/test_language.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/host/native_libraries.c.o",
+      "command_sha256": "2374c62db3dc9c126f98ef7212efcafefe963c4b2e72c135c314c7a0b7edd698"
+    },
+    {
+      "source": "src/host/process.c",
+      "sha256": "bc288ec6133c4a8fe8c99737ceead854bfe543a47c7bd5d242c67c9d9120a84b",
+      "object": "CMakeFiles/test_language.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/host/process.c.o",
+      "command_sha256": "0462d6359b36c73ef75131e23510722b3eae7ae6031754acdbc13bd89401e34f"
+    },
+    {
+      "source": "src/host/stack_overflow.c",
+      "sha256": "ead8566aeaa323063ee3bcb1b2faa031501813786e53d73b6dc057aba16d154e",
+      "object": "CMakeFiles/test_language.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/host/stack_overflow.c.o",
+      "command_sha256": "324c852b4d9878b39b5d4bd4b529f1e681b634f3338a5d53ad373d723667f1fd"
+    },
+    {
+      "source": "test/language/native_census.c",
+      "sha256": "eea42eb8d671b66011f71812befccb818011d33692234cc0c7d3b7e8ae40b6c3",
+      "object": "CMakeFiles/test_language.dir/native_census.c.o",
+      "command_sha256": "ee48c44e71626cb8d3fedec813d3f1d4fb52bc677649a03e5c1b0212b72cbfa9"
+    },
+    {
+      "source": "test/language/execution_scope.c",
+      "sha256": "56d12990dff425e7576c52a397962f07106b751621e7c6d53a67c01e790bc527",
+      "object": "CMakeFiles/test_language.dir/execution_scope.c.o",
+      "command_sha256": "c131da5cec944e969358e25479d9d3cf45c87af25466745b36c9f46871ec0135"
+    },
+    {
+      "source": "test/language/integer_semantics.c",
+      "sha256": "719b73ff50972bb2d923eef619a3955e606a3ced52645b2ed04af86483c44d2a",
+      "object": "CMakeFiles/test_language.dir/integer_semantics.c.o",
+      "command_sha256": "4d627e482a222b9014ec77221518a65dc35685459327fa4ea0d3831e3d44a895"
+    },
+    {
+      "source": "test/language/scalar_lowering_chibi.c",
+      "sha256": "6b97ec312c1b6db06b37ead2c017a6b76fe67e21b985ba9e22713b8372061bf2",
+      "object": "CMakeFiles/test_language.dir/scalar_lowering_chibi.c.o",
+      "command_sha256": "af3e4b5fe6ebf9d74573a14d25db61c1126392e1556134b93bdd666b100feb74"
+    },
+    {
+      "source": "test/language/constant_proof_chibi.c",
+      "sha256": "5c5fa0397b4ab630e261706e80298a45b76e3cdeb552cc9b86d7ee07c3c40891",
+      "object": "CMakeFiles/test_language.dir/constant_proof_chibi.c.o",
+      "command_sha256": "b3a2792475ae51a1a99e3857ecd4d5a877c21d1240162b59f3df037a9bc0be07"
+    },
+    {
+      "source": "test/language/constant_scalar_chibi.c",
+      "sha256": "189ab5e173fb3222f6f45a1d1033d26ead6cdd502dd4c7fc4e7824f6a8d280fe",
+      "object": "CMakeFiles/test_language.dir/constant_scalar_chibi.c.o",
+      "command_sha256": "6d1d7a7c4aff67da5da3aaf94d24d23c4c50c4790dcdf9a99f302264cae3958d"
+    },
+    {
+      "source": "test/language/lexical_binding_chibi.c",
+      "sha256": "c29dc838333b1aabbbf2d5141b5fada963157159c21a845d6663352b9ffe8695",
+      "object": "CMakeFiles/test_language.dir/lexical_binding_chibi.c.o",
+      "command_sha256": "a4eae2bb035a2b650750df5fb07b2cc44c25168ee9b29a268e545f295fc10eb3"
+    },
+    {
+      "source": "test/language/nominal_binding_chibi.c",
+      "sha256": "ccbf04902d2f888086fcf72d860a9397547ab2b6a166526ffb7b12cbd4ba001f",
+      "object": "CMakeFiles/test_language.dir/nominal_binding_chibi.c.o",
+      "command_sha256": "b9d003803d42ad8de79d3f053acad9db3d92475fb3bad46650a41f74a876a19a"
+    },
+    {
+      "source": "test/language/named_binding_chibi.c",
+      "sha256": "0ae2714fb6620281fec0151b3bed796b2e37299fa641436af6993e77d7524674",
+      "object": "CMakeFiles/test_language.dir/named_binding_chibi.c.o",
+      "command_sha256": "60beaca64789fa8f7bfd5c70c2d327aacb9eabe8bb50b0414c2a74da22b0b179"
+    },
+    {
+      "source": "test/language/type_constructors_chibi.c",
+      "sha256": "5e123595781ab8b57f982e2c75b3e2c5ef1b4e9e5f487564f54bacad50cee3e8",
+      "object": "CMakeFiles/test_language.dir/type_constructors_chibi.c.o",
+      "command_sha256": "a997f0232cf38d4d30b8050b5b969f42366fa007dfa12f495f0753fd9b04276e"
+    },
+    {
+      "source": "test/language/type_relations_chibi.c",
+      "sha256": "9c230b04532ce3ca8b9674c73a7733e69de89294457c00afdeea24533dc130dd",
+      "object": "CMakeFiles/test_language.dir/type_relations_chibi.c.o",
+      "command_sha256": "d0143ec6813c9bfd3fd71545f59fba6e3e305b6b061350baa181b715f7ed864b"
+    },
+    {
+      "source": "test/language/unit_algebra_chibi.c",
+      "sha256": "f805a8dae2132b689a63b55ab6cdb2252d1929431081303c9414c995fc2ca1a4",
+      "object": "CMakeFiles/test_language.dir/unit_algebra_chibi.c.o",
+      "command_sha256": "4f8512d7978468eeb3de174a9d49dcf27d0d894918533f5392505c662cf49206"
+    },
+    {
+      "source": "test/language/signature_fixture.c",
+      "sha256": "a7a69de3034efb3fc318a0e07916c5fd246ea778a161599857f357c0bc7e34f9",
+      "object": "CMakeFiles/test_language.dir/signature_fixture.c.o",
+      "command_sha256": "d2263accdb351099f48ea5eed7c1de868a91540b342116fd9251ff7575edde5e"
+    },
+    {
+      "source": "test/language/signature_reader_chibi.c",
+      "sha256": "af4464aa7fdbdb54e7a8ee0b32ea4672856aa36539041c01369c0afcac873488",
+      "object": "CMakeFiles/test_language.dir/signature_reader_chibi.c.o",
+      "command_sha256": "cf4627ed205b02a253e509d9019117c5ebf7b3122c909b8fb3f2654d705454e7"
+    },
+    {
+      "source": "test/language/callable_headers_chibi.c",
+      "sha256": "990ed64c4de7decbfec1407ca07a847126fcfe0626e8907a23bcb4ec6dfe7cab",
+      "object": "CMakeFiles/test_language.dir/callable_headers_chibi.c.o",
+      "command_sha256": "dc9bbfca5e8075d855332ac93b9afb2f343aef20e174acf97955147babf76c21"
+    },
+    {
+      "source": "test/language/unit_analysis_chibi.c",
+      "sha256": "21dcc8afb613ae148a1d832d63a2040ad42fa813223f6eaf5574d4b5af514c79",
+      "object": "CMakeFiles/test_language.dir/unit_analysis_chibi.c.o",
+      "command_sha256": "6aeeb8128656a85c7d22301b12cf9e37ac003926092d31d13b863af4e430579b"
+    },
+    {
+      "source": "test/language/union_members_chibi.c",
+      "sha256": "887a054f891d62e43b09da1a42b6b7e148724268856a488cd9ad0b246832f17a",
+      "object": "CMakeFiles/test_language.dir/union_members_chibi.c.o",
+      "command_sha256": "b4520c9d28a5a9afbdd4450cd7e9831eab29bf43060a8361529b80c632478aa2"
+    },
+    {
+      "source": "test/language/effect_analysis_chibi.c",
+      "sha256": "5d79b4d634823bd2e3f4d022d619a46c05471691aef2920719e71365446fcfff",
+      "object": "CMakeFiles/test_language.dir/effect_analysis_chibi.c.o",
+      "command_sha256": "ad34cc8fb3a0815a4be1bcd168a722af5404de7270e51248d6e3ac3d988ba364"
+    },
+    {
+      "source": "test/language/record_members_chibi.c",
+      "sha256": "365cc7003abcdc8726798c859e246c7b91a03e6d1539745ff2e5a24d0e499aad",
+      "object": "CMakeFiles/test_language.dir/record_members_chibi.c.o",
+      "command_sha256": "9686fcc6a4b7f3942db375d4c2c4fe2570243782f725a0c4325104a90b27fd18"
+    },
+    {
+      "source": "test/language/numeric.c",
+      "sha256": "8e797fa86ad39979620d961b8ae2df61d84c316c5d2c57bf8ce549450c284dd4",
+      "object": "CMakeFiles/test_language.dir/numeric.c.o",
+      "command_sha256": "7e63394e47774516b9ab45a9658d0968c7adeebaadf5065f050f597b1b8da8b7"
+    },
+    {
+      "source": "test/parallel.c",
+      "sha256": "4f1f82279d1cdce0519681ab75e37e49d2bf864f4ce386513ee341702d4e8800",
+      "object": "CMakeFiles/test_language.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/test/parallel.c.o",
+      "command_sha256": "3d77a07ad49a653bb9ca31a134ab498c51b313608136ec44ace9f7b06d99ab4f"
+    },
+    {
+      "source": "test/language/parallel.c",
+      "sha256": "21132314246c9f32f51ba6ff52fa275a6e78308566cfa84025d0017b6be21f5f",
+      "object": "CMakeFiles/test_language.dir/parallel.c.o",
+      "command_sha256": "d0cf39ce98edc015748480ce03202f9060f468a524e217700d7baacfc503ac76"
+    },
+    {
+      "source": "test/language/effects.c",
+      "sha256": "fc2b683cc53e76e500f5dd3df19cd8498d080e5f0cfec69879337407f8b3b05f",
+      "object": "CMakeFiles/test_language.dir/effects.c.o",
+      "command_sha256": "95dbb9e2bd8b2512cf4a287bd493e2d111db9b34250a280321e3556f868d5d90"
+    },
+    {
+      "source": "test/language/maps.c",
+      "sha256": "b8a0cc28ad37e78a06b14c059513bf92760e255e1ae51dba55365bb5c4e82f74",
+      "object": "CMakeFiles/test_language.dir/maps.c.o",
+      "command_sha256": "f8fcf665d822e5085949d12901643293a8ba855cd4bd75b41adac23f5fd0b4fa"
+    },
+    {
+      "source": "test/language/generic.c",
+      "sha256": "d822e21f8ede26f57b8030ec54149a0b59e070b9de0711d37d00586be32ac8da",
+      "object": "CMakeFiles/test_language.dir/generic.c.o",
+      "command_sha256": "e16145541eefbbee78de2e35465dd946cb80596c91b06143ca168fd37e05316b"
+    },
+    {
+      "source": "test/language/symbol_references.c",
+      "sha256": "9d770fd315f86993406254c560a63aedaa58cab57420ba8545d13e88363d27a9",
+      "object": "CMakeFiles/test_language.dir/symbol_references.c.o",
+      "command_sha256": "5439d1d4dd194577271ee00dcadb22bf6ee3df602151887460b67f8e2f985024"
+    },
+    {
+      "source": "test/language/packed.c",
+      "sha256": "dc85777c702685dfe4d03df68d4f776e6fba2d630f7106cff5b86960a5a1cc73",
+      "object": "CMakeFiles/test_language.dir/packed.c.o",
+      "command_sha256": "9b5a1809aad64143759e25c3ad37b4151ee77b34529ffd84b0535ecda5d538f0"
+    },
+    {
+      "source": "test/language/iteration.c",
+      "sha256": "307d3c8508b77f69d0356521335be2212ee91d3b5fbb4bc938b8a2505a1daba5",
+      "object": "CMakeFiles/test_language.dir/iteration.c.o",
+      "command_sha256": "c93fa940358da15f71a391bd8c17637fde4b10412a22eeee32fd602acb041d22"
+    },
+    {
+      "source": "third_party/yyjson/yyjson.c",
+      "sha256": "f5087730f67ad80913d028fe009c0da69ed053979c0a0b1298885f269a03c6d6",
+      "object": "sdk/CMakeFiles/chibi_json.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/third_party/yyjson/yyjson.c.o",
+      "command_sha256": "4c005d8476654fd9652b055adc49133eabd9833fc7ef14a14c488a5a4cb819db"
+    },
+    {
+      "source": "src/language/syntax.c",
+      "sha256": "69627826824da8d05b2a026cef380aafd926fea7395f148305f32035eb9e43b9",
+      "object": "sdk/language/CMakeFiles/chibi_language_syntax.dir/syntax.c.o",
+      "command_sha256": "e57f3513ed78b3b9c622014d1caf1539c15f98b93d7fe4032cd034fb4b46e674"
+    },
+    {
+      "source": "src/language/src/parser.c",
+      "sha256": "44137d9550910f54bd034ab692c7ce5871dcc41be91fbd2b626f70d66e82e31a",
+      "object": "sdk/language/CMakeFiles/chibi_language_syntax.dir/src/parser.c.o",
+      "command_sha256": "9090762a6fd7451fd2d5f226c708433f648231981a90d8fdab123f0c03747d41"
+    },
+    {
+      "source": "src/language/src/scanner.c",
+      "sha256": "14576420a65bc97466de4a3e9e24107d4a6d4ab7d8057297cfd53d24a47985bb",
+      "object": "sdk/language/CMakeFiles/chibi_language_syntax.dir/src/scanner.c.o",
+      "command_sha256": "cffe2e99148d5728f49fc02c4130830aacc23bd9b7a69bbb4bad09168daa0b04"
+    },
+    {
+      "source": "src/support/arena.c",
+      "sha256": "bacef774cc7ea9b038fbb8135086eefb7adb6f639a8a58044699a8800e741ab9",
+      "object": "sdk/CMakeFiles/chibi_support.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/arena.c.o",
+      "command_sha256": "f09ba8db0af70d3077f154a0fe8e9e0d33a6275a9c1d57aefd719fa76803ebc0"
+    },
+    {
+      "source": "src/support/file_io.c",
+      "sha256": "1f09f555659978108c77ae571d437338a6ca747cba6bd772384b3075625679a0",
+      "object": "sdk/CMakeFiles/chibi_support.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/file_io.c.o",
+      "command_sha256": "e41ed912e47caefe2c3d3930266ab25b4e26e8d23c381549eccab74955801cd6"
+    },
+    {
+      "source": "src/support/text_edit.c",
+      "sha256": "c729891607f1f57e97f54d707a71c91dcc88398df2bee15d7e010486d388ee0f",
+      "object": "sdk/CMakeFiles/chibi_support.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/text_edit.c.o",
+      "command_sha256": "2ff6df77521fdb04dbe39dc482aa235e8b8b26acbce73c0ae42fa174e482a9f4"
+    },
+    {
+      "source": "src/support/xalloc.c",
+      "sha256": "5c8bfb33a616789f934e50faf028b1f0ae5b85e58aa2eb8a81f11d9ad3452969",
+      "object": "sdk/CMakeFiles/chibi_support.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/xalloc.c.o",
+      "command_sha256": "9d7aa66102faf2dd684fbb0e28631ccc16c594d2153a729e0e7bb157be9afb5f"
+    },
+    {
+      "source": "src/support/rcss_map.c",
+      "sha256": "ad73dac0734b0b4b9d47762e999f23c91e0949881b096db24af4a2be098d8dc1",
+      "object": "sdk/CMakeFiles/chibi_support.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/rcss_map.c.o",
+      "command_sha256": "6c491df63ed983cd37785ede2e66bd6d719c5e6e2740a58bef58487106180f74"
+    },
+    {
+      "source": "src/support/asset_json.c",
+      "sha256": "c5412a67aa25273885d0c5c4b2b284c5ef12ca588b5fdf160a8e26a48b96ac46",
+      "object": "sdk/CMakeFiles/chibi_asset_json.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/asset_json.c.o",
+      "command_sha256": "2a4596f8e07d0a869ce12c72e6082ba46b1f13e9ebe6f24884f9ed07f77b205f"
+    },
+    {
+      "source": "src/support/asset_value.c",
+      "sha256": "16e682d0aec031bba8e51ce322d7bcdeb6fed9a0832f7ddb8e6039738684956c",
+      "object": "sdk/CMakeFiles/chibi_asset_values.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/asset_value.c.o",
+      "command_sha256": "b3ae9ef5dbd21c30bb17d327f801d86128cc7633b56b3f55dc75875856152387"
+    },
+    {
+      "source": "src/runtime/native_prepared.c",
+      "sha256": "b7527012ed26c73a46a88835582ea48d370cecdf26283c6c017fa16349af5b9a",
+      "object": "sdk/CMakeFiles/chibi_native_prepared.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/native_prepared.c.o",
+      "command_sha256": "a6606b9cc1dfc1b91f02025db17a9af6454ab3c64114688d7b38c04478f268da"
+    },
+    {
+      "source": "src/runtime/event_catalog.c",
+      "sha256": "decd383844113686ef71acd19ab65f14970ce7f027db4b5928bfe5853313010a",
+      "object": "sdk/CMakeFiles/chibi_behavior_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/event_catalog.c.o",
+      "command_sha256": "99bb376a5b3ebb33fe2d9ba07cdb4868c7a0e37d8f8cbe6507dd62049889cb2f"
+    },
+    {
+      "source": "src/runtime/behaviors/source.c",
+      "sha256": "5c75855db0d76bd80e285fd3aeea1176993f68aee7409d702b9fe78a7844887d",
+      "object": "sdk/CMakeFiles/chibi_behavior_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/behaviors/source.c.o",
+      "command_sha256": "d0cd646c1568f7c1413f12ce2d95f1c32b96020b023a030d91bf8b5cab5331a5"
+    },
+    {
+      "source": "src/runtime/behaviors/source_profile.c",
+      "sha256": "f3ac961a0a9f3bae817646bfcd79a5a79c745fbf0fcd05660f65a337ec63e982",
+      "object": "sdk/CMakeFiles/chibi_behavior_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/behaviors/source_profile.c.o",
+      "command_sha256": "84f969ee3c7e734fe73ddaaba84786fc774a9c644ce34565f739d30ff47cc2e7"
+    },
+    {
+      "source": "src/runtime/behaviors/source_publication.c",
+      "sha256": "a694d6b61900475635c4ab3ed9fc84ef708102a18f9083b191579face587c6b6",
+      "object": "sdk/CMakeFiles/chibi_behavior_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/behaviors/source_publication.c.o",
+      "command_sha256": "23aba3eb93f2978fb32b08d2787176f8ca8c631999781499cee1e40973ac835c"
+    },
+    {
+      "source": "src/runtime/behaviors/package.c",
+      "sha256": "b7bc722f22cd90c204a0ecbaf8cf3f96fedf19d4e68c24303ab7f30e32bd2842",
+      "object": "sdk/CMakeFiles/chibi_behavior_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/behaviors/package.c.o",
+      "command_sha256": "3da7df0f97ae08ee7cbe8450920e9200fb9c022b20e8eeac7f427cb17f2ec19d"
+    },
+    {
+      "source": "src/runtime/behaviors/module_set.c",
+      "sha256": "09aee4515e734e9aa06a27df4b7b2e9e4fb08652f555f8eb18938977acd4ada5",
+      "object": "sdk/CMakeFiles/chibi_behavior_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/behaviors/module_set.c.o",
+      "command_sha256": "8e10b592e56b8c487ce0bf5859087e2c53cf5117ebbfded1407b4cf9bdc613aa"
+    },
+    {
+      "source": "src/capabilities/catalog.c",
+      "sha256": "3d0b80263dad7a88f3c54807b1b5ca6f1b4c2827f5d8bcc516d4af3272ddb84b",
+      "object": "sdk/CMakeFiles/chibi_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/capabilities/catalog.c.o",
+      "command_sha256": "d542b9df79f9f45f571664e388fa72eacb57abc4109730b40c0a07568edb6687"
+    },
+    {
+      "source": "src/capabilities/catalog_snapshot.c",
+      "sha256": "12ccb0d476ab46cc261fc5740dcea82ee9a8687f338c675504962420a014c2c0",
+      "object": "sdk/CMakeFiles/chibi_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/capabilities/catalog_snapshot.c.o",
+      "command_sha256": "b48ce9314bd6b9b72be8768489747545a653a4052a3738aad980e1659aadb1cc"
+    },
+    {
+      "source": "src/capabilities/catalog_values.c",
+      "sha256": "9b0db94a84a07c3e9e73a980084104e9958a8a752f70d19b35dad3d3de7403a9",
+      "object": "sdk/CMakeFiles/chibi_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/capabilities/catalog_values.c.o",
+      "command_sha256": "45949cdf66d9a175fc62ccbb26c5763d0bfd0de893c5b67455a0707256003bbd"
+    },
+    {
+      "source": "src/capabilities/definition.c",
+      "sha256": "6119b9cf4beeaf149cbea38977449675de526341a690c2a526c27d3008c126c2",
+      "object": "sdk/CMakeFiles/chibi_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/capabilities/definition.c.o",
+      "command_sha256": "057d3084c30b6bdfc8903564a3ee32f73ebdcfae8de009c6dc30c9d717496eb0"
+    },
+    {
+      "source": "src/capabilities/operation.c",
+      "sha256": "abc57d54a184835a6b4d0250a209d890c3e24d54b13b908a6691d7074e1ee567",
+      "object": "sdk/CMakeFiles/chibi_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/capabilities/operation.c.o",
+      "command_sha256": "eb7559778cbef5ff27fef06d917730aaa567d2469bfa2d4b85a93a140b11b8ee"
+    },
+    {
+      "source": "src/types/type.c",
+      "sha256": "ba9c107bfb9be40b2b4a3ae190fdf980d5f264391ca98c59c7d7f698f1407a8f",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/type.c.o",
+      "command_sha256": "2d6be4912df22635a022714d1d2eb6d1f42ff953ba975d882fd7e0a2776d1b31"
+    },
+    {
+      "source": "src/types/schema.c",
+      "sha256": "f0c2edfddf01fb4792d98f5411a862034ec37da1004e9ccfafb8fe785e037d63",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/schema.c.o",
+      "command_sha256": "b79b2e8b311a4813395a44d9f070cf6ae8677bfb9d16df7be0c2755ca9a7a904"
+    },
+    {
+      "source": "src/types/catalog.c",
+      "sha256": "7fea82d7569ab7b8f30c03eb17a1e2181f59084e38bb28ac8d8030d3e9f3b7c4",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/catalog.c.o",
+      "command_sha256": "1a4d2fbf47df2a2c5cf3a62d76c46c99aaa955ad2aa88ffb9fcb026704875abf"
+    },
+    {
+      "source": "src/types/array.c",
+      "sha256": "9ebffb1ca1a4446800b20fb6c13897f31a3e5ff61edd494ec8798939140f5f0b",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/array.c.o",
+      "command_sha256": "4b9afb88adfb1a20bbc40dbaa898bec2b603d3eb3b58dcf92d952b0c6f10577b"
+    },
+    {
+      "source": "src/types/text.c",
+      "sha256": "4e6045888978204af9f5f7cb7f610ae09132ae75610200b3c236afef076f212b",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/text.c.o",
+      "command_sha256": "41795d0c545aa0780198d0f206aec3f3d0d129ee274ab6ee9de26cea4795681f"
+    },
+    {
+      "source": "src/types/map.c",
+      "sha256": "7c17b31c67560f2e471884b8773c32d8f41f87ec0d3a3b0ca839e68748a3f7f6",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/map.c.o",
+      "command_sha256": "d7ddaa851b888bb7ef8cecc51c07c20de4c8292b096632ed2ffed6ab5c9df451"
+    },
+    {
+      "source": "src/types/record.c",
+      "sha256": "34c9536f74facca6bf5d2bff9538cc453415f9a3cd68f0444e54fb3d4ade48cf",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/record.c.o",
+      "command_sha256": "a5e4be9d72e5f8c2ac22ec79d2a294225d0b66d07e72a21047b687e723dc232b"
+    },
+    {
+      "source": "src/types/copy.c",
+      "sha256": "ed2770c4b1f78e6a2f8b87bfa9aac5b931561d4855123599a90e64cb537c42a9",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/copy.c.o",
+      "command_sha256": "ee8bd1fb0ac85370054192f43e7707840040f5fc1e893cb6942306bb9d336a0c"
+    },
+    {
+      "source": "src/types/trace.c",
+      "sha256": "eb6667f746a88a74401b3aec24ecd6be9a548444ff383e0c063de6fe5ad68174",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/trace.c.o",
+      "command_sha256": "c3023f7bab3b2e69daadde63c6458bb79afa1e7d871351a019d812d876054c82"
+    },
+    {
+      "source": "src/types/union.c",
+      "sha256": "6c65525b5a274cf71a2f22a781e7cca9ccae23940b857b171e67d2bdeba10e7b",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/union.c.o",
+      "command_sha256": "5933494511f71bcca4d2b448d946bbe617a0f52ad6323421d1e36f60c1c1d0c4"
+    },
+    {
+      "source": "src/types/index.c",
+      "sha256": "4c6ed0f50729bf36b1494863b87f2524b45a11638c0ece27d6336776eaf3d45b",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/index.c.o",
+      "command_sha256": "41d0113b50e00cfd515c2c58903240ff09984c675e3ed27bb31325e85ac9626f"
+    },
+    {
+      "source": "src/types/value_format.c",
+      "sha256": "2aba88f687a549c08070b816e331bc41a19ef76deb205094622ab316b7ec469d",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/value_format.c.o",
+      "command_sha256": "360cf80e152669e8ed5d016eabc6bc00b5246c6e5f307528c95f4ab3f99c347a"
+    },
+    {
+      "source": "src/types/value_wire.c",
+      "sha256": "61096cc602d1feb8fd96cc2d8dcbd10ce3528bb598b3ebfeb4e4699726c8678d",
+      "object": "sdk/CMakeFiles/chibi_types.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/value_wire.c.o",
+      "command_sha256": "6bf2ef250314d0250662331a9122634f3a816d193c3a7d4677f7b5b94b7e18e6"
+    },
+    {
+      "source": "src/ecs/ecs.c",
+      "sha256": "79cb2a874dd9fe026027b8c53927cfac7ff5aed5a2156a5d581df38eaf6e9d19",
+      "object": "sdk/CMakeFiles/chibi_ecs.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/ecs/ecs.c.o",
+      "command_sha256": "14fa9c4198460f9961c40a13c30609af60b188e6cb6f2ebf3a7e3408c2528092"
+    },
+    {
+      "source": "src/ecs/relationship.c",
+      "sha256": "72dd15e01bd5744c4d25be9d7492cc98cdabe54c0955f5979d652f1513bc4141",
+      "object": "sdk/CMakeFiles/chibi_ecs.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/ecs/relationship.c.o",
+      "command_sha256": "e4cd80a072b8c4d559c620b1fcfe67f31ce613e08fc748aa465891c9c30fcdc4"
+    },
+    {
+      "source": "src/ecs/hierarchy.c",
+      "sha256": "0ab3ab9c063a7501ff5f68c2019e7d36105490f458c9896e04205f44ab9c6442",
+      "object": "sdk/CMakeFiles/chibi_ecs.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/ecs/hierarchy.c.o",
+      "command_sha256": "96845069bc86a8a418ece26388499f2d4b1e0fbae6c06a3f5ca07025ece6452c"
+    },
+    {
+      "source": "src/ecs/query.c",
+      "sha256": "d8fef0409dd4569fa67d695de1b9e4d8c2e474e224cfdb981fd95554d02bec67",
+      "object": "sdk/CMakeFiles/chibi_ecs.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/ecs/query.c.o",
+      "command_sha256": "11ab97e687f23dd9eeec4d414103cce9b2deb9aec922fcbe2717075b4691031a"
+    },
+    {
+      "source": "src/ecs/component_catalog.c",
+      "sha256": "5af5689043147fe40460287d7e9bc008bee19b069435b16e4fdbe81ce0978498",
+      "object": "sdk/CMakeFiles/chibi_ecs.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/ecs/component_catalog.c.o",
+      "command_sha256": "c8ce1e9391db443c1ee50a6f2f30d1f077560ee520419c10339c16f6de700b83"
+    },
+    {
+      "source": "src/runtime/events.c",
+      "sha256": "1dc604145b1d6d4fdcd3f6f45db490de8ccfcb99623493a7f38250169291eadb",
+      "object": "sdk/CMakeFiles/chibi_events.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/events.c.o",
+      "command_sha256": "96916c264922f0a0c3d5a86fb96987ecde9ea78ecd603a71ae7d3a9c806e873f"
+    },
+    {
+      "source": "src/execution/artifact.c",
+      "sha256": "1fa251a76ac764074e298235367b5b7f8ab11014ae1e44bbbd557b6764d15593",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/artifact.c.o",
+      "command_sha256": "7d48f773e266f7b65c56ba1f9e2d5a2d19f968825577b4e4443325f3f72651de"
+    },
+    {
+      "source": "src/execution/backend.c",
+      "sha256": "2b3bc0ae4dbc684483ddf8fe6b5433d092f3c0d4669480f8b4c74f41d617ff59",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/backend.c.o",
+      "command_sha256": "0f044d02a1cfa66500ab70d745c89c394d751e8b79d16505fbaf08a8bf62f0ad"
+    },
+    {
+      "source": "src/execution/borrow.c",
+      "sha256": "09b2a2ef7c8aed283dca067689c69c4ef4a34859c4d0331ec5c356d0fe1896af",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/borrow.c.o",
+      "command_sha256": "7cab2320be09b9c8cdfdcee96c834222f34891c9ad1dfc6835a64b0a3b736b89"
+    },
+    {
+      "source": "src/execution/c.c",
+      "sha256": "b9754fdbec1e4db92f548aa68c0149be71d558dbad660697fe855121468da382",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/c.c.o",
+      "command_sha256": "fcf5b6533036fb7f86ffedbc5cf0eb3b37ef44d35362a371efd7e8f76f7614bf"
+    },
+    {
+      "source": "src/execution/call.c",
+      "sha256": "5b6fb82214b185b9877b67606fa2a9f7f5259b9d98ab718a15ea96b5630322b4",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/call.c.o",
+      "command_sha256": "dd662ffaaa5102027f95b33de5c97e08ea398307b6919e87e14af51f307f7b10"
+    },
+    {
+      "source": "src/execution/component.c",
+      "sha256": "dcc5f768dafb544e0158f9e62cc04731d2ea8c77f0a3271044b8b24ef7cbf5b2",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/component.c.o",
+      "command_sha256": "5ed8029269cb9e1d7e6ff61138b6ea74d7d86cb4b9b352d9e22036f86ec5d006"
+    },
+    {
+      "source": "src/execution/ecs_reader.c",
+      "sha256": "5fa54beb8c9421f2d6cdccd779a27fe8063abc6794568d7acb8606eb65be29ae",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/ecs_reader.c.o",
+      "command_sha256": "43b4e06f86e587ff72fc1ccfd99f5c2af073e79acf4644209f71590c6a66c1fd"
+    },
+    {
+      "source": "src/execution/function.c",
+      "sha256": "ea8757fd7cd7c15b14a1b9829c22fce3aad4a439cdc6f1387220c085983f3545",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/function.c.o",
+      "command_sha256": "bd6266de644b0041c29e30bfa50c715db91d4262f8d7de06424b2d42ad5ea226"
+    },
+    {
+      "source": "src/execution/function_builder.c",
+      "sha256": "af09848d38902c419d95acdbd0e886cd36bc995448486e614a8907b7691f609c",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/function_builder.c.o",
+      "command_sha256": "b18d32c8bde29ee5baf4cc04bcb46b6792956914ee271fe66fe1f39e7f87b356"
+    },
+    {
+      "source": "src/execution/fusion.c",
+      "sha256": "962499af9ac52c0c0ab42d112323eba0c904183bd3b8e41d1fc0d13733151edb",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/fusion.c.o",
+      "command_sha256": "eb12c59a3dd6906f6b8b5c266f1b25b0e78fb4bbe809aa719b33c7bb9c5739cd"
+    },
+    {
+      "source": "src/execution/host.c",
+      "sha256": "6ccafee207cf2a1665bea3299f1e8d942e822da54b40754ec92ea5e3333bec48",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/host.c.o",
+      "command_sha256": "a30bc56b2ac2d8f600de74295ce07f34f23ab0ec15686e225f227d19e64881af"
+    },
+    {
+      "source": "src/execution/inputs.c",
+      "sha256": "309c99155816d48dd5678641d32ab3b004450aa6f2d526b492e039f26fe83a18",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/inputs.c.o",
+      "command_sha256": "519cdeed4415cee86295eff57bec0e6362f1e76036d158b9a55541a30fb41a2c"
+    },
+    {
+      "source": "src/execution/integer_report.c",
+      "sha256": "cf126cbe9706c049dc8cc66007d25e2304ed4a4bce0a406c4c3407361f238518",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/integer_report.c.o",
+      "command_sha256": "b2d2c48dd7c4768ed20b5acbf5897301a2b6faa2d291cfc27240a43b6f83e09f"
+    },
+    {
+      "source": "src/execution/intrinsics.c",
+      "sha256": "99b3fcdb4cf4456768d3245ef1747ecc653f69429676a1d24d468a3d19b370f5",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/intrinsics.c.o",
+      "command_sha256": "4719ca5f09eadc161e854500ed8a20c555d0709c252cec0399ff4f899b97b2f5"
+    },
+    {
+      "source": "src/execution/query.c",
+      "sha256": "aa2408ced3ad6b990e899f130783a444070d8a63c1b82e08b3b40c784b80a155",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/query.c.o",
+      "command_sha256": "05fca5a69e5bcd171c2fce796ab0c6b45af8efc4ceb41c934d0e351daf7a2f95"
+    },
+    {
+      "source": "src/execution/map_intrinsics.c",
+      "sha256": "1b7736af57a0482cb5b16670134f38764dbf6f336b9cec1cf20cf5a0ccfa1893",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/map_intrinsics.c.o",
+      "command_sha256": "3f1fb6552ce247827a6ca32a93a291da915d0a3bead21f60a63ee9867ce1b996"
+    },
+    {
+      "source": "src/execution/jit.c",
+      "sha256": "36a8498272d7c0949f4db6c65327938131dd00b9d7c371d3ab7f3cd5f9db3e6c",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/jit.c.o",
+      "command_sha256": "3142216730a1eca403b3e0cca4c7c99c5da21c42eb2233378554cae444e2240e"
+    },
+    {
+      "source": "src/execution/jit_component.c",
+      "sha256": "108f3aee6e5837dc2c6e44ec82f98e7b80bae8903d943e9f53467eb452c5a802",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/jit_component.c.o",
+      "command_sha256": "115ef43c29bdd4b43d2c584889c623545ad0ae0735df0468e2e76d1581ffb28d"
+    },
+    {
+      "source": "src/execution/jit_host_call.c",
+      "sha256": "74b3b7f7d932637030fb67977b01fa1b18ebf368e4090804d49357bc957b7169",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/jit_host_call.c.o",
+      "command_sha256": "11f0277a22c3396397dbf6fb3ea2a809a276d166f47fb2da433ce5f9c576b3d0"
+    },
+    {
+      "source": "src/execution/jit_integer.c",
+      "sha256": "caf849810d078e3510f6108d41220e8a936a31201d23fa3e8846c5d1b628c9a9",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/jit_integer.c.o",
+      "command_sha256": "cfcc4166bb5a0b930108c2e11be3007c11227ed86915b9b08e8bdb299edce3ab"
+    },
+    {
+      "source": "src/execution/jit_memory.c",
+      "sha256": "72762ae326d4606b5f6b62073baca6bbfcce61533e73e2ed49ed6b75f2967070",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/jit_memory.c.o",
+      "command_sha256": "8fdca87087c9b7d0be2c69d746352017c03e1ba9a586b44c692dc19f0644c974"
+    },
+    {
+      "source": "src/execution/jit_registers.c",
+      "sha256": "5bffc8dc234283cd71f7ea8ffaa77d90aa6500fbc59781e69a29d6992309e90a",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/jit_registers.c.o",
+      "command_sha256": "189e61d0e37e90f27d698a35f5b9ddb947ba2a6e63a00d3052c9ca5015e1f5d7"
+    },
+    {
+      "source": "src/execution/jit_suspend.c",
+      "sha256": "769609e2453fd48dcae7e396a4a1f64a8f0202a6500627da79924a21ad425e57",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/jit_suspend.c.o",
+      "command_sha256": "a9f42991a82471e522c5faa0f874885344ca819be839ed788b0a1c380a7a204a"
+    },
+    {
+      "source": "src/execution/jit_system.c",
+      "sha256": "db2743200b473ec122883a075852eca560986a5fdab3f6a6def762ea0ada0636",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/jit_system.c.o",
+      "command_sha256": "c653f66d04b7b745b96a56d2cccf0367dc2b0e2637b4b847aa552e2928d2ece5"
+    },
+    {
+      "source": "src/execution/jit_watch.c",
+      "sha256": "475966df1fb0a65190968c697917ed3b707aaadea87f22c04c1a6b90b8f01dd6",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/jit_watch.c.o",
+      "command_sha256": "24c0b524b214f6250493e221f107c8b6e3e7356670712720a34f6dd1d29b4b4e"
+    },
+    {
+      "source": "src/execution/log.c",
+      "sha256": "465e5655c906d0c23ebe57d44b0770b73490c2011a21b8204190d2fc783f9996",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/log.c.o",
+      "command_sha256": "a7d3595a27464995841fb0b67689d256fe937e300ee125e0f43b1586797569af"
+    },
+    {
+      "source": "src/execution/machine.c",
+      "sha256": "383c419d48038a5bd27d0f4e443fd16ef4d0bf3eb91918f89562eae18600a18c",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/machine.c.o",
+      "command_sha256": "b27ee1db5609c8b2ccf0bc648516e6bb865c4de948c3a0e6a48fc8acd7719c2d"
+    },
+    {
+      "source": "src/execution/module.c",
+      "sha256": "6652dcdb9b5848975a359fb460c31ecdf952a3014cfb8026eeb5caa3f384cec1",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/module.c.o",
+      "command_sha256": "c605dad301fd396fe52691f5532e791741bb12aa8fa5a2eac729ff8b1ccf767d"
+    },
+    {
+      "source": "src/execution/module_effects.c",
+      "sha256": "74d9b350e04de0b8b882afd1e8b3e030217f98433e259b946ad9509d32be2b12",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/module_effects.c.o",
+      "command_sha256": "0cc345ac6349834f56e87c0ae055121e7df1aa22f8e119d9920bce1d479ea5c9"
+    },
+    {
+      "source": "src/execution/opt.c",
+      "sha256": "c89d768688b2218a04ab5ca446358865bf528017e4b4b17175ed2affa63063e4",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/opt.c.o",
+      "command_sha256": "5716a7fd838753f3927a6db1592aeea41d7b1a33a4e5b281d105c8cc43470be7"
+    },
+    {
+      "source": "src/execution/parallel.c",
+      "sha256": "178763f259ad79660407a5258a9c55d1d3c091aa61a70b1fe7f0f9ea81dd6766",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/parallel.c.o",
+      "command_sha256": "0dc9dbb1a41946aacf443a1aa07d85e1ad73488546f41bf7ce8bc8108664b555"
+    },
+    {
+      "source": "src/execution/native.c",
+      "sha256": "4ee47c7b1b0c1b9dc716a6e15361c1fd03b54a0634c401ab1f12b061863d33ec",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/native.c.o",
+      "command_sha256": "65201d9e1113fb19b7b135791e750ed5deb1bef9abb1904c4e10743d67c414a0"
+    },
+    {
+      "source": "src/execution/preparation_budget.c",
+      "sha256": "077dbd73f10935bfc1849cd9d7ac440c41fbcdb3f6df969ed25c50b7b0548b11",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/preparation_budget.c.o",
+      "command_sha256": "0b7651865712e005d157aa95a328762477f1991e2b8a4744d8a8cb5157ca8df1"
+    },
+    {
+      "source": "src/execution/prepared.c",
+      "sha256": "14159093e3bdb0d550df2b6f10329f05d0b6022ed2ea32fcadd404f9af534149",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/prepared.c.o",
+      "command_sha256": "ad2a1c178292af52cb23c87f9d5d8cd4866de81a296a3969cbcd129c7bf9cf2d"
+    },
+    {
+      "source": "src/execution/prepared_function.c",
+      "sha256": "cd895619bfccca5e307d8b2746bb9f313bd866aed19b89010ffef5c45b3236d6",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/prepared_function.c.o",
+      "command_sha256": "6d3c872b266a45a741188cc9b0934a7ce635f973ba4f6056dbb41525ce40ad3e"
+    },
+    {
+      "source": "src/execution/prepared_record.c",
+      "sha256": "6ffd27fecdfe2ec95fc8abf77d3399c4c25e23e45278ca54553eda6f13d72448",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/prepared_record.c.o",
+      "command_sha256": "d6e77772cc9e0872b6b7e3dff77d4bfe3faab3160375733b59e87efdbb717107"
+    },
+    {
+      "source": "src/execution/program.c",
+      "sha256": "bd2baf75909f43678531b964777bd95e1ad07b53177888abe97899bc34449a82",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/program.c.o",
+      "command_sha256": "014489083fb443f032b7d2de7bebfe0fb8f774a81a8d0d842c41d51a6aeed9d6"
+    },
+    {
+      "source": "src/execution/program_inspection.c",
+      "sha256": "7ac43a2140f79a7e673ccd2993fa7b7c52292df5d765873872b5cc3d8fd6b072",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/program_inspection.c.o",
+      "command_sha256": "b890846cfd1aa143837f97839eab0e4cff6ff201cf0203cc404fe1bfd7aec064"
+    },
+    {
+      "source": "src/execution/program_activation.c",
+      "sha256": "270880b87ebc8d863c2ed6c101e94b1f6023f4a08b6a456aa471a4901eb7f8cc",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/program_activation.c.o",
+      "command_sha256": "b8b5cf0b6e15bad1212989ee9e6f407c40a0df5e3c8afac086f41814591ed0d7"
+    },
+    {
+      "source": "src/execution/program_migrate.c",
+      "sha256": "4a92f3da1b841078961ce749228838f3688c8d16b3c2adc653454c7e36773117",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/program_migrate.c.o",
+      "command_sha256": "2b92ac2b770772d9b5a95596791929ebe9e005184298ef672fb78ac629b0032a"
+    },
+    {
+      "source": "src/execution/program_observers.c",
+      "sha256": "7ef74d014ee03b0ea3ec352fc0ff39d0f676bb08c8b0ac4da5c7fc92ac55e496",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/program_observers.c.o",
+      "command_sha256": "6a53cd30feb8d050d4d0a98db3af48d82fcf9a719d554b38d92200c8e4d6f739"
+    },
+    {
+      "source": "src/execution/program_bindings.c",
+      "sha256": "12e0f6ea4be14559cc94a520671b636dc1fcab398e317f5643f37442778aaec2",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/program_bindings.c.o",
+      "command_sha256": "dc4676a96750b505539427caba146f473a871a8d1c0d0f8058291d8802eae2d8"
+    },
+    {
+      "source": "src/execution/program_commands.c",
+      "sha256": "e7dfff663368be977623ecea195b1ec9fea485fc44467f4500f4c6503aa17bb6",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/program_commands.c.o",
+      "command_sha256": "69fb52af55d782a5578b2edd0fb96b4ffd85bc7aae13caba51a5a5565a333a8e"
+    },
+    {
+      "source": "src/execution/program_locals.c",
+      "sha256": "98c5aff791d83d534b4e4df3547cae114984f129331a8c48947192411b57ee7f",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/program_locals.c.o",
+      "command_sha256": "ecb93a8d3cf09e293c5d6233679254d04eab5cc4de760862bbeb694df069289f"
+    },
+    {
+      "source": "src/execution/program_storage.c",
+      "sha256": "00258dee0f080286dd07e268bde5a74270b66f28013b44f65e535e731a86d072",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/program_storage.c.o",
+      "command_sha256": "fd40d1c7fdcb8afa54f419a10613b8f470de41beeafd91c25c58f877e136934e"
+    },
+    {
+      "source": "src/execution/program_preflight.c",
+      "sha256": "f23857de538b2152ec73271ee60670a5e58ef39d4d3adbed446900e9553558a3",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/program_preflight.c.o",
+      "command_sha256": "ff207e7f9147ac35d0cd0497debfe6b2764f35dd004a60d9df21300c22efe7a8"
+    },
+    {
+      "source": "src/execution/program_tasks.c",
+      "sha256": "5dc1f9422d355c3b9ac358fe0ae06c3e67c91bbd70c019fc63c616fa5b65dee9",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/program_tasks.c.o",
+      "command_sha256": "3284f3d3e0d096c27ea9228104c4c94e4d8bd50fb55feaeee612bc4db99cdcbc"
+    },
+    {
+      "source": "src/execution/range_opt.c",
+      "sha256": "251e617650fbc1313a5863ac9974adcef761e51a4f846d3bb4aa8ffe03c7fd1b",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/range_opt.c.o",
+      "command_sha256": "4d5b6c78a60797364311aa77ac29f2ec2e5526cc2cc069db8465f05fd82fdd40"
+    },
+    {
+      "source": "src/execution/reads.c",
+      "sha256": "ad7bcaccebb2f132902df72e0ca18cbede48d0fbab4d653992bc38c80c0c12d5",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/reads.c.o",
+      "command_sha256": "40bfdec4dacc4e3ab9a3ec120d29c72b43e6d158fae1c4ab2aaa4f3d4078f12c"
+    },
+    {
+      "source": "src/execution/request.c",
+      "sha256": "f56d4f4de1d2c98c55844e00dd46eb242e306d2d3b6261b02a5fb19977381ade",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/request.c.o",
+      "command_sha256": "f013b19a7c7a106d3014d98fa47809f5562922169ae7719f070fbcc6dfbced0a"
+    },
+    {
+      "source": "src/execution/runner.c",
+      "sha256": "273e76156b80e0960787a8631d68882aa7c335a8327133a406df24bd5e489d61",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/runner.c.o",
+      "command_sha256": "505d5e0e61a69dd642b33f46d86786dc48085152af9e3137c9fd7df8922f1ce5"
+    },
+    {
+      "source": "src/execution/scalar_lowering_plan.c",
+      "sha256": "90f78ebedcbe154e4fe40fbef69e9bc7d32e04ea234696783afdb15764467557",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/scalar_lowering_plan.c.o",
+      "command_sha256": "2dc612b9cbf105e0f2e29568020a9276c68d3fa83c6731e6083aed1c2fec0ef8"
+    },
+    {
+      "source": "src/execution/scalarize.c",
+      "sha256": "664a5619545dd479cd077428abde25773aa95e3519ae0fd6735d715ca1c784e4",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/scalarize.c.o",
+      "command_sha256": "b23290596b002ed83da3b722a77f02db7ad818750334c8e7eb58c84a927e55b4"
+    },
+    {
+      "source": "src/execution/source_debug.c",
+      "sha256": "2cac5ae1c3048d290f71ac478e22718d40995b85ab6519fdcf22356edc9d1a24",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/source_debug.c.o",
+      "command_sha256": "ae7ee69c807455188afab6f3a404b6c470b08e94cc0807fb1a7845c87329e9e0"
+    },
+    {
+      "source": "src/execution/state.c",
+      "sha256": "5b2e6bb38e6a9e4bae48bbda472e2d87bdc977f311b0636fa579c16b52d4f400",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/state.c.o",
+      "command_sha256": "3539fcccafd3c0ef497e6012d655eb0858bc72eac7aa7f18b1ee25d92739c702"
+    },
+    {
+      "source": "src/execution/storage.c",
+      "sha256": "678e583ef281deba3e4f9505ce8017989b182f5d51cbf8ba2aca8dc50acb64ea",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/storage.c.o",
+      "command_sha256": "7028e11fc6c4c9f528515254cf04edd2f417b764ec010eb797c52e98bf8bfdb0"
+    },
+    {
+      "source": "src/execution/suspend.c",
+      "sha256": "8574a24a3091bca605320cd99df33377455a799905bf45ff38ffbdebbc832419",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/suspend.c.o",
+      "command_sha256": "362c3969c1cad3b42e25cd03e0bc442aa2aa25a78657205df30fe72efe4b3e71"
+    },
+    {
+      "source": "src/execution/time.c",
+      "sha256": "798fb1d004df5f2aa76c7afbbca559c6a324887e29429d9790bf38d6636ad773",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/time.c.o",
+      "command_sha256": "81e5ab6def34fe2b7873a26317eb9bca2d3a6bd0946e843db97d9d2b75ec4a1d"
+    },
+    {
+      "source": "src/execution/vm.c",
+      "sha256": "da9ea5467a465f0144096e739066e7af0b83f2c505f21b9ccd28021124d8ad89",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/vm.c.o",
+      "command_sha256": "a43ab20df13c4e3604748e477b3a964a497cf66f515156d34733c601a6f1aae3"
+    },
+    {
+      "source": "src/execution/update_jit.c",
+      "sha256": "cd5893c31362ffe25079370d659692863ae76afed4f731f731bc356c9e7f87e6",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/update_jit.c.o",
+      "command_sha256": "e00bc4970a0dd55d43d90789f0bff7dad2907d032d1385b34db3b57ee48a985a"
+    },
+    {
+      "source": "src/execution/wasm_emit.c",
+      "sha256": "ae30c5133ef26c3bc713dfb7157a0a9bc711ed112c9204ec2c2d85125e777994",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/wasm_emit.c.o",
+      "command_sha256": "c02cd3d9168ccd9d6292e32c78ef5daf5d085c5d5d5a9d82ff4ca85b01e5601f"
+    },
+    {
+      "source": "src/execution/wasm_jit.c",
+      "sha256": "d25af84bc8ead905edbe0cdf75aecd54f4abb10bc7c91d338b68114b8d519fdd",
+      "object": "sdk/CMakeFiles/chibi_execution.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/execution/wasm_jit.c.o",
+      "command_sha256": "b521107599eb5e680dc064715a65771e8fbee1a2e0ac71aba71420dd4c0fe1aa"
+    },
+    {
+      "source": "src/runtime/native_capabilities.c",
+      "sha256": "e4ee96e1b0f01f07efa7ccc8905edfaacb8d2cdcd7410438b9f7a144747331f5",
+      "object": "sdk/CMakeFiles/chibi_native_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/native_capabilities.c.o",
+      "command_sha256": "82427d2d604401d2b36e7483c847e848d4f5737d89f92a1898c66bcd7414724d"
+    },
+    {
+      "source": "src/runtime/native_definitions.c",
+      "sha256": "0e56168e7a35e92677bd498c0cf650100f4c056054f6efd124fa28e809d3f16a",
+      "object": "sdk/CMakeFiles/chibi_native_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/native_definitions.c.o",
+      "command_sha256": "394dcdef6ca1aa0c243910c90a150fd46b9f959a1b4eb0ee7229cf374923d535"
+    },
+    {
+      "source": "src/runtime/type_definitions.c",
+      "sha256": "ef10343d7a105c9dc352bf00548803120ed0ac9aaafdfd0d229d21f4502f234e",
+      "object": "sdk/CMakeFiles/chibi_native_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/type_definitions.c.o",
+      "command_sha256": "f91e1c3675efb6f8f1479362863779c7be39b9aa4e610e319a207f0d95aa7be7"
+    },
+    {
+      "source": "src/toolchain/compiler_artifact.c",
+      "sha256": "2bf878820d6b00b7f7899d0417fd5ce83669e5fa3dd227416f645115e7ee6f3b",
+      "object": "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/toolchain/compiler_artifact.c.o",
+      "command_sha256": "e63bf024568fe8980e125cea6bb6226e5614ffe72230d960fc31f5402577adc6"
+    },
+    {
+      "source": "src/toolchain/compiler_host.c",
+      "sha256": "9524b7dedeca70c20dfe825bf976e8bbff7a25b2971ccf67962927ad4eb59965",
+      "object": "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/toolchain/compiler_host.c.o",
+      "command_sha256": "9a16feba93dd8002901f237dccee08aea2667d84cc2663cceb17a811e0e2adb7"
+    },
+    {
+      "source": "src/toolchain/compiler_json.c",
+      "sha256": "552ece406241c4f0f06f11978fdfd009d72420e8ecbee6680ad69472fea55ebe",
+      "object": "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/toolchain/compiler_json.c.o",
+      "command_sha256": "a67ef4a778aaa5b11f716bc1c38eb29bdab01d39feba2385e19b78b4db26f164"
+    },
+    {
+      "source": "src/toolchain/compiler_syntax.c",
+      "sha256": "eb8f9a7a6259d47bed9b937fb0c3a8de9d6f795273ce54f80af190accd4b11ab",
+      "object": "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/toolchain/compiler_syntax.c.o",
+      "command_sha256": "6f828b8b895131d551ff13cfbcea806efe192e664e12ebb86819977fcea3f7e7"
+    },
+    {
+      "source": "src/toolchain/compiler_target.c",
+      "sha256": "266ed2bcc132c29c6e1a30f3f34445be36ba29fa113c902697b566b76081424c",
+      "object": "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/toolchain/compiler_target.c.o",
+      "command_sha256": "3f6f288d5fcda2e5de3ac51f8ff21d4c6519ad6130016b6caba1ff2f4d96fec3"
+    },
+    {
+      "source": "src/toolchain/compiler_bootstrap.c",
+      "sha256": "f2d78cd709ab31d81302c94a064802321cf3bcbf103eff67c44c8090a87b5b42",
+      "object": "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/toolchain/compiler_bootstrap.c.o",
+      "command_sha256": "7c0f1400e66fb9b4c13bc4674824ccc30524fc439cc59a3db5db7ff526940a63"
+    },
+    {
+      "source": "src/support/sha256.c",
+      "sha256": "69ca5d8ac1eb581846b8aad830e2e0b7cb29eb2219a47b75e15a9c7d7f31fdb1",
+      "object": "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/sha256.c.o",
+      "command_sha256": "27e3a8a70562e16f6bead2c8783b0ae11dd3e201d9d0d4dfd5a82b9f60ec3f54"
+    },
+    {
+      "source": "src/runtime/arrays.c",
+      "sha256": "76c2605cec92fe42de1291beca6fc04cb504319405dd92032f26d24a0433b8b6",
+      "object": "sdk/CMakeFiles/chibi_array_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/arrays.c.o",
+      "command_sha256": "22e6a11c9ec0fad159f0888497305e625ecef69f6d1f2acc498fe7313fd0e045"
+    },
+    {
+      "source": "src/runtime/arrays_definition.c",
+      "sha256": "4fe46ccf1ad3fd5c602df58392857269fcaaee125822cca47d1892461cb2c378",
+      "object": "sdk/CMakeFiles/chibi_array_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/arrays_definition.c.o",
+      "command_sha256": "457f9841ffe8b276a0d54e98a30c40fe4ffc1d11af10d46d2a0e8000a7dc26cb"
+    },
+    {
+      "source": "third_party/ckdl/src/bigint.c",
+      "sha256": "fc37aaad106574eb55694f76fd5e798d51664d0ff9af9e5c6ab74f7a7865cb5e",
+      "object": "sdk/CMakeFiles/chibi_asset_kdl.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/third_party/ckdl/src/bigint.c.o",
+      "command_sha256": "d09b96912276a110040a0f46032a6a2a676e6b9ad45adba114f34f13debbac6b"
+    },
+    {
+      "source": "third_party/ckdl/src/compat.c",
+      "sha256": "af5e4ac76bbc6f6c3e777ed1016b6d5ec7b34165e918955eb4100b8da43c7ac0",
+      "object": "sdk/CMakeFiles/chibi_asset_kdl.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/third_party/ckdl/src/compat.c.o",
+      "command_sha256": "27cc5cddbd85ebca70c93e0d306e5d4aba82028035adfca67230821da9e07723"
+    },
+    {
+      "source": "third_party/ckdl/src/emitter.c",
+      "sha256": "a29cae570ab6f6911e061e7e21061f9ac928c6b991d87af3709b68d068905113",
+      "object": "sdk/CMakeFiles/chibi_asset_kdl.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/third_party/ckdl/src/emitter.c.o",
+      "command_sha256": "ee2e537ab0549a26d86dcdf58627bc890137e31a8e04f4f09a68d6bd83c2b0f7"
+    },
+    {
+      "source": "third_party/ckdl/src/parser.c",
+      "sha256": "c99d56e7e1dfc7c75a23663d68ab0494c5d980a44edb788459155cdd57ebb348",
+      "object": "sdk/CMakeFiles/chibi_asset_kdl.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/third_party/ckdl/src/parser.c.o",
+      "command_sha256": "582128c8a553e7efabd2c60125789a4d8a4e021da9ffd0d27fa13fd6d04818ea"
+    },
+    {
+      "source": "third_party/ckdl/src/str.c",
+      "sha256": "e76f0c0e1d7fb41e05278a903d04705ddad7c8e395525e5d3f18beba4b43c2e3",
+      "object": "sdk/CMakeFiles/chibi_asset_kdl.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/third_party/ckdl/src/str.c.o",
+      "command_sha256": "1b9c769533eb119f9f44c40157fd6185371a58bb54ef7785168f5a4572ea0345"
+    },
+    {
+      "source": "third_party/ckdl/src/tokenizer.c",
+      "sha256": "315088744ded1a25f2dbab7c6460753ba403967d62fcd5132e0f26a56cde71eb",
+      "object": "sdk/CMakeFiles/chibi_asset_kdl.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/third_party/ckdl/src/tokenizer.c.o",
+      "command_sha256": "b476ec5d0e31e3622246fe1e922e7555b16ef8cba7b195572d02f86cc897d63b"
+    },
+    {
+      "source": "third_party/ckdl/src/utf8.c",
+      "sha256": "1b8d0486ebd0d4a874ed39dfe45ceebd6f2dcd6b202e807a39201582bd1c5d18",
+      "object": "sdk/CMakeFiles/chibi_asset_kdl.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/third_party/ckdl/src/utf8.c.o",
+      "command_sha256": "6c026e1e66f6c7c4d414a77a979fc5d598077ef71c2e0873f9f098641f791217"
+    },
+    {
+      "source": "src/support/asset_text.c",
+      "sha256": "085544d956f8be5b13943861fa4b5f1a9c6ed2073c4f1715177954b70d65eca1",
+      "object": "sdk/CMakeFiles/chibi_asset_text.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/asset_text.c.o",
+      "command_sha256": "14b6b3a490c7c456660233a0a8b1b5ece10d7f058e7166acd01db13c026e1918"
+    },
+    {
+      "source": "third_party/fmt/fmt.c",
+      "sha256": "7c210e348d6881faa4ebbf2643d5bc56ae7fb96e32a5eeb5be679f4939076136",
+      "object": "sdk/CMakeFiles/chibi_fmt.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/third_party/fmt/fmt.c.o",
+      "command_sha256": "997d18c6feab220934356463caf32ab5e3afd32aba8bf443f96255a615af7be7"
+    },
+    {
+      "source": "src/runtime/text_format.c",
+      "sha256": "5b06bbc32bc18602930fd45a9c8d1ce0c82974bab644b08abf076603df07ae9a",
+      "object": "sdk/CMakeFiles/chibi_text_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/text_format.c.o",
+      "command_sha256": "64c7f92591e03a78cca033a29409dd331fe7ed07f8ae0ca498f732a23dd67872"
+    },
+    {
+      "source": "src/runtime/text_definition.c",
+      "sha256": "da40999704eaabb13f0893e53c0319654fca8d7c32fb8df1ef99f4988568bdd2",
+      "object": "sdk/CMakeFiles/chibi_text_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/text_definition.c.o",
+      "command_sha256": "4d57706b70d0990bb5ead13009595ba06b081f9c8ebf5ae0760267176e62ee46"
+    },
+    {
+      "source": "src/types/value_document.c",
+      "sha256": "1330170b2438271caa3bb7eb5b188365f02917e80bba00332bfde4bc28cfb4e2",
+      "object": "sdk/CMakeFiles/chibi_value_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/value_document.c.o",
+      "command_sha256": "5705fd86638c3abc070cceb90c06f56b5bd2821bc1e326d398c8779de70dedd8"
+    },
+    {
+      "source": "src/types/value_document_read.c",
+      "sha256": "7020627cf86a98c5135eeceb826f981dded967f4536999b07570067954bedeb1",
+      "object": "sdk/CMakeFiles/chibi_value_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/types/value_document_read.c.o",
+      "command_sha256": "fe1a99f7821302cf37d41a0e9b55e579e0c802874711a3f6f99b1793a01d3ea5"
+    },
+    {
+      "source": "src/runtime/math.c",
+      "sha256": "f62b5c39424fada2383fc7030cfac61471d3a57d0a3d8913de13be3f22788124",
+      "object": "sdk/CMakeFiles/chibi_math_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/math.c.o",
+      "command_sha256": "4d8130a184d5322f5ed6c983c4c8d8c5b15dcb68bead8bd08e1c5f5e206be86b"
+    },
+    {
+      "source": "src/runtime/math_definition.c",
+      "sha256": "af1750f83d272bbc2ea3da0ee865172c49da8b995ff6ae496c2a3ab95de7ecc5",
+      "object": "sdk/CMakeFiles/chibi_math_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/math_definition.c.o",
+      "command_sha256": "307d7bac292299da5c93aaaee88c25f334a9fc44d6d8429a4302409b39f22b29"
+    },
+    {
+      "source": "src/authoring/native_bindings.c",
+      "sha256": "fb2276ceb4cc670b41ecfd700434a2fa4ff53d5fb735305f6d50f34a5d1425b6",
+      "object": "sdk/CMakeFiles/chibi_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/native_bindings.c.o",
+      "command_sha256": "9ba45944006ed49e347d52fb3807994ae1834a008f91f2e6cca9783db6977208"
+    },
+    {
+      "source": "src/authoring/source_literal.c",
+      "sha256": "7563cdcb0337d7cf77962753cbb85b0ffe492bd99382ea9d77bd77e983ded3a4",
+      "object": "sdk/CMakeFiles/chibi_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_literal.c.o",
+      "command_sha256": "fc438e87c0b48799a20ec9157fc80d7f3f6bd8e13d52c1c38045bb8add619775"
+    },
+    {
+      "source": "src/authoring/source_references.c",
+      "sha256": "fae567327e0df1e18ee7425fd378d5104985a7cd606f1fd9409fb5e99eb932db",
+      "object": "sdk/CMakeFiles/chibi_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_references.c.o",
+      "command_sha256": "61cd779f3915cd208d98179709169f0f8391535592f78044e200ad5f7d4c15ab"
+    },
+    {
+      "source": "src/authoring/source_prepare.c",
+      "sha256": "51d03b36cc32ce400688713ad65e09a28dd7f18d84be9d956e5e4cd657580c59",
+      "object": "sdk/CMakeFiles/chibi_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_prepare.c.o",
+      "command_sha256": "6c9e60e65e3c19d72d9227c0b99897443f022a5bfced7f05be7f8438e106ddb7"
+    },
+    {
+      "source": "src/authoring/source_link.c",
+      "sha256": "2241be8036ad8182b9d80130f5a899d73b39eab2efc7ffe30ed27e7069cb7aed",
+      "object": "sdk/CMakeFiles/chibi_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_link.c.o",
+      "command_sha256": "5cbab34d4bbc5844cdb41053fd937d364dff58a8f5fa047f664723898919aaf5"
+    },
+    {
+      "source": "src/authoring/source_format.c",
+      "sha256": "9f5357c1ef580a7e982af4d81cad176faceae89da78553ee38be17da29f29c1b",
+      "object": "sdk/CMakeFiles/chibi_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_format.c.o",
+      "command_sha256": "269fa665b66c6b7a93f9a0be789665047e5a0801f9d0f93267ac0bc48471d093"
+    },
+    {
+      "source": "src/authoring/source_navigation.c",
+      "sha256": "86cbed3ffcb4b7bd25831b674a54b8fec91337e536984620ed5c2fb00388dd5e",
+      "object": "sdk/CMakeFiles/chibi_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_navigation.c.o",
+      "command_sha256": "03edf5cf33cb32baed5db3f734115f59fbf94e50e2698636b75be84d898efad6"
+    },
+    {
+      "source": "src/authoring/source_prototype_flow.c",
+      "sha256": "c9347890328b3fec27a22754fe45941c59542ba866329c31aee37d5a17987c12",
+      "object": "sdk/CMakeFiles/chibi_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_prototype_flow.c.o",
+      "command_sha256": "f504dd00a6aef1de349cf5598305c2e09f196d5ca5c068e137b4f923107b062a"
+    },
+    {
+      "source": "src/authoring/source_rename.c",
+      "sha256": "111b042b4f7196f14e4f89713a92fdf8316fc3a91d37c971f7766f3ddbba4313",
+      "object": "sdk/CMakeFiles/chibi_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_rename.c.o",
+      "command_sha256": "cdec58f5e57e79bb447b4df8996f1a8d9e5a5e291560da65c7a6b13ae7d50c40"
+    },
+    {
+      "source": "src/authoring/source_intelligence.c",
+      "sha256": "9505259db6745cf06876eaf502830cdec8fb75cb2f79dd4f16b2db2658ddf98a",
+      "object": "sdk/CMakeFiles/chibi_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_intelligence.c.o",
+      "command_sha256": "291818e9e406a6415632bb30296388164a5669983956cd421bb96d88896c6206"
+    },
+    {
+      "source": "src/language/semantic.c",
+      "sha256": "d6b642f81bc95acafcf65f5bdd53a0fe0403e903f651426b99e73bd4da7c825a",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic.c.o",
+      "command_sha256": "36892e146f5fed9d37f5e6c6a9a1d273b8345aa2604fad837fbb7d9ff9dc8495"
+    },
+    {
+      "source": "src/language/semantic_context.c",
+      "sha256": "4005ef43751dd20cfef1ebb2ade6f8978d36f8e62228572d2cb62c3ae8423df6",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_context.c.o",
+      "command_sha256": "d1167ba8130759139d92641df83a65ccda7e1163e92cc2932130dd4038ef289f"
+    },
+    {
+      "source": "src/language/identity.c",
+      "sha256": "28052e2a08376b597ea7a530a24d73d3aac086d408b31c7507df38433f9e68b3",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/identity.c.o",
+      "command_sha256": "39f6192f96db8c5ee6cfef0ff25541ec3bc24eb1931749d53563a45a0e8094a6"
+    },
+    {
+      "source": "src/language/component.c",
+      "sha256": "efada4fc2ea1ba4145da7d6d6e6354bf282b0da5b8d399a848ec6346d862521b",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/component.c.o",
+      "command_sha256": "342531ec5d8272efedb85e6ee437b2f133de4c076c020a60ccc22f897ed3cd67"
+    },
+    {
+      "source": "src/language/semantic_expression.c",
+      "sha256": "c803a9ff75e90c200bbdd12e07ac040e2d43ede0e724943dca377f37d70cfabe",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_expression.c.o",
+      "command_sha256": "11561872dee6cdd1318df04429181b5fe3cdbc0a11a348709feb7e76d699f4df"
+    },
+    {
+      "source": "src/language/semantic_calls.c",
+      "sha256": "9af1ad43fd1a92f295539d3cef3e99664ad51ed3d91456fa469475757b3f9008",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_calls.c.o",
+      "command_sha256": "3c37ceaa2d9862e8d8a488396e73b580fad0b26368008248bb5b47d3aaf4fc83"
+    },
+    {
+      "source": "src/language/semantic_statement.c",
+      "sha256": "f27e4fa9eb74545034ced837230603636c4e4fb85a090faa55695b38fb716925",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_statement.c.o",
+      "command_sha256": "34bfdc2b3d87d0699b8153e2a11da6338fb70efd96db0eb8d9d2dcb9cd187b64"
+    },
+    {
+      "source": "src/language/semantic_declaration.c",
+      "sha256": "b702d52304f084472a85aad3bb702cd928975df8aec605afe45117cd52aee701",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_declaration.c.o",
+      "command_sha256": "f234ab50481591870b8bef0601989924bf5aa0fba63427fcafd9f18741ff32bf"
+    },
+    {
+      "source": "src/language/semantic_effects.c",
+      "sha256": "1753e29c5e65cd3c34af5a5fae1fb1568019a5ce3c3e8d61974af6d0f9ad659a",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_effects.c.o",
+      "command_sha256": "809f62d97e6ea79e4df5d1b9c2f7c2ff24f03fd981bfd1a1249dfbbe1604ac93"
+    },
+    {
+      "source": "src/language/semantic_units.c",
+      "sha256": "812eda317aee8782688e93c27559731f00fe50fb24170c89965ea6aaf6337662",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_units.c.o",
+      "command_sha256": "792e041172b8a17ef62b919105a9a61df43b37ccbf726f782cc8bc0daba13a66"
+    },
+    {
+      "source": "src/language/semantic_recovery.c",
+      "sha256": "3f54c550623f9fda2ea91a274522e58b68d055131d51b28959757abc64b2eb1b",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_recovery.c.o",
+      "command_sha256": "7076a7e9e7c0abb12fb389758899232d5aef014e7e86f21c4853b1985aaacb5a"
+    },
+    {
+      "source": "src/language/semantic_union.c",
+      "sha256": "62d47265b5009ceaca84f9bcec18b62ba92be8bc60df84406842eee6fb196c97",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_union.c.o",
+      "command_sha256": "fb5c8814e7ab3707cec94b2d572a131cfeeda174333815238f4683f0a1d2f0ae"
+    },
+    {
+      "source": "src/language/semantic_record.c",
+      "sha256": "ce9b9a053dcc1e21aa1c76e3b2b806470156076afe0942628f9d76f14c0b3ff0",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_record.c.o",
+      "command_sha256": "ab9cadd09f7c2aa29bf39a067d4414e7a6eb44303cdaceaf58363588773a38bc"
+    },
+    {
+      "source": "src/language/semantic_constant.c",
+      "sha256": "99b6163230819c52a91964ea87b632aa38d7ef4fcd14bff87d35ee1e1bcccd94",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_constant.c.o",
+      "command_sha256": "6e52b37d3d1b00bedaecd020b5b4f34d128493342b32a41c5248725b136be311"
+    },
+    {
+      "source": "src/language/constant_proof.c",
+      "sha256": "4fea1fbd103659abb9c9b237250281ecae555a46fb491f7ce159387e7bcfcd4a",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/constant_proof.c.o",
+      "command_sha256": "23365b518d21879bf6b1966933ed0ed5cf349c20795d5e12da242cad96823630"
+    },
+    {
+      "source": "src/language/scalar_constant.c",
+      "sha256": "ed0bc4b6d515e1e5df6d1e9ee6e1d30a4ed0784c724ff2a659e202bd6338dff9",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/scalar_constant.c.o",
+      "command_sha256": "4afdda0ab0917c0cfbe45f8f0f27ec899a058a19967a6fb057fe7e319f9554b4"
+    },
+    {
+      "source": "src/language/numeric.c",
+      "sha256": "3dbdf007b755bf1eac16528dfd89640a8a942c756f0b72d58ab24799d6babde7",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/numeric.c.o",
+      "command_sha256": "bbf4bb6f88bc72623a87ac0607cc929d441fc3b3b59a0fc0b79ee20ecf69f4e4"
+    },
+    {
+      "source": "src/language/lexical_binding.c",
+      "sha256": "a3ca115d9f97b75ee7872f8379c4f36d5ff41a45e160f1b2ea4dc0375f3417dd",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/lexical_binding.c.o",
+      "command_sha256": "4ab7c0cb3104f6f0d95d2d727a9fba05ed631cfeead47a73899a4a32527be83b"
+    },
+    {
+      "source": "src/language/nominal_binding.c",
+      "sha256": "f9aafa15ffcd4826ac191f455f117bc95775e37c04ad3f5cfbd9dafeb8115acc",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/nominal_binding.c.o",
+      "command_sha256": "1d85bd6174da3ba2a5b70a400cf7b8e04a86524640bf2b32b7e90a0a9383b464"
+    },
+    {
+      "source": "src/language/named_binding.c",
+      "sha256": "2b6a40a77ff4e155d633df0772baf8b65f25b470221624ff1f2dbb00145cce19",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/named_binding.c.o",
+      "command_sha256": "a123c1f5d229776d4656bcdd3cdb040e7363246d91907799d8a44fd054479241"
+    },
+    {
+      "source": "src/language/type_constructors.c",
+      "sha256": "306c5830a391f9d283d417ae9e42a6a851f17683c33d0fd0879fa0246d1bfed3",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/type_constructors.c.o",
+      "command_sha256": "3be979c9765a5c08ee13037e8b5cf8aa5d8473b89f6b5fe29fb74e8177067810"
+    },
+    {
+      "source": "src/language/unit_algebra.c",
+      "sha256": "aaccc09c2a5c71795c20748da1ee9a1ca96dd27b5b9d4e1be0c5e2c968ea3e88",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/unit_algebra.c.o",
+      "command_sha256": "38595fc1e513400fb8715ece17621f094a5cdc7a939eb1fd69d09d450850b7e7"
+    },
+    {
+      "source": "src/language/signature_reader.c",
+      "sha256": "f7f30702afd73c05e9d1fee9dad656522bd55014d7549fed4f8b268f4932e3b8",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/signature_reader.c.o",
+      "command_sha256": "346673066c243b56e8d11f52961eaa03bd37b99fd693835dfdb1ad3a6d950418"
+    },
+    {
+      "source": "src/language/callable_headers.c",
+      "sha256": "97036def7bd64a23f18211903d886acdbf284685f01f57be47b0eed8151ff09f",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/callable_headers.c.o",
+      "command_sha256": "5f6b45f94430f56cf3d9890a2e8e665aecb19d3496e0787185a71a34d5edfb44"
+    },
+    {
+      "source": "src/language/unit_analysis.c",
+      "sha256": "4839a8152cefc7821a2022aaa373f94c3da6c7187a17082e6461f7ce8223c3fb",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/unit_analysis.c.o",
+      "command_sha256": "f2ec3a36017fd00eeddfe2608ac7c5a8781f582715256ebef6cac66fea727f14"
+    },
+    {
+      "source": "src/language/union_members.c",
+      "sha256": "2449892d6f73d0ce614cdaec372646796f8d64b22c19ab0e307d08aaaa01e255",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/union_members.c.o",
+      "command_sha256": "2dfa9492bbe9fa926b837ede53c193e18d04e6a79fa90f0f61d1a9cb6e7c7b7c"
+    },
+    {
+      "source": "src/language/effect_analysis.c",
+      "sha256": "b26c31c659b349e668c83b108832cd6842f6942f450a8f1e8c97c62052b8d6e9",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/effect_analysis.c.o",
+      "command_sha256": "70a87189601a9ddfb3cf865b7ec27055d77db0986901012bf793434a3844e248"
+    },
+    {
+      "source": "src/language/record_members.c",
+      "sha256": "42bd86d571ff8e6804a6adf0b026197dbfd08c08b841cbf4d2b877681891cf69",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/record_members.c.o",
+      "command_sha256": "023487a8b93cd504d5803a2de53e5774098f70abfcfe0f4806113bc5187241b9"
+    },
+    {
+      "source": "src/language/semantic_package.c",
+      "sha256": "0148c74f832299fac20708adf7a202d0c8a793fa4e399e4fc448d046d07ae6d3",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_package.c.o",
+      "command_sha256": "6f93ad785aae74fa4b057a7705046c49a848e762fa188f4f0d249db24d6bb339"
+    },
+    {
+      "source": "src/language/semantic_generic.c",
+      "sha256": "11643c27e88bac395b2f07a01173022b256e13ce6cca7e4ea522d473d3ad7e23",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_generic.c.o",
+      "command_sha256": "22c72c35e30b7e723b27f8f02abdf347ed1bab08c32b01659aa18080db3b9bdb"
+    },
+    {
+      "source": "src/language/semantic_comptime.c",
+      "sha256": "fb495bed5af8895cd01f44cd59a8ac67a67d806d5995499083e502576c503ba1",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_comptime.c.o",
+      "command_sha256": "dd57d4e06af3897e73583d54b9a9d89c268df752ae752957ccbc7d06d45f7053"
+    },
+    {
+      "source": "src/language/semantic_math.c",
+      "sha256": "2dab0c3794b6519f645a00d1f0bf73e70918c74d0e48bc9a942e39d7d3bca2c7",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/semantic_math.c.o",
+      "command_sha256": "d8d4d9f345a2cdee847b73d4b32cab34d36401a440d7fbb07894968c572d7837"
+    },
+    {
+      "source": "src/language/math_types.c",
+      "sha256": "2e37ee113e1e999f94a4af62f9668d4cddc0d8cb599e86c1bfa8d3800d3f12a8",
+      "object": "sdk/language/CMakeFiles/chibi_language.dir/math_types.c.o",
+      "command_sha256": "e75c454ce5b48868a03334a2588f7da88849fce5e1d55f021fad81b4ee8c0c9f"
+    },
+    {
+      "source": "src/language/lower.c",
+      "sha256": "607628430713d503d68b4126f8906b9bca262fce72430198184b84f1f149c7e7",
+      "object": "sdk/CMakeFiles/chibi_compiler.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/language/lower.c.o",
+      "command_sha256": "b7bf176aa71bcf01de29b023b97bf80f3df5f45d1c165d359ec023d5729a2ad6"
+    },
+    {
+      "source": "src/authoring/reference_index.c",
+      "sha256": "92ca7a231a592780ddb017a515b85f95c7691103566631ff1ba08c7bfe7bce84",
+      "object": "sdk/CMakeFiles/chibi_reference_index.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/reference_index.c.o",
+      "command_sha256": "9ab0ee2044a8c976b114f89eff6375a10ce8b163ea442329709fc23a505aee89"
+    },
+    {
+      "source": "src/authoring/language_catalog.c",
+      "sha256": "3baff0029f690a44ba0254cf3e4e5cd687e0cd39dc6496efd4d7029a34476055",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/language_catalog.c.o",
+      "command_sha256": "47674306a335f1c4cbc72a5a58cb4331b1a5f8021a06ededc0da2b62feab5fdf"
+    },
+    {
+      "source": "src/authoring/source_catalog.c",
+      "sha256": "a20dd46246aa4783ec4aeade4e896afabc7640513fb29479ed482a19f1a884bd",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_catalog.c.o",
+      "command_sha256": "830a6060703dea43964ea0c238c5e7cb1eec871dfa6c3e1c8106a416a82c0639"
+    },
+    {
+      "source": "src/authoring/source_asset.c",
+      "sha256": "e52b5915209fa6fe603fef0fbb99d81feeaef07fed63de33252fc046dd42b7d7",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_asset.c.o",
+      "command_sha256": "6aec8eb08c6400a5f1194a8f6e6586dd75960a6b47eada4898a43a5449f1bc7f"
+    },
+    {
+      "source": "src/authoring/source_prototype_edit.c",
+      "sha256": "cda30a877d78c79de2becee2c2fb5549a4653dc5f924ca13864e302a0a80518f",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_prototype_edit.c.o",
+      "command_sha256": "acdeef450fc7679d1b5dace135aa316fd5d94eaf520b528430cb8e4e2c18faf4"
+    },
+    {
+      "source": "src/authoring/source_asset_completion.c",
+      "sha256": "d392237ce138edff69670e48750ed5acca564a6819d8f6928157247628d9ffe9",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_asset_completion.c.o",
+      "command_sha256": "02085107239a469ff4ee08c6742f4264657711f50788130b3f7d79e50abcf11c"
+    },
+    {
+      "source": "src/authoring/source_catalog_snapshot.c",
+      "sha256": "32a06b2a1bb2d08df6a400ff0a5186dbb1ed84f81031dd4d9c1939c2938898f0",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_catalog_snapshot.c.o",
+      "command_sha256": "0bea15f43ca1558bf1bf22e26f74c26726c6341270a71df9a45a51d3c8d8e2df"
+    },
+    {
+      "source": "src/authoring/source_collection.c",
+      "sha256": "0171a46d6ea775d5cf6fefaaa4f9f9414d6679535ad59f4ae8650302769f62e3",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_collection.c.o",
+      "command_sha256": "7148e525ba666b97c00af60893ffce384b199b99a1d410486423549797160a20"
+    },
+    {
+      "source": "src/authoring/source_packages.c",
+      "sha256": "ca5f7a45e70ef8d1daa7fcbe5a627199b32d16173a7aaa57963243459646e4cf",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_packages.c.o",
+      "command_sha256": "5589b3d6d3e678caab5fdd10f1fe33a3baacd4021be66a80435c76ce05cbc997"
+    },
+    {
+      "source": "src/authoring/source_package_syntax.c",
+      "sha256": "919492d4f7fd40a8402f55b21bb63fbc90dd0018a844d527c3fa62a71903127a",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_package_syntax.c.o",
+      "command_sha256": "9d2a0d5faf3821200ea82cc81a6419b13dd97a283e49d90a2ab17abf86f7fbbe"
+    },
+    {
+      "source": "src/authoring/source_package_paths.c",
+      "sha256": "a5eefab10e908331342912aa6e096dc778909cecf0709c0aa68d12d765f5d2ee",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_package_paths.c.o",
+      "command_sha256": "ecdfb816d062390ff0782ff5d2d72e0de59538324948f68c6471fe229b08df09"
+    },
+    {
+      "source": "src/authoring/source_package_routes.c",
+      "sha256": "16be3b7b1cda7c4d84259a337f1598b46670fc810cadff1a875b601f185c9b57",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_package_routes.c.o",
+      "command_sha256": "bc4b375ee7e6248d3be3ba9038b9465fdc2b234ed806eefaee172aeba4d049dd"
+    },
+    {
+      "source": "src/authoring/source_package_snapshot.c",
+      "sha256": "7a94aa05ed7aeff3d857d93b99961b7a1d963ec6727a28ab6535bdcc96d0c128",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_package_snapshot.c.o",
+      "command_sha256": "d11b973225cf6b3fd646dd415835687484f1615d7418a2f98d6fcf7203125658"
+    },
+    {
+      "source": "src/authoring/source_package_files.c",
+      "sha256": "7ccc229591fed40a188e3f233408acbfd98ce1147a2a24bedf4e3d49bb019145",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_package_files.c.o",
+      "command_sha256": "0daebfd66fa0e0166347980cf949e6df6e199acdc6b1e8e52dcbc84d2b5ed843"
+    },
+    {
+      "source": "src/authoring/source_package_exports.c",
+      "sha256": "519644dda5dd818643f121123fe246323b91a7248b26c2e81049ca6bbc18cbd7",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_package_exports.c.o",
+      "command_sha256": "cbde9b73ef765d6baf2c9313f46791b2d33f66c992a3ecb73559171edffcc437"
+    },
+    {
+      "source": "src/authoring/source_package_prepare.c",
+      "sha256": "b5e232f27c91c31aeaaf0ee7a61ae9d01f0d1021c3dba1a39616367a9a0e46e8",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_package_prepare.c.o",
+      "command_sha256": "3ca16a4a6d88cc58fb5e6d0850b80a42168e0c25e0d7ed7d3c7ecfadf94449cb"
+    },
+    {
+      "source": "src/authoring/package_tests.c",
+      "sha256": "9a0f5bfa94229238e8993526db8bb360d78dd8343490070c9803dca7e38fdea0",
+      "object": "sdk/CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/package_tests.c.o",
+      "command_sha256": "6634b788fda40263fd264e64325db38dc568a78a57d4bd9995ae982ade92a3e3"
+    },
+    {
+      "source": "src/assets/input_map.c",
+      "sha256": "71da61f5370836aa9a57ab5ca68f5eecf291fd4a43b1eed8db476ed0c2a156d4",
+      "object": "sdk/CMakeFiles/chibi_input_map.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/input_map.c.o",
+      "command_sha256": "2bd1c6156980b173226bc51ac52eb2ec9dddaca6cfb702c80920b2dc5a14499b"
+    },
+    {
+      "source": "src/assets/prototype.c",
+      "sha256": "b7a852a0e8b34eab4a5e24147d9517246e77552c15ad1d9009df3a3751b32ff7",
+      "object": "sdk/CMakeFiles/chibi_prototype_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/prototype.c.o",
+      "command_sha256": "78d3af52bd6825a6e25a576870984424d3c712001675ed9d06006a4099f9fe7e"
+    },
+    {
+      "source": "src/assets/scene_document.c",
+      "sha256": "c9ecfffd8035531fd973e9a2866c9644c0a7d6d92a3ce04b85d032653ed5315b",
+      "object": "sdk/CMakeFiles/chibi_scene_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/scene_document.c.o",
+      "command_sha256": "124c9726318900c2ab5f509bd4ea8b82f2a9c98b2471cdfec012ac276aefcc3b"
+    },
+    {
+      "source": "src/assets/physics_settings.c",
+      "sha256": "eab405f009f9f976b720ca32666f60a812d544748d1cc207b178d9c37eb62cfc",
+      "object": "sdk/CMakeFiles/chibi_scene_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/physics_settings.c.o",
+      "command_sha256": "f9d7fd2c3a2dfe837d8b178fd3ef77ec5b5260c746727f3dd1c8e0a36417f8e6"
+    },
+    {
+      "source": "src/runtime/scenes/scene.c",
+      "sha256": "a5e4105371e8976a25b4c81fe20d4ac0c63ad3348c54e160730fdc5af277bc75",
+      "object": "sdk/CMakeFiles/chibi_scene_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/scenes/scene.c.o",
+      "command_sha256": "253ddd845b0b32917d7d08d89e026b24cb35ee9b05973d4e748add8cb62411c1"
+    },
+    {
+      "source": "src/runtime/scenes/prototypes.c",
+      "sha256": "df755d5335e4e230d7eb6391e6b7345c743c0a72dc53bfba3dcf5765f722e09f",
+      "object": "sdk/CMakeFiles/chibi_scene_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/scenes/prototypes.c.o",
+      "command_sha256": "009cef70bc74b24b2e9d76a1f6bafd4d5b19d546035019a551971ffdb99e0efc"
+    },
+    {
+      "source": "src/runtime/scenes/prepared.c",
+      "sha256": "c4f59f1ecb38c4c9958527615141fd9f289fd5ee67fd71e0c16ea54b6f481811",
+      "object": "sdk/CMakeFiles/chibi_scene_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/scenes/prepared.c.o",
+      "command_sha256": "f7d404bea28f6bf7f76d6060303b2e7b4afb48c2826c931b07c68bdf36ed6602"
+    },
+    {
+      "source": "src/support/text_search.c",
+      "sha256": "09cb9b93d4c62fac321536cdaf49b601e58784b94a0713b01f19e3fd62f6b09c",
+      "object": "sdk/CMakeFiles/chibi_text_search.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/text_search.c.o",
+      "command_sha256": "86aed701899abe6b15628dc06e2061ab648b3accd172f149179548bb2ea5843d"
+    },
+    {
+      "source": "src/support/text_rank.c",
+      "sha256": "cfff5f1421327b7d7cf8d99a1b59b121b0b433addf23f0d1bc433751fdbaecb0",
+      "object": "sdk/CMakeFiles/chibi_text_search.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/text_rank.c.o",
+      "command_sha256": "760a382769ed68c2510039a811d3864dd5977c375e016b1e6d416fef6739328f"
+    },
+    {
+      "source": "src/support/file_watch.c",
+      "sha256": "d6cb46c1402c6a26c808830ebd02a070b8e861ae850db748b6adb8e3d4b74db7",
+      "object": "sdk/CMakeFiles/chibi_text_source.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/file_watch.c.o",
+      "command_sha256": "6cfab6301a17abb8928f1318469d81b3d4e5db4e3bdf36e65fd82e1f1caf7c6f"
+    },
+    {
+      "source": "src/support/code_lex.c",
+      "sha256": "c3b53e541b7b8f543ea72f87d0240e1fcfbcbaa72e835f49cfe4c4898864ee8d",
+      "object": "sdk/CMakeFiles/chibi_text_source.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/code_lex.c.o",
+      "command_sha256": "80b468fbb4ac0aca25044e6b66adc14420f2485a231a9f93d12dc077e3456307"
+    },
+    {
+      "source": "src/support/text_file.c",
+      "sha256": "da6a828ad57fb3ea933cebf716b7ad155c0c29ce67f21691323d98597755dd20",
+      "object": "sdk/CMakeFiles/chibi_text_source.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/text_file.c.o",
+      "command_sha256": "d3541e71994df6505649f538eb2297973403961a741efc2b711166d0ecc8aa81"
+    },
+    {
+      "source": "src/support/text_overlay.c",
+      "sha256": "a0d8d379ae0668ecf0231554ea65c93d7d352baec9ab2eca81a52bf766b5f11f",
+      "object": "sdk/CMakeFiles/chibi_text_source.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/text_overlay.c.o",
+      "command_sha256": "13f52ee474093900f3d5cb8b132c7f712601c3d2729e8d12e144f57f15c51f31"
+    },
+    {
+      "source": "src/assets/ui_document.c",
+      "sha256": "42b9df9ec18b8950dded5546c851c43f3085c96ca1b4e659ed594487118bd41e",
+      "object": "sdk/CMakeFiles/chibi_ui_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/ui_document.c.o",
+      "command_sha256": "246ed014e1d46ee6de9682e81cb2eaa57bd9aede345be113c69cae72b93bae53"
+    },
+    {
+      "source": "src/support/rcss.c",
+      "sha256": "069560f33d8eb4b0b45182d505b7409cd8f3fcb4a4114fe9874146cc4c6862f3",
+      "object": "sdk/CMakeFiles/chibi_ui_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/support/rcss.c.o",
+      "command_sha256": "010fcedf51b3865a0d8406c058fa36cfa2b3755b4c824e839355ab932340b3f7"
+    },
+    {
+      "source": "src/ui/document.c",
+      "sha256": "1a8866d01472935279b42e6374992a76cd9a7f2aedf2ee67e1d81235266006dd",
+      "object": "sdk/CMakeFiles/chibi_ui_document_values.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/ui/document.c.o",
+      "command_sha256": "0fcde878834a131ab4046e071fbcd7ba76aa921c8d46161bd7536d930cc16393"
+    },
+    {
+      "source": "src/authoring/graph_expression.c",
+      "sha256": "253cb00ee5134eb64c13b8c3eda3a5cef514c82d0463d295e4552c9acd0539a8",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/graph_expression.c.o",
+      "command_sha256": "365bab58f01376b7b9f37e066a63d5a61daa3d4e96b2a9e9b411edcefe6cc859"
+    },
+    {
+      "source": "src/authoring/presentation_schema.c",
+      "sha256": "76dfc8e4890363db7fa4b131bf87598ef8ce2ebaa438830c794361ce0d7b9954",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/presentation_schema.c.o",
+      "command_sha256": "0d0ecce649032a7f4377ed1748c5d3c0a532537e38653c9d79338aab29be2638"
+    },
+    {
+      "source": "src/authoring/source_presentation.c",
+      "sha256": "87d25589883273ada39840f875bb55b45b38e6661bd58d1385b781e3f74bbf8a",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_presentation.c.o",
+      "command_sha256": "c26c1b2f0732f8fb78145cf2a856483b122b290a9d139d888be7451c6efaf391"
+    },
+    {
+      "source": "src/authoring/source_presentation_graph.c",
+      "sha256": "892cb9e36f789b05b24b33df17a00989548b4b1af36a5f646ed7de844b69fa72",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_presentation_graph.c.o",
+      "command_sha256": "5a763afea212ffa3e4093f77054984bdd8384778fcabd451694ac56f4460931a"
+    },
+    {
+      "source": "src/authoring/source_presentation_anchors.c",
+      "sha256": "f377d3b49f367634d0621ee68c4f357a1e1596b7e043bb11cd0d9c379673ec3c",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_presentation_anchors.c.o",
+      "command_sha256": "69307fb7f4dc6f2de36b4b0b9f28b641ab6a91b74caa863c49a909a2d5eb20ec"
+    },
+    {
+      "source": "src/authoring/source_presentation_values.c",
+      "sha256": "fbfca6447e8a0135d3674d8eedfb95e285e151a42f1b03094aacb43830849dc0",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_presentation_values.c.o",
+      "command_sha256": "f450300d3862ac232622e10244dbd225fcbf9d599c80c967cb5e1390936c634a"
+    },
+    {
+      "source": "src/authoring/source_presentation_flow.c",
+      "sha256": "0114d1e6a63a29316119fffc21fc3e6ba9415778ac50b2eec55735d9feb42157",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_presentation_flow.c.o",
+      "command_sha256": "deeba6119ca3c7ce47f514a5c12944f4fedbfd5f9efae30a218fc34eda6b2aa2"
+    },
+    {
+      "source": "src/authoring/source_presentation_layout.c",
+      "sha256": "88eeeffd721f9c87880923efc26c70820a48298e3e7d2e30ce66b0193b255f43",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_presentation_layout.c.o",
+      "command_sha256": "560067ae452d43c9a516cac90cb0338e52e2ab67073796606ec37f6a259c5b7a"
+    },
+    {
+      "source": "src/authoring/source_presentation_details.c",
+      "sha256": "ac64cb34076dda3bdd8ed1e44e047464f966f0a749bf02299c74b41603be75f1",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_presentation_details.c.o",
+      "command_sha256": "becfbf1707d849fea49880a8fcf158102f365ebc40877e62314b25b29a5581c7"
+    },
+    {
+      "source": "src/authoring/source_edit.c",
+      "sha256": "2edbf1998e985432cd78ae24ad949e48e1bd876663e15f0bd6f75b08ea106178",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_edit.c.o",
+      "command_sha256": "5b97c3269c4460ce38f1ea4887b8947f6605b5f87fab3dad727577a608ca85e8"
+    },
+    {
+      "source": "src/authoring/source_edit_selection.c",
+      "sha256": "7b365750183f2c73d38240964c162c4179ffc0d5134b9b66078e8e020c0ba297",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_edit_selection.c.o",
+      "command_sha256": "1074388b3335aa70fc1ee88ccff8339a84659856b543b86ada49efd36a23860c"
+    },
+    {
+      "source": "src/authoring/source_edit_arguments.c",
+      "sha256": "817b523953401906d93e535d088fb101a0164e34d4e7ee166919a10812eb2265",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_edit_arguments.c.o",
+      "command_sha256": "eeb9c34ed3ca9f7babd405e841cff09e40230418b029dc37ab181d04a3c86651"
+    },
+    {
+      "source": "src/authoring/source_edit_capability.c",
+      "sha256": "bbf2e42eed74e770891e27eac47e9789eb6296e7a108eb3b3e94ea0565500701",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_edit_capability.c.o",
+      "command_sha256": "fda4a56f69b3cb0da471ea51c2e1dc5e82decf8e9acf59b5152cc283ce5d99e1"
+    },
+    {
+      "source": "src/authoring/source_edit_declarations.c",
+      "sha256": "e540ec625c1cf44b7d09b5bab0825f0fc7ce5afa379877a0ede408f39af83f60",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_edit_declarations.c.o",
+      "command_sha256": "a5acb1772de769c48a4ff77c84e29ba697011b49b2e58acb042e8e2bf1f7011c"
+    },
+    {
+      "source": "src/authoring/source_edit_refactor.c",
+      "sha256": "9980b8e0b766592b80ef4867a5dd5cf654da8c5ddaa91d18a77d0dcb27de8166",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_edit_refactor.c.o",
+      "command_sha256": "41e5557a4dd2d860b3e4ae23e087f2bc9ce61062879d6c58acafc0c73386046d"
+    },
+    {
+      "source": "src/authoring/source_edit_inline.c",
+      "sha256": "61a68992aa157a7c421b774639d26ac306c4ef6e2057c6a7269036f39b698bbc",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_edit_inline.c.o",
+      "command_sha256": "493e53491017de11bc991667dff447bc959541121e3441c5ddfe1ab1a4dbe5c2"
+    },
+    {
+      "source": "src/authoring/source_edit_signature.c",
+      "sha256": "ff95a2784e98827a3c7381d2cd57417d345b273fa24412a59fe266cd288079b8",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_edit_signature.c.o",
+      "command_sha256": "a3c91cbf462003c054828fa3f27ffce9b63885fe5467becbef48a9bba42d1a97"
+    },
+    {
+      "source": "src/authoring/source_edit_binding.c",
+      "sha256": "9521b4015ac4e6d02e1360fabc0fe0b14ead4540817c893b38a295e30d3eb359",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_edit_binding.c.o",
+      "command_sha256": "87f69deb440f562106e014931631ce1b0013205b1c39ec7a3c38aaacc7c90d2b"
+    },
+    {
+      "source": "src/authoring/source_minimize.c",
+      "sha256": "d06fc1201dfcefa95e9e9216fd196639a497a6dc44739099b039bd744426c19d",
+      "object": "sdk/CMakeFiles/chibi_source_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/authoring/source_minimize.c.o",
+      "command_sha256": "1ea48d3787c50445458a2814d1a207239771fc277cc213feccbc1e1b6ab10a0e"
+    },
+    {
+      "source": "src/runtime/arithmetic.c",
+      "sha256": "e4f436442e78024f9f44a426dbede4085ae729fec3f325dfda877374f9ce6037",
+      "object": "sdk/CMakeFiles/chibi_arithmetic_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/arithmetic.c.o",
+      "command_sha256": "5a7f6d8eb76052f72bf7676e77a33856d19cb4425834efda1afcf504f0be016e"
+    },
+    {
+      "source": "src/runtime/arithmetic_definition.c",
+      "sha256": "993b36ac88875a9b3c2dbb778c367d88f6ae78a19cc57384353edef9419427b1",
+      "object": "sdk/CMakeFiles/chibi_arithmetic_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/arithmetic_definition.c.o",
+      "command_sha256": "ca0d50e0f0fc8e4f2cdae72d8a32056d857545ba3905d1d5bb67e9c7b9a35603"
+    },
+    {
+      "source": "src/runtime/comparisons.c",
+      "sha256": "8c679ab860c536069245f1afc66a950e85230eba700f74a11dbc050b295fd4de",
+      "object": "sdk/CMakeFiles/chibi_comparison_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/comparisons.c.o",
+      "command_sha256": "561245e3c4bab76501bfc0ffab14932220648177de6ddbff4e130492fcddc5ca"
+    },
+    {
+      "source": "src/runtime/comparison_definition.c",
+      "sha256": "de245ee661684bafbabef28cdbdcdeb45a24ae865d8e41333a412e8cd7a3a025",
+      "object": "sdk/CMakeFiles/chibi_comparison_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/comparison_definition.c.o",
+      "command_sha256": "aab0327044715e6a68e8d28d2aebd305d8ab7e27befee7ec5b2533d06b9d3768"
+    },
+    {
+      "source": "src/runtime/conversions.c",
+      "sha256": "c27fd355c1eb18a15a5178fe190d28dfd0be4ec2b963da0dd5cc18bda68cdc4a",
+      "object": "sdk/CMakeFiles/chibi_conversion_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/conversions.c.o",
+      "command_sha256": "3238d7c0a95b5ee886cf97412dd66b3b772a25bc2b3fa905a11a1d646c2d1a9a"
+    },
+    {
+      "source": "src/runtime/conversion_definition.c",
+      "sha256": "ab6aa3acb454b1ca007930a04f32438f386729e9a0917d74263e1ab20d1579ae",
+      "object": "sdk/CMakeFiles/chibi_conversion_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/conversion_definition.c.o",
+      "command_sha256": "7ef5046c713472d35b5921dd3e11665984db786e90ca71be4f965b9c9269b7b1"
+    },
+    {
+      "source": "src/runtime/core_definition.c",
+      "sha256": "3b11a47cec55fa31cbb4d133cf7d2a8766f4c683bb21c3e200eec89186c7b0a6",
+      "object": "sdk/CMakeFiles/chibi_core_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/core_definition.c.o",
+      "command_sha256": "9ff1f5f9f26eaa09ed3b1c2282b5095abec77f7140a466adb000920e9dd87077"
+    },
+    {
+      "source": "src/graph/authoring/constant.c",
+      "sha256": "caa8bba8ddb3d704dc572e4f5addbe23e7c37bd1b9613c25c1739fc7a0e99bcd",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/constant.c.o",
+      "command_sha256": "3678f98cba6f180fc2b302d88d4c3e3b3a87eadac5ed0dfaa43f254f4b3d4fc2"
+    },
+    {
+      "source": "src/graph/authoring/optimize.c",
+      "sha256": "5b063f0151281b3ce2093a82ee91f4b7bbf2f832b277da6e7b5915e6511e52d7",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/optimize.c.o",
+      "command_sha256": "550e8ac5bc1c65a67c9e662ff90ce0d75eb80f303a4abe6445e12bba168299f0"
+    },
+    {
+      "source": "src/graph/authoring/optimize_cleanup.c",
+      "sha256": "162f705bf3557f4a93fcca7166d53382e4addddc2a765ed912272d39c142cf5d",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/optimize_cleanup.c.o",
+      "command_sha256": "4040d24022212ed6637c4d6d30bc7c978c17edee0529e29b9b40adbaff155945"
+    },
+    {
+      "source": "src/graph/authoring/optimize_set.c",
+      "sha256": "8a3127a92430c3389889981bb3e11d762cde57997bdbac150873f4c8452b0b49",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/optimize_set.c.o",
+      "command_sha256": "711179f17e6c3763a3105eea5a952435d78b9a5a1b8a355f1b322d6053b8ac79"
+    },
+    {
+      "source": "src/graph/authoring/align.c",
+      "sha256": "f794bf6d30df0787d599fc9b04fea59ffaa9152bf4940367674434dd6d1169b4",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/align.c.o",
+      "command_sha256": "08ca79fc1f25a3db452a344b4af80b4c2535e132f79bc39393e5abe7c18f4576"
+    },
+    {
+      "source": "src/graph/authoring/arrange.c",
+      "sha256": "7de8793b9f94a4adacbfd2268e5ba5af665825c63433f1a16dc3257eee5b232b",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/arrange.c.o",
+      "command_sha256": "10b2a6463ba65f1ff934c84317c1b4e37f83daa89cc6b345d4c1e336db7a5a18"
+    },
+    {
+      "source": "src/graph/authoring/arrange_path.c",
+      "sha256": "2cc14dc184bacf6064992f78c5ec90168d582ee7d93f24c0a20abcf845469910",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/arrange_path.c.o",
+      "command_sha256": "95078645528cc63c318d101561745c16224caf0da5c51c18e40f2b460c42c9b2"
+    },
+    {
+      "source": "src/graph/authoring/arrange_route.c",
+      "sha256": "db887e57414783be5357281b1b4b58ff62a2d13f819f9a7117d942861598e16e",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/arrange_route.c.o",
+      "command_sha256": "343a6903ac435d64d1d4c5a1a04193af745674efcf4c519e041db472a93b41da"
+    },
+    {
+      "source": "src/graph/authoring/arrange_score.c",
+      "sha256": "beb17a463fedbb6dac57ab32769ee31eeb13500c0d3c091158d2197283beb79d",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/arrange_score.c.o",
+      "command_sha256": "3d0bfdc34378b7ee26b11a9f2a305f8fcae3fd78ddaa9a9199cb69399775ae5d"
+    },
+    {
+      "source": "src/graph/authoring/asset_edit.c",
+      "sha256": "2780dc295a469eac80d97d4efb6b15c6d1bfc71a1eec052fee8e274e7a5c98a0",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/asset_edit.c.o",
+      "command_sha256": "b15ad48960887cac19ef7cd680d5ce38fe76ae1e5c90217181057c22cc4fc74c"
+    },
+    {
+      "source": "src/graph/authoring/describe.c",
+      "sha256": "a779bbcec9eda4d0d2e6cd07c1bc19c1c03aec29b8fd62db21a0a99f782c5847",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/describe.c.o",
+      "command_sha256": "e75f6847db4cc7ebbd877e18b42864e025063d63f30f22e5def001168d0a660b"
+    },
+    {
+      "source": "src/graph/authoring/expand.c",
+      "sha256": "b67574f0d16f3dbfa8eefa7ac8ada7edf8dcd7a9e42fbbefe850ded6984d682d",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/expand.c.o",
+      "command_sha256": "e037a52de87a8afcd2ca8c2d0997d17fd9bf002b9153a61b983f6fdd6e9384a0"
+    },
+    {
+      "source": "src/graph/authoring/find.c",
+      "sha256": "f5d557b13c43fb2105516ec2d6aea356976c25f402faed37859d759eb57afb6b",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/find.c.o",
+      "command_sha256": "e2b643c6f3fe493767c8cb245f4abfacbb03d78f1857acd96ee3dd702dccf655"
+    },
+    {
+      "source": "src/graph/authoring/graph_edit.c",
+      "sha256": "a6fbbbc3b3aa46421cb78cd3692fdb80ad0bbf084bce611649fb1493ff7847af",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/graph_edit.c.o",
+      "command_sha256": "d4395951f41c15e35e873f5382c715fa8f504642124fe43d1f9d426332c06207"
+    },
+    {
+      "source": "src/graph/authoring/layout.c",
+      "sha256": "2646888413cec32961eb64c0e205564b7ca39f38652cff4198540fc86e73ae68",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/layout.c.o",
+      "command_sha256": "a07a88802e4c1d18750572b3b37d4a05eb619a6dea832d685126a375b7390116"
+    },
+    {
+      "source": "src/graph/authoring/linked.c",
+      "sha256": "e46e0f391dbc04a435381a7c7b6af6d81473cfdb59ac6df406f60392aac43ee5",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/linked.c.o",
+      "command_sha256": "49219cef9cac85b847ae3df78ef370da1448e6bc60afdb95a10ac0b6da606080"
+    },
+    {
+      "source": "src/graph/authoring/local_edit.c",
+      "sha256": "df83155fd1ef7f2de052d8cf8ba0011f2cab308ce85542f10c6cdd21bf0b60c7",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/local_edit.c.o",
+      "command_sha256": "946145e2b1b1fe994eb9c9954adc15e9fb37c0b9408e603f983cd42d7b258b31"
+    },
+    {
+      "source": "src/graph/authoring/pin_edit.c",
+      "sha256": "640826d142bb755c1cf42e3c44132560184426cdb6389ed19f4963b2a9a79fd8",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/pin_edit.c.o",
+      "command_sha256": "667f1f2620c23c81b14d56125a4c8669f6df5f08282bf93753dbc0a9c876d656"
+    },
+    {
+      "source": "src/graph/authoring/reactive.c",
+      "sha256": "931213afbf6335cdede0c78068ad4313c8db9fab44ca89db36d6062338a70346",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/reactive.c.o",
+      "command_sha256": "92658cbd7562468f5a03776700d681cf2c7d5e40d07a58e30df9cb5dac292488"
+    },
+    {
+      "source": "src/graph/authoring/reactive_presentation.c",
+      "sha256": "9c5b80eec3c59b964b68e9231d76a9be021098289358584aa6d15e3d462a0053",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/authoring/reactive_presentation.c.o",
+      "command_sha256": "d922d9ab9d788d0401bedc83bd034223abf62df5de074381e93b71c8c68a3e0f"
+    },
+    {
+      "source": "src/graph/document/events.c",
+      "sha256": "3b0840d7e0756231524a56b8cc9f08643d68fec664b9257ae38481d010f6f707",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/events.c.o",
+      "command_sha256": "e955988d6805ca098d4690327f83c107f6e238720cf9b46e59c84b9b1f2a58a6"
+    },
+    {
+      "source": "src/graph/document/extract.c",
+      "sha256": "955e439387bf8e072462fbcd7e669f20ed139b97a6f8dd931a9f0e32a32b0eb7",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/extract.c.o",
+      "command_sha256": "506ec21e4f349bce5ea4de209638c2b8268ddf382dac0a6618953424cd432f13"
+    },
+    {
+      "source": "src/graph/document/graph_signature.c",
+      "sha256": "127e178b6895c28ae15f2c132b66cb90c8c7f5748f621754155e4f2acfa417ea",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/graph_signature.c.o",
+      "command_sha256": "d6b12b6a135377ffb9f70e8e4376771719a64a2bb4681516dea3824f31981929"
+    },
+    {
+      "source": "src/graph/document/library.c",
+      "sha256": "1115744f946f39d3a5d3fa8cc97bc1e1329d8c2c5e0153c53a744e169c712f36",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/library.c.o",
+      "command_sha256": "0f25d0a7026a79b4e213118a1214eb099fc84b21bc751c715dc47d010af1cb66"
+    },
+    {
+      "source": "src/graph/document/serialize.c",
+      "sha256": "b3695447f2e406cffe75d09e575535789d14979f4ec880ede5ecd3a7a6780fcd",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/serialize.c.o",
+      "command_sha256": "a8a350c7d25bf4f9caccfdda02549817e00a37ab0ef1cf768f9989afcb7edc79"
+    },
+    {
+      "source": "src/graph/document/serialize_clipboard.c",
+      "sha256": "480c8a700feee58beb22900cd3e998b46f6af11392f4bd6e2897ca609b0e338b",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/serialize_clipboard.c.o",
+      "command_sha256": "5308736e32fae2114b2da989e5ba102ee86495e160aef6b1a874b239d00d0876"
+    },
+    {
+      "source": "src/graph/document/serialize_implied.c",
+      "sha256": "720ae0b6f57ec1ea6350904743b0009cf6cbe637b2e37955bec9635b454e3e48",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/serialize_implied.c.o",
+      "command_sha256": "70194713ee5324bf6aa6723322098ee39e96bc033858fb232c9f7a5e4c92988b"
+    },
+    {
+      "source": "src/graph/document/serialize_local.c",
+      "sha256": "b2c5f5a049e40a7f894481ccc02de60c79861bbfe9b92bf312a90b17f9bb42b2",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/serialize_local.c.o",
+      "command_sha256": "04793dde663f882d5ed0321f586cbbb2a1f47f0940c823ee388a1f47f2a3d845"
+    },
+    {
+      "source": "src/graph/document/serialize_refs.c",
+      "sha256": "7cc9593baae9f9a22dfe7c74a87e3668d461b0a1bb50c11017eb29a4a36fc88f",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/serialize_refs.c.o",
+      "command_sha256": "4262bf1538d9ecbdcaf04888a4b5c3202fce859851971fcb43d2738cd96c852b"
+    },
+    {
+      "source": "src/graph/document/serialize_value.c",
+      "sha256": "7918057207d286150688cdba5c3698d009541527b27dd22107779a3880abcad1",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/serialize_value.c.o",
+      "command_sha256": "2e95cdb9ae6096c8daf33cf95943015e98bcf82e8a2f2e2507e57ba7f4093252"
+    },
+    {
+      "source": "src/graph/document/serialize_write.c",
+      "sha256": "267f149eadeb4abee22b9c2c3005e8645762dcb2a18f506b2f852985a83475c8",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/serialize_write.c.o",
+      "command_sha256": "d885fc3fa37d2a834f7a1aaa66e47302e85aa21e4cba9fdf594e305075a05173"
+    },
+    {
+      "source": "src/graph/nodes/component_nodes.c",
+      "sha256": "46d22bfc7e56e25f9676c63639ffbfb9b1629e2f0e6742f31bb920ba21dcc090",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/component_nodes.c.o",
+      "command_sha256": "74ce2172f3c5cb03029ff49300fdaa2e80efa3a89b4c3b654e655ba0b35bf5bc"
+    },
+    {
+      "source": "src/graph/nodes/conv_nodes.c",
+      "sha256": "0bae5c97a5668d0399635058bfd3353388c1e614c660e158c101767808e9e50c",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/conv_nodes.c.o",
+      "command_sha256": "f957a77ffcd32fe7a74dd78410202836d52660915552a0785ae875410ef34144"
+    },
+    {
+      "source": "src/graph/nodes/math_expression.c",
+      "sha256": "2086fca6a8b7d4c5bbd45f7ba3e02e543354a9fcb2aa1415438f69af515a82b7",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/math_expression.c.o",
+      "command_sha256": "e157a07f80f9fb95042eb9e745aea225b2d00e343b12d0b26f05742cb7bfb6ec"
+    },
+    {
+      "source": "src/graph/nodes/math_expression_convert.c",
+      "sha256": "9faffaeaa39cdac1bd142bf3a0abf8a02a07a5712b74ef914ef15fbcd470631b",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/math_expression_convert.c.o",
+      "command_sha256": "d6d87c13b8a5d17ddf39fc388c44c56f02c1c3e34cac26a0eada46fb25900e48"
+    },
+    {
+      "source": "src/graph/nodes/behavior_expression_format.c",
+      "sha256": "09b895678a251ae8213bab5d588d7f618a9c4b9c25e830454a1f9b58fa76f75e",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/behavior_expression_format.c.o",
+      "command_sha256": "e3634394ba33e50a2f13998940a1c4576ba2dd3bdec89ca90d02da03df82777c"
+    },
+    {
+      "source": "src/graph/nodes/state_nodes.c",
+      "sha256": "8e6ad3aafd596a3651eda3bead1f32e993782af312e6924d860ec09d7fc3e130",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/state_nodes.c.o",
+      "command_sha256": "1b586801d6b8092e2c92ee728c3bd7e8339fffc1ba423755f037b38771c8219f"
+    },
+    {
+      "source": "src/graph/nodes/struct_nodes.c",
+      "sha256": "e0ee4224ba0ca9a610c4ab89970b89f3c955bb7be36b96b9a5292a18afa0b3ef",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/struct_nodes.c.o",
+      "command_sha256": "56436a9a3827bb754a8e537e072bdcf4c074497e68720e10cb56004723763ba2"
+    },
+    {
+      "source": "src/graph/nodes/flow_nodes.c",
+      "sha256": "27eab8a62494a8e53c81cffc1a763c909d355028a266993422328ffce8c248ab",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/flow_nodes.c.o",
+      "command_sha256": "8123c151c647868efd3f303a3f6cb1123ad748a7b20e322792fa6b787fc03435"
+    },
+    {
+      "source": "src/graph/nodes/event_nodes.c",
+      "sha256": "cc0a2e41e1b0a82ffa523f263522365fa8fdc76ce5c3b24c5f4c2e522d329924",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/event_nodes.c.o",
+      "command_sha256": "26faf33972d730b1004cc68904ceddac4099d9db91413b86ea1b2ae68dbd1f93"
+    },
+    {
+      "source": "src/graph/nodes/reroute_nodes.c",
+      "sha256": "51a99f6f833ef66ec752f6a4f73b7e7f2164d89a6b944a9b038c5faf904c6390",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/reroute_nodes.c.o",
+      "command_sha256": "6dd7e2dfccbda4594f19643387dcd52094484cfa079924d79021df8b8bb2db34"
+    },
+    {
+      "source": "src/graph/nodes/math_nodes.c",
+      "sha256": "19c35249247d45a6248ab1d3d5e0be9892a7fe0208909b7244aa9ed4bf86c7c2",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/math_nodes.c.o",
+      "command_sha256": "07d62b3576d22e41ce86d6200bdb78902369d05ae053aced87741d0ff24c3468"
+    },
+    {
+      "source": "src/graph/nodes/const_nodes.c",
+      "sha256": "e8cea543eb0c6e53a8912a7f7b988b8d2e47fcdc31f19c05a34bcbbdf4d43de9",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/const_nodes.c.o",
+      "command_sha256": "e3ab24570d68042a9ea9863f973c8635edf8a25fd189e4023759356b0707feaf"
+    },
+    {
+      "source": "src/graph/nodes/compare_nodes.c",
+      "sha256": "06e3be5fcb189d2284615db027ef7209104aec002d94a29d5e7329f1df5ca67e",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/compare_nodes.c.o",
+      "command_sha256": "98de98087283d240fa75a3cafdc10e25c7dbe2dca05cb13273e2f42b8a19bb46"
+    },
+    {
+      "source": "src/graph/nodes/vector_nodes.c",
+      "sha256": "53d41810848cec915d3d6357bd13a872cfa91fc1d297e32af040d56c279fb398",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/vector_nodes.c.o",
+      "command_sha256": "d4f7c98018b86b6a42b46c4cfb98fde5c26bf1ffde56b25d6a9ce9c7300e8b5c"
+    },
+    {
+      "source": "src/graph/nodes/fmt_nodes.c",
+      "sha256": "68e9bb6d08936c0a06d39bfe83844927ec8ee39163943d1a5a036e850497aa25",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/fmt_nodes.c.o",
+      "command_sha256": "13acd1812969e43e59737582e687c9dd6d0b849de0a15e2240cd83b10afad3c5"
+    },
+    {
+      "source": "src/graph/nodes/array_nodes.c",
+      "sha256": "8962233ff239eaab886eac7ca4432c3a8ade47f732b20ff443f121acb3a040ea",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/array_nodes.c.o",
+      "command_sha256": "ea03ea46a7a7d95b53501e49a54d92cfff5f9fc9e0e94268aa157169da62fde5"
+    },
+    {
+      "source": "src/graph/nodes/switch_nodes.c",
+      "sha256": "0a5da306ff1b9185c4bce9ac76a051be3ccaf2cf1ce620ab5d8336981f01a057",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/switch_nodes.c.o",
+      "command_sha256": "0ef4021544c295c7ac7cfb4704130d23148b4f6f72afc0e25fae299000ee5aa7"
+    },
+    {
+      "source": "src/graph/nodes/set_map_nodes.c",
+      "sha256": "a73f034fe1569233880f65e0bc482d41fbce0f7bdba81e159c301eb17faeff23",
+      "object": "sdk/CMakeFiles/chibi_graph_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/set_map_nodes.c.o",
+      "command_sha256": "08d3c99f778d4d1c95f6bdc68b9d5f0ebb0fb36fa0e0af2e79cff12842fe632e"
+    },
+    {
+      "source": "src/graph/model/graph.c",
+      "sha256": "bfd67f7ca86570d82da87e0ab276b692b75909e6ccc01c119262f332aaf12688",
+      "object": "sdk/CMakeFiles/chibi_graph_model.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/model/graph.c.o",
+      "command_sha256": "4c8cb7b4f9a1ee9743ef320ab38b935571dbedb1fb74be62e37181075d72b9cf"
+    },
+    {
+      "source": "src/graph/model/behavior_asset.c",
+      "sha256": "51feee17af6db2ebff750c7934c8165ba5bb328cf6bc1dc10f4051c9a8002437",
+      "object": "sdk/CMakeFiles/chibi_graph_model.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/model/behavior_asset.c.o",
+      "command_sha256": "4811d28e7d644cd8bc39d9753f7be26fba569cae3ef75954e60f0a8a5598700e"
+    },
+    {
+      "source": "src/graph/model/local.c",
+      "sha256": "94753684caa888d126e00bd9743b7fed293750f5f81ac92d99f0d3c300c3bd7c",
+      "object": "sdk/CMakeFiles/chibi_graph_model.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/model/local.c.o",
+      "command_sha256": "8b5541b8e684e455606974e41a2a399f4dfef14bb90f411eeae50cde1ad707f1"
+    },
+    {
+      "source": "src/graph/model/pin_conv.c",
+      "sha256": "01eed8b508960b5eec1c0662a51431aeb0fb03505f17d8589953dbffc1d31449",
+      "object": "sdk/CMakeFiles/chibi_graph_model.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/model/pin_conv.c.o",
+      "command_sha256": "eeb5d8460a30ad826645a5dffa00bf8a264bf9145f074c81dd9c9688481ae37a"
+    },
+    {
+      "source": "src/graph/model/registry.c",
+      "sha256": "371289519e1bd60615f395dccd37a55604cfebb78e8aeef283f7ad01afb5ef66",
+      "object": "sdk/CMakeFiles/chibi_graph_model.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/model/registry.c.o",
+      "command_sha256": "432b9959ddb873e45e9e8b958affa132e8489af950a7cd570126dfcb5a1f473e"
+    },
+    {
+      "source": "src/graph/model/registry_validate.c",
+      "sha256": "a92fba9bde262d804aa3238e837d35baaf218a434bda33a9e748f472fb63b9b6",
+      "object": "sdk/CMakeFiles/chibi_graph_model.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/model/registry_validate.c.o",
+      "command_sha256": "723773461351b5fae23fab30cf4330f81595113015b1c373152ab99bac4dca23"
+    },
+    {
+      "source": "src/graph/model/value_copy.c",
+      "sha256": "1bbdba18f7a1f9dead5f0c1a3b0a9ef605a2b9134b5f504d4bf4ccffcfc59f58",
+      "object": "sdk/CMakeFiles/chibi_graph_model.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/model/value_copy.c.o",
+      "command_sha256": "8304110bb9863f6ac70e8b2d854dcf777b1dae573475aeab5ac4d9eed05ef82c"
+    },
+    {
+      "source": "src/runtime/selection.c",
+      "sha256": "2bfc034cf6776bf6c97b4dd8de34bcc2fdb1d69f0e013c354221e11053ef0461",
+      "object": "sdk/CMakeFiles/chibi_selection_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/selection.c.o",
+      "command_sha256": "51ceac9b22e873b059797157c8486ff4edf5c40d9f99cb8ecb89370d0f2a1646"
+    },
+    {
+      "source": "src/runtime/selection_definition.c",
+      "sha256": "29731963357914cb59cf162b806ba2721411df35aa30900987f45d055ace543e",
+      "object": "sdk/CMakeFiles/chibi_selection_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/selection_definition.c.o",
+      "command_sha256": "599a97dcb7a68c4da2cf681be015b9fece17225d3bf94be46291b077d105d7e7"
+    },
+    {
+      "source": "src/runtime/sets.c",
+      "sha256": "38d97382c3dddac7b3ac1c300f58e9c9aa926e93bc443a95a428bf6b9c4c9ac9",
+      "object": "sdk/CMakeFiles/chibi_set_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/sets.c.o",
+      "command_sha256": "f7f8af78dda4f342866d45d90e36be910475565d3080f96b2f629bbe02d57b38"
+    },
+    {
+      "source": "src/runtime/sets_definition.c",
+      "sha256": "7f21f6a2d4fafa0a74c68a9fe49e71210452f2a4e1203bb1ba6e25bf5bb5c55f",
+      "object": "sdk/CMakeFiles/chibi_set_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/sets_definition.c.o",
+      "command_sha256": "b6ff7016ed1012baa42f72d7f766d01a54de66889b00583265a6e1ec83e8f0b3"
+    },
+    {
+      "source": "src/runtime/state_definition.c",
+      "sha256": "1fdd57c9c2441e509f1418ad43d5537292efab42cb94ad3d32077d0a758bf6c9",
+      "object": "sdk/CMakeFiles/chibi_state_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/state_definition.c.o",
+      "command_sha256": "e03df3492b4bd6d0268dc90792110e9110dca28934ecaf8af6a499b18092d400"
+    },
+    {
+      "source": "src/runtime/vectors.c",
+      "sha256": "70041f4484a1fe0d5cf024d8c773461228a6dcad5053410f8b79f1d16d3eb9e8",
+      "object": "sdk/CMakeFiles/chibi_vector_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/vectors.c.o",
+      "command_sha256": "eba71d801f813449081d710d0b46fc6348e16e84a55b3904501a7a9ded9a14d5"
+    },
+    {
+      "source": "src/runtime/vectors_definition.c",
+      "sha256": "f34646bcddebbab9f73b004092156851fce22e546873842a1ecd2eb0dfdd2521",
+      "object": "sdk/CMakeFiles/chibi_vector_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/vectors_definition.c.o",
+      "command_sha256": "f50a479b49f27963d528674993c209732d2064f33143aa160036ec211c87c833"
+    },
+    {
+      "source": "src/runtime/material_field.c",
+      "sha256": "0d96ca90ac083c3746e43843144828a8aca0063f71d38d400554cb5d44f6fb32",
+      "object": "sdk/CMakeFiles/chibi_field_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/material_field.c.o",
+      "command_sha256": "8d554fa8a28856b617bec26895d3505508abf6ef29a201d24ca22e565cb799c8"
+    },
+    {
+      "source": "src/runtime/material_field_prepared.c",
+      "sha256": "f68cb8afbb430b5f7999946c98e6b10c94fc5dfcb516207f845191330a30c06b",
+      "object": "sdk/CMakeFiles/chibi_field_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/material_field_prepared.c.o",
+      "command_sha256": "1fdd55d78d939d8603026502a261bb7d0dd840607a383064d0b37cde6e882fb2"
+    },
+    {
+      "source": "src/runtime/fields/program.c",
+      "sha256": "e4314f6b41cd8f5c0fa11fc2f0f17086b1c0a75d5db951d4bf293e3651c431f8",
+      "object": "sdk/CMakeFiles/chibi_fields.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/fields/program.c.o",
+      "command_sha256": "2ac5d06dea88b269c865228774589d285f1ffd4ad107a75b16af5399631f2355"
+    },
+    {
+      "source": "src/runtime/fields/prepared.c",
+      "sha256": "1cc20f8fe87b8843a04561384603fb799bff16ff1143dd02f4cc9638cdaa03d5",
+      "object": "sdk/CMakeFiles/chibi_fields.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/fields/prepared.c.o",
+      "command_sha256": "a0c4cbbce3c86d07126359ac1d2a12d8a6f5675c101684b6f18fbf6b7a0a9cf0"
+    },
+    {
+      "source": "src/runtime/fields/native.c",
+      "sha256": "012f768f69c2e381fd167ea9e6a149425187df2e69b42fecadb9cb60a2df51a1",
+      "object": "sdk/CMakeFiles/chibi_field_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/fields/native.c.o",
+      "command_sha256": "d8bc0e711b6800587cb06e9dbc727f64d5192bc871969f66d0488151778b303b"
+    },
+    {
+      "source": "src/runtime/fields/definition.c",
+      "sha256": "eaba2871334aa836280b61d2435300fa1c6f5f56b93ea04e2745215f86a9ff64",
+      "object": "sdk/CMakeFiles/chibi_field_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/fields/definition.c.o",
+      "command_sha256": "96545d40e96def8c072fadab7f9c68e0964506490bf7f76e94b4ee757e1c0a9e"
+    },
+    {
+      "source": "src/assets/project.c",
+      "sha256": "571b44ee3726947904631a6620665d014411087ab997cbfea4ee53e0d5084b36",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project.c.o",
+      "command_sha256": "237af913c376e6967548bfeda414bf9629b560455c69acb3546329c55e1f6ff7"
+    },
+    {
+      "source": "src/assets/project_migrate.c",
+      "sha256": "17cdcd855812b897d2edc3ea7065e6494055a8545101f9f8da9c6270c12e0f37",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_migrate.c.o",
+      "command_sha256": "390cf7cd201809e2b003f8f489bd4f0820f9915cd10caf38b36b053b04971ccb"
+    },
+    {
+      "source": "src/assets/project_migrate26.c",
+      "sha256": "cc617873a0ac01d78d20fc5b4509fad3cccc040b8ec4b8ba12f4085af79dcc20",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_migrate26.c.o",
+      "command_sha256": "40e10c048efe6c0bac8afbf5ed978b33318dcbea5780cbdde31ae0b80806b9a2"
+    },
+    {
+      "source": "src/assets/project_migrate29.c",
+      "sha256": "a837a588a314f551099eefceaaa2fdfbcdef89f06435646c9ff523fba103dbb5",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_migrate29.c.o",
+      "command_sha256": "3a70eac0c75248dafeea3b8ecbeddc16e76467b37c7c2129d2c0a99a28fbe6a3"
+    },
+    {
+      "source": "src/assets/project_migrate30.c",
+      "sha256": "4ea693a479d64a896b3a89dec9673e964a36cb9ca78809862a039feac9276a61",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_migrate30.c.o",
+      "command_sha256": "2ea0526c6187acec9986b58dde2e131212b5870b9c71ec2e3a777d318d782c35"
+    },
+    {
+      "source": "src/assets/project_migrate31.c",
+      "sha256": "98b8e7ab506116abb10a3f0756a34520f7093cc6c34b8e554a4e0e418a70ee4c",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_migrate31.c.o",
+      "command_sha256": "55a8c2cecf2cd32287045226cf874707d430a4d6844d7a96f0592ada2b263188"
+    },
+    {
+      "source": "src/assets/project_migrate32.c",
+      "sha256": "d0c2fadb97b8b1e63378cd6b152d04e05bf32c67c586f70380edb5a811268f7d",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_migrate32.c.o",
+      "command_sha256": "f7cbe12b1a5c12c7d6c561336d060df9330a3575a496c1476e9a651c911d1c92"
+    },
+    {
+      "source": "src/assets/project_migrate34.c",
+      "sha256": "c7486ac516d3e00f5acce68a0ab32aca5a9e19f1497eb1b48830e911ae7ab3c4",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_migrate34.c.o",
+      "command_sha256": "cf54789438a9e9283e05217b5dc984295d0e2f628f93d9fad50083bb036b69fe"
+    },
+    {
+      "source": "src/assets/project_migrate36.c",
+      "sha256": "39f71f0fc086d657f74d463a90b8ec70dcc8655cee215c418de043d6bee7ab66",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_migrate36.c.o",
+      "command_sha256": "389640c724cf0dee0eda24fcabc8f481b0b6a3147dea0e555e371c82c0915428"
+    },
+    {
+      "source": "src/assets/project_migrate37.c",
+      "sha256": "bfa45c9ea0ab27d728e80ebfce5dbecd9fe43d8022e347b1e3b86dd5f6e1d0e4",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_migrate37.c.o",
+      "command_sha256": "645b13df515d6ff26d50a8ceed175e8034cba1814f3e4a74f4e8625d5bb9c2e1"
+    },
+    {
+      "source": "src/assets/project_parser23.c",
+      "sha256": "2144daf3dfae6be9184dce77d5890c476e7942b0dfa74606490de54a2d8e7045",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_parser23.c.o",
+      "command_sha256": "4ccfbbce7f48fd67736661a0110716942936fdd0d5992438a27bae198ec28940"
+    },
+    {
+      "source": "src/assets/project_parser24.c",
+      "sha256": "9d994e1a35b0ce3002b2e818e33200a312bca805d1fa4537c2b6be011eeb6732",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_parser24.c.o",
+      "command_sha256": "1ac267c03b56d85f57f0ed38212a957a610c34370a850ce70d61becfd7272e36"
+    },
+    {
+      "source": "src/assets/project_parser25.c",
+      "sha256": "258f73142cbf16f3e0564933f24e71b21b155295ac09933acb3b9db1237e8aca",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_parser25.c.o",
+      "command_sha256": "0d88bba5ce0df5128d6f6a1c2efc6339a200a74c94024aaf2f0182d5ccb5ec8d"
+    },
+    {
+      "source": "src/assets/project_parser26.c",
+      "sha256": "ae41651d057de14742815929c78fe0c1ab39cb8bec832771fa384f7ac32ed716",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_parser26.c.o",
+      "command_sha256": "625c86a9e74f7f8e5a49b93c866f5a9d5bb1153c0438c8be5c8f9a4666caf3c6"
+    },
+    {
+      "source": "src/assets/project_parser27.c",
+      "sha256": "137d5acd5e89e80759133a2d5d38c80b3dfe1267dd4fede994b30c9544cf63da",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_parser27.c.o",
+      "command_sha256": "0e800e2f6d33a9a4cb1d3b5ed0fa8a44eec6ac7b76a6666e3a6d9da48dd8ea69"
+    },
+    {
+      "source": "src/assets/project_parser28.c",
+      "sha256": "aee5fc35b8cdaf6718e084e6c2578d96d572d19c6d7688d418d40c3751bdd68d",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_parser28.c.o",
+      "command_sha256": "32e90a016b2e1d5dd4016e6d4f050fc30b1aa83531ebf0378c8dfb2991da9bdf"
+    },
+    {
+      "source": "src/assets/project_parser29.c",
+      "sha256": "266ba8e3ce10dd7f592ff446af3cf74edf172d42be0965b1d5efe33f233457dd",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_parser29.c.o",
+      "command_sha256": "c29d24b0657d4240a65f74b298523fbb0b82c0c11239ed3b59619b0116339d01"
+    },
+    {
+      "source": "src/assets/project_parser30.c",
+      "sha256": "3fc07166a980ea67c99e6c91bb91d4389692fd1471da86e8026ee73b6feae109",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_parser30.c.o",
+      "command_sha256": "feb69daa3d3492db19277b84a09136617640005ce650368273dcc7b8aa29ac5a"
+    },
+    {
+      "source": "src/assets/project_parser31.c",
+      "sha256": "d6bd2b467a61c16f6adb07c323c61aae4ca181c1d2c738fc2256b303a041dd17",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_parser31.c.o",
+      "command_sha256": "2633e8f85096024e60865c12d3ba479a9b27863e43bd40e5b0486adf2af98676"
+    },
+    {
+      "source": "src/assets/project_parser36.c",
+      "sha256": "08a09a6cfe1a4465141d5abccf75786abe53fce85a79b784fa52c0dad9d2c3ce",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_parser36.c.o",
+      "command_sha256": "9f3442887af7e74bb55a7da8fc51cd886fe773d353266bd05f3905e53b8eee0a"
+    },
+    {
+      "source": "src/assets/project_parser37.c",
+      "sha256": "037058539ab6f44a168ec52529aa53c474413851eed7fce8aa6d3f2a0b313e75",
+      "object": "sdk/CMakeFiles/chibi_project_document.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/project_parser37.c.o",
+      "command_sha256": "fb5310a18bb098a2cebc973c7f35529b82bba4223b6a7f90041383b5b8784e72"
+    },
+    {
+      "source": "src/assets/ui_events.c",
+      "sha256": "de4b8c3bd06fb5104f5fb9cfdb6ff2c5c0932881c1cf32dd55483f0e5298868e",
+      "object": "sdk/CMakeFiles/chibi_ui_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/ui_events.c.o",
+      "command_sha256": "c17796322e76c38fd4034a45eade6641d270b80860c0eb242180cf28ddfb9596"
+    },
+    {
+      "source": "src/assets/ui_source.c",
+      "sha256": "11467af36d71da7cdfb267d0e036f1a9598ac22e923c871d57d051ad6117cc0b",
+      "object": "sdk/CMakeFiles/chibi_ui_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/ui_source.c.o",
+      "command_sha256": "60c846d296552556106d1f54804567eea83094a9cec92e9a5adb427de17e1934"
+    },
+    {
+      "source": "src/assets/ui_source_complete.c",
+      "sha256": "63309289e76dd79bc9b24f57cc399d14ae482547b5bcf97238b6079d35bd8fc7",
+      "object": "sdk/CMakeFiles/chibi_ui_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/ui_source_complete.c.o",
+      "command_sha256": "e55bf4c2f3fa17cbe98e8e54c9fe775eb3d537b67dc2532fd1fc93cc279118a8"
+    },
+    {
+      "source": "src/assets/ui_source_edit.c",
+      "sha256": "712652b917ad37718ed48306616b0b667704df69d090c2ed5679319eefec5c95",
+      "object": "sdk/CMakeFiles/chibi_ui_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/ui_source_edit.c.o",
+      "command_sha256": "5c05c4fd58bc797df82299383fe826f357d56ea770e5f640caf4c9fa9468274e"
+    },
+    {
+      "source": "src/assets/ui_source_format.c",
+      "sha256": "b9de6fd19551da9b88cbe67712c8da53e0e9700c76ebfad5e410c17c0aab3627",
+      "object": "sdk/CMakeFiles/chibi_ui_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/ui_source_format.c.o",
+      "command_sha256": "02515032d104252860d0f015d797b9a843b201101bf60486696c0ac7a96b0914"
+    },
+    {
+      "source": "src/assets/ui_source_hover.c",
+      "sha256": "432bbc4a0ddbac70d95e502495b9f790e10f8d707a8ec956e756d685028ebdcd",
+      "object": "sdk/CMakeFiles/chibi_ui_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/ui_source_hover.c.o",
+      "command_sha256": "c454d22649d0da7549b1d1381024982d4b3692796165df9c3c5f1ebd5708eebe"
+    },
+    {
+      "source": "src/assets/ui_source_resources.c",
+      "sha256": "574e35f24cba6d4c46314687654eaf7aedc1d1659ecda62dca4cd9addaf8d141",
+      "object": "sdk/CMakeFiles/chibi_ui_authoring.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/assets/ui_source_resources.c.o",
+      "command_sha256": "0221ad5e09b4a479011c37d0f7dc2f18ca4b8de128388c51492e6543a2a2e75e"
+    },
+    {
+      "source": "src/graph/shader/shader_adapter.c",
+      "sha256": "9e9ef2037de93306c106f126705228178be2035cdaa66d7deef9af3c0c135b42",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/shader/shader_adapter.c.o",
+      "command_sha256": "780ec9604680c2a32dcec0af00fd6c825e7ac46cb58098bcd24c9e8d4d884b05"
+    },
+    {
+      "source": "src/graph/shader/shader_nodes.c",
+      "sha256": "74904281aad91328ea09e58a48f34b04487d29ec9c0148f53896f1933d63e654",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/shader/shader_nodes.c.o",
+      "command_sha256": "46578435d6f35a1527d800f8283dc6858d79a0f184db68d671b240184841e991"
+    },
+    {
+      "source": "src/graph/modeling/model_anchors.c",
+      "sha256": "6fa2b61706cbd72e6e030e3d4abae6e2f771eb096451cd9173d7948d7ce49ae4",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_anchors.c.o",
+      "command_sha256": "73a1ac2513bb9e043472ff8d16f929c91768afdc3eadcf3332279feda85067ff"
+    },
+    {
+      "source": "src/graph/modeling/model_authoring.c",
+      "sha256": "9ca7343b38942f2560472920a9b7fe39668ec45579a4162ac033b28abca791fb",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_authoring.c.o",
+      "command_sha256": "f7c39a7474c031b59e9ccd2826b346b731d28f3536967fba1c85a09af6c993ac"
+    },
+    {
+      "source": "src/graph/modeling/model_bounds.c",
+      "sha256": "26dc72bc89961356d34b2e73f97b10bcb5666e6d621761c6c678e022a8a7ef98",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_bounds.c.o",
+      "command_sha256": "3cb668b4d2eef66613e74c24c5275f81c34d51a143da571cbf4bae68c4a9e69a"
+    },
+    {
+      "source": "src/graph/modeling/model_bounds_prepare.c",
+      "sha256": "67b558c5596371df11d52e2a7f41d31eb56390f6768ce3f45eae2284b41f65fc",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_bounds_prepare.c.o",
+      "command_sha256": "dc20b9e7535061bd2b2a778eebc95f0d900be48fbba9575ea6a8bba7ee297b47"
+    },
+    {
+      "source": "src/graph/modeling/model_compile.c",
+      "sha256": "ee22dd421c44bc020ea54c4ee64770fdbc5b9b7857b29d565937a6b11edc2742",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_compile.c.o",
+      "command_sha256": "fb6278f67fe21f0f1d993d758a8a980b582c31fce25dd1687538df047cae0783"
+    },
+    {
+      "source": "src/graph/modeling/model_constructive.c",
+      "sha256": "6c2fc773808b0df976499e44046d97e1a11e232a63b30cf81ce6155c8ab68587",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_constructive.c.o",
+      "command_sha256": "b2879d893e806a51d9157e12b0a2e3a0f4990e393a0dcc61696742cda943c778"
+    },
+    {
+      "source": "src/graph/modeling/model_expand.c",
+      "sha256": "1817ec3a2801bd8cfaff88ef85b3b409b801e42f69164d21dd9c419e57b2d19c",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_expand.c.o",
+      "command_sha256": "d867cc75317124d6a7bd4efbb3baaeb0de8ffd98e4a450b6c19469b5693d3ef4"
+    },
+    {
+      "source": "src/graph/modeling/model_hit.c",
+      "sha256": "a3b4e84492ee283f31645ce85110c8f926d42d2e649283bfa0156dd715b64d24",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_hit.c.o",
+      "command_sha256": "b7e49318fb9176ad8cb83715a520e524fae74b581c9b976034e86e47a5b7a782"
+    },
+    {
+      "source": "src/graph/modeling/model_materials.c",
+      "sha256": "abcb1212be1c363e40d84159f6482260c10722f000f1b89b0f6e22714f2e634c",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_materials.c.o",
+      "command_sha256": "b5caf3a6f817f916f75814c2babb37ed4024683881aa40507f1b0221378c5ca3"
+    },
+    {
+      "source": "src/graph/modeling/model_nodes.c",
+      "sha256": "e2f8d9778a70328065db497304ad5886199030ad40729daebbf0459329bea35d",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_nodes.c.o",
+      "command_sha256": "6f2ba3c4a97593e405c748dceb856b7bc10fda9e401bf653b5a460d5d34ba05c"
+    },
+    {
+      "source": "src/graph/modeling/model_numeric.c",
+      "sha256": "c44e377324a2952b71af1fae575c83b4348efe7ed3747d473172619dde977fe2",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_numeric.c.o",
+      "command_sha256": "b9d873357e656e722de8d885ab23661c64695cd83678929bba57c3283e8b1af3"
+    },
+    {
+      "source": "src/graph/modeling/model_parameters.c",
+      "sha256": "2ecc11ff075686085c64b9d4b72593f4cba335dfdcf3be887a19e0de6a86dd4f",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_parameters.c.o",
+      "command_sha256": "c296cee631eb45235e95cda618eb4d733de68e8585176296ae8a457b659bd2fd"
+    },
+    {
+      "source": "src/graph/modeling/model_profile_paths.c",
+      "sha256": "1f3adf508587ab14706aae5254812617d1dde6d886adbe27543c5630dfbdd518",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_profile_paths.c.o",
+      "command_sha256": "3540532884c8f8937573171670ece4154f62193b99d07f03ea9e7e02411b3089"
+    },
+    {
+      "source": "src/graph/modeling/model_profiles.c",
+      "sha256": "ff3c9bb206e7190d630bcdca3088227854ca02603edad4ae38cbcf44c1f1ffa7",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/modeling/model_profiles.c.o",
+      "command_sha256": "47b25164070197ce148277675ca3047cd6a3ebab65f6b170fe2d4bcd7c546ff4"
+    },
+    {
+      "source": "src/graph/compiler/report.c",
+      "sha256": "0c3d71de39a127fed7fdb4f57c2a051e3e2e90cf5f972656ec30f7f6bb97b971",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/compiler/report.c.o",
+      "command_sha256": "cd56f1ed3c197e36d0d694d66e7bee38110c460f4acee829ca93572c8aee7282"
+    },
+    {
+      "source": "src/graph/compiler/validation.c",
+      "sha256": "fdab74fdb37029a8bd23b20cc78617db59d7cc74f7e3f4661724c1b1a9d361cb",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/compiler/validation.c.o",
+      "command_sha256": "081de16e729cfeb1208f5dd56d4a491e363ae3a4ac7de9fbb289928477756191"
+    },
+    {
+      "source": "src/graph/compiler/structure.c",
+      "sha256": "2baa509fcd161ac4d5365cc766577d0ffe7de1da015238632683b5fc5e1db853",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/compiler/structure.c.o",
+      "command_sha256": "c92ce1340ce4fbf62dac4d22dbc2963657d167d908ae04a6c24fbe50d83f72e7"
+    },
+    {
+      "source": "src/graph/compiler/field_program.c",
+      "sha256": "dddf8c6d81a8966d7d7a47a0b2c53547d406f4d9edde1773e64f59f55ca7e6fb",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/compiler/field_program.c.o",
+      "command_sha256": "7baa9d255b4dca3a4e4f63935e30783f7b76c22cf6c62de0cdb9e3c04f1a2fd9"
+    },
+    {
+      "source": "src/graph/compiler/material_field.c",
+      "sha256": "22586a047ae971803a4652e22fbf279bdd3206813aa2a2c5b1c1168abebaa702",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/compiler/material_field.c.o",
+      "command_sha256": "85fe64c99bb3b742406a70cdec266011cf703d64db3797acff22ee5512798bf8"
+    },
+    {
+      "source": "src/graph/document/problems.c",
+      "sha256": "dbdbdccebb164dd5d11c9e90daaa8b3eedf5d0242b55ac3512f91fa4265d8f4a",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/document/problems.c.o",
+      "command_sha256": "0bb2bd00e9ce0b6ff7e98d7836012bd29869474b8f6aaa739885ef4965d01f20"
+    },
+    {
+      "source": "src/graph/nodes/field_nodes.c",
+      "sha256": "fbd93e453573ff03bb2ec464a4929a4428eeebd26bd8fc4f4c7ac2238d5fe9ff",
+      "object": "sdk/CMakeFiles/chibi_graph_compilation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/graph/nodes/field_nodes.c.o",
+      "command_sha256": "92648ab786f61d8868785ce39efbad93627cb9411587b845142945199433d683"
+    },
+    {
+      "source": "src/runtime/models/model_lifecycle.c",
+      "sha256": "5f61bad975fa4c3377ff410c5432edd9492f0b67c9a48d4f3648eb3f91d891c7",
+      "object": "sdk/CMakeFiles/chibi_model_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/models/model_lifecycle.c.o",
+      "command_sha256": "f1e209bfe2ffa093298d3178a2e0cbc80256a71a6d7dc12c6560deeaac7b0726"
+    },
+    {
+      "source": "src/runtime/models/prepared.c",
+      "sha256": "d52f3bbf926ec476c3b0a8f12d9efcad60ce879cef5baa77dfe2e74f9de22e0f",
+      "object": "sdk/CMakeFiles/chibi_model_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/models/prepared.c.o",
+      "command_sha256": "fce42849adb3606f6771e4d5adf690fcc38bed910f310d8e3b06486324ce5a9e"
+    },
+    {
+      "source": "src/runtime/models/model_parameters.c",
+      "sha256": "38361c9b09e82505178c85e1c2e9d6f637e65b2187f3d41fa8248166c3eeff2a",
+      "object": "sdk/CMakeFiles/chibi_model_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/models/model_parameters.c.o",
+      "command_sha256": "3a05b18d60927ca944e8f942a90ac571ac0f2ac10db03115a2bf9314b6f08105"
+    },
+    {
+      "source": "src/runtime/models/model_bounds.c",
+      "sha256": "e6bab93fb2e1ddecbc36c40f0becf7147b5566f09513988547eca1575a333793",
+      "object": "sdk/CMakeFiles/chibi_model_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/models/model_bounds.c.o",
+      "command_sha256": "c4b918722a6327d348080934c3c4397a6cea8aa2a7c439e18b36e9c22f77cdb7"
+    },
+    {
+      "source": "src/runtime/models/model_finite.c",
+      "sha256": "2cb55e2df413d09f4771c17631240aece3936a403ea4972bbc11c54377b879c7",
+      "object": "sdk/CMakeFiles/chibi_model_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/models/model_finite.c.o",
+      "command_sha256": "0c4fba9192ab995d865cea86be91cb9f7d2670b6e3de172674395c21db81f97a"
+    },
+    {
+      "source": "src/runtime/models/model_frames.c",
+      "sha256": "76fc4f6b01c9614e9d343113635a73935a83224089e369e3f068d839eca57ab7",
+      "object": "sdk/CMakeFiles/chibi_model_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/models/model_frames.c.o",
+      "command_sha256": "ec0cb8f5382e93592c2bc9f0d63b7b2baf0102a1e015ce4b0e142aed84210e61"
+    },
+    {
+      "source": "src/runtime/models/model_hit.c",
+      "sha256": "fd7c30e90385f45d39062b50ec589a42a0e65cd28e93294f886743607881700f",
+      "object": "sdk/CMakeFiles/chibi_model_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/models/model_hit.c.o",
+      "command_sha256": "c38387f8173a339872cf62bb208d45ef359f92771e1ff514fce5387b3a1a7c20"
+    },
+    {
+      "source": "src/runtime/models/model_inspection.c",
+      "sha256": "b7d6d2e9d4a6ae474a86988ff546c986132348e7a26c08a29d35cc9c6fb381d6",
+      "object": "sdk/CMakeFiles/chibi_model_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/models/model_inspection.c.o",
+      "command_sha256": "a6a474ba5cd15c5f085f1b2a711e6e7b6d706adc3f304ca5a6d05c543ddd3ea7"
+    },
+    {
+      "source": "src/runtime/shaders/bake.c",
+      "sha256": "a3a8553a25e90d95a451118e9714f0feb70dbbe86be827e8f9f9e90fb31f546c",
+      "object": "sdk/CMakeFiles/chibi_shader_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/shaders/bake.c.o",
+      "command_sha256": "6fcecb5dc27b92755b6ef2a7a9faf7fb54e11551689489aada98deb73cd4e006"
+    },
+    {
+      "source": "src/runtime/shaders/program.c",
+      "sha256": "965cc78a4f0051e65f8331fcc2e0aef3eee991b2c9fe85054492a982cd99326c",
+      "object": "sdk/CMakeFiles/chibi_shader_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/shaders/program.c.o",
+      "command_sha256": "793ca6cbc7ec46f4bf972d15a2305ca534c018e72a008890ba1952f0420ffbe1"
+    },
+    {
+      "source": "src/runtime/shaders/prepared.c",
+      "sha256": "890e8a134f39f16bf43179abbe8905094154c742852ec09e31b34bd86ddd81d4",
+      "object": "sdk/CMakeFiles/chibi_shader_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/shaders/prepared.c.o",
+      "command_sha256": "2e79362cdeda87dfc19be5995fb05c5ce9bf463f1a5220c3aaecae56a50a3b2b"
+    },
+    {
+      "source": "src/runtime/shaders/detail.c",
+      "sha256": "addfa1fc1ac204396f6f7f62c2909b7edaa3024a1296fc7de443d17f8fc5bc6d",
+      "object": "sdk/CMakeFiles/chibi_shader_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/shaders/detail.c.o",
+      "command_sha256": "54bc052063c162cab7bc40b8920b57068534f662c68b1bb661e09e15f605453f"
+    },
+    {
+      "source": "src/runtime/shaders/effects.c",
+      "sha256": "ea8a7cfa614d2fb4fb1f4b39d1b3489c0cc1cf4b0e5bf145c727b10562e1d1b3",
+      "object": "sdk/CMakeFiles/chibi_shader_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/shaders/effects.c.o",
+      "command_sha256": "abb4735cd6e888224582225c7e3d045e1ebd8d2a8ff198dc6f543fd15061ce18"
+    },
+    {
+      "source": "src/runtime/shaders/image.c",
+      "sha256": "7f10516d52b49a13ab94128fd3a0fb34a9a01026d4984c313632c1fdcae8f7b6",
+      "object": "sdk/CMakeFiles/chibi_shader_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/shaders/image.c.o",
+      "command_sha256": "6ceb6d99f74fd41713ed7b7d61641fc479c49c77d27c6065792876632f859711"
+    },
+    {
+      "source": "src/runtime/shaders/volume.c",
+      "sha256": "af20201d87006db93afe26afece30e90688ab734d5b95572085114f7e7f44ade",
+      "object": "sdk/CMakeFiles/chibi_shader_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/shaders/volume.c.o",
+      "command_sha256": "648bcb6833a75f214bf966cc9c2f468f20fd9f9850bc411a4ec71ef8fc1a2c09"
+    },
+    {
+      "source": "src/runtime/shaders/inspection.c",
+      "sha256": "1049589ffbb2744818042bbfdae179a4853c0a3da34f6a2070a41f93e6870959",
+      "object": "sdk/CMakeFiles/chibi_shader_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/shaders/inspection.c.o",
+      "command_sha256": "cdc4c00559b4e00bf4b228cf384f948a1359e5b5c76a66132d9285ca472cc945"
+    },
+    {
+      "source": "src/runtime/shaders/source_debug.c",
+      "sha256": "e5e0c03b9bced64a9e318af7340aef06f50d27106dc06d87d8b054d5133bba59",
+      "object": "sdk/CMakeFiles/chibi_shader_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/shaders/source_debug.c.o",
+      "command_sha256": "330aec78672fa1fe86a698295e034785d0d69b84126420f10a3c166e4c50e044"
+    },
+    {
+      "source": "src/runtime/geometry/mesh_asset.c",
+      "sha256": "12e4874a49e2152144281f12eb6db324a52c36bc9ad4904dd6fd7811757b0fd6",
+      "object": "sdk/CMakeFiles/chibi_mesh_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/geometry/mesh_asset.c.o",
+      "command_sha256": "67465729d91105d423b64a135fcb2c800fd7b52c918e997fe1f5d1ce3020e9f5"
+    },
+    {
+      "source": "src/runtime/geometry/mesh_pick.c",
+      "sha256": "e64438ab22544eb4901bd3b516e238be6a1ce8fbdd54a80ae95f4cb2d763670d",
+      "object": "sdk/CMakeFiles/chibi_mesh_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/geometry/mesh_pick.c.o",
+      "command_sha256": "fad83dec96983ff44a7687dba999dd2b7c9500f2d7e673fe5263cb91900cdf6c"
+    },
+    {
+      "source": "src/runtime/geometry/mesh_prepared.c",
+      "sha256": "ea2e1bb4757b42fa8896c3efc2c1af03c7a7f3249f823552e29189eda95dba8a",
+      "object": "sdk/CMakeFiles/chibi_mesh_runtime.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/geometry/mesh_prepared.c.o",
+      "command_sha256": "4ff879db4a9171dd2c6519152bc6d4571717c1b4403e895284330b5fdfd43f51"
+    },
+    {
+      "source": "src/runtime/ui/documents.c",
+      "sha256": "242f6ec1e42f811e4eb936a301c87367446477e7a4f2814d3f0f4387bed099f8",
+      "object": "sdk/CMakeFiles/chibi_ui_documents.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/ui/documents.c.o",
+      "command_sha256": "eab6517c970bfaef69ee235ece2c038d9bfda7dcbf848a52f133c174c09d68b6"
+    },
+    {
+      "source": "src/runtime/ui/font.c",
+      "sha256": "3a80d597b796364ef5d1e65dd9c2a71828aa7ac57ab5d45f33445659a7436722",
+      "object": "sdk/CMakeFiles/chibi_ui_documents.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/src/runtime/ui/font.c.o",
+      "command_sha256": "7dbec728dd4e10c60c27c1f68ffd7e339089696510160a257f94520f47f79480"
+    }
+  ]
+}

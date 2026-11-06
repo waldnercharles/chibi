@@ -1,0 +1,874 @@
+diff --git a/src/authoring/project_compile.c b/src/authoring/project_compile.c
+index 97c3ac834b7488537c74a3899e19949289635d3c..4e8acab4e7fa28ae02ff5c0256ba53e10779d1cc 100644
+--- a/src/authoring/project_compile.c
++++ b/src/authoring/project_compile.c
+@@ -912,10 +912,18 @@ static bool check_package_examples(
+             );
+             const source_packages *resolved = source_package_snapshot_graph(snapshot);
+             documents = source_package_snapshot_documents(snapshot, &count);
+-            for (int i = 0; i < authoring_packages_count(packages); i++) {
++            for (int i = 0; i < source_packages_count(resolved); i++) {
+                 int index = source_packages_order(resolved, i);
+-                const authoring_package *package = authoring_packages_at(packages, index);
+-                if (!package->diagnostic_count) {
++                const char *identity = source_package_snapshot_identity(snapshot, index);
++                const authoring_package *package = NULL;
++                for (int j = 0; j < authoring_packages_count(packages); j++) {
++                    const authoring_package *candidate = authoring_packages_at(packages, j);
++                    if (!strcmp(candidate->identity, identity)) {
++                        package = candidate;
++                        break;
++                    }
++                }
++                if (!package || !package->diagnostic_count) {
+                     continue;
+                 }
+                 const script_diagnostic *diagnostic = &package->diagnostics[0];
+diff --git a/src/authoring/source_package_prepare.c b/src/authoring/source_package_prepare.c
+index bd77698ebd2026165cd3a023f3b2765c133579d4..86957cfbafc9671fe4a55557baee9ee06007d267 100644
+--- a/src/authoring/source_package_prepare.c
++++ b/src/authoring/source_package_prepare.c
+@@ -435,6 +435,40 @@ static void prepare_generation(
+     }
+ }
+ 
++/* Project packages are independent roots, including packages containing tests.
++ * Without project files, the first input file selects the collection root.
++ * Other collection packages contribute only through imports from those roots. */
++static bool *needed_packages(const authoring_packages *owner, const source_packages *graph)
++{
++    int count = source_packages_count(graph);
++    bool *needed = xcalloc((size_t)count, sizeof *needed);
++    int *pending = NULL;
++    for (int i = 0; i < count; i++) {
++        const char *identity = source_package_snapshot_identity(owner->snapshot, i);
++        if (!strncmp(identity, "project:", sizeof "project:" - 1)) {
++            needed[i] = true;
++            apush(pending, i);
++        }
++    }
++    if (!acount(pending) && count) {
++        int root = source_packages_file(graph, 0);
++        needed[root] = true;
++        apush(pending, root);
++    }
++    while (acount(pending)) {
++        int from = pending[acount(pending) - 1];
++        asetlen(pending, acount(pending) - 1);
++        for (int to = 0; to < count; to++) {
++            if (!needed[to] && source_packages_dependency(graph, from, to) >= 0) {
++                needed[to] = true;
++                apush(pending, to);
++            }
++        }
++    }
++    afree(pending);
++    return needed;
++}
++
+ authoring_packages *authoring_packages_prepare(
+     source_package_snapshot *snapshot,
+     const script_catalog *native,
+@@ -455,9 +489,13 @@ authoring_packages *authoring_packages_prepare(
+     }
+     owner->count = source_packages_count(graph);
+     owner->packages = xcalloc((size_t)owner->count, sizeof *owner->packages);
++    bool *needed = needed_packages(owner, graph);
+     owner->valid = true;
+     for (int ordinal = 0; ordinal < owner->count; ordinal++) {
+         int index = source_packages_order(graph, ordinal);
++        if (!needed[index]) {
++            continue;
++        }
+         script_package_document documents[SOURCE_PACKAGE_MAX_FILES];
+         script_package_import *imports = NULL;
+         package_generation *
+@@ -474,6 +512,16 @@ authoring_packages *authoring_packages_prepare(
+         owner->packages[index] = generation;
+         owner->valid = owner->valid && generation->view.valid;
+     }
++    free(needed);
++    /* Dependency construction above uses graph indices. Public enumeration
++     * contains only prepared packages, in the graph's original index order. */
++    int count = 0;
++    for (int i = 0; i < owner->count; i++) {
++        if (owner->packages[i]) {
++            owner->packages[count++] = owner->packages[i];
++        }
++    }
++    owner->count = count;
+     return owner;
+ }
+ 
+diff --git a/src/authoring/source_package_prepare.h b/src/authoring/source_package_prepare.h
+index dc78d2fc50bdae7f79967ee7b7d0297d9d36c673..bf633fa802e5919ba118dc97226cd0fc49e9ef53 100644
+--- a/src/authoring/source_package_prepare.h
++++ b/src/authoring/source_package_prepare.h
+@@ -31,7 +31,10 @@ authoring_packages *authoring_packages_prepare(
+ bool authoring_packages_valid(const authoring_packages *);
+ int authoring_packages_count(const authoring_packages *);
+ int authoring_packages_reused(const authoring_packages *);
+-/* Graph package indices, not dependency-order ordinals. Views are borrowed. */
++/* Prepared packages in snapshot graph order, not dependency order. Unused
++ * collection packages are absent; these indices are not snapshot graph indices.
++ * With no project files, the first input file selects a collection root.
++ * Every project package is prepared. Views are borrowed. */
+ const authoring_package *authoring_packages_at(const authoring_packages *, int package);
+ const source_package_snapshot *authoring_packages_snapshot(const authoring_packages *);
+ /* Owner-level preparation/snapshot error, or NULL. Semantic/lowering diagnostics
+diff --git a/test/language/compiler_fixture.c b/test/language/compiler_fixture.c
+index 31ca05016deb0dc08cc396adb872b85fb864a967..7767f7190e2b61dcd59051988fb78fdf5e935265 100644
+--- a/test/language/compiler_fixture.c
++++ b/test/language/compiler_fixture.c
+@@ -930,6 +930,7 @@ TEST_CASE(compiler_fixture_preserves_a_custom_authored_budget)
+ TEST_CASE(compiler_fixture_selects_an_exact_collection)
+ {
+     const char project[] = "package fixture\n"
++                           "import _ \"core:core_fixture\"\n"
+                            "@test ProjectOnly :: () { assert(false, "
+                            "\"project-only\"); }\n";
+     const char collection[] = "package core_fixture\n"
+@@ -978,10 +979,10 @@ TEST_CASE(compiler_fixture_selects_an_exact_collection)
+         expected,
+         sizeof expected,
+         "FAIL fixture.ProjectOnly (BYTECODE)\n  "
+-        "/compiler/fixture/Tests.chibi:2:27: Assertion failed: project-only\n"
++        "/compiler/fixture/Tests.chibi:3:27: Assertion failed: project-only\n"
+         "BYTECODE: 1 tests, 1 failed\n"
+         "FAIL fixture.ProjectOnly (%s)\n  "
+-        "/compiler/fixture/Tests.chibi:2:27: Assertion failed: project-only\n"
++        "/compiler/fixture/Tests.chibi:3:27: Assertion failed: project-only\n"
+         "%s: 1 tests, 1 failed\n",
+         backend,
+         backend
+diff --git a/test/language/package_compiler_chibi.c b/test/language/package_compiler_chibi.c
+index f79e6094d698b97b24bc1e6900c5102259371609..bec092d0e48bf67a4dfbec2dfcd95fcc6cde47be 100644
+--- a/test/language/package_compiler_chibi.c
++++ b/test/language/package_compiler_chibi.c
+@@ -100,7 +100,10 @@ typedef enum
+     COLLECTION_SAMPLES
+ } sample_group;
+ /* `source` is package facts, and `more` another file of it when present;
+- * `library` is package lib when present, and `core` adds core:strings. A
++ * `library` is package lib when present, and `core` adds core:strings.
++ * `collection_source` and `collection_dependency` add core:host_only and
++ * core:host_dependency; `project_modules` checks that the emitted closure
++ * contains exactly that many project modules and no collection rows. A
+  * `game` sample's target links the core pack a game links, which declares
+  * assert; preparing every sample with it would cost each selector seconds. An
+  * `updates` sample's `Build(count)` updates a local array in place: doubling
+@@ -129,6 +132,7 @@ typedef enum
+ typedef struct
+ {
+     const char *name, *source, *more, *library;
++    const char *collection_source, *collection_dependency;
+     sample_group group;
+     bool core, updates, boxed, game, moves, aliases, variants, built, lends,
+         drops, same_rejection, c_string_probe, host_effects, update_order,
+@@ -139,7 +143,7 @@ typedef struct
+     sample_call calls[CALLS];
+     const char *message;
+     const char *oracle_message;
+-    int line, column;
++    int line, column, project_modules;
+ } sample;
+ static const char *cstring_probe(arena *storage, const pin_value *arguments, int, pin_value *result)
+ {
+@@ -906,7 +910,89 @@ static const native_definition_pack ACTION_PACK = {
+     .global_bindings = ACTION_GLOBAL_BINDINGS,
+     .global_binding_count = NATIVE_COUNT(ACTION_GLOBAL_BINDINGS),
+ };
++static const char HOST_ONLY_SOURCE[] = "package host_only\n"
++                                       "pub Probe :: () -> int {\n"
++                                       "    return host_only_probe();\n"
++                                       "}\n";
++static const char HOST_DEPENDENCY_SOURCE[] = "package host_dependency\n"
++                                             "pub Probe :: () -> int {\n"
++                                             "    return host_only_probe();\n"
++                                             "}\n";
+ static const sample samples[] = {
++    { .name = "unused collection host capability is not required",
++      .group = IMPORT_SAMPLES,
++      .source = "package facts\npub Value :: () -> int { return 7; }\n",
++      .collection_source = HOST_ONLY_SOURCE,
++      .project_modules = 1,
++      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
++    { .name = "unused collection ill-typed body is not checked",
++      .group = IMPORT_SAMPLES,
++      .source = "package facts\npub Value :: () -> int { return 7; }\n",
++      .collection_source = "package host_only\npub Broken :: () -> int { "
++                           "return true; }\n",
++      .project_modules = 1,
++      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
++    { .name = "unused collection declaration is not checked",
++      .group = IMPORT_SAMPLES,
++      .source = "package facts\npub Value :: () -> int { return 7; }\n",
++      .collection_source = "package host_only\npub Broken :: (value: Missing) "
++                           "-> int { return 0; }\n",
++      .project_modules = 1,
++      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
++    { .name = "unused collection dependencies stay outside closure",
++      .group = IMPORT_SAMPLES,
++      .source = "package facts\npub Value :: () -> int { return 7; }\n",
++      .collection_source = "package host_only\nimport dep "
++                           "\"core:host_dependency\"\n"
++                           "pub Value :: () -> int { return 2; }\n",
++      .collection_dependency = HOST_DEPENDENCY_SOURCE,
++      .project_modules = 1,
++      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
++    { .name = "direct collection import requires its host capability",
++      .group = IMPORT_SAMPLES,
++      .source = "package facts\nimport host \"core:host_only\"\n"
++                "pub Value :: () -> int { return 7; }\n",
++      .collection_source = HOST_ONLY_SOURCE,
++      .message = "Unknown function 'host_only_probe'",
++      .line = 3,
++      .column = 12 },
++    { .name = "transitive collection import requires its host capability",
++      .group = IMPORT_SAMPLES,
++      .source = "package facts\nimport host \"core:host_only\"\n"
++                "pub Value :: () -> int { return 7; }\n",
++      .collection_source = "package host_only\nimport dep "
++                           "\"core:host_dependency\"\n"
++                           "pub Value :: () -> int { return 2; }\n",
++      .collection_dependency = HOST_DEPENDENCY_SOURCE,
++      .message = "Unknown function 'host_only_probe'",
++      .line = 3,
++      .column = 12 },
++    { .name = "unrelated project package remains checked",
++      .group = IMPORT_SAMPLES,
++      .source = "package facts\npub Value :: () -> int { return 7; }\n",
++      .library = "package lib\npub Probe :: () -> int {\n"
++                 "    return host_only_probe();\n}\n",
++      .collection_source = "package host_only\npub Value :: () -> int { return "
++                           "2; }\n",
++      .message = "Unknown function 'host_only_probe'",
++      .line = 3,
++      .column = 12 },
++    { .name = "unrelated project imports retain collection checking",
++      .group = IMPORT_SAMPLES,
++      .source = "package facts\npub Value :: () -> int { return 7; }\n",
++      .library = "package lib\nimport host \"core:host_only\"\n"
++                 "pub Value :: () -> int { return 2; }\n",
++      .collection_source = HOST_ONLY_SOURCE,
++      .message = "Unknown function 'host_only_probe'",
++      .line = 3,
++      .column = 12 },
++    { .name = "independent project package remains in emitted closure",
++      .group = IMPORT_SAMPLES,
++      .source = "package facts\npub Value :: () -> int { return 7; }\n",
++      .library = "package lib\npub Independent :: () -> int { return 9; }\n",
++      .collection_source = HOST_ONLY_SOURCE,
++      .project_modules = 2,
++      .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
+     { .name = "array update debug order",
+       .group = COLLECTION_SAMPLES,
+       .update_order = true,
+@@ -4345,6 +4431,22 @@ static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INP
+             sizeof CORE_STRINGS_SOURCE - 1
+         };
+     }
++    if (s->collection_source) {
++        assert(count < SAMPLE_INPUTS);
++        inputs[count++] = (source_package_input){
++            "/sdk/core/host_only/HostOnly.chibi",
++            s->collection_source,
++            strlen(s->collection_source)
++        };
++    }
++    if (s->collection_dependency) {
++        assert(count < SAMPLE_INPUTS);
++        inputs[count++] = (source_package_input){
++            "/sdk/core/host_dependency/Dependency.chibi",
++            s->collection_dependency,
++            strlen(s->collection_dependency)
++        };
++    }
+     return count;
+ }
+ static pin_value files(const source_package_input *inputs, int count, bool sources)
+@@ -6111,6 +6213,27 @@ static bool traces_like_oracle(const unsigned char *bytes, size_t length, const
+     free(expected);
+     return same;
+ }
++/* Unused collection packages have no emitted row, even an empty one. All
++ * independent project packages retain nonempty module rows. */
++static bool project_closure_only(const unsigned char *bytes, size_t length, int expected)
++{
++    char error[256];
++    int count = 0;
++    uint64_t root = 0;
++    package_module *rows = compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error);
++    if (!rows) {
++        fprintf(stderr, "project-only closure: %s\n", error);
++    }
++    REQUIRE(rows);
++    bool project_only = count == expected &&
++                        root == script_catalog_id("module", "project:facts");
++    for (int i = 0; i < count; i++) {
++        project_only &= !strncmp(rows[i].name, "project:", 8) && rows[i].length > 0;
++    }
++    compiler_artifact_rows_free(rows, count);
++    REQUIRE(project_only);
++    return true;
++}
+ static bool run_samples(sample_group group, int b)
+ {
+     REQUIRE(prepare_backends(1u << b));
+@@ -6205,6 +6328,9 @@ static bool run_samples(sample_group group, int b)
+         size_t length;
+         unsigned char *bytes = closure_bytes(value, &length);
+         arena_free(&detached);
++        if (s->project_modules) {
++            REQUIRE(project_closure_only(bytes, length, s->project_modules));
++        }
+         unsigned char *expected = NULL;
+         size_t expected_length = 0;
+         bool ran = (!s->updates || updates_in_place(bytes, length, s->name)) &&
+@@ -13290,10 +13416,16 @@ static const int CALL_SLOTS[] = { NATIVE_INT, NATIVE_BOOL, NATIVE_INT, NATIVE_IN
+ static const int CALL_ARGUMENTS[] = { 0, 1, 2 };
+ static native_module call_module(const native_code *code, const int *arguments, int argument_count)
+ {
+-    return (native_module){
+-        CALL_FUNCTIONS, 2,         CALL_PARAMETERS, 3, CALL_SLOTS, 5, code,
+-        CALL_CODE,      arguments, argument_count
+-    };
++    return (native_module){ .functions = CALL_FUNCTIONS,
++                            .function_count = 2,
++                            .parameters = CALL_PARAMETERS,
++                            .parameter_count = 3,
++                            .slots = CALL_SLOTS,
++                            .slot_count = 5,
++                            .code = code,
++                            .code_count = CALL_CODE,
++                            .arguments = arguments,
++                            .argument_count = argument_count };
+ }
+ static bool contains(pin_string haystack, const char *needle)
+ {
+@@ -13414,8 +13546,10 @@ static bool native_text(int b, const native_module *m, pin_string *ir)
+ /* A string is `native_abi.TextType()`, the layout of the runtime's
+  * pin_string: its bytes, its length, then its owner. */
+ _Static_assert(
+-    offsetof(pin_string, bytes) == 0 && offsetof(pin_string, length) == 8 &&
+-        offsetof(pin_string, owner) == 16 && sizeof(pin_string) == 24 &&
++    offsetof(pin_string, bytes) == 0 &&
++        offsetof(pin_string, length) == sizeof(void *) &&
++        offsetof(pin_string, owner) == 2 * sizeof(void *) &&
++        sizeof(pin_string) == 3 * sizeof(void *) &&
+         sizeof(((pin_string *)0)->length) == 4,
+     "pin_string is { ptr, i32, ptr }"
+ );
+@@ -19750,8 +19884,8 @@ TEST_CASE(package_compiler_query_values_are_readonly)
+ {
+     static const char *const sources[] = {
+         "Fixed :: system(point: Spot) { point.x = 2 }",
+-        "Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
+-        "row.point.x = 2 } } }",
++        ("Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
++         "row.point.x = 2 } } }"),
+         "Fixed :: system(point: ^Spot, amount := 2) { amount = 3 }",
+         "Fixed :: system(point: ^Spot) { point = null }",
+         "Fixed :: system(point: ^Spot) { point.w = 3 }",
+@@ -20108,35 +20242,37 @@ TEST_CASE(native_overload_reference_contract)
+         const char *message;
+         int column;
+     } cases[] = {
+-        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32 },
++        { "package facts\nRun :: () -> int { return native.overload(2); }",
++          .parameter = PIN_I32 },
+         { "package facts\nRun :: () -> int { return "
+           "native.overload((-(2))); }",
+-          PIN_I32 },
++          .parameter = PIN_I32 },
+         { "package facts\nRun :: () -> int { return native.overload(2.0); "
+           "}",
+-          PIN_I32 },
++          .parameter = PIN_I32 },
+         { "package facts\nRun :: () -> int { return native.overload(1e0); "
+           "}",
+-          PIN_I32 },
+-        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32 },
++          .parameter = PIN_I32 },
++        { "package facts\nRun :: () -> int { return native.kernel(2); }",
++          .parameter = PIN_F32 },
+         { "package facts\nRun :: (v: int) -> int { return native.kernel(v "
+           "* "
+           "2); }",
+-          PIN_F32 },
++          .parameter = PIN_F32 },
+         { "package facts\nRun :: (v: i64) -> int { return native.kernel(v "
+           "* "
+           "2); }",
+-          PIN_F64 },
++          .parameter = PIN_F64 },
+         { "package facts\nRun :: (v: f64) -> int { return "
+           "native.kernel(v); }",
+-          PIN_F64 },
++          .parameter = PIN_F64 },
+         { "package facts\nRun :: (v: int) -> int { return "
+           "native.overload(v); "
+           "}",
+-          PIN_I32 },
++          .parameter = PIN_I32 },
+         { "package facts\nRun :: () -> int { return "
+           "native.overload(\"three\"); }",
+-          PIN_STR },
++          .parameter = PIN_STR },
+         { "package facts\nRun :: () -> int { return native.overload(2.5); "
+           "}",
+           PIN_FLOW,
+diff --git a/test/language/package_imports.c b/test/language/package_imports.c
+index 00383ae58b6af00b863a5f93b993fe3ae7204ea0..fa3fefdd029e963e93f886a0e9e130f14bba8248 100644
+--- a/test/language/package_imports.c
++++ b/test/language/package_imports.c
+@@ -1,8 +1,10 @@
++#include "authoring/package_tests.h"
+ #include "authoring/source_package_prepare.h"
+ #include "capabilities/catalog.h"
+ #include "capabilities/catalog_snapshot.h"
+ #include "execution/status.h"
+ #include "support/arena.h"
++#include "support/array.h"
+ #include "third_party/pico_headers/pico_unit.h"
+ #include "types/array.h"
+ #include "types/text.h"
+@@ -908,6 +910,169 @@ TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup)
+     return true;
+ }
+ 
++static bool prepare_with_collection(
++    int slot,
++    source_package_input *files,
++    int count,
++    behavior_backend backend,
++    int previous
++)
++{
++    REQUIRE(count > 0 && count <= MAX_FILES);
++    for (int i = 0; i < count; i++) {
++        files[i].size = strlen(files[i].text);
++    }
++    source_package_collection core = { "core", "/sdk/core" };
++    source_package_snapshot_options options = { .project_root = "/project",
++                                                .files = files,
++                                                .file_count = count,
++                                                .collections = &core,
++                                                .collection_count = 1 };
++    source_package_snapshot *snapshot = source_package_snapshot_new(&options);
++    REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
++    authoring_packages_free(owners[slot]);
++    owners[slot] = authoring_packages_prepare(
++        snapshot,
++        &native,
++        &bindings,
++        backend,
++        previous >= 0 ? owners[previous] : NULL
++    );
++    REQUIRE(owners[slot]);
++    return true;
++}
++
++TEST_CASE(package_imports_ignore_unused_collection_bodies_but_check_every_project)
++{
++    source_package_input files[] = {
++        { "app/App.chibi", "package app\n@test AppTest :: () {}\npub Main :: (value: int) -> int { return value + 1; }\n", 0 },
++        { "/sdk/core/host_only/HostOnly.chibi", "package hosted\npub Read :: () -> int { return unavailable_host(); }\n", 0 },
++        { "other/Other.chibi", "package other\n@test OtherTest :: () {}\n", 0 },
++    };
++    for (int b = 0; b < 2; b++) {
++        REQUIRE(prepare_with_collection(0, files, 3, backends[b], -1));
++        REQUIRE(valid(0) && authoring_packages_count(owners[0]) == 2);
++        REQUIRE(!package(0, "core:host_only"));
++        REQUIRE(run(0, "project:app", "Main", backends[b], 4, 5));
++        package_test *found = package_tests_find(owners[0]);
++        bool app = false, other = false;
++        for (int i = 0; i < acount(found); i++) {
++            app |= !strcmp(found[i].package, "app");
++            other |= !strcmp(found[i].package, "other");
++        }
++        bool both = acount(found) == 2 && app && other;
++        afree(found);
++        REQUIRE(both);
++        files[2].text = "package other\npub Broken :: () -> int { return "
++                        "missing; }\n";
++        REQUIRE(prepare_with_collection(1, files, 3, backends[b], 0));
++        REQUIRE(!authoring_packages_valid(owners[1]));
++        REQUIRE(package(1, "project:other") && !package(1, "project:other")->valid);
++        REQUIRE(
++            package(1, "project:app")->generation == package(0, "project:app")->generation
++        );
++        files[2].text = "package other\n@test OtherTest :: () {}\n";
++        cleanup();
++    }
++    return true;
++}
++
++TEST_CASE(package_imports_check_direct_transitive_and_blank_collection_imports)
++{
++    const char *apps[] = {
++        "package app\nimport host \"core:host_only\"\npub Main :: () -> int { "
++        "return host.Read(); }\n",
++        "package app\nimport middle \"core:middle\"\npub Main :: () -> int { "
++        "return middle.Read(); }\n",
++        "package app\nimport _ \"core:host_only\"\npub Main :: () -> int { "
++        "return 1; }\n",
++    };
++    source_package_input files[] = {
++        { "app/App.chibi", NULL, 0 },
++        { "/sdk/core/host_only/HostOnly.chibi", "package hosted\npub Read :: () -> int { return unavailable_host(); }\n", 0 },
++        { "/sdk/core/middle/Middle.chibi", "package middle\nimport host \"core:host_only\"\npub Read :: () -> int { return host.Read(); }\n", 0 },
++    };
++    for (int b = 0; b < 2; b++) {
++        for (int i = 0; i < 3; i++) {
++            files[0].text = apps[i];
++            REQUIRE(prepare_with_collection(0, files, 3, backends[b], -1));
++            REQUIRE(!authoring_packages_valid(owners[0]));
++            const authoring_package *host = package(0, "core:host_only");
++            REQUIRE(host && !host->valid && host->analysis && host->diagnostic_count > 0);
++            REQUIRE(strstr(host->diagnostics[0].message, "unavailable_host"));
++            REQUIRE(package(0, "project:app") && !package(0, "project:app")->valid);
++            REQUIRE(authoring_packages_count(owners[0]) == (i == 1 ? 3 : 2));
++            cleanup();
++        }
++    }
++    return true;
++}
++
++TEST_CASE(package_imports_collection_only_snapshot_checks_first_input_root)
++{
++    source_package_input files[] = {
++        { "/sdk/core/z_root/Root.chibi",
++          "package root\nimport shared \"core:shared\"\npub Main :: (value: "
++          "int) -> int { return value + shared.Read(); }\n",
++          0 },
++        { "/sdk/core/a_unused/Unused.chibi", "package unused\npub Read :: () -> int { return unavailable_host(); }\n", 0 },
++        { "/sdk/core/shared/Shared.chibi",
++          "package shared\npub Read :: () -> int { return 7; }\n",
++          0 },
++    };
++    for (int b = 0; b < 2; b++) {
++        REQUIRE(prepare_with_collection(0, files, 3, backends[b], -1));
++        REQUIRE(valid(0) && authoring_packages_count(owners[0]) == 2);
++        REQUIRE(!package(0, "core:a_unused"));
++        REQUIRE(run(0, "core:z_root", "Main", backends[b], 4, 11));
++        const char *root = files[0].text;
++        files[0]
++            .text = "package root\npub Main :: (value: int) -> int { return "
++                    "missing; }\n";
++        REQUIRE(prepare_with_collection(1, files, 3, backends[b], 0));
++        REQUIRE(!authoring_packages_valid(owners[1]));
++        REQUIRE(authoring_packages_count(owners[1]) == 1);
++        REQUIRE(package(1, "core:z_root") && !package(1, "core:z_root")->valid);
++        files[0].text = root;
++        cleanup();
++    }
++    return true;
++}
++
++TEST_CASE(package_imports_removing_collection_import_releases_only_new_dependency)
++{
++    source_package_input files[] = {
++        { "app/App.chibi", "package app\nimport host \"core:host_only\"\npub Main :: (value: int) -> int { return host.Read() + value; }\n", 0 },
++        { "/sdk/core/host_only/HostOnly.chibi",
++          "package hosted\npub Read :: () -> int { return 7; }\n",
++          0 },
++    };
++    for (int b = 0; b < 2; b++) {
++        REQUIRE(prepare_with_collection(0, files, 2, backends[b], -1));
++        REQUIRE(valid(0) && authoring_packages_count(owners[0]) == 2);
++        const authoring_package *old = package(0, "project:app");
++        retained = old->module;
++        execution_module_retain(retained);
++        uint64_t id = function_id(old, "Main");
++        const char *importing = files[0].text;
++        files[0].text = "package app\npub Main :: (value: int) -> int { return "
++                        "value; }\n";
++        REQUIRE(prepare_with_collection(1, files, 2, backends[b], 0));
++        REQUIRE(valid(1) && authoring_packages_count(owners[1]) == 1);
++        REQUIRE(!package(1, "core:host_only") && authoring_packages_reused(owners[1]) == 0);
++        authoring_packages_free(owners[0]);
++        owners[0] = NULL;
++        REQUIRE(run(1, "project:app", "Main", backends[b], 4, 4));
++        REQUIRE(call(retained, id, backends[b], 4, 11));
++        files[0].text = importing;
++        REQUIRE(prepare_with_collection(2, files, 2, backends[b], 1));
++        REQUIRE(valid(2) && authoring_packages_count(owners[2]) == 2);
++        REQUIRE(run(2, "project:app", "Main", backends[b], 4, 11));
++        cleanup();
++    }
++    return true;
++}
++
+ void test_language_package_imports()
+ {
+     pu_setup(NULL, cleanup);
+@@ -925,5 +1090,9 @@ void test_language_package_imports()
+     RUN_TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults);
+     RUN_TEST_CASE(package_exports_keep_private_managed_pointee_metadata);
+     RUN_TEST_CASE(package_imports_malformed_public_exports_are_rejected_before_lookup);
++    RUN_TEST_CASE(package_imports_ignore_unused_collection_bodies_but_check_every_project);
++    RUN_TEST_CASE(package_imports_check_direct_transitive_and_blank_collection_imports);
++    RUN_TEST_CASE(package_imports_collection_only_snapshot_checks_first_input_root);
++    RUN_TEST_CASE(package_imports_removing_collection_import_releases_only_new_dependency);
+     pu_clear_setup();
+ }
+diff --git a/test/language/semantic.c b/test/language/semantic.c
+index d696cc2367a66533d4a5ecdfa5b945c3d743c3e5..0162cbc17535096e8a00892843cfe6241f170346 100644
+--- a/test/language/semantic.c
++++ b/test/language/semantic.c
+@@ -605,8 +605,8 @@ TEST_CASE(language_reductions_require_system_component_fields)
+     const char *invalid_targets[] = {
+         "Motion :: system() { total := 0; reduce total += 1; }",
+         "Motion :: system() { if true { total := 0; reduce total += 1; } }",
+-        "Motion :: system(position: ^Position) { reduce position^ += "
+-        "position^; }",
++        ("Motion :: system(position: ^Position) { reduce position^ += "
++         "position^; }"),
+         "Motion :: system(position: ^Placement) { reduce position.x += 1; }",
+         "Motion :: system(position: ^Position?) { reduce position.x += 1; }",
+     };
+@@ -1147,8 +1147,9 @@ TEST_CASE(language_emit_sends_events_to_their_target)
+                                     .entity_type = 40 };
+     const char *valid[] = {
+         "L :: library { F :: (other: entity) { emit other.Damage(3) } }",
+-        "L :: library { F :: (other: entity) { emit Damage(other, Amount: 3) } "
+-        "}",
++        ("L :: library { F :: (other: entity) { emit Damage(other, Amount: 3) "
++         "} "
++         "}"),
+         /* An event send never calls the function its event shares a name with. */
+         "L :: library { Damage :: (other: entity) { emit Damage(other, 3) } }",
+     };
+diff --git a/test/language/syntax.c b/test/language/syntax.c
+index c463c211e50b53a389bf4c4333f614cc1897c17c..b5610bf8bb1cb90f4dab9e5782c851ea56c17630 100644
+--- a/test/language/syntax.c
++++ b/test/language/syntax.c
+@@ -207,8 +207,8 @@ TEST_CASE(language_systems_use_flat_queries_and_implicit_step)
+         "Motion :: system(p: Position) join target in self.Targets {}",
+         "Demo :: behavior { query components(); }",
+         "Motion :: system(p: Position split self) {}",
+-        "Demo :: behavior { on Tick :: () { rows := query(p: Position split "
+-        "self); } }",
++        ("Demo :: behavior { on Tick :: () { rows := query(p: Position split "
++         "self); } }"),
+     };
+     for (size_t i = 0; i < sizeof removed / sizeof *removed; i++) {
+         parse(removed[i]);
+diff --git a/test/parallel.c b/test/parallel.c
+index d25ca8ea91be4fa48e31d5deb4124be2a2495bd9..91bbd45dde747e802194a1c50d82453b3facff29 100644
+--- a/test/parallel.c
++++ b/test/parallel.c
+@@ -28,10 +28,11 @@ typedef struct
+ } test_job;
+ 
+ static test_job jobs[BATCH_SIZE];
+-static int count, workers = 1, requested;
++static int count, workers = 1;
+ static bool scope_open;
+ static _Thread_local bool running;
+ #ifdef CHIBI_TEST_ENKITS
++static int requested;
+ static enkiTaskScheduler *scheduler;
+ static enkiTaskSet *tasks[BATCH_SIZE];
+ #endif
+@@ -141,7 +142,9 @@ bool test_parallel_init()
+         fputs("CHIBI_TEST_THREADS must be an integer from 1 to 8\n", stderr);
+         return false;
+     }
++#ifdef CHIBI_TEST_ENKITS
+     requested = *value - '0';
++#endif
+     return true;
+ }
+ 
+diff --git a/test/tools/compiler_bootstrap.c b/test/tools/compiler_bootstrap.c
+index 22277c951a389932c402ac88f311a00df19dbf10..342d9f1025c9953337df74f7aa3b1b303fc993ed 100644
+--- a/test/tools/compiler_bootstrap.c
++++ b/test/tools/compiler_bootstrap.c
+@@ -627,30 +627,74 @@ static bool output_is(const char *output, const void *expected, size_t expected_
+     return true;
+ }
+ 
+-/* The canonical compiler entry and its captured request are reused, not run.
++/* A controlled source snapshot makes this a reuse unit fixture, independent of
++ * whether HEAD still matches the checked seed's recording. The checked closure
++ * supplies a real canonical compiler entry and its target/byte guards, but the
++ * fixture manifest deliberately binds it to these two tiny source files. This
++ * does not certify the current compiler: bootstrap recovery and fixed-point
++ * checks exercise current-source provenance separately.
+  * Copying retires the CLI's owned source, artifact and decoded host buffers. */
+ TEST_CASE(bootstrap_reuses_only_the_exact_captured_request_without_compilation)
+ {
+     folder("reuse-real");
+-    char archive[PATH_MAX], extracted[PATH_MAX], closure[PATH_MAX];
+-    path(archive, "reuse-sources.tar");
+-    path(extracted, "reuse-real");
+-    const char *export[] = {
+-        "git",      "-C",    tool_root(), "archive",        "--format=tar",
+-        "--output", archive, "HEAD",      "tools/compiler", "packages/core",
+-        NULL
+-    };
+-    REQUIRE(tool_run(export, root, log_path) == 0);
+-    const char *extract[] = { "tar", "-xf", archive, "-C", extracted, NULL };
+-    REQUIRE(tool_run(extract, root, log_path) == 0);
++    folder("reuse-real/tools");
++    folder("reuse-real/tools/compiler");
++    folder("reuse-real/tools/compiler/bootstrap");
++    folder("reuse-real/tools/compiler/package_compiler");
++    folder("reuse-real/packages");
++    folder("reuse-real/packages/core");
++    folder("reuse-real/packages/core/strings");
+     path(reuse_folder, "reuse-real/tools/compiler/bootstrap");
+     path(reuse_compiler, "reuse-real/tools/compiler");
+     path(reuse_core, "reuse-real/packages/core");
+     path(reuse_manifest_path, "reuse-real/tools/compiler/bootstrap/bootstrap.json");
+-    path(closure, "reuse-real/tools/compiler/bootstrap/compiler.chibip");
+-    reuse_manifest_text = tool_read(reuse_manifest_path);
+-    reuse_bytes = read_bytes(closure, &reuse_length);
+-    REQUIRE(reuse_manifest_text && reuse_bytes && reuse_length);
++    char checked[PATH_MAX];
++    snprintf(checked, sizeof checked, "%s/tools/compiler/bootstrap/bootstrap.json", tool_root());
++    char *recorded = tool_read(checked);
++    REQUIRE(recorded);
++    yyjson_doc *original = yyjson_read(recorded, strlen(recorded), 0);
++    free(recorded);
++    REQUIRE(original);
++    yyjson_mut_doc *fixture = yyjson_doc_mut_copy(original, NULL);
++    yyjson_doc_free(original);
++    REQUIRE(fixture);
++    yyjson_mut_val *record = yyjson_mut_doc_get_root(fixture);
++    char contract_text[96];
++    snprintf(
++        contract_text,
++        sizeof contract_text,
++        "version %llu\nminimum %llu\n",
++        (unsigned long long)yyjson_mut_get_uint(yyjson_mut_obj_get(record, "version")),
++        (unsigned long long)yyjson_mut_get_uint(yyjson_mut_obj_get(record, "minimum"))
++    );
++    write_file("reuse-real/tools/compiler/bootstrap.kdl", contract_text);
++    static const char *const names[] = { "package_compiler/Compile.chibi",
++                                         "/sdk/core/strings/Strings.chibi" };
++    static const char *const texts[] = { "package package_compiler\n",
++                                         "package strings\n" };
++    static const char *const files[] = {
++        "reuse-real/tools/compiler/package_compiler/Compile.chibi",
++        "reuse-real/packages/core/strings/Strings.chibi"
++    };
++    yyjson_mut_val *sources = yyjson_mut_arr(fixture);
++    for (int i = 0; i < 2; i++) {
++        write_file(files[i], texts[i]);
++        char digest[65];
++        sha256_hex(texts[i], strlen(texts[i]), digest);
++        yyjson_mut_val *source = yyjson_mut_arr_add_obj(fixture, sources);
++        yyjson_mut_obj_add_str(fixture, source, "path", names[i]);
++        yyjson_mut_obj_add_strcpy(fixture, source, "sha256", digest);
++    }
++    yyjson_mut_obj_put(record, yyjson_mut_str(fixture, "sources"), sources);
++    yyjson_mut_obj_put(record, yyjson_mut_str(fixture, "revision"), yyjson_mut_str(fixture, "unit-fixture"));
++    reuse_manifest_text = yyjson_mut_write(fixture, 0, NULL);
++    yyjson_mut_doc_free(fixture);
++    REQUIRE(reuse_manifest_text);
++    tool_write(reuse_manifest_path, reuse_manifest_text);
++    snprintf(checked, sizeof checked, "%s/tools/compiler/bootstrap/compiler.chibip", tool_root());
++    reuse_bytes = read_bytes(checked, &reuse_length);
++    REQUIRE(reuse_bytes && reuse_length);
++    write_binary("reuse-real/tools/compiler/bootstrap/compiler.chibip", reuse_bytes, reuse_length);
+     char output[PATH_MAX], request[PATH_MAX];
+     path(output, "reused.chibip");
+     path(request, "reuse-input.json");
+diff --git a/tools/compiler/package_compiler/Compile.chibi b/tools/compiler/package_compiler/Compile.chibi
+index 8f7ee94101e10d4093cf5f07e052168d9d62deee..4bedd4c9cccb38a849fc5c16d75394aa44e7bdf4 100644
+--- a/tools/compiler/package_compiler/Compile.chibi
++++ b/tools/compiler/package_compiler/Compile.chibi
+@@ -1904,6 +1904,43 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
+     }
+     return seen;
+ }
++// Every project package is a checked root, even when another project package
++// does not import it. Collection packages enter the compile only through an
++// import from one of those roots. Keep graph indices and dependency order;
++// snapshot validation still checks the complete structural graph.
++ActivePackageOrder :: (documents: snapshot.Document[], packages: graph.Package[], files_of: int[],
++                       order: int[], edges: graph.Edge[], root: int) -> int[] {
++    active := resize([false], length(packages));
++    pending: int[] = [];
++    package: int = 0;
++    while (package < length(packages)) {
++        identity := documents[files_of[packages[package].member_start]].identity;
++        // paths[0] still names the requested root, including a direct compile
++        // of a collection package with no project package in its snapshot.
++        if (package == root || strings.HasPrefix(identity, "project:")) {
++            active[package] = true;
++            pending.append(package);
++        }
++        package += 1;
++    }
++    next: int = 0;
++    while (next < length(pending)) {
++        for (edge in edges) {
++            if (edge.from == pending[next] && !active[edge.to]) {
++                active[edge.to] = true;
++                pending.append(edge.to);
++            }
++        }
++        next += 1;
++    }
++    selected: int[] = [];
++    for (listed in order) {
++        if (active[listed]) {
++            selected.append(listed);
++        }
++    }
++    return selected;
++}
+ // The closure of every package, each a prepared module, rooted at package
+ // `root`. Dependencies come first, so an importer has every module it imports.
+ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
+@@ -1939,8 +1976,10 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
+     }
+     fingerprints := resize([u64(0)], length(packages));
+     data: u8[] = [];
+-    starts := resize([int(0)], length(packages));
+-    lengths := resize([int(0)], length(packages));
++    closure_ids: u64[] = [];
++    closure_names: string[] = [];
++    starts: int[] = [];
++    lengths: int[] = [];
+     effects := resize([int(0)], length(callables));
+     for (package in order) {
+         switch Assemble(forest, documents, package, files_of[packages[package].member_start], package_names,
+@@ -1955,13 +1994,15 @@ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packag
+                 if (package != root) {
+                     fingerprints[package] = writer.Fingerprint(bytes);
+                 }
+-                starts[package] = length(data);
+-                lengths[package] = length(bytes);
++                closure_ids.append(package_ids[package]);
++                closure_names.append(package_names[package]);
++                starts.append(length(data));
++                lengths.append(length(bytes));
+                 data.extend(bytes);
+         }
+     }
+     return Result.Compiled(package_ids[root],
+-                           writer.Closure(package_ids[root], package_ids, package_names, data, starts, lengths));
++                           writer.Closure(package_ids[root], closure_ids, closure_names, data, starts, lengths));
+ }
+ // The prepared module of package `package`, or of a behavior, whose
+ // functions are its handlers; its bytes are the Compiled result's. Each body
+@@ -3006,11 +3047,12 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
+                 case .Rejected(error, cycle):
+                     return InputFailure(-1, "package graph is invalid");
+                 case .Accepted(packages, files_of, file_packages, order, edges, links):
+-                    switch Declare(nodes, documents, packages, files_of, order, imports, links, target) {
++                    active_order := ActivePackageOrder(documents, packages, files_of, order, edges, file_packages[0]);
++                    switch Declare(nodes, documents, packages, files_of, active_order, imports, links, target) {
+                         case .Failed(diagnostic):
+                             return Result.Rejected(diagnostic);
+                         case .Collected(callables, params, types, members, constants):
+-                            return Link(nodes, documents, packages, files_of, file_packages[0], order, edges, links,
++                            return Link(nodes, documents, packages, files_of, file_packages[0], active_order, edges, links,
+                                         callables, params, types, members, constants, resolved_natives, resolved_ports, identities, native_effects, ops, target,
+                                         abi);
+                     }

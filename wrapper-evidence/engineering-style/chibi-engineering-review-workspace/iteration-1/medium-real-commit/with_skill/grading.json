@@ -1,0 +1,91 @@
+{
+  "expectations": [
+    {
+      "text": "Every finding in the review cites a specific path and line number.",
+      "passed": true,
+      "evidence": "Eight of nine findings open with path:line (Expressions.chibi:214, Statements.chibi:211-224, Expressions.chibi:390-397, Tree.chibi:118, docs/source-parser.md:19-20, Expressions.chibi:213-214, Expressions.chibi:383, source_parser_chibi.c:29-48). The '[TEST] test/language/syntax_corpus' finding heads with a directory but cites 'Body.chibi:2728 (36 links)' in its evidence. The commit-message NIT cites 'source_tokenizer_chibi.c:453-455', 'main.c:757' and 'Makefile:41'."
+    },
+    {
+      "text": "The review assesses whether the iterative else-if parsing preserves behavior of the recursive version (e.g., node structure, diagnostics) and cites the test or input that shows it.",
+      "passed": true,
+      "evidence": "'I traced each rewrite against the parent, and the trees come out the same: New creates nodes in the same order, and the children and fields are the same. The node ranges match once the ParseIf fixup has run ... So the Tree-sitter differential is still a valid check.' Names the differential (SourceParserDiff.chibi driven by source_parser_chibi.c) as the check and the inputs that exercise chains: 'The longest else-if chain has 36 links (Body.chibi:2728)' and 'The syntax corpus contains a single else-if'. Weaker than tracing a concrete small chain (the without_skill review does), but it states the verdict and the test/input."
+    },
+    {
+      "text": "The review does not recommend defensive checks, compatibility shims, or splitting functions for length.",
+      "passed": true,
+      "evidence": "The only check proposed is '_Static_assert(sizeof PARSER_PATHS == sizeof PARSER_FILES, \"one path per file\")' as an alternative to merging parallel arrays: a compile-time assert of an invariant, which the repo's fail-fast rule favors, not a defensive runtime guard. The 'if (c.failed) { return -1; }' early return appears only conditionally under 'What I would measure' as a cost fix. Restoring ParseExpression/ParsePostfix/ParseArgument is about the depth limit, not length. No shims."
+    },
+    {
+      "text": "Every finding includes concrete evidence (a count, measurement, named caller/consumer or failing input), or the review states plainly that there are no substantive findings.",
+      "passed": false,
+      "evidence": "Most findings carry counts or inputs: DESIGN (51 call sites, frames 7 -> 3, ~70 -> ~48 at Body.chibi:3505), ParseIf SIMPLIFY ('Only 212 of about 6,100 if statements'), range-copy SIMPLIFY ('git grep ParseIndexValue finds one call site'), Opener TEST (invalid2.chibi.txt), corpus TEST (36, 17, 17, 15 links), commit-message NIT (313,206 > 262,144 bytes). But '[NIT] Expressions.chibi:213-214 — the comment about postfix forms sits above IsCallTarget' has no Evidence line at all: only 'Cost: read' and 'Fix: move the two lines'. No count, measurement, caller or input."
+    }
+  ],
+  "summary": {
+    "passed": 3,
+    "failed": 1,
+    "total": 4,
+    "pass_rate": 0.75
+  },
+  "claims": [
+    {
+      "claim": "ParseExpression had 49 callers; 51 call sites now spell ParseBinary(c, n, OrPower).",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git grep -c at 2797053cb^: 'ParseExpression(c, n)' 17+13+19 = 49 lines in Declarations/Expressions/Statements. At 2797053cb: 'ParseBinary(c, n, OrPower)' 17+15+19 = 51."
+    },
+    {
+      "claim": "The parser has 78 Expect call sites.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git grep -c 'Expect(c, n,' at the commit: Declarations 37 + Expressions 14 + Statements 18 + Types 9 = 78."
+    },
+    {
+      "claim": "Line 208 adds chained while it is still empty and NewNode sets end: -1 (Tree.chibi:50); since Add sets parent.end = child.end (Tree.chibi:75), every non-final link ends at -1 until the fixup, so the comment 'still ends where its own last child did' is wrong.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Statements.chibi:207-208 'chained := New(n, \"if_statement\"); Add(n, current, chained, \"alternative\");'. Tree.chibi:50 NewNode has 'end: -1'; Tree.chibi:75 'n^[parent].end = n^[child].end;'. Later Adds to chained do not propagate to its parent, so non-final links hold -1."
+    },
+    {
+      "claim": "SkipArgumentName always returns at least 1, so 'following > 0' at Expressions.chibi:383 is always true and the '0 when it is not one' doc is false.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "SkipArgumentName begins 'at += 1;' and only adds 2 in its loop, returning at; called with c.pos >= 0. The doc comment above it says '0 when it is not one.'"
+    },
+    {
+      "claim": "SCRIPT_CALL_DEPTH_LIMIT is 64 (src/language/semantic.h:11-12) and docs/language-friction.md:642-656 'Calls nest at most 64 deep' records two earlier walks turned into explicit stacks.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "semantic.h:11-12 at the commit: comment 'One language-wide recursion budget; authored source cannot override it.' and '#define SCRIPT_CALL_DEPTH_LIMIT 64'. language-friction.md has '## Calls nest at most 64 deep' naming the union-members walk and effect-analysis query restrictions."
+    },
+    {
+      "claim": "At the parent Steps.chibi is 313,206 bytes, over the old 262,144-byte cap; invalid2's message would now end ' (to close the `(` at 4:10)'.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git cat-file -s 2797053cb^:tools/compiler/package_compiler/Steps.chibi = 313206. invalid2.chibi.txt line 4 is '    x := (1 + 2', with '(' at column 10."
+    },
+    {
+      "claim": "Depth at Body.chibi:3505 is about 70 frames at the parent and about 48 after the commit, leaving about 16 frames of headroom.",
+      "type": "quality",
+      "verified": false,
+      "evidence": "Hand-counted estimate (stated as ±2 with the method in an appendix); not verifiable without running the differential. The review itself lists measuring actual call depth under 'What I would measure'."
+    }
+  ],
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "assertion": "The review assesses whether the iterative else-if parsing preserves behavior of the recursive version (e.g., node structure, diagnostics) and cites the test or input that shows it.",
+        "reason": "Naming the differential as 'still a valid check' satisfies 'cites the test' without proving equivalence. Consider requiring a concrete traced input (e.g. a two- or three-link chain with its row order and end offsets) or an explicit note that the differential was or was not run."
+      },
+      {
+        "reason": "No assertion covers whether the covering differential actually runs in CI. The without_skill review found that neither language-source-parser-chibi nor language-source-tokenizer-chibi is in any tools/test_policy.py GROUPS entry (verified); this review missed it. That is a substantive, verifiable outcome worth an assertion."
+      },
+      {
+        "assertion": "Every finding includes concrete evidence (a count, measurement, named caller/consumer or failing input), or the review states plainly that there are no substantive findings.",
+        "reason": "This assertion fails both reviews on comment-placement nits. If nits are meant to be held to the same evidence bar, keep it; otherwise exempt NIT-level findings or require that nits be dropped when they have no evidence."
+      }
+    ],
+    "overall": "Central claims (no tree-shape bug, the fixup comment is wrong, following > 0 is dead) verify against the code. Fails only on one evidence-less NIT. The suite misses the CI-coverage gap that distinguishes the two reviews in the other direction."
+  },
+  "timing": {"total_tokens": 226066, "duration_ms": 1101196, "total_duration_seconds": 1101.2}
+}

@@ -1,0 +1,417 @@
+package source_format
+
+import strings "core:strings"
+import syntax "project:compiler_syntax"
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+
+SelectionUnits :: struct {
+    nodes: int[];
+    parents: int[];
+    serial: int[];
+    owners: int[];
+    ends: int[];
+}
+
+SelectionEnds :: (rows: diag.Node[]) -> int[] {
+    ends := resize([int(0)], length(rows));
+    node := length(rows) - 1;
+    while (node >= 0) {
+        if (rows[node].first_child < 0 && rows[node].end > rows[node].start) { ends[node] = rows[node].end; }
+        parent := rows[node].parent;
+        if (parent >= 0 && ends[node] > ends[parent]) { ends[parent] = ends[node]; }
+        node -= 1;
+    }
+    return ends;
+}
+
+SelectionImport :: (kind: int) -> bool {
+    return kind == diag.ImportDeclaration || kind == diag.ForeignImportDeclaration;
+}
+
+SelectionKinds :: () -> bool[] {
+    kinds := LineEnders();
+    kinds[diag.PackageHeader] = true;
+    kinds[diag.ForeignFunction] = true;
+    kinds[diag.RecordField] = true;
+    kinds[diag.ComponentField] = true;
+    kinds[diag.StructField] = true;
+    kinds[diag.UnionVariant] = true;
+    kinds[diag.SwitchArm] = true;
+    kinds[diag.ImportDeclaration] = false;
+    kinds[diag.ForeignImportDeclaration] = false;
+    return kinds;
+}
+
+// Imports may be sorted or removed by the full-file pass. Other formatting
+// rewrites preserve the order and nesting of declarations/statements/fields.
+// Their preorder serial and nearest unit owner give a linear correspondence.
+SelectionInventory :: (rows: diag.Node[], named: bool[], root: int, kinds: bool[]) -> SelectionUnits {
+    nodes: int[] = [];
+    parents: int[] = [];
+    serial := resize([int(0)], length(rows));
+    owners := resize([int(0)], length(rows));
+    for (node in 0..<length(rows)) {
+        parent := rows[node].parent;
+        owner := 0;
+        if (parent >= 0) { owner = owners[parent]; }
+        owners[node] = owner;
+        top := parent == root && named[node] && rows[node].kind != diag.Comment &&
+               !SelectionImport(rows[node].kind);
+        if (named[node] && (kinds[rows[node].kind] || top)) {
+            nodes.append(node);
+            parents.append(owner);
+            serial[node] = length(nodes);
+            owners[node] = length(nodes);
+        }
+    }
+    return {nodes: nodes, parents: parents, serial: serial, owners: owners, ends: SelectionEnds(rows)};
+}
+
+SelectionCorresponds :: (a: diag.Node[], a_units: SelectionUnits,
+                         b: diag.Node[], b_units: SelectionUnits) -> bool {
+    if (length(a_units.nodes) != length(b_units.nodes)) { return false; }
+    for (index in 0..<length(a_units.nodes)) {
+        if (a_units.parents[index] != b_units.parents[index]) { return false; }
+        first := a[a_units.nodes[index]].kind;
+        second := b[b_units.nodes[index]].kind;
+        if (first != second) {
+            parent := a_units.parents[index];
+            function_body := parent > 0 && a[a_units.nodes[parent - 1]].kind == diag.FunctionDeclaration;
+            returned_expression := (first == diag.ReturnStatement && second == diag.ExpressionStatement) ||
+                                   (first == diag.ExpressionStatement && second == diag.ReturnStatement);
+            if (!function_body || !returned_expression) { return false; }
+        }
+    }
+    return true;
+}
+
+SelectionLines :: (text: string) -> int[] {
+    starts: int[] = [0];
+    for (byte, index in text_bytes(text)) {
+        if (byte == 10) { starts.append(index + 1); }
+    }
+    return starts;
+}
+
+// Greatest line start no later than a byte. All range endpoints are original
+// UTF-8 byte offsets; CRLF and multibyte text are never split.
+SelectionLine :: (starts: int[], byte: int) -> int {
+    low := 0;
+    high := length(starts);
+    while (low + 1 < high) {
+        middle := (low + high) / 2;
+        if (starts[middle] <= byte) { low = middle; }
+        else { high = middle; }
+    }
+    return low;
+}
+
+SelectionLineEnd :: (starts: int[], size: int, byte: int) -> int {
+    line := SelectionLine(starts, byte);
+    if (line + 1 < length(starts)) { return starts[line + 1]; }
+    return size;
+}
+
+SelectionContainer :: (kind: int) -> bool {
+    return kind == diag.SourceFile || kind == diag.CallableBody || kind == diag.Block ||
+           kind == diag.DeclarationBlock || kind == diag.DeclarationBody ||
+           kind == diag.ForeignBlock || kind == diag.RecordBody || kind == diag.ComponentBody ||
+           kind == diag.StructExpression || kind == diag.UnionDeclaration || kind == diag.SwitchStatement;
+}
+
+SelectionBody :: (rows: diag.Node[], node: int, starts: int[], size: int) -> (start: int, end: int) {
+    if (rows[node].kind == diag.SourceFile) { return (0, size); }
+    opening := -1;
+    closing := -1;
+    child := rows[node].first_child;
+    while (child >= 0) {
+        if (rows[child].kind == tk.OpenBrace) { opening = child; }
+        if (rows[child].kind == tk.CloseBrace) { closing = child; }
+        child = rows[child].next_sibling;
+    }
+    if (opening >= 0 && closing >= 0) {
+        return (SelectionLineEnd(starts, size, rows[opening].start),
+                starts[SelectionLine(starts, rows[closing].start)]);
+    }
+    first := starts[SelectionLine(starts, rows[node].start)];
+    last := rows[node].end;
+    if (last > rows[node].start) { last -= 1; }
+    return (first, SelectionLineEnd(starts, size, last));
+}
+
+SelectionAligned :: (mode: int, legacy: bool) -> bool {
+    if (mode == 0) { return legacy; }
+    return mode >= 2;
+}
+
+SelectionAlignment :: (kind: int, options: Options) -> int {
+    if ((kind == diag.Assignment || kind == diag.LocalDeclaration) &&
+        SelectionAligned(options.assignment_alignment, options.align_assignments)) { return 1; }
+    if (kind == diag.ConstantDeclaration &&
+        SelectionAligned(options.constant_alignment, options.align_constants)) { return 2; }
+    if ((kind == diag.RecordField || kind == diag.ComponentField) &&
+        SelectionAligned(options.field_type_alignment, options.align_field_types)) { return 3; }
+    if (kind == diag.StructField &&
+        SelectionAligned(options.record_value_alignment, options.align_struct_literal_values)) { return 4; }
+    return 0;
+}
+
+SelectionConnected :: (text: string, rows: diag.Node[], ends: int[], before: int, after_node: int, starts: int[],
+                        options: Options) -> bool {
+    last := ends[before];
+    if (last > rows[before].start) { last -= 1; }
+    if (!options.alignment_across_blank_lines &&
+        SelectionLine(starts, rows[after_node].start) > SelectionLine(starts, last) + 1) { return false; }
+    if (!options.alignment_across_comments) {
+        first := rows[after_node].first_child;
+        if (first >= 0 && rows[first].kind == diag.Comment) { return false; }
+        // A trailing comment is the alignment anchor on the preceding row,
+        // rather than a standalone comment between the rows.
+        gap_start := SelectionLineEnd(starts, text_byte_length(text), last);
+        gap_end := rows[after_node].start;
+        if (gap_end < gap_start) { return false; }
+        gap := text_slice(text, gap_start, gap_end - gap_start);
+        if (strings.Contains(gap, "//") || strings.Contains(gap, "/*")) { return false; }
+    }
+    return true;
+}
+
+SelectionCommentLines :: (rows: diag.Node[], starts: int[]) -> bool[] {
+    comments := resize([false], length(starts));
+    code_line := -1;
+    for (node in 0..<length(rows)) {
+        if (rows[node].first_child >= 0 || rows[node].end <= rows[node].start) { continue; }
+        line := SelectionLine(starts, rows[node].start);
+        if (rows[node].kind == diag.Comment) {
+            if (line == code_line) { comments[line] = true; }
+        } else { code_line = SelectionLine(starts, rows[node].end - 1); }
+    }
+    return comments;
+}
+
+SelectionGrouped :: (text: string, rows: diag.Node[], ends: int[], starts: int[], comments: bool[],
+                      before: int, next_node: int, options: Options) -> bool {
+    family := SelectionAlignment(rows[before].kind, options);
+    grouped := family > 0 && family == SelectionAlignment(rows[next_node].kind, options);
+    if (SelectionAligned(options.declaration_type_alignment, false)) {
+        first_kind := rows[before].kind;
+        next_kind := rows[next_node].kind;
+        grouped = grouped || ((first_kind == diag.LocalDeclaration || first_kind == diag.ConstantDeclaration) &&
+                              (next_kind == diag.LocalDeclaration || next_kind == diag.ConstantDeclaration));
+    }
+    if (SelectionAligned(options.comment_alignment, options.align_trailing_comments)) {
+        first_line := SelectionLine(starts, ends[before] - 1);
+        next_line := SelectionLine(starts, ends[next_node] - 1);
+        grouped = grouped || (comments[first_line] && comments[next_line]);
+    }
+    return grouped && SelectionConnected(text, rows, ends, before, next_node, starts, options);
+}
+
+// Whitespace immediately before a selected unit is its paragraph boundary.
+// Include only whole blank lines, so sibling code and comments remain exact.
+SelectionParagraphStart :: (text: string, starts: int[], byte: int) -> int {
+    line := SelectionLine(starts, byte);
+    while (line > 0) {
+        previous := starts[line - 1];
+        gap := text_slice(text, previous, starts[line] - previous);
+        if (strings.TrimSpace(gap) != "") { break; }
+        line -= 1;
+    }
+    return starts[line];
+}
+
+SelectionOutsideCode :: (rows: diag.Node[], first: int, last: int, start: int, end: int) -> bool {
+    for (node in 0..<length(rows)) {
+        if (rows[node].first_child >= 0 || rows[node].start == rows[node].end ||
+            rows[node].end <= start || rows[node].start >= end) { continue; }
+        if (rows[node].start >= first && rows[node].end <= last) { continue; }
+        kind := rows[node].kind;
+        if (kind != diag.Comment && kind != tk.Comma && kind != tk.Semicolon) { return true; }
+    }
+    return false;
+}
+
+SelectionSplice :: (original: string, formatted: string, a: diag.Node[], a_lines: int[], a_units: SelectionUnits,
+                    b: diag.Node[], b_lines: int[], b_units: SelectionUnits, first: int, last: int) -> Result {
+    first_node := a_units.nodes[first - 1];
+    last_node := a_units.nodes[last - 1];
+    next_first := b_units.nodes[first - 1];
+    next_last := b_units.nodes[last - 1];
+    start := SelectionParagraphStart(original, a_lines, a[first_node].start);
+    final := a_units.ends[last_node];
+    if (final > a[last_node].start) { final -= 1; }
+    end := SelectionLineEnd(a_lines, text_byte_length(original), final);
+    next_start := SelectionParagraphStart(formatted, b_lines, b[next_first].start);
+    next_final := b_units.ends[next_last];
+    if (next_final > b[next_last].start) { next_final -= 1; }
+    next_end := SelectionLineEnd(b_lines, text_byte_length(formatted), next_final);
+    if (SelectionOutsideCode(a, a[first_node].start, a_units.ends[last_node], start, end) ||
+        SelectionOutsideCode(b, b[next_first].start, b_units.ends[next_last], next_start, next_end)) {
+        return Result.Rejected("Selection shares a line with an enclosing construct");
+    }
+    replacement := text_slice(formatted, next_start, next_end - next_start);
+    combined := strings.Join([text_slice(original, 0, start), replacement,
+                              text_slice(original, end, text_byte_length(original) - end)], "");
+    switch syntax.Parse(combined) {
+        case .Rejected(diagnostic):
+            return Result.Rejected("Partial formatting would break the surrounding syntax");
+        case .Parsed(rows, fields, named, extras, root):
+            return Result.Formatted(combined, format_text("Formatted original lines {}..{}; the selection includes complete syntax and alignment groups.",
+                                   SelectionLine(a_lines, start) + 1, SelectionLine(a_lines, final) + 1));
+    }
+}
+
+SelectionImportSlice :: (original: string, formatted: string, a: diag.Node[], a_root: int, a_lines: int[],
+                         b: diag.Node[], b_root: int, b_lines: int[], wanted_start: int, wanted_end: int) -> Result {
+    first := -1;
+    last := -1;
+    child := a[a_root].first_child;
+    while (child >= 0) {
+        if (SelectionImport(a[child].kind)) { if (first < 0) { first = child; } last = child; }
+        child = a[child].next_sibling;
+    }
+    if (first < 0) { return Result.Rejected("Selection is not an import section"); }
+    start := a_lines[SelectionLine(a_lines, a[first].start)];
+    final := a[last].end - 1;
+    end := SelectionLineEnd(a_lines, text_byte_length(original), final);
+    if (wanted_start < start || wanted_end > end) {
+        return Result.Formatted(formatted, "Expanded selection to the complete file because it includes imports and other declarations.");
+    }
+    next_first := -1;
+    next_last := -1;
+    child = b[b_root].first_child;
+    while (child >= 0) {
+        if (SelectionImport(b[child].kind)) { if (next_first < 0) { next_first = child; } next_last = child; }
+        child = b[child].next_sibling;
+    }
+    replacement := "";
+    if (next_first >= 0) {
+        next_start := b_lines[SelectionLine(b_lines, b[next_first].start)];
+        next_end := SelectionLineEnd(b_lines, text_byte_length(formatted), b[next_last].end - 1);
+        replacement = text_slice(formatted, next_start, next_end - next_start);
+    } else {
+        // Removing imports can transfer their comments to the following
+        // declaration. Keep the formatter's complete, already-preserved text.
+        region := text_slice(original, start, end - start);
+        if (strings.Contains(region, "//") || strings.Contains(region, "/*")) {
+            return Result.Formatted(formatted, "Expanded selection to the complete file to preserve comments from removed imports.");
+        }
+    }
+    combined := strings.Join([text_slice(original, 0, start), replacement,
+                              text_slice(original, end, text_byte_length(original) - end)], "");
+    switch syntax.Parse(combined) {
+        case .Rejected(diagnostic):
+            return Result.Formatted(formatted, "Expanded selection to the complete file to keep imports and declarations syntactically valid.");
+        case .Parsed(rows, fields, named, extras, root):
+            return Result.Formatted(combined, format_text("Formatted original import-section lines {}..{}.",
+                                   SelectionLine(a_lines, start) + 1, SelectionLine(a_lines, final) + 1));
+    }
+}
+
+// Select from a completed, context-aware formatting pass. Unselected bytes
+// come directly from original. The caller rechecks typed semantics when it
+// enabled semantic rewrites. Line numbers are one-based; zero is an open end.
+pub SelectFormatted :: (original: string, formatted: string, options: Options) -> Result {
+    if (options.start_line == 0 && options.end_line == 0) { return Result.Formatted(formatted, ""); }
+    if (options.start_line < 0 || options.end_line < 0) { return Result.Rejected("Selection line numbers must be nonnegative"); }
+    if (options.range_scope != 0 && options.range_scope != 1) { return Result.Rejected("Selection scope must be declarations or statements"); }
+    a_lines := SelectionLines(original);
+    b_lines := SelectionLines(formatted);
+    first_line := options.start_line;
+    last_line := options.end_line;
+    if (first_line == 0) { first_line = 1; }
+    if (last_line == 0) { last_line = length(a_lines); }
+    if (first_line > length(a_lines) || last_line > length(a_lines) || last_line < first_line) {
+        return Result.Rejected("Selection must name an ordered line range inside the source");
+    }
+    wanted_start := a_lines[first_line - 1];
+    wanted_end := text_byte_length(original);
+    if (last_line < length(a_lines)) { wanted_end = a_lines[last_line]; }
+    switch syntax.Parse(original) {
+        case .Rejected(diagnostic): return Result.Rejected("Cannot select formatting from source with syntax errors");
+        case .Parsed(a, a_fields, a_named, a_extras, a_root):
+            switch syntax.Parse(formatted) {
+                case .Rejected(diagnostic): return Result.Rejected("Cannot select formatting from invalid formatter output");
+                case .Parsed(b, b_fields, b_named, b_extras, b_root):
+                    child := a[a_root].first_child;
+                    while (child >= 0) {
+                        if (SelectionImport(a[child].kind) && a[child].start < wanted_end && a[child].end > wanted_start) {
+                            return SelectionImportSlice(original, formatted, a, a_root, a_lines, b, b_root, b_lines,
+                                                        wanted_start, wanted_end);
+                        }
+                        child = a[child].next_sibling;
+                    }
+                    kinds := SelectionKinds();
+                    a_units := SelectionInventory(a, a_named, a_root, kinds);
+                    b_units := SelectionInventory(b, b_named, b_root, kinds);
+                    if (!SelectionCorresponds(a, a_units, b, b_units)) {
+                        return Result.Formatted(formatted, "Expanded selection to the complete file because the formatting pass changed declaration structure.");
+                    }
+                    container := a_root;
+                    width := text_byte_length(original) + 1;
+                    if (options.range_scope == 1) {
+                        for (node in 0..<length(a)) {
+                            if (!SelectionContainer(a[node].kind)) { continue; }
+                            body := SelectionBody(a, node, a_lines, text_byte_length(original));
+                            if (body.start <= wanted_start && body.end >= wanted_end && body.end - body.start < width) {
+                                container = node; width = body.end - body.start;
+                            }
+                        }
+                    }
+                    candidates: int[] = [];
+                    child = a[container].first_child;
+                    while (child >= 0) {
+                        if (a_units.serial[child] > 0) { candidates.append(child); }
+                        child = a[child].next_sibling;
+                    }
+                    first := -1;
+                    last := -1;
+                    for (index in 0..<length(candidates)) {
+                        node := candidates[index];
+                        if (a[node].start < wanted_end && a_units.ends[node] > wanted_start) {
+                            if (first < 0) { first = index; }
+                            last = index;
+                        }
+                    }
+                    if (first < 0 && length(candidates) > 0) {
+                        first = length(candidates) - 1;
+                        for (index in 0..<length(candidates)) {
+                            if (a[candidates[index]].start >= wanted_start) { first = index; break; }
+                        }
+                        last = first;
+                    }
+                    if (first < 0) {
+                        owner := a_units.owners[container];
+                        if (owner > 0) {
+                            switch SelectionSplice(original, formatted, a, a_lines, a_units, b, b_lines, b_units, owner, owner) {
+                                case .Formatted(text, notes): return Result.Formatted(text, notes);
+                                case .Rejected(message): return Result.Formatted(formatted, "Expanded selection to the complete file to keep enclosing syntax intact.");
+                            }
+                        }
+                        return Result.Formatted(formatted, "Expanded selection to the complete file because it contains no selectable declaration.");
+                    }
+                    comments := SelectionCommentLines(a, a_lines);
+                    while (first > 0 && SelectionGrouped(original, a, a_units.ends, a_lines, comments,
+                           candidates[first - 1], candidates[first], options)) { first -= 1; }
+                    while (last + 1 < length(candidates) && SelectionGrouped(original, a, a_units.ends, a_lines, comments,
+                           candidates[last], candidates[last + 1], options)) { last += 1; }
+                    first_unit := a_units.serial[candidates[first]];
+                    last_unit := a_units.serial[candidates[last]];
+                    switch SelectionSplice(original, formatted, a, a_lines, a_units, b, b_lines, b_units, first_unit, last_unit) {
+                        case .Formatted(text, notes): return Result.Formatted(text, notes);
+                        case .Rejected(message):
+                            // At most one retry, at top-level declaration scope.
+                            // Deeply nested source cannot trigger one parse per ancestor.
+                            first_owner := first_unit;
+                            last_owner := last_unit;
+                            while (a_units.parents[first_owner - 1] > 0) { first_owner = a_units.parents[first_owner - 1]; }
+                            while (a_units.parents[last_owner - 1] > 0) { last_owner = a_units.parents[last_owner - 1]; }
+                            switch SelectionSplice(original, formatted, a, a_lines, a_units, b, b_lines, b_units, first_owner, last_owner) {
+                                case .Formatted(text, notes): return Result.Formatted(text, notes);
+                                case .Rejected(second): return Result.Formatted(formatted, "Expanded selection to the complete file to keep rewritten constructs intact.");
+                            }
+                    }
+            }
+    }
+}

@@ -1,0 +1,23 @@
+{
+  "name": "compiler-imports-bytecode",
+  "command": [
+    "python3",
+    "tools/test_policy.py",
+    "native",
+    "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/test_language",
+    "--package-compiler-chibi-imports"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+  "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+  "snapshot_revision": "b87afaea2-dirty",
+  "started_unix": 1793211914.152147,
+  "environment": {},
+  "wall_seconds": 32.34349029115401,
+  "exit_code": 0,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/compiler-imports-bytecode.log",
+  "log_sha256": "41ee4949136030197f5ed4f5722c9326d45d60c4f1d8e1b31a89dedb1ffff51e",
+  "summaries": [
+    "Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 17453",
+    "Test command wall time: 32.185s; includes in-test fixture setup; external configuration/build excluded."
+  ]
+}

@@ -1,0 +1,5 @@
+package facts
+P :: struct { x: int; }
+One :: (ps: P[]) -> int { for (p in ps) { p.x = 1; } return 0; }
+
+// error: 3:43: Assignment requires a writable value

@@ -1,0 +1,8 @@
+{
+  "source": "/Users/cwaldner/Personal/chibi-studio-outliner",
+  "sdk": "/Users/cwaldner/.codex/worktrees/outliner-hierarchy/chibi/dist/outliner-sdk",
+  "configure_exit": 0,
+  "build_exit": 0,
+  "private_engine_source_include": false,
+  "sdk_config_sha256": "dc0ef0ddda0db4334c4e35ec62845222c012043f18b4a1d12c5f0e8b42946364"
+}

@@ -1,0 +1,11 @@
+--- compiler-positive/llvm_native/ManagedRecords.chibi
++++ compiler-negative/llvm_native/ManagedRecords.chibi
+@@ -187,7 +187,7 @@
+                 target := "pointer";
+                 if (held == ViewType) { target = "view"; }
+                 else if (child) { target = format_text("record{}", held - RecordType); }
+-                out.append(format_text("  call void @chibi_managed.trace.{}(ptr %heap, ptr %field{})\n", target, field));
++                if (!child) { out.append(format_text("  call void @chibi_managed.trace.{}(ptr %heap, ptr %field{})\n", target, field)); }
+             }
+             out.append("  ret void\n}\n");
+         }

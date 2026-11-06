@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_language_syntax.a CMakeFiles/chibi_language_syntax.dir/syntax.c.o CMakeFiles/chibi_language_syntax.dir/src/parser.c.o CMakeFiles/chibi_language_syntax.dir/src/scanner.c.o
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_language_syntax.a

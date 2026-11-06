@@ -1,0 +1,90 @@
+{
+  "head": "9acfa17d029dcb0fbeb744f9e60c0e3d6bcf6f76",
+  "merge_head": "79743c5675e5a18eeea14193d729cc6e45bdf926",
+  "driver_sha256": "f8fb0424cbc7e260c857a110b41d8d1d1bbd16721ad36e2edab1c9e07aa88ab1",
+  "source_sha256": {
+    "src/authoring/source_package_files.c": "ce5b602d5269f69f59bb79e048a2dc9bc0253e201e59814d63740d2b115c85f4",
+    "src/authoring/source_package_files.h": "bf571a43883bd2654302393388f294706d5e2b19932bacf3a5efa23647c195f2",
+    "src/authoring/source_package_io.h": "047b21fc7d17e4461ab14e6921f53b6d814e7c78b027733938bc2745a1940ac5",
+    "src/authoring/source_package_paths.c": "e1ade02761cd30cbc42025ced4a9691da9ba266bbde36e4f93f25d2064347c97",
+    "src/authoring/source_package_paths.h": "2968c6ef85ce93dfc3ac8ea00a9ee05f867facd8e022a0ed20e682921b0cf120",
+    "src/authoring/source_package_routes.c": "2264042b92515183b9a6f3227c1ff651a62b87356c47d3dffbe4d1b5575a80d8",
+    "src/authoring/source_package_prepare.c": "b5e232f27c91c31aeaaf0ee7a61ae9d01f0d1021c3dba1a39616367a9a0e46e8",
+    "src/authoring/source_package_prepare.h": "630e6060810758a84fa88acae253e942d83742f8b75340a243bba5b9da204823",
+    "src/execution/function.h": "efbb430b11f43f87822c2d37b6ce1fcddd78079ebe11dc0b478c181ad9fa887b",
+    "src/execution/runner.c": "3861c1d4216d7083ecb294f0ba63dd0fdd3511c50cc8c17588dc253b8c985b88",
+    "src/authoring/program.c": "872bb7f4ed162a5f5105f76321d058417aa86e41f8ff68709fe93257a6a4c585",
+    "src/host/application_io.c": "b8fbea55d071755f5120b6e86dab79a29cbc9e3110897faeff3b33a9a2449b66",
+    "test/language/package_files.c": "cc31b10f504cce0996bc45664f012327fd6dc0dca282cceaae32da3b28a20da7",
+    "test/language/package_resolution.c": "6008398ccd571d26c952e53777352eb0ae2ca1ee5b1b60389cf6cc17f1b30451",
+    "test/language/package_paths_chibi.c": "7c84ec22b313eab0484c7d3fe8e1a736ed18db9d1706427cf6c9875be4871938",
+    "test/language/package_routes_chibi.c": "d7d0381502fb7d5760ab3138b2b75482c1a54e6f3d0c4e644573ee46e2d0a3cd",
+    "test/language/package_imports.c": "63bfb8f61eaef80fbc0ee45179567f5200146618f76855e81b8cc978a8b28f35",
+    "tools/test_policy.py": "05b7cad691a0606d290b44e147e1cb03b40a89cd314c810f37ea1ef11eed3383"
+  },
+  "sources_unchanged_during_checks": true,
+  "driver_unchanged_during_checks": true,
+  "parallel_outer_wall_seconds": 0.908,
+  "checks": [
+    {
+      "selector": "package-files",
+      "returncode": 0,
+      "outer_wall_seconds": 0.76,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-files-ordinary-cli-final-native14.log",
+      "passed": 8,
+      "failed": 0,
+      "cases": 8,
+      "suites": 0,
+      "assertions": 149,
+      "runner_wall_seconds": 0.656
+    },
+    {
+      "selector": "package-resolution",
+      "returncode": 0,
+      "outer_wall_seconds": 0.503,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-resolution-ordinary-cli-final-native14.log",
+      "passed": 8,
+      "failed": 0,
+      "cases": 8,
+      "suites": 0,
+      "assertions": 164,
+      "runner_wall_seconds": 0.399
+    },
+    {
+      "selector": "package-paths-chibi",
+      "returncode": 0,
+      "outer_wall_seconds": 0.779,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-paths-chibi-ordinary-cli-final-native14.log",
+      "passed": 3,
+      "failed": 0,
+      "cases": 3,
+      "suites": 0,
+      "assertions": 1763,
+      "runner_wall_seconds": 0.676
+    },
+    {
+      "selector": "package-routes-chibi",
+      "returncode": 0,
+      "outer_wall_seconds": 0.797,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-routes-chibi-ordinary-cli-final-native14.log",
+      "passed": 4,
+      "failed": 0,
+      "cases": 4,
+      "suites": 0,
+      "assertions": 13775,
+      "runner_wall_seconds": 0.694
+    },
+    {
+      "selector": "package-imports",
+      "returncode": 0,
+      "outer_wall_seconds": 0.746,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-imports-ordinary-cli-final-native14.log",
+      "passed": 18,
+      "failed": 0,
+      "cases": 18,
+      "suites": 0,
+      "assertions": 1530,
+      "runner_wall_seconds": 0.648
+    }
+  ]
+}

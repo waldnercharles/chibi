@@ -1,0 +1,3 @@
+package probe
+import compiler "project:package_compiler"
+Main :: () -> int { return text_byte_length(compiler.SyntaxKindName(1)); }

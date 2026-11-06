@@ -1,0 +1,9 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/release/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/release/sdk/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/release/sdk/language/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

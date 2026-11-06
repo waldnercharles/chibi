@@ -1,0 +1,36 @@
+package loop
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+}
+Detail :: struct { label: string; }
+Progress :: struct { count: int; text: string; detail: Detail; }
+Main :: () -> int { return 0; }
+Frame :: () -> int {
+    progress: retain Progress = {count: 0, text: "initial", detail: {label: "nested"}};
+    message: retain string = "first generation";
+    note: retain string = "seed";
+    changed := Increment(&progress);
+    record_snapshot := progress;
+    progress.text = format_text("progress {}", progress.count);
+    progress.detail = {label: format_text("detail {}", progress.count)};
+    assert(record_snapshot.text != progress.text);
+    assert(record_snapshot.detail.label != progress.detail.label);
+    snapshot := note;
+    note = format_text("value {}", progress.count);
+    assert(text_byte_length(snapshot) > 0);
+    if progress.count == 3 { Ready(); }
+    return 0;
+}
+
+Ready :: () {
+    stream := fopen("generation-ready", "wb");
+    closed := fclose(stream);
+}
+
+Increment :: (progress: ^Progress) -> int {
+    progress.count += 1;
+    return 0;
+}

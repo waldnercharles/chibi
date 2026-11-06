@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_vector_capabilities.a "CMakeFiles/chibi_vector_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/vectors.c.o" "CMakeFiles/chibi_vector_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/vectors_definition.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_vector_capabilities.a

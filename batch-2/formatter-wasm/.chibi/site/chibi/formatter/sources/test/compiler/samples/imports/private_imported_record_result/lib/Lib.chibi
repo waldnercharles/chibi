@@ -1,0 +1,3 @@
+package lib
+Hidden :: struct { x: int; }
+pub Make :: () -> Hidden { return {x: 7}; }

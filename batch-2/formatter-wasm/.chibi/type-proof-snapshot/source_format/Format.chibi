@@ -1,0 +1,1362 @@
+package source_format
+
+// The compiler collection supplies the shared parser and token definitions.
+import strings "core:strings"
+import syntax "project:compiler_syntax"
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+import type_style "project:source_type_style"
+import directives "project:source_directives"
+
+// Layout formatting for Chibi source: a pass over the tokens of the parser's
+// tree that rewrites the gaps between them. Line breaks the author wrote stay,
+// except where the grammar forces one or wrapping is on; Options choose
+// indentation, continuation, spacing inside brackets, blank lines, alignment,
+// line ends and explicit semicolons. The result is tokenized again and must
+// give the input's token stream, statement terminators included (an explicit
+// `;` and the terminator a line break inserts count as the same token), or it
+// is rejected. The parser reads only that stream, so the same stream gives the
+// same tree; checking tokens instead of parsing the output again costs a
+// fraction of the memory. The defaults reproduce the archived C formatter
+// (archive/src/authoring/source_format.c), whose rules this pass extends.
+// docs/formatter-options-survey.md compares the options with other formatters'.
+
+// What CompareTokens finds. TerminatorsDiffer means the streams match apart
+// from zero-width terminators after a closing brace, which a line break there
+// adds; a tree comparison then decides.
+Different: int : 0;
+Same: int : 1;
+TerminatorsDiffer: int : 2;
+
+pub Result :: union {
+    Formatted(text: string, notes: string) |
+    Rejected(message: string)
+}
+
+// Formats `text`: one line end style, no trailing spaces, and a final line end
+// unless the options say otherwise. Empty or all-whitespace source has no
+// tokens and is returned unchanged.
+pub Format :: (text: string, options: Options) -> Result {
+    if (text_byte_length(text) > MaxBytes) {
+        return Result.Rejected("Source exceeds the formatter's byte limit");
+    }
+    // The parser rejects a text with no declaration; there is nothing to lay out.
+    if (strings.TrimSpace(text) == "") {
+        return Result.Formatted(text, "");
+    }
+    switch syntax.Parse(text) {
+        case .Parsed(rows, fields, named, extras, root):
+            return FormatParsed(text, rows, fields, named, root, options);
+        case .Rejected(diagnostic):
+            return Result.Rejected(Unparsed(diagnostic));
+    }
+}
+
+// Why a source the parser rejects cannot be formatted, with where.
+pub Unparsed :: (diagnostic: diag.Diagnostic) -> string {
+    return format_text("Cannot format source with syntax errors: {}:{}: {}", diagnostic.line, diagnostic.column,
+                       diagnostic.message);
+}
+
+// Format for a caller that has already parsed `text`, such as one that also
+// highlights it; `rows` and the rest are compiler_syntax.Parse's Parsed result.
+pub FormatParsed :: (text: string, rows: diag.Node[], fields: int[], named: bool[], root: int,
+                     options: Options) -> Result {
+    invalid := Validate(options);
+    if (invalid != "") {
+        return Result.Rejected(invalid);
+    }
+    if (options.binding_types != Keep) {
+        next_options := options;
+        next_options.binding_types = Keep;
+        switch type_style.Rewrite(text, options.binding_types) {
+            case .Rejected(message):
+                // An incomplete project can still use layout and brace styles.
+                switch FormatParsed(text, rows, fields, named, root, next_options) {
+                    case .Rejected(layout_error):
+                        return Result.Rejected(layout_error);
+                    case .Formatted(formatted, notes):
+                        return Result.Formatted(formatted, strings.Concatenate(["Type style not applied: ", message]));
+                }
+            case .Rewritten(rewritten, changed, skipped, notes):
+                if (rewritten == text) {
+                    switch FormatParsed(text, rows, fields, named, root, next_options) {
+                        case .Rejected(message): return Result.Rejected(message);
+                        case .Formatted(formatted, layout_notes): return Result.Formatted(formatted, notes);
+                    }
+                }
+                switch Format(rewritten, next_options) {
+                    case .Rejected(message): return Result.Rejected(message);
+                    case .Formatted(formatted, layout_notes): return Result.Formatted(formatted, notes);
+                }
+        }
+    }
+    tokens := Tokens(rows, fields, root);
+    if (length(tokens) == 0) {
+        return Result.Formatted(text, "");
+    }
+    if (options.branch_braces != Keep) {
+        rewritten := ControlBraces(text, rows, tokens, options.branch_braces);
+        if (rewritten != text) {
+            switch syntax.Parse(rewritten) {
+                case .Rejected(diagnostic):
+                    return Result.Rejected("Brace style would produce invalid syntax");
+                case .Parsed(next_rows, next_fields, next_named, next_extras, next_root):
+                    if (!SameControlTree(text, rows, fields, named, rewritten, next_rows, next_fields, next_named)) {
+                        return Result.Rejected("Brace style would change the syntax tree");
+                    }
+                    next_options := options;
+                    next_options.branch_braces = Keep;
+                    return FormatParsed(rewritten, next_rows, next_fields, next_named, next_root, next_options);
+            }
+        }
+    }
+    formatted := Layout(text, rows, fields, root, tokens, options);
+    verdict := CompareTokens(text, formatted);
+    if (verdict == Different) {
+        // A line break between an unbraced header and its body inserts a
+        // terminator that this grammar consumes outside the tree. Only these
+        // bodies permit the more expensive exact-tree check as a fallback.
+        bare := false;
+        for (token in tokens) {
+            bare = bare || token.body_open > 0;
+        }
+        if (!bare || !SameTree(text, rows, fields, named, formatted)) {
+            return Result.Rejected("Formatting would change the token stream");
+        }
+    }
+    if (verdict == TerminatorsDiffer && !SameTree(text, rows, fields, named, formatted)) {
+        return Result.Rejected("Formatting would change the syntax tree");
+    }
+    return Result.Formatted(formatted, "");
+}
+
+// A leaf of the tree with width, in source order, and what the layout needs
+// to know about its place. `node` is its row in the tree. Closed sets of
+// kinds are named by the grammar, so the flags are computed once here instead
+// of re-asking the tree for every gap.
+Token :: struct {
+    node: int;
+    start: int;
+    end: int;
+    // The brace that opens or closes a block-like body, and whether it is a
+    // `switch` body's.
+    open: bool;
+    close: bool;
+    switch_open: bool;
+    // The block's construct and nearest enclosing statement-list scope.
+    block_kind: int;
+    scope: int;
+    // The last token of a statement or declaration: a newline follows.
+    end_line: bool;
+    // A bracket whose contents may continue on later lines.
+    nest_open: bool;
+    nest_close: bool;
+    // Which bracket that is: a struct literal's braces, parentheses, or an
+    // array literal's brackets, for the space_in_ options.
+    brace: bool;
+    paren: bool;
+    bracket: bool;
+    // A switch arm's colon with a bare body, and that body's last token.
+    case_open: bool;
+    case_close: bool;
+    // Binary-expression chains that start or end at this token.
+    chain_open: int;
+    chain_close: int;
+    // Synthetic control blocks retain scope without brace leaves. Their first
+    // and last leaves enter and leave one indentation level per body.
+    body_open: int;
+    body_close: int;
+    comment: bool;
+    // An explicit `;`.
+    semicolon: bool;
+    // The operator of an assignment or local declaration, and the `:` before
+    // a type or value that an align_ option lines up (an Anchor kind, or -1).
+    assign: bool;
+    colon: int;
+    // The top-level declaration (a child of the root) that holds this token.
+    top: int;
+    // Part of a package/import line, or the end of a control condition. Its
+    // hidden header separator must never become an explicit `;`.
+    header: bool;
+}
+
+// Leading whitespace: indentation levels, then alignment spaces.
+Margin :: struct {
+    levels: int;
+    spaces: int;
+}
+
+// An open block, bracket, case arm or operator chain: the margin of the
+// lines inside it, and of a line that starts with its closing token.
+Frame :: struct {
+    inside: Margin;
+    close: Margin;
+}
+
+// A row's kind, or tk.Invalid, which is no node's, for none.
+KindOf :: (rows: diag.Node[], node: int) -> int {
+    if (node < 0) {
+        return tk.Invalid;
+    }
+    return rows[node].kind;
+}
+
+ParentOf :: (rows: diag.Node[], node: int) -> int {
+    if (node < 0) {
+        return -1;
+    }
+    return rows[node].parent;
+}
+
+ParentKind :: (rows: diag.Node[], node: int) -> int {
+    return KindOf(rows, ParentOf(rows, node));
+}
+
+FirstChild :: (rows: diag.Node[], node: int) -> int {
+    if (node < 0) {
+        return -1;
+    }
+    return rows[node].first_child;
+}
+
+PreviousSibling :: (rows: diag.Node[], node: int) -> int {
+    parent := ParentOf(rows, node);
+    if (parent < 0) {
+        return -1;
+    }
+    previous: int = -1;
+    child := rows[parent].first_child;
+    while (child >= 0 && child != node) {
+        previous = child;
+        child = rows[child].next_sibling;
+    }
+    return previous;
+}
+
+ChildByField :: (rows: diag.Node[], fields: int[], parent: int, field: int) -> int {
+    child := rows[parent].first_child;
+    while (child >= 0) {
+        if (fields[child] == field) {
+            return child;
+        }
+        child = rows[child].next_sibling;
+    }
+    return -1;
+}
+
+// Nodes whose braces open an indented body.
+IsBlock :: (rows: diag.Node[], node: int) -> bool {
+    kind := KindOf(rows, node);
+    if (kind == diag.Block || kind == diag.DeclarationBody || kind == diag.SystemBody ||
+        kind == diag.CallableBody || kind == diag.ComponentBody || kind == diag.RecordBody ||
+        kind == diag.PrototypeBody || kind == diag.SwitchStatement ||
+        kind == diag.UnionDeclaration || kind == diag.SequenceStatement ||
+        kind == diag.ForeignBlock || kind == diag.DeclarationBlock) {
+        return true;
+    }
+    if (kind == diag.StructExpression) {
+        parent := ParentKind(rows, node);
+        return parent == diag.PrototypeComponent || parent == diag.RelationshipDeclaration;
+    }
+    return false;
+}
+
+// Brackets whose contents may continue on later lines.
+IsNest :: (rows: diag.Node[], node: int) -> bool {
+    if (IsBlock(rows, node)) {
+        return false;
+    }
+    kind := KindOf(rows, node);
+    return kind == diag.ArgumentList || kind == diag.ParameterList || kind == diag.QueryList ||
+           kind == diag.PatternBindings || kind == diag.ArrayExpression ||
+           kind == diag.MapExpression || kind == diag.StructExpression ||
+           kind == diag.PrototypeBases || kind == diag.StructField ||
+           kind == diag.ParenthesizedExpression;
+}
+
+// The outermost operator of an expression, whose operands may continue on
+// later lines.
+IsChain :: (rows: diag.Node[], node: int) -> bool {
+    return KindOf(rows, node) == diag.BinaryExpression && ParentKind(rows, node) != diag.BinaryExpression;
+}
+
+// Which node kinds end a line with their last token: the declarations and
+// statements, named so in diag.KindNames, and the few others listed. Built
+// once per format from that one definition.
+LineEnders :: () -> bool[] {
+    enders := resize([false], diag.KindCount);
+    names := diag.KindNames();
+    index: int = 0;
+    while (index < length(names)) {
+        name := names[index];
+        enders[diag.Comment + index] = strings.HasSuffix(name, "_declaration") || strings.HasSuffix(name, "_statement");
+        index += 1;
+    }
+    enders[diag.Assignment] = true;
+    enders[diag.Handler] = true;
+    enders[diag.ComponentField] = true;
+    enders[diag.RecordField] = true;
+    enders[diag.ForeignFunction] = true;
+    return enders;
+}
+
+// A bare switch-arm body is a block that does not start with a brace.
+IsBareArm :: (rows: diag.Node[], node: int) -> bool {
+    return KindOf(rows, node) == diag.Block && ParentKind(rows, node) == diag.SwitchArm &&
+           KindOf(rows, FirstChild(rows, node)) != tk.OpenBrace;
+}
+
+// The end of the last leaf with width at or below each row, or -1 for none. A
+// row's own end can lie past it: a terminator that a line break adds has no
+// width and sits where the next token starts, after the line's spacing.
+VisibleEnds :: (rows: diag.Node[]) -> int[] {
+    ends := resize([int(-1)], length(rows));
+    i: int = length(rows) - 1;
+    while (i >= 0) {
+        if (rows[i].first_child < 0 && rows[i].start >= 0 && rows[i].end > rows[i].start) {
+            ends[i] = rows[i].end;
+        }
+        parent := rows[i].parent;
+        if (parent >= 0 && ends[i] > ends[parent]) {
+            ends[parent] = ends[i];
+        }
+        i -= 1;
+    }
+    return ends;
+}
+
+// The leaves with width, in source order. Zero-width terminators never
+// print, so they have no row here.
+Tokens :: (rows: diag.Node[], fields: int[], root: int) -> Token[] {
+    tokens: Token[] = [];
+    ends := VisibleEnds(rows);
+    enders := LineEnders();
+    i: int = 0;
+    while (i < length(rows)) {
+        row := rows[i];
+        if (row.first_child < 0 && row.start >= 0 && row.end > row.start) {
+            tokens.append(MakeToken(rows, fields, ends, enders, root, i));
+        }
+        i += 1;
+    }
+    // Comments between a header and its unbraced statement are extras owned
+    // by the control node. Indent leading comment lines with that statement;
+    // a trailing header comment stays beside its condition.
+    i = 0;
+    while (i < length(tokens)) {
+        if (tokens[i].body_open > 0) {
+            first := i;
+            while (first > 0 && tokens[first - 1].comment) {
+                first -= 1;
+            }
+            if (first < i && first > 0 && rows[tokens[first].node].row == rows[tokens[first - 1].node].row) {
+                first += 1;
+            }
+            if (first < i) {
+                tokens[first].body_open += tokens[i].body_open;
+                tokens[i].body_open = 0;
+            }
+        }
+        i += 1;
+    }
+    return tokens;
+}
+
+// The alignment a `:` starts: a field's type, a typed constant's type or a
+// struct literal field's value; -1 for other colons.
+ColonAnchor :: (rows: diag.Node[], node: int, kind: int, parent_kind: int) -> int {
+    if (kind != tk.Colon) {
+        return -1;
+    }
+    if (parent_kind == diag.RecordField || parent_kind == diag.ComponentField) {
+        return AnchorField;
+    }
+    if (parent_kind == diag.StructField) {
+        return AnchorValue;
+    }
+    if (parent_kind == diag.ConstantDeclaration && !IsConstantColon(rows, node)) {
+        return AnchorConstant;
+    }
+    return -1;
+}
+
+AssignOperator :: (kind: int) -> bool {
+    return kind == tk.Eq || kind == tk.ColonEq || (kind >= tk.AddEq && kind <= tk.XorEq);
+}
+
+MakeToken :: (rows: diag.Node[], fields: int[], ends: int[], enders: bool[], root: int, node: int) -> Token {
+    kind := rows[node].kind;
+    parent := rows[node].parent;
+    parent_kind := KindOf(rows, parent);
+    start := rows[node].start;
+    end := rows[node].end;
+    block := IsBlock(rows, parent);
+    opener := kind == tk.OpenParen || kind == tk.OpenBracket || kind == tk.OpenBrace;
+    closer := kind == tk.CloseParen || kind == tk.CloseBracket || kind == tk.CloseBrace;
+    nest := IsNest(rows, parent);
+    token: Token = {node: node, start: start, end: end,
+                    open: kind == tk.OpenBrace && block, close: kind == tk.CloseBrace && block,
+                    switch_open: kind == tk.OpenBrace && block && parent_kind == diag.SwitchStatement,
+                    block_kind: BlockKind(rows, parent), scope: 0,
+                    end_line: kind == tk.Comma && block,
+                    nest_open: opener && nest, nest_close: closer && nest,
+                    brace: (kind == tk.OpenBrace || kind == tk.CloseBrace) && nest && parent_kind == diag.StructExpression,
+                    paren: (kind == tk.OpenParen || kind == tk.CloseParen) && nest,
+                    bracket: (kind == tk.OpenBracket || kind == tk.CloseBracket) && nest && parent_kind == diag.ArrayExpression,
+                    case_open: false, case_close: false, chain_open: 0, chain_close: 0,
+                    body_open: 0, body_close: 0,
+                    comment: kind == diag.Comment, semicolon: kind == tk.Semicolon,
+                    assign: AssignOperator(kind) && (parent_kind == diag.Assignment || parent_kind == diag.LocalDeclaration),
+                    colon: ColonAnchor(rows, node, kind, parent_kind),
+                    top: -1, header: (fields[node] == diag.FieldCondition &&
+                                      (parent_kind == diag.IfStatement || parent_kind == diag.WhileStatement)) ||
+                                     (parent_kind == diag.ForStatement && (kind == tk.CloseParen ||
+                                       fields[node] == diag.FieldValue || fields[node] == diag.FieldLast))};
+    if (kind == tk.Colon && parent_kind == diag.SwitchArm) {
+        body := ChildByField(rows, fields, parent, diag.FieldBody);
+        token.case_open = FirstChild(rows, body) >= 0 && KindOf(rows, FirstChild(rows, body)) != tk.OpenBrace;
+    }
+    ancestor := parent;
+    while (ancestor >= 0 && rows[ancestor].start == start) {
+        if (IsChain(rows, ancestor)) {
+            token.chain_open += 1;
+        }
+        if (BareControlBlock(rows, ancestor)) {
+            token.body_open += 1;
+        }
+        ancestor = rows[ancestor].parent;
+    }
+    ancestor = parent;
+    while (ancestor >= 0 && ends[ancestor] == end) {
+        if (enders[rows[ancestor].kind]) {
+            returned := rows[ancestor].parent;
+            expression_lambda := rows[ancestor].kind == diag.ReturnStatement &&
+                                 KindOf(rows, returned) == diag.CallableBody &&
+                                 ParentKind(rows, returned) == diag.LambdaExpression &&
+                                 KindOf(rows, FirstChild(rows, returned)) != tk.OpenBrace;
+            if (!expression_lambda) { token.end_line = true; }
+        }
+        if (IsChain(rows, ancestor)) {
+            token.chain_close += 1;
+        }
+        if (IsBareArm(rows, ancestor)) {
+            token.case_close = true;
+        }
+        if (BareControlBlock(rows, ancestor)) {
+            token.body_close += 1;
+        }
+        control := ParentKind(rows, ancestor);
+        if (fields[ancestor] == diag.FieldCondition && (control == diag.IfStatement || control == diag.WhileStatement)) {
+            token.header = true;
+        }
+        if (control == diag.ForStatement && (fields[ancestor] == diag.FieldValue || fields[ancestor] == diag.FieldLast)) {
+            token.header = true;
+        }
+        ancestor = rows[ancestor].parent;
+    }
+    ancestor = node;
+    while (ancestor >= 0 && rows[ancestor].parent != root) {
+        if (token.scope == 0 && AlignmentScope(rows, ancestor)) {
+            token.scope = ancestor + 1;
+        }
+        ancestor = rows[ancestor].parent;
+    }
+    token.top = ancestor;
+    if (token.scope == 0 && AlignmentScope(rows, ancestor)) {
+        token.scope = ancestor + 1;
+    }
+    if (ancestor >= 0) {
+        top_kind := rows[ancestor].kind;
+        token.header = token.header || top_kind == diag.PackageHeader || top_kind == diag.ImportDeclaration ||
+                       top_kind == diag.ForeignImportDeclaration;
+    }
+    return token;
+}
+
+// `Name: T : value` spaces the colon that follows a constant's type.
+IsConstantColon :: (rows: diag.Node[], node: int) -> bool {
+    return rows[node].kind == tk.Colon && ParentKind(rows, node) == diag.ConstantDeclaration &&
+           KindOf(rows, PreviousSibling(rows, node)) == diag.Type;
+}
+
+// A token that takes no space before it.
+TightBefore :: (rows: diag.Node[], node: int) -> bool {
+    kind := rows[node].kind;
+    parent := ParentKind(rows, node);
+    if (kind == tk.Comma || kind == tk.Semicolon || kind == tk.Ellipsis || kind == tk.HalfOpenRange ||
+        kind == tk.CloseParen || kind == tk.CloseBracket) {
+        return true;
+    }
+    if (kind == tk.Colon) {
+        return !IsConstantColon(rows, node);
+    }
+    if (kind == tk.Period) {
+        return parent != diag.VariantPattern;
+    }
+    if (kind == tk.CloseBrace) {
+        return parent == diag.StructExpression;
+    }
+    if (kind == tk.OpenParen) {
+        if (parent == diag.ParameterList || parent == diag.QueryList || parent == diag.PatternBindings ||
+            parent == diag.ReduceStatement || parent == diag.PrototypeBases || parent == diag.ParenthesizedType) {
+            return true;
+        }
+        return parent == diag.ArgumentList && ParentKind(rows, rows[node].parent) != diag.ReturnStatement;
+    }
+    if (kind == tk.OpenBracket) {
+        return parent == diag.Type || parent == diag.IndexExpression;
+    }
+    if (kind == tk.Question) {
+        return parent == diag.Type;
+    }
+    if (kind == tk.Xor) {
+        return parent == diag.DereferenceExpression || parent == diag.Unit;
+    }
+    if (kind == tk.Quo) {
+        return parent == diag.Unit;
+    }
+    return false;
+}
+
+// A token that takes no space after it.
+TightAfter :: (rows: diag.Node[], node: int) -> bool {
+    kind := rows[node].kind;
+    parent := ParentKind(rows, node);
+    if (kind == tk.OpenParen || kind == tk.OpenBracket || kind == tk.Period || kind == tk.Ellipsis ||
+        kind == tk.HalfOpenRange || kind == tk.At) {
+        return true;
+    }
+    if (kind == tk.Dollar) {
+        return parent == diag.TypeBinder || parent == diag.Parameter;
+    }
+    if (kind == tk.OpenBrace) {
+        return parent == diag.StructExpression;
+    }
+    if (kind == tk.Xor) {
+        return parent == diag.PointerType || parent == diag.Unit;
+    }
+    if (kind == tk.Quo) {
+        return parent == diag.Unit;
+    }
+    if (kind == tk.And) {
+        return parent == diag.AddressExpression || parent == diag.ForStatement;
+    }
+    return parent == diag.UnaryExpression && kind != tk.NotKeyword &&
+           rows[rows[node].parent].start == rows[node].start;
+}
+
+// The spaces between two tokens on one line: 0, 1, or a trailing comment's
+// spacing.
+Spaces :: (rows: diag.Node[], previous: Token, current: Token, options: Options) -> int {
+    if (previous.open && current.close) {
+        return 0;
+    }
+    if (current.comment) {
+        return options.spaces_before_trailing_comment;
+    }
+    styled := StyleSpaces(rows, previous, current, options);
+    if (styled >= 0) { return styled; }
+    if (previous.nest_close && current.nest_open &&
+        ParentKind(rows, previous.node) == diag.ParameterList && ParentKind(rows, current.node) == diag.ParameterList) {
+        return 1;
+    }
+    // A bracket pair with nothing inside stays tight.
+    if ((previous.brace || previous.paren || previous.bracket) && previous.nest_open && current.nest_close) {
+        return 0;
+    }
+    if ((options.space_in_braces && (previous.brace && previous.nest_open || current.brace && current.nest_close)) ||
+        (options.space_in_parens && (previous.paren && previous.nest_open || current.paren && current.nest_close)) ||
+        (options.space_in_brackets && (previous.bracket && previous.nest_open || current.bracket && current.nest_close))) {
+        return 1;
+    }
+    kind := rows[previous.node].kind;
+    if (kind == tk.ArrowRight || kind == tk.ColonColon) {
+        return 1;
+    }
+    if (TightBefore(rows, current.node) || TightAfter(rows, previous.node)) {
+        return 0;
+    }
+    return 1;
+}
+
+// Stores `frame` at index `depth` of the open frames, whose first `depth`
+// entries are live; the caller then counts it.
+Place :: (frames: ^(Frame[]), depth: int, frame: Frame) {
+    if (depth == length(frames^)) {
+        frames.append(frame);
+    } else {
+        frames^[depth] = frame;
+    }
+}
+
+// The margin of a line inside the innermost of the first `depth` frames.
+Inner :: (frames: Frame[], depth: int) -> Margin {
+    if (depth == 0) {
+        return {levels: 0, spaces: 0};
+    }
+    return frames[depth - 1].inside;
+}
+
+// Aligns later lines at `column`, indenting with as many of the line's
+// levels as fit.
+Align :: (line: Margin, column: int, width: int) -> Margin {
+    levels := line.levels;
+    if (column / width < levels) {
+        levels = column / width;
+    }
+    return {levels: levels, spaces: column - levels * width};
+}
+
+// Whether a line break (or the legacy lone CR of a package file) separates
+// two tokens, and how many such breaks the gap holds.
+Breaks :: (bytes: int[], packaged: bool, start: int, end: int) -> int {
+    count: int = 0;
+    at := start;
+    while (at < end) {
+        if (bytes[at] == 10) {
+            count += 1;
+        } else if (packaged && bytes[at] == 13 && !(at + 1 < length(bytes) && bytes[at + 1] == 10)) {
+            count += 1;
+        }
+        at += 1;
+    }
+    return count;
+}
+
+// Appends a line break, `blanks` empty lines after it, and `margin` to the output pieces.
+Break :: (out: ^(string[]), blanks: int, eol: string, margin: Margin, unit: string) {
+    if (blanks > 0) {
+        out.append(strings.Repeat(eol, blanks + 1));
+    } else {
+        out.append(eol);
+    }
+    if (margin.levels > 0) {
+        out.append(strings.Repeat(unit, margin.levels));
+    }
+    if (margin.spaces > 0) {
+        out.append(strings.Repeat(" ", margin.spaces));
+    }
+}
+
+// The margin of a continued line that is not aligned: the continuation past
+// `line`, as one more level when it is one level's width.
+Continue :: (line: Margin, options: Options) -> Margin {
+    columns := options.continuation_indent;
+    if (columns == 0 || columns == options.indent_width) {
+        return {levels: line.levels + 1, spaces: line.spaces};
+    }
+    return {levels: line.levels, spaces: line.spaces + columns};
+}
+
+// Bracket groups for wrapping, one entry per token: the innermost open
+// bracket a token sits in (-1 for none), each opening bracket's matching
+// closer, and the width the group would take on one line, or MaxBytes when a
+// comment or a block inside it forces a break.
+Groups :: (rows: diag.Node[], tokens: Token[], options: Options, group: ^(int[]), pair: ^(int[]), flat: ^(int[]),
+           prefix: ^(int[])) {
+    stack: int[] = [];
+    marks: int[] = [];
+    width: int = 0;
+    hard: int = 0;
+    i: int = 0;
+    while (i < length(tokens)) {
+        t := tokens[i];
+        if (i > 0) {
+            width += Spaces(rows, tokens[i - 1], t, options);
+        }
+        group^[i] = -1;
+        if (length(stack) > 0) {
+            group^[i] = stack[length(stack) - 1];
+        }
+        if (t.nest_open) {
+            stack.append(i);
+            marks.append(hard);
+            flat^[i] = width;
+        }
+        width += t.end - t.start;
+        prefix^[i] = width;
+        if (t.comment || t.open || t.close) {
+            hard += 1;
+        }
+        if (t.nest_close && length(stack) > 0) {
+            open := stack[length(stack) - 1];
+            mark := marks[length(marks) - 1];
+            if (options.magic_trailing_comma && i > open + 1 && rows[tokens[i - 1].node].kind == tk.Comma) {
+                hard += 1;
+            }
+            stack = resize(stack, length(stack) - 1);
+            marks = resize(marks, length(marks) - 1);
+            pair^[open] = i;
+            if (hard == mark) {
+                flat^[open] = width - flat^[open];
+            } else {
+                flat^[open] = MaxBytes;
+            }
+        }
+        i += 1;
+    }
+}
+
+// Whether a wrapped group breaks after `previous`: after a comma of the
+// group's own list, or after the operator of a binary expression directly
+// inside parentheses.
+BreakAfter :: (rows: diag.Node[], fields: int[], previous: Token, open: Token) -> bool {
+    parent := rows[previous.node].parent;
+    if (rows[previous.node].kind == tk.Comma) {
+        return parent == rows[open.node].parent;
+    }
+    return ParentKind(rows, open.node) == diag.ParenthesizedExpression && KindOf(rows, parent) == diag.BinaryExpression &&
+           fields[previous.node] == diag.FieldOperator;
+}
+
+// The matching closing brace of every block's opening brace, and whether the
+// author wrote the block on one line.
+Blocks :: (rows: diag.Node[], tokens: Token[], close: ^(int[]), one_line: ^(bool[]), safe: ^(bool[])) {
+    stack: int[] = [];
+    marks: int[] = [];
+    hard := 0;
+    i: int = 0;
+    while (i < length(tokens)) {
+        if (tokens[i].open) {
+            stack.append(i);
+            marks.append(hard);
+        } else if (tokens[i].close && length(stack) > 0) {
+            open := stack[length(stack) - 1];
+            stack = resize(stack, length(stack) - 1);
+            close^[open] = i;
+            one_line^[open] = rows[tokens[open].node].row == rows[tokens[i].node].row;
+            safe^[open] = hard == marks[length(marks) - 1];
+            marks = resize(marks, length(marks) - 1);
+        }
+        if (tokens[i].comment) { hard += 1; }
+        i += 1;
+    }
+}
+
+// The top-level declarations that start a group the blank-line minimum applies
+// before: a declaration, with the comments directly above it, whose neighbour
+// group or own group spans lines.
+Separated :: (bytes: int[], rows: diag.Node[], root: int, ends: int[]) -> bool[] {
+    separated := resize([false], length(rows));
+    children: int[] = [];
+    child := rows[root].first_child;
+    while (child >= 0) {
+        if (rows[child].end > rows[child].start && ends[child] > rows[child].start) {
+            children.append(child);
+        }
+        child = rows[child].next_sibling;
+    }
+    // A child spans lines, and a comment child sits directly above the next one.
+    spans := resize([false], length(children));
+    attached := resize([false], length(children));
+    k: int = 0;
+    while (k < length(children)) {
+        c := children[k];
+        at := rows[c].start;
+        while (at < ends[c] && !spans[k]) {
+            spans[k] = bytes[at] == 10;
+            at += 1;
+        }
+        if (rows[c].kind == diag.Comment && k + 1 < length(children)) {
+            breaks: int = 0;
+            at = ends[c];
+            while (at < rows[children[k + 1]].start) {
+                if (bytes[at] == 10) {
+                    breaks += 1;
+                }
+                at += 1;
+            }
+            attached[k] = breaks <= 1;
+        }
+        k += 1;
+    }
+    // A group's declaration is its first child that is not an attached comment.
+    k = 1;
+    while (k < length(children)) {
+        if (!attached[k - 1]) {
+            own := k;
+            while (own + 1 < length(children) && attached[own]) {
+                own += 1;
+            }
+            before := k - 1;
+            while (before > 0 && rows[children[before]].kind == diag.Comment) {
+                before -= 1;
+            }
+            separated[children[k]] = spans[own] || spans[before];
+        }
+        k += 1;
+    }
+    return separated;
+}
+
+// Which tokens a zero-width terminator follows in `text`: the places where a
+// line break or a closing brace ends a statement without an explicit `;`.
+Terminated :: (text: string, tokens: Token[]) -> bool[] {
+    terminated := resize([false], length(tokens));
+    switch tk.Tokenize(text) {
+        case .Scanned(kinds, starts, ends, rows, columns, errors, error_offsets, error_rows, error_columns):
+            k: int = 0;
+            i: int = 0;
+            previous: int = -1;
+            while (i < length(kinds)) {
+                if (ends[i] > starts[i] && k < length(tokens)) {
+                    if (kinds[i] != tk.Comment) {
+                        previous = k;
+                    }
+                    k += 1;
+                } else if (kinds[i] == tk.Semicolon && previous >= 0) {
+                    terminated[previous] = true;
+                }
+                i += 1;
+            }
+    }
+    return terminated;
+}
+
+// Kinds of alignment anchors, aligned in this order.
+AnchorField: int : 0;
+AnchorConstant: int : 1;
+AnchorValue: int : 2;
+AnchorAssign: int : 3;
+AnchorComment: int : 4;
+
+Layout :: (text: string, rows: diag.Node[], fields: int[], root: int, tokens: Token[],
+           options: Options) -> string {
+    bytes := text_bytes(text);
+    count := length(tokens);
+    width := options.indent_width;
+    if (options.use_tabs && options.tab_width > 0) { width = options.tab_width; }
+    unit := strings.Repeat(" ", width);
+    if (options.use_tabs) {
+        unit = "\t";
+    }
+    eol := "\n";
+    if (options.crlf) {
+        eol = "\r\n";
+    }
+    packaged := ChildByField(rows, fields, root, diag.FieldPackage) >= 0;
+    wrapping := options.preferred_width > 0 || options.list_layout > 0 || options.arguments_layout > 0 ||
+                options.parameters_layout > 0 || options.arrays_layout > 0 || options.records_layout > 0 ||
+                options.bindings_layout > 0 || options.max_items_per_line > 0 || options.data_alignment > 0 ||
+                options.arguments_width > 0 || options.parameters_width > 0 || options.arrays_width > 0 || options.records_width > 0;
+    group := resize([int(-1)], count);
+    pair := resize([int(-1)], count);
+    flat := resize([int(0)], count);
+    prefix := resize([int(0)], count);
+    wraps := resize([false], count);
+    Groups(rows, tokens, options, &group, &pair, &flat, &prefix);
+    item_widths := ListItems(rows, tokens, group, pair, prefix);
+    item_counts := resize([int(0)], count);
+    for (index in 0..<count) {
+        if (group[index] >= 0 && item_widths[index] > 0) { item_counts[group[index]] += 1; }
+    }
+    items_on_line := resize([int(0)], count);
+    data_rows := resize([false], count);
+    data_tables := resize([false], count);
+    data_preserve := resize([false], count);
+    if (options.data_alignment > 0) {
+        marks := DataLayoutMarks(rows, tokens);
+        data_rows = marks.row_open;
+        data_tables = marks.table_open;
+        if (options.data_alignment == 1) { data_preserve = DataPreserveGaps(rows, tokens); }
+    }
+    block_close := resize([int(-1)], count);
+    one_line := resize([false], count);
+    inline_safe := resize([false], count);
+    Blocks(rows, tokens, &block_close, &one_line, &inline_safe);
+    block_items := InlineBlockItems(rows, LineEnders());
+    compact_cases := CompactCaseEnds(rows, fields, tokens, block_items, options);
+    paragraphs := resize([false], count);
+    if (options.statement_paragraphs > 0) {
+        paragraphs = ParagraphBreaks(text, bytes, rows, fields, root, tokens, options.statement_paragraphs, options.paragraph_density);
+    }
+    continuation_style := options.binary_operator_position > 0 || options.binary_layout > 0 || options.chain_layout > 0;
+    continuations: ContinuationLayout = {breaks: [false], joins: [false], opens: [0], closes: [0]};
+    if (continuation_style) { continuations = ContinuationBreaks(bytes, rows, fields, tokens, options); }
+    required_blanks := resize([int(0)], count);
+    if (options.blank_lines_before_final_return > 0 || options.blank_lines_after_control > 0 ||
+        options.blank_lines_between_members > 0 || options.blank_lines_between_import_groups > 0) {
+        required_blanks = RequiredBlankLines(bytes, rows, fields, tokens, options);
+    }
+    separated := resize([false], 1);
+    if (options.blank_lines_between_declarations > 0) {
+        separated = Separated(bytes, rows, root, VisibleEnds(rows));
+    }
+    terminated := resize([false], count);
+    if (options.semicolons == Always) {
+        terminated = Terminated(text, tokens);
+    }
+    // Anchors for alignment: the output piece of the gap before each, its
+    // output line, column and margin.
+    anchor_pieces: int[] = [];
+    anchor_lines: int[] = [];
+    anchor_columns: int[] = [];
+    anchor_kinds: int[] = [];
+    anchor_margins: int[] = [];
+    anchor_scopes: int[] = [];
+    anchor_original_columns: int[] = [];
+    anchor_original_spaces: int[] = [];
+    anchor_operator_widths: int[] = [];
+    aligning := AnyAlignment(options);
+    original_columns := resize([int(0)], 1);
+    original_ends := resize([int(0)], 1);
+    if (aligning) {
+        source_tab_width := options.tab_width;
+        if (source_tab_width == 0) { source_tab_width = options.indent_width; }
+        source_columns := SourceColumns(bytes, tokens, source_tab_width);
+        original_columns = source_columns.starts;
+        original_ends = source_columns.ends;
+    }
+    line_kinds := [int(0)];
+    assign_line: int = -1;
+    frames: Frame[] = [];
+    depth: int = 0;
+    out: string[] = [];
+    line: Margin = {levels: 0, spaces: 0};
+    column: int = 0;
+    out_line: int = 0;
+    // The last token of a block kept on one line, while inside it.
+    inline_until: int = -1;
+    // Between `// chibi fmt: off` and `// chibi fmt: on` comments.
+    verbatim := false;
+    i: int = 0;
+    while (i < count) {
+        current := tokens[i];
+        bodies: int = 0;
+        while (bodies < current.body_open) {
+            outer := Inner(frames, depth);
+            Place(&frames, depth, {inside: {levels: outer.levels + 1, spaces: outer.spaces}, close: outer});
+            depth += 1;
+            bodies += 1;
+        }
+        at := Inner(frames, depth);
+        if (current.open && ParentKind(rows, ParentOf(rows, current.node)) == diag.LambdaExpression) { at = line; }
+        if (current.close || current.nest_close) {
+            depth -= 1;
+            at = frames[depth].close;
+        }
+        if (i > 0 && verbatim) {
+            // Inside `// chibi fmt: off` the author's spacing stays as written.
+            gap := text_slice(text, tokens[i - 1].end, current.start - tokens[i - 1].end);
+            out.append(gap);
+            at_byte := tokens[i - 1].end;
+            while (at_byte < current.start) {
+                if (bytes[at_byte] == 10) {
+                    column = 0;
+                    out_line += 1;
+                } else {
+                    column += 1;
+                }
+                at_byte += 1;
+            }
+        } else if (i > 0) {
+            previous := tokens[i - 1];
+            lines := Breaks(bytes, packaged, previous.end, current.start);
+            inline_block := false;
+            if (current.open && block_close[i] > i + 1) {
+                short_policy := BlockShortPolicy(current.block_kind, options);
+                if (short_policy == 2) { inline_block = one_line[i]; }
+                else if (short_policy == 3 && inline_safe[i]) {
+                    items := block_items[ParentOf(rows, current.node)];
+                    span := prefix[block_close[i]] - prefix[i] + current.end - current.start;
+                    limit := options.preferred_width;
+                    if (limit == 0) { limit = 80; }
+                    inline_block = items > 0 && (options.max_inline_statements == 0 || items - 1 <= options.max_inline_statements) &&
+                                   span <= limit - column - 1;
+                }
+                if (inline_block) { inline_until = block_close[i]; }
+            }
+            inline_comment := current.comment && lines == 0;
+            empty_block := previous.open && current.close;
+            kind := rows[current.node].kind;
+            chained := previous.close && (kind == tk.Semicolon || current.nest_close || kind == tk.Comma ||
+                       (ParentKind(rows, ParentOf(rows, previous.node)) == diag.LambdaExpression &&
+                        (kind == tk.Period || current.nest_open)) ||
+                       (kind == tk.Else && (options.following_keyword == 0 ||
+                                           (options.following_keyword == 2 && lines == 0))));
+            keyword_break := kind == tk.Else && options.following_keyword == 1 &&
+                             (ParentKind(rows, current.node) == diag.IfStatement || ParentKind(rows, current.node) == diag.WhenDeclaration);
+            group_break := false;
+            if (wrapping && group[i] >= 0 &&
+                (WrapGroup(rows, tokens[group[i]], options) || data_tables[group[i]] || data_rows[group[i]])) {
+                open := group[i];
+                if (!current.comment && !previous.comment && !(options.data_alignment == 1 && data_tables[open])) {
+                    lines = 0;
+                }
+                group_break = wraps[open] && !inline_comment &&
+                              (i - 1 == open || current.nest_close || BreakAfter(rows, fields, previous, tokens[open]));
+                policy := ListPolicy(ListKind(rows, tokens[open]), options);
+                if (wraps[open] && (policy == 1 || (policy == 0 && options.max_items_per_line > 0)) &&
+                    item_widths[i] > 0 && i > open + 1) {
+                    group_break = column + Spaces(rows, previous, current, options) + item_widths[i] >
+                                  ListWidth(ListKind(rows, tokens[open]), options) ||
+                                  (options.max_items_per_line > 0 && items_on_line[open] >= options.max_items_per_line);
+                }
+                if (current.nest_close && wraps[open]) {
+                    if (options.closing_delimiter == 1) { group_break = false; }
+                    else if (options.closing_delimiter == 2) {
+                        group_break = Breaks(bytes, packaged, previous.end, current.start) > 0;
+                    }
+                }
+            }
+            forced := previous.open || previous.close || previous.end_line || previous.case_open || current.close ||
+                      current.body_open > 0 || kind == tk.Case;
+            if (i <= inline_until) {
+                forced = false;
+                if (!current.comment && !previous.comment) { lines = 0; }
+            }
+            paragraph := paragraphs[i] && i > inline_until;
+            continuation_break := false;
+            if (continuation_style && !current.comment && !previous.comment) {
+                continuation_break = continuations.breaks[i] && i > inline_until;
+                if (continuations.joins[i]) { lines = 0; group_break = false; }
+            }
+            newline := paragraph || keyword_break || group_break || (lines > 0 && !chained) ||
+                       continuation_break || (required_blanks[i] > 0 && i > inline_until) ||
+                       (!inline_comment && !empty_block && !chained && forced);
+            empty_policy := BlockEmptyPolicy(current.block_kind, options);
+            if (empty_block && empty_policy == Collapse) {
+                newline = false;
+            } else if (empty_block && empty_policy == Expand) {
+                newline = true;
+            }
+            if (current.open && !previous.comment) {
+                brace_policy := BlockBracePolicy(current.block_kind, options);
+                if (inline_block || brace_policy == Attach) {
+                    newline = false;
+                } else if (brace_policy == NextLine) {
+                    newline = true;
+                }
+            }
+            if (newline) {
+                blanks := lines - 1;
+                if (blanks > options.max_blank_lines) {
+                    blanks = options.max_blank_lines;
+                }
+                if (blanks < 0) {
+                    blanks = 0;
+                }
+                if (!options.keep_blank_lines_at_block_edges && (previous.open || current.close)) {
+                    blanks = 0;
+                }
+                if (paragraph && blanks < 1) { blanks = 1; }
+                if (required_blanks[i] > blanks && i > inline_until) { blanks = required_blanks[i]; }
+                if (options.block_padding == 1 && (previous.open || current.close)) { blanks = 0; }
+                else if (options.block_padding == 2 && (previous.open || current.close) && !empty_block && i > inline_until) {
+                    if (blanks < 1) { blanks = 1; }
+                }
+                if (options.blank_lines_between_declarations > blanks && current.top != previous.top &&
+                    current.top >= 0 && separated[current.top] && rows[current.top].start == current.start) {
+                    blanks = options.blank_lines_between_declarations;
+                }
+                Break(&out, blanks, eol, at, unit);
+                out_line += blanks + 1;
+                line = at;
+                column = at.levels * width + at.spaces;
+            } else {
+                spaces := Spaces(rows, previous, current, options);
+                margin := line.levels * 256 + line.spaces;
+                anchor := -1;
+                if (aligning) {
+                    if (inline_comment && AlignmentMode(AnchorComment, options) > 1) {
+                        anchor = AnchorComment;
+                    } else if (current.assign && AlignmentMode(AnchorAssign, options) > 1 && assign_line != out_line) {
+                        anchor = AnchorAssign;
+                        assign_line = out_line;
+                    } else if (previous.colon >= 0 && AlignmentMode(previous.colon, options) > 1) {
+                        anchor = previous.colon;
+                    } else if (rows[current.node].kind == tk.ColonColon && ParentKind(rows, current.node) == diag.ConstantDeclaration &&
+                               AlignmentMode(AnchorUntypedConstant, options) > 1) {
+                        anchor = AnchorUntypedConstant;
+                    } else if (rows[previous.node].kind == tk.Colon && ParentKind(rows, previous.node) == diag.LocalDeclaration &&
+                               AlignmentMode(AnchorDeclarationType, options) > 1) {
+                        anchor = AnchorDeclarationType;
+                    }
+                }
+                if (data_preserve[i]) {
+                    out.append(text_slice(text, previous.end, current.start - previous.end));
+                    source_at := previous.end;
+                    tab_width := options.tab_width;
+                    if (tab_width == 0) { tab_width = options.indent_width; }
+                    while (source_at < current.start) {
+                        if (bytes[source_at] == 9) { column += tab_width - column % tab_width; }
+                        else { column += 1; }
+                        source_at += 1;
+                    }
+                    anchor = -1;
+                } else if (spaces > 0 || anchor >= 0) {
+                    out.append(strings.Repeat(" ", spaces));
+                    column += spaces;
+                }
+                if (anchor >= 0) {
+                    anchor_pieces.append(length(out) - 1);
+                    anchor_lines.append(out_line);
+                    anchor_columns.append(column);
+                    anchor_kinds.append(anchor);
+                    anchor_margins.append(margin);
+                    anchor_scopes.append(current.scope);
+                    anchor_original_columns.append(original_columns[i]);
+                    source_spaces := 0;
+                    if (rows[previous.node].row == rows[current.node].row) { source_spaces = original_columns[i] - original_ends[i - 1]; }
+                    anchor_original_spaces.append(source_spaces);
+                    operator_width := 0;
+                    if (current.assign) { operator_width = current.end - current.start; }
+                    anchor_operator_widths.append(operator_width);
+                }
+            }
+            if (wrapping && group[i] >= 0 && item_widths[i] > 0) {
+                open := group[i];
+                if (newline || i == open + 1) { items_on_line[open] = 1; }
+                else { items_on_line[open] += 1; }
+            }
+        }
+        start_column := column;
+        // An explicit `;` whose statement a line break ends anyway is dropped.
+        dropped := current.semicolon && options.semicolons == Omit && current.end_line && i > inline_until &&
+                   !verbatim && (i + 1 >= count || !tokens[i + 1].comment);
+        if (!dropped) {
+            out.append(text_slice(text, current.start, current.end - current.start));
+            if (aligning) {
+                while (length(line_kinds) <= out_line) { line_kinds.append(0); }
+                if (!current.comment) { line_kinds[out_line] = 2; }
+                else if (line_kinds[out_line] == 0) { line_kinds[out_line] = 1; }
+            }
+            at_byte := current.start;
+            while (at_byte < current.end) {
+                if (bytes[at_byte] == 10 || (packaged && bytes[at_byte] == 13)) {
+                    column = 0;
+                    if (bytes[at_byte] == 10) {
+                        out_line += 1;
+                        if (aligning) {
+                            while (length(line_kinds) <= out_line) { line_kinds.append(0); }
+                            if (!current.comment) { line_kinds[out_line] = 2; }
+                            else if (line_kinds[out_line] == 0) { line_kinds[out_line] = 1; }
+                        }
+                    }
+                } else if (bytes[at_byte] == 9 && options.tab_width > 0) {
+                    column += options.tab_width - column % options.tab_width;
+                } else {
+                    column += 1;
+                }
+                at_byte += 1;
+            }
+        }
+        if (current.comment) {
+            words := text_slice(text, current.start, current.end - current.start);
+            verbatim = directives.Apply(words, verbatim);
+        }
+        if (options.semicolons == Always && terminated[i] && !current.close && !current.header && !verbatim) {
+            out.append(";");
+            column += 1;
+        }
+        // Operands continued on later lines align with the first one.
+        chains: int = 0;
+        while (chains < current.chain_open) {
+            inside := Align(line, start_column, width);
+            if (!options.align_operands) {
+                inside = Continue(line, options);
+            }
+            Place(&frames, depth, {inside: inside, close: line});
+            depth += 1;
+            chains += 1;
+        }
+        if (continuation_style && continuations.opens[i] > 0) {
+            members := 0;
+            while (members < continuations.opens[i]) {
+                outer := Inner(frames, depth);
+                inside := outer;
+                if (options.chain_indent) { inside = Continue(line, options); }
+                Place(&frames, depth, {inside: inside, close: outer});
+                depth += 1;
+                members += 1;
+            }
+        }
+        if (current.open || current.case_open) {
+            outer := Inner(frames, depth);
+            if (current.open && ParentKind(rows, ParentOf(rows, current.node)) == diag.LambdaExpression) { outer = line; }
+            inside: Margin = {levels: outer.levels + 1, spaces: outer.spaces};
+            if (current.switch_open && !options.indent_case_labels) {
+                inside = outer;
+            }
+            if ((current.block_kind == BlockForeign && !options.indent_foreign_blocks) ||
+                (current.block_kind == BlockWhen && !options.indent_when_blocks)) { inside = outer; }
+            Place(&frames, depth, {inside: inside, close: outer});
+            depth += 1;
+        }
+        if (current.case_open && compact_cases[i] > 0) {
+            ending := compact_cases[i] - 1;
+            span := prefix[ending] - prefix[i];
+            limit := options.preferred_width;
+            if (limit == 0) { limit = 80; }
+            if (options.short_case_arms != 3 || span <= limit - column) { inline_until = ending; }
+        }
+        if (continuation_style) { depth -= continuations.closes[i]; }
+        depth -= current.chain_close;
+        if (current.case_close) {
+            depth -= 1;
+        }
+        if (current.nest_open) {
+            // A bracket that ends its line indents the next lines past that
+            // line; otherwise they align with its first item.
+            breaks := Breaks(bytes, packaged, current.end, tokens[i + 1].start) > 0;
+            authored_break := breaks;
+            if (wrapping && (WrapGroup(rows, current, options) || data_tables[i] || data_rows[i])) {
+                list_kind := ListKind(rows, current);
+                policy := ListPolicy(list_kind, options);
+                wraps[i] = pair[i] > i + 1 && (policy == 2 || flat[i] > ListWidth(list_kind, options) - start_column ||
+                           (options.max_items_per_line > 0 && item_counts[i] > options.max_items_per_line));
+                if (data_rows[i] && flat[i] < MaxBytes &&
+                    (options.preferred_width == 0 || flat[i] <= options.preferred_width - start_column)) { wraps[i] = false; }
+                if (data_tables[i]) {
+                    if (options.data_alignment == 1) { wraps[i] = false; }
+                    else { wraps[i] = pair[i] > i + 1; }
+                }
+                breaks = wraps[i];
+                if (data_tables[i] && options.data_alignment == 1) { breaks = authored_break; }
+            }
+            within := Align(line, column, width);
+            if (breaks || !options.align_after_open_bracket) {
+                within = Continue(line, options);
+            }
+            if (ListKind(rows, current) > 0 && options.list_indent > 0) {
+                if (options.list_indent == 1) { within = Continue(line, options); }
+                else if (options.list_indent == 2) { within = Align(line, column, width); }
+                else { within = {levels: line.levels, spaces: line.spaces + options.indent_width}; }
+            }
+            Place(&frames, depth, {inside: within, close: line});
+            depth += 1;
+        }
+        depth -= current.body_close;
+        i += 1;
+    }
+    if (options.final_newline) {
+        out.append(eol);
+    }
+    if (length(anchor_pieces) > 0) {
+        AlignColumns(&out, anchor_pieces, anchor_lines, &anchor_columns, anchor_kinds, anchor_margins,
+                     anchor_scopes, anchor_original_columns, anchor_original_spaces, anchor_operator_widths,
+                     line_kinds, options);
+    }
+    formatted := strings.Join(out, "");
+    if (options.data_alignment >= 2) { formatted = AlignDataColumns(formatted, options); }
+    return formatted;
+}
+
+// The first index at or after `at` that is not a zero-width terminator
+// directly after a closing brace.
+SkipTerminators :: (kinds: int[], starts: int[], ends: int[], at: int) -> int {
+    while (at > 0 && at < length(kinds) && kinds[at] == tk.Semicolon && starts[at] == ends[at] &&
+           kinds[at - 1] == tk.CloseBrace) {
+        at += 1;
+    }
+    return at;
+}
+
+// Compares the token streams of two texts: kinds, and the bytes of every
+// token. Zero-width terminators have no bytes; their kinds and places in the
+// sequence matter, except right after a closing brace, where the grammar
+// accepts one or none.
+CompareTokens :: (original: string, rewritten: string) -> int {
+    switch tk.Tokenize(original) {
+        case .Scanned(a_kinds, a_starts, a_ends, a_rows, a_columns, a_errors, a_offsets, a_error_rows, a_error_columns):
+            switch tk.Tokenize(rewritten) {
+                case .Scanned(b_kinds, b_starts, b_ends, b_rows, b_columns, b_errors, b_offsets, b_error_rows, b_error_columns):
+                    if (length(b_errors) > 0) {
+                        return Different;
+                    }
+                    a_bytes := text_bytes(original);
+                    b_bytes := text_bytes(rewritten);
+                    verdict := Same;
+                    i: int = 0;
+                    j: int = 0;
+                    while (i < length(a_kinds) && j < length(b_kinds)) {
+                        // An explicit `;` and the terminator a line break inserts
+                        // are the same token to the parser; only their width differs.
+                        width_differs := a_ends[i] - a_starts[i] != b_ends[j] - b_starts[j] && a_kinds[i] != tk.Semicolon;
+                        if (a_kinds[i] != b_kinds[j] || width_differs) {
+                            // A terminator on one side only.
+                            ni := SkipTerminators(a_kinds, a_starts, a_ends, i);
+                            nj := SkipTerminators(b_kinds, b_starts, b_ends, j);
+                            if (ni == i && nj == j) {
+                                return Different;
+                            }
+                            verdict = TerminatorsDiffer;
+                            i = ni;
+                            j = nj;
+                        } else {
+                            size := a_ends[i] - a_starts[i];
+                            if (a_kinds[i] == tk.Semicolon) {
+                                size = 0;
+                            }
+                            at: int = 0;
+                            while (at < size) {
+                                if (a_bytes[a_starts[i] + at] != b_bytes[b_starts[j] + at]) {
+                                    return Different;
+                                }
+                                at += 1;
+                            }
+                            i += 1;
+                            j += 1;
+                        }
+                    }
+                    if (i < length(a_kinds) || j < length(b_kinds)) {
+                        return Different;
+                    }
+                    return verdict;
+            }
+    }
+}
+
+// Whether the rewritten text parses to the original's tree: the same depth,
+// kind, named flag and field for every row with width, and the same bytes in
+// every leaf. Only a rewrite that adds or drops a terminator comes here,
+// because a second parse costs about 3 KB of heap per source byte.
+SameTree :: (original: string, a: diag.Node[], a_fields: int[], a_named: bool[], rewritten: string) -> bool {
+    switch syntax.Parse(rewritten) {
+        case .Rejected(diagnostic):
+            return false;
+        case .Parsed(b, b_fields, b_named, b_extras, b_root):
+            a_depths := Depths(a);
+            b_depths := Depths(b);
+            i := NextVisible(a, 0);
+            j := NextVisible(b, 0);
+            while (i < length(a) && j < length(b)) {
+                if (a_depths[i] != b_depths[j] || a[i].kind != b[j].kind || a_named[i] != b_named[j] ||
+                    a_fields[i] != b_fields[j]) {
+                    return false;
+                }
+                if (a[i].first_child < 0 && b[j].first_child < 0) {
+                    size := a[i].end - a[i].start;
+                    if (size != b[j].end - b[j].start ||
+                        text_slice(original, a[i].start, size) != text_slice(rewritten, b[j].start, size)) {
+                        return false;
+                    }
+                }
+                i = NextVisible(a, i + 1);
+                j = NextVisible(b, j + 1);
+            }
+            return i >= length(a) && j >= length(b);
+    }
+}
+
+// Visible rows are the ones with width other than `;`, which an explicit
+// semicolon has and an inserted terminator lacks; the cursor walk the archived
+// formatter compared skipped the zero-width terminators the same way.
+NextVisible :: (rows: diag.Node[], at: int) -> int {
+    while (at < length(rows) && (rows[at].end == rows[at].start || rows[at].kind == tk.Semicolon)) {
+        at += 1;
+    }
+    return at;
+}
+
+// Depths of every row; a parent's row precedes its children's.
+Depths :: (rows: diag.Node[]) -> int[] {
+    depths := resize([int(0)], length(rows));
+    i: int = 1;
+    while (i < length(rows)) {
+        depths[i] = depths[rows[i].parent] + 1;
+        i += 1;
+    }
+    return depths;
+}

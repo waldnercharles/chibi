@@ -1,0 +1,11 @@
+{
+  "accepted": "dafe746411182c3320281c0b1fe4e75e7b9b6456",
+  "previous": "4413d960d1fe43cfcab6dd15cb8041378ade5a05",
+  "changed_paths": [
+    "test/tools/GraphDiscovery.chibi"
+  ],
+  "exact_accepted_blob": true,
+  "file_sha256": "56be56472a4374c77cf442c95b68d63d84007ac90933d21a913afc3794db398b",
+  "scope": "Find and probe the failing executable in the discovery fixture instead of assuming /bin/false; production compiler/runtime/artifacts unchanged",
+  "no_producer_or_runtime_execution_started": true
+}

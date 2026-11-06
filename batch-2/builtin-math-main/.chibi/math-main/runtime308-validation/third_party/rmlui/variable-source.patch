@@ -1,0 +1,11 @@
+diff --git a/Source/Core/ElementStyle.cpp b/Source/Core/ElementStyle.cpp
+--- a/Source/Core/ElementStyle.cpp
++++ b/Source/Core/ElementStyle.cpp
+@@ -311,6 +311,7 @@ const Property* ElementStyle::ResolveVariables(const PropertySources& sources, con
+ 			substitution_result.c_str());
+ 		return nullptr;
+ 	}
++	property_storage.source = property->source;
+ 	return &property_storage;
+ }
+ 

@@ -1,0 +1,79 @@
+{
+  "expectations": [
+    {
+      "text": "Every finding in the review cites a specific path and line number.",
+      "passed": false,
+      "evidence": "Findings 1-5, 7 and 8 cite path:line (semantic.h:12, SourceParserDiff.chibi:11-16 and test_policy.py lines 580-622, Statements.chibi:211-224, Tree.chibi:100, Expressions.chibi:376-405, source_tokenizer_chibi.c:27, docs/source-parser.md:20-21). Finding 6 ('The commit message leaves out half the change and every reason') cites no path:line anywhere ('Steps.chibi is about 306 KiB' has no line). Finding 9's first bullet ('test/language/main.c: the usage string is split by hand') gives a path but no line."
+    },
+    {
+      "text": "The review assesses whether the iterative else-if parsing preserves behavior of the recursive version (e.g., node structure, diagnostics) and cites the test or input that shows it.",
+      "passed": true,
+      "evidence": "'Else-if equivalence. I traced if a {A} else if b {B} else {C} and a three-link chain. Rows are created in the same order as before: New for the chained if still follows Take(else). The first/next/parent links and the alternative fields match the recursive version. After the fixup, every link's end equals the final block's end ... The differential compares rows by index, so the unchanged creation order matters.' Finding 3 adds the failure path: 'This also holds when the parse fails partway, because nothing is added to a link after current = chained.'"
+    },
+    {
+      "text": "The review does not recommend defensive checks, compatibility shims, or splitting functions for length.",
+      "passed": true,
+      "evidence": "No shims or defensive NULL/validation checks. The 'if (c.failed) { return -1; }' guard at the top of Expect is proposed to skip wasted Opener rescans on a known state, not to mask a defect. Borderline: finding 5 says 'The loop body is also four levels deep, which conflicts with the small-functions rule', but the recommended fix ('Otherwise call ParseIndexValue') is de-duplication of the copied range parse, the same fix the with_skill review gives, not a split for length."
+    },
+    {
+      "text": "Every finding includes concrete evidence (a count, measurement, named caller/consumer or failing input), or the review states plainly that there are no substantive findings.",
+      "passed": false,
+      "evidence": "Findings 1, 2, 6 and 7 have counts or named consumers ('51 sites', test_policy.py GROUPS, '234 .chibi files and 2,888,323 bytes'). Finding 9 ('Small formatting points') has none: 'clang-format doesn't reflow string literals, so this is pure churn' and 'the new entry sits alone in a list that otherwise has two entries per line' are assertions with no count, measurement, caller or input. Finding 3 ('allocates an int[] for every if statement') also gives no count of affected statements, unlike the with_skill review's '212 of about 6,100'."
+    }
+  ],
+  "summary": {
+    "passed": 2,
+    "failed": 2,
+    "total": 4,
+    "pass_rate": 0.5
+  },
+  "claims": [
+    {
+      "claim": "Neither language-source-parser-chibi nor language-source-tokenizer-chibi appears in any group in tools/test_policy.py (GROUPS, lines 580-622).",
+      "type": "factual",
+      "verified": true,
+      "evidence": "At the commit, both selectors are defined in TOOLS (test_policy.py:353-356) but absent from every GROUPS list at 580-622 and from the later appends (624, 637-639)."
+    },
+    {
+      "claim": "At the parent, syntax_diagnostics/Diagnostics.chibi:3 imports core:strings, which the parser fixture didn't provide.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git show 2797053cb^:tools/compiler/syntax_diagnostics/Diagnostics.chibi line 3: 'import strings \"core:strings\"'."
+    },
+    {
+      "claim": "source_tokenizer_chibi.c:27 keeps a stale workload comment 'about 150 files, under 1 MiB'.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Line 27 at the commit: ' * Workload: about 150 files, under 1 MiB, each at most 512 KiB, one'. The with_skill review independently counts 234 .chibi files in the corpus."
+    },
+    {
+      "claim": "ParseExpression's 49 call sites become ParseBinary(c, n, OrPower); 51 sites spell it now.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git grep -c: 49 'ParseExpression(c, n)' lines at the parent; 51 'ParseBinary(c, n, OrPower)' lines at the commit."
+    },
+    {
+      "claim": "Each non-final link's last child is the next link, so a forward walk setting every link's end to the final link's end replaces the array-based fixup.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Statements.chibi:207-209 adds chained as current's last child and then moves current; Add (Tree.chibi:63-76) only updates the direct parent's last/end. The proposed loop is equivalent to the backwards chain walk."
+    }
+  ],
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "reason": "This review found a substantive, verified gap that no assertion rewards: the source-parser and tokenizer differentials are not in any CI group, so under merge-first nothing on main runs the only check covering the change. Consider an assertion for it."
+      },
+      {
+        "assertion": "The review does not recommend defensive checks, compatibility shims, or splitting functions for length.",
+        "reason": "Finding 5 invokes the small-functions rule for a four-level loop; the assertion's wording does not say whether citing length as one reason (with a de-duplication fix) counts. Tighten the wording if length-based criticism alone should fail."
+      },
+      {
+        "assertion": "Every finding in the review cites a specific path and line number.",
+        "reason": "Commit-message and formatting-churn findings drive the failures here. If those categories should be held to the same bar, keep it; otherwise say so in the assertion."
+      }
+    ],
+    "overall": "Accurate review with the strongest else-if equivalence trace and a verified CI-coverage finding the with_skill review missed. It fails on form for its process and formatting findings."
+  },
+  "timing": {"total_tokens": 174791, "duration_ms": 796772, "total_duration_seconds": 796.8}
+}

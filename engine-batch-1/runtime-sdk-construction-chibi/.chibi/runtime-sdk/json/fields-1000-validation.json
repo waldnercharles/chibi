@@ -1,0 +1,58 @@
+{
+  "actual": {
+    "bytes": 124100,
+    "sha256": "55613d1ac2ff94b50517cecd9a05ec9211968b318cb80b4ef4a40c3b1d5f2bb3"
+  },
+  "argv": [
+    "/Users/cwaldner/Personal/chibi/.worktrees/cmake-retirement/chibi/build-sdk-reflect/host/chibi-build-host",
+    "--compiler",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler",
+    "--compiler-core",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/packages/core",
+    "--root",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi",
+    "--source",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/.chibi/runtime-sdk/json/RuntimeSDKJSON.chibi",
+    "--core",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/packages/core",
+    "--collection",
+    "graph=/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/.chibi/runtime-sdk/json/graph",
+    "--entry",
+    "Fields",
+    "--timeout-ms",
+    "300000",
+    "--",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/.chibi/runtime-sdk/json/inventory-1000.json",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/.chibi/runtime-sdk/json/inventory-1000-actual.tsv"
+  ],
+  "base_validation": {
+    "bytes": 4182,
+    "sha256": "2f1dd48b301fad33209cfaa73c55f81a85de81581af44292f8c950b43fe51ee1"
+  },
+  "entries": 1000,
+  "exit_code": 0,
+  "expected": {
+    "bytes": 124100,
+    "sha256": "55613d1ac2ff94b50517cecd9a05ec9211968b318cb80b4ef4a40c3b1d5f2bb3"
+  },
+  "input": {
+    "bytes": 145103,
+    "sha256": "d205fa166f943d0fa1fa0b9d97fa88aab8bfffd2cee92c6fe877d8aacae20716"
+  },
+  "interpretation": "One JsonFields call, then one output iteration. No repeated keys/Get timing run; that would deliberately repeat the full-map parse 1000 times.",
+  "json_source": {
+    "bytes": 17199,
+    "sha256": "90fcd3d4878d3b112b651d730ccd94a0c34c70b78966a71d088e2766994bdfb9"
+  },
+  "log": {
+    "bytes": 0,
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "scope": "Synthetic 1000-file inventory only; no real SDK tree or product hash.",
+  "status": "pass",
+  "test_source": {
+    "bytes": 7304,
+    "sha256": "a005f7a0bbec2343a74e1c73251a001b1a60a8365094ff7bcb156e9e3585d5e4"
+  },
+  "wall_seconds_compile_and_execute": 4.2683802919927984
+}

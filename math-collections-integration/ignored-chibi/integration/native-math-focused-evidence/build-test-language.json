@@ -1,0 +1,23 @@
+{
+  "name": "build-test-language",
+  "command": [
+    "cmake",
+    "--build",
+    ".chibi/integration/native-math-focused-language",
+    "--target",
+    "test_language",
+    "--parallel",
+    "4",
+    "--verbose"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-focused-snapshot",
+  "head": "6990373667fc211faf828035ab9d4bb051f085bd",
+  "snapshot_revision": "699037366-dirty",
+  "started_unix": 1793208491.9881291,
+  "environment": {},
+  "wall_seconds": 46.30044945795089,
+  "exit_code": 0,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-focused-evidence/build-test-language.log",
+  "log_sha256": "25a06173231e9e8a6892bb34c6eda23639444da3b56a70e7ca46cec76bc6029a",
+  "summaries": []
+}

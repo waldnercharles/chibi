@@ -1,0 +1,28 @@
+{
+  "name": "configure",
+  "command": [
+    "cmake",
+    "-S",
+    "test/language",
+    "-B",
+    ".chibi/integration/native-math-focused-language",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+    "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+    "-DCHIBI_SDK_BUILD_COMPILER=ON",
+    "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+    "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "--graphviz=/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-focused-evidence/dependencies.dot"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-focused-snapshot",
+  "head": "6990373667fc211faf828035ab9d4bb051f085bd",
+  "snapshot_revision": "699037366-dirty",
+  "started_unix": 1793208462.990591,
+  "environment": {},
+  "wall_seconds": 4.320597332902253,
+  "exit_code": 0,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-focused-evidence/configure.log",
+  "log_sha256": "23f98617499fccdbf240ec9821b7f2a98cf68cae26a69b47720123cb90ffa903",
+  "summaries": []
+}

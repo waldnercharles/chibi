@@ -1,0 +1,142 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+
+// Pattern captures are private locals initialized without observing a source
+// union value. Each is overwritten before its tag or payload is read.
+ScalarPatternStorage :: (forest: snapshot.SnapshotNode[], statement: int, type: int, variable: int) -> facts.Row[] {
+    local := ScalarAt(forest, statement, facts.LocalRow, type, variable, 1, "pattern value");
+    local.literal = i64(facts.PatternStorage);
+    local.end = local.start + 1;
+    initial := ScalarLiteral(forest, statement, type, 0);
+    initial.end = initial.start + 1;
+    if (type >= facts.ArrayType) {
+        initial.kind = facts.ArrayRow;
+        initial.value = facts.ArrayNew;
+    } else if (type >= facts.RecordType) { initial.kind = facts.ZeroRow; }
+    return [local, initial];
+}
+
+ScalarConditionWork :: struct { node: int; phase: int; mark: int; at: int; }
+ScalarCondition :: union {
+    Failed(diagnostic: syntax.Diagnostic) |
+    Built(locals: facts.Row[], rows: facts.Row[], names: Name[], variables: int)
+}
+
+// One condition walk, retaining aliases through && and removing them at ||
+// and ! boundaries. The ordinary body check already proved their scope.
+// Prefix locals are private storage; binds execute only under the matching tag.
+ScalarPatternCondition :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                           callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                           statement: int, condition: int, variables: int, rows: facts.Row[]) -> ScalarCondition {
+    output := rows;
+    locals: facts.Row[] = [];
+    visible := names;
+    next := variables;
+    work: ScalarConditionWork[] = [{node: condition, phase: 0, mark: length(visible), at: 0}];
+    top := 1;
+    while (top > 0) {
+        top -= 1;
+        item := work[top];
+        // Each visit queues at most two steps. Reuse their storage instead of
+        // copying the remaining stack at every pop of a deep condition.
+        if (length(work) < top + 2) { work.append(item); }
+        node := Unparenthesized(forest, item.node);
+        logic := ScalarLogic(Operator(forest, node));
+        if (item.phase == 1) {
+            if (logic == facts.LogicalOr) { visible = slice(visible, 0, item.mark); }
+            at := length(output);
+            output.append(ScalarAt(forest, node, facts.LogicalRow, facts.BoolType, logic, 0, ""));
+            work[top] = {node: node, phase: 2, mark: item.mark, at: at};
+            work[top + 1] = {node: Field(forest, node, syntax.FieldRight), phase: 0, mark: 0, at: 0};
+            top += 2;
+            continue;
+        }
+        if (item.phase == 2) {
+            joined := output[item.at];
+            joined.count = length(output) - item.at - 1;
+            output[item.at] = joined;
+            if (logic == facts.LogicalOr) { visible = slice(visible, 0, item.mark); }
+            continue;
+        }
+        if (item.phase == 3) {
+            output.append(ScalarAt(forest, node, facts.UnaryRow, facts.BoolType, facts.Not, 1, ""));
+            visible = slice(visible, 0, item.mark);
+            continue;
+        }
+        if (Is(forest, node, syntax.BinaryExpression) && logic != 0) {
+            work[top] = {node: node, phase: 1, mark: length(visible), at: 0};
+            work[top + 1] = {node: Field(forest, node, syntax.FieldLeft), phase: 0, mark: 0, at: 0};
+            top += 2;
+            continue;
+        }
+        if (Is(forest, node, syntax.UnaryExpression) && ScalarNegated(Operator(forest, node))) {
+            work[top] = {node: node, phase: 3, mark: length(visible), at: 0};
+            work[top + 1] = {node: Field(forest, node, syntax.FieldOperand), phase: 0, mark: 0, at: 0};
+            top += 2;
+            continue;
+        }
+        pattern := -1;
+        bindings: int[] = [];
+        if (Is(forest, node, syntax.IsExpression)) {
+            pattern = Field(forest, node, syntax.FieldType);
+            bindings = Members(forest, Field(forest, pattern, syntax.FieldBindings));
+        }
+        if (length(bindings) == 0) {
+            switch ScalarConvert(forest, text, callables, params, callable, visible, types, members, constants,
+                                  node, node, BoolStorage, BoolStorage, facts.Clamp, output) {
+                case .Failed(diagnostic): return ScalarCondition.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+            continue;
+        }
+        if (Field(forest, node, syntax.FieldNegated) >= 0) {
+            return ScalarCondition.Failed(Diagnose(forest, pattern, 0, "native negated patterns do not bind payloads"));
+        }
+        subject := Field(forest, node, syntax.FieldValue);
+        held := ScalarMatchedUnion(types, ScalarHeldUnion(forest, text, callables, params, visible, types, members,
+                                                          callable.package, subject));
+        variant := FindVariant(types, held, Text(forest, text, Field(forest, pattern, syntax.FieldName)));
+        capture := next;
+        next += 1;
+        union_type := ScalarRecordType(types, held);
+        locals.extend(ScalarPatternStorage(forest, statement, union_type, capture));
+        switch ScalarUnionValue(forest, text, callables, params, callable, visible, types, members, constants,
+                                 subject, held, output) {
+            case .Failed(diagnostic): return ScalarCondition.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+        output.extend([ScalarAt(forest, subject, facts.OperandBindRow, union_type, capture, 1, ""),
+                       ScalarAt(forest, subject, facts.ReadRow, union_type, capture, 0, ""),
+                       ScalarAt(forest, subject, facts.TagRow, facts.IntType, 0, 1, ""),
+                       ScalarLiteral(forest, pattern, facts.IntType, u64(variant - types[held].first)),
+                       ScalarAt(forest, node, facts.CompareRow, facts.BoolType, facts.Equal, 2, "")]);
+        guard := length(output);
+        output.append(ScalarAt(forest, node, facts.LogicalRow, facts.BoolType, facts.LogicalAnd, 0, ""));
+        payloads := types[types[held].first].first;
+        for (binding, position in bindings) {
+            field := types[variant].first + position;
+            type := ScalarMemberType(types, members, field);
+            if (type == 0 || members[field].container == MapContainer || members[field].storage == TaskStorage ||
+                members[field].storage == PointerStorage) {
+                return ScalarCondition.Failed(Diagnose(forest, binding, 0, "native pattern bindings require value payloads"));
+            }
+            locals.extend(ScalarPatternStorage(forest, statement, type, next));
+            output.extend([ScalarAt(forest, binding, facts.ReadRow, union_type, capture, 0, ""),
+                           ScalarAt(forest, binding, facts.PayloadRow, type, field - payloads, 1, ""),
+                           ScalarAt(forest, binding, facts.OperandBindRow, type, next, 1, "")]);
+            bound: Name = {owned: false, name: Text(forest, text, binding), place: LocalPlace, index: next,
+                           storage: members[field].storage, container: members[field].container, record: members[field].record,
+                           writable: false, node: binding};
+            visible.append(bound);
+            next += 1;
+        }
+        output.append(ScalarLiteral(forest, node, facts.BoolType, 1));
+        matched := output[guard];
+        matched.count = length(output) - guard - 1;
+        output[guard] = matched;
+    }
+    return ScalarCondition.Built(locals, output, visible, next);
+}

@@ -1,0 +1,9 @@
+package facts
+
+// map loop names
+@test
+Calls :: () {
+    r1: int = Answer();
+    e1: int = 1207;
+    assert(r1 == e1, "Answer call 1");
+}

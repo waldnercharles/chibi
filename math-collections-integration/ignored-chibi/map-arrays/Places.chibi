@@ -1,0 +1,41 @@
+package array_map_place_contract
+
+Replace :: (values: ^([int: int[]])) -> int {
+    values^ = [1: [20], 2: [30]];
+    return 7;
+}
+ReplaceKey :: (values: ^([int: int[]])) -> int { Replace(values); return 1; }
+Key :: (calls: ^int) -> int { calls^ += 1; return 1; }
+Aliased :: (read: ^([int: int[]]), changed: ^([int: int[]])) {
+    read^[1].append(Replace(changed));
+}
+Main :: () -> int {
+    original: [int: int[]] = [1: [2, 3]];
+    copied := original;
+    copied[1].append(4);
+    copied[2] = [9];
+    delete copied[1];
+    result := original[1].length() * 100 + original[1][0] * 10 + copied[2][0];
+    assert(result == 229);
+    values: [int: int[]] = [1: [10]];
+    values[1].append(Replace(&values));
+    assert(values[1][0] == 20 && values[1][1] == 7 && values[2][0] == 30);
+    values = [1: [10]];
+    values[ReplaceKey(&values)].append(7);
+    assert(values[1][0] == 20 && values[1][1] == 7);
+    values = [1: [10]];
+    values[1][0] = Replace(&values);
+    assert(values[1][0] == 7 && values[1].length() == 1 && values[2][0] == 30);
+    values = [1: [10]];
+    Aliased(&values, &values);
+    assert(values[1][0] == 20 && values[1][1] == 7);
+    calls: int = 0;
+    values[Key(&calls)].append(8);
+    assert(calls == 1 && values[1].length() == 3 && values[1][2] == 8);
+    return 0;
+}
+Missing :: () -> int {
+    values: [int: int[]] = [:];
+    values[1].append(1);
+    return 0;
+}

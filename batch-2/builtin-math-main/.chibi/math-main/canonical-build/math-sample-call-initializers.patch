@@ -1,0 +1,290 @@
+--- a/test/language/package_compiler_chibi.c
++++ b/test/language/package_compiler_chibi.c
+@@ -4122,20 +4122,20 @@
+                 "(mat2(1) + mat2(2)) * v == vec2(3, -6) && "
+                 "((mat2(4) - mat2(2)) / 2) * v == v && "
+                 "(-mat2(1)) * v == -v && (2 * mat2(1)) * v == v * 2; }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math sign saturate and round use scalar component rules",
+       .source = "package facts\nCheck :: () -> bool { "
+                 "return sign(vec3(-2, 0, 3)) == vec3(-1, 0, 1) && "
+                 "saturate(vec3(-1, 0.5, 2)) == vec3(0, 0.5, 1) && "
+                 "round(vec3(0.5, 1.5, -2.5)) == vec3(1, 2, -3); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math modulo follows divisor sign and powers preserve order",
+       .source = "package facts\nCheck :: () -> bool { "
+                 "return mod(vec2(-3, 3), 2) == vec2(1, 1) && "
+                 "mod(vec2(-3, 3), -2) == vec2(-1, -1) && "
+                 "pow(vec3(2, 3, 4), 2) == vec3(4, 9, 16) && "
+                 "sqrt(vec3(4, 9, 16)) == vec3(2, 3, 4); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math exponential and logarithm functions keep f32 results",
+       .source = "package facts\nCheck :: () -> bool { "
+                 "a := exp(vec2(0, 1)); b := log(vec2(1, 2.7182818)); "
+@@ -4143,7 +4143,7 @@
+                 "b.x == 0.0 && abs(b.y - 1.0) < 0.000001 && "
+                 "exp2(vec3(-1, 0, 1)) == vec3(0.5, 1, 2) && "
+                 "log2(vec3(0.5, 1, 4)) == vec3(-1, 0, 2); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math trigonometric functions use radians and atan2 y x order",
+       .source = "package facts\nCheck :: () -> bool { "
+                 "a := sin(vec2(0, 1.5707963)); b := cos(vec2(0, 1.5707963)); "
+@@ -4153,7 +4153,7 @@
+                 "abs(c.y - 1.5707963) < 0.000001 && "
+                 "tan(vec2(0)) == vec2(0) && asin(vec2(0)) == vec2(0) && "
+                 "acos(vec2(1)) == vec2(0) && atan(vec2(0)) == vec2(0); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math pointer receiver calls run once before the rhs",
+       .source = "package facts\n"
+                 "Pick :: (v: ^vec3, calls: ^int) -> ^vec3 { "
+@@ -4165,7 +4165,7 @@
+                 "v := vec3(1, 2, 3); total: int = 0; Pick(&v, &total).yx = "
+                 "Right(&total); "
+                 "return (total, v.x, v.y, v.z); }\n",
+-      .calls = { { "Check", "[]", "[12,8.0,7.0,3.0]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[12,8.0,7.0,3.0]" } } },
+     { .name = "math swizzles preserve copied map values",
+       .source = "package facts\n"
+                 "Check :: () -> (x: number, y: number, z: number, sx: number, "
+@@ -4174,7 +4174,9 @@
+                 "before := rows; rows[1].yx = rows[1].xy; "
+                 "return (rows[1].x, rows[1].y, rows[1].z, before[1].x, "
+                 "before[1].y, before[1].z); }\n",
+-      .calls = { { "Check", "[]", "[2.0,1.0,3.0,1.0,2.0,3.0]" } } },
++      .calls = { { .function = "Check",
++                   .arguments = "[]",
++                   .expected = "[2.0,1.0,3.0,1.0,2.0,3.0]" } } },
+     { .name = "math constructor splats concatenation and function returns",
+       .source = "package facts\n"
+                 "Foo :: () -> vec3 { return vec3(2, 4, 8); }\n"
+@@ -4182,13 +4184,13 @@
+                 "b := vec3(3); c := vec4(vec2(1, 2), vec2(3, 4)); "
+                 "return v == vec3(2, 4, 8) && a == vec4(2, 4, 8, 16) && "
+                 "b == vec3(3, 3, 3) && c == vec4(1, 2, 3, 4); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math explicit f64 narrowing rounds at f32 width",
+       .source = "package facts\n"
+                 "Check :: () -> bool { wide: f64 = 16777217.0; "
+                 "v := vec3(f32(wide), 2, 3); return v.x == 16777216.0 && "
+                 "v.y == 2.0 && v.z == 3.0; }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math broadcasts preserve subtraction and division order",
+       .source = "package facts\n"
+                 "Check :: () -> bool { v := vec3(2, 4, 8); "
+@@ -4196,19 +4198,19 @@
+                 "16 / v == vec3(8, 4, 2) && v / 2 == vec3(1, 2, 4) && "
+                 "2 + v == vec3(4, 6, 10) && v * 2 == vec3(4, 8, 16) && "
+                 "v * vec3(3, 2, 1) == vec3(6, 8, 8); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math swizzle writes snapshot aliased values",
+       .source = "package facts\n"
+                 "Check :: () -> bool { v := vec4(1, 2, 3, 4); "
+                 "v.xy = v.yx; a := v.xxy; v.ba = v.rb; "
+                 "return v == vec4(2, 1, 2, 3) && a == vec3(2, 2, 1); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math compound swizzles preserve untouched components",
+       .source = "package facts\n"
+                 "Check :: () -> bool { v := vec4(1, 2, 3, 4); "
+                 "v.yx += vec2(5, 6); v.zw *= 2; "
+                 "return v == vec4(7, 7, 6, 8); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math swizzles write through pointers and array elements",
+       .source = "package facts\n"
+                 "Set :: (p: ^vec3) { p.yx = vec2(7, 8); }\n"
+@@ -4216,7 +4218,7 @@
+                 "rows: vec3[] = [vec3(2, 4, 6), vec3(8, 10, 12)]; "
+                 "rows[0].yx = rows[0].xy; return v == vec3(8, 7, 3) && "
+                 "rows[0] == vec3(4, 2, 6) && rows[1] == vec3(8, 10, 12); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math swizzle receiver and rhs execute once in source order",
+       .source = "package facts\n"
+                 "Index :: (calls: ^int) -> int { calls^ = calls^ * 10 + 1; "
+@@ -4230,7 +4232,7 @@
+                 "== 12 && "
+                 "rows[0] == vec4(2, 1, 3, 9) && rows[1] == vec4(5, 6, 7, 8); "
+                 "}\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math column matrix products do not commute",
+       .source = "package facts\n"
+                 "Check :: () -> bool { a := mat2(vec2(1, 2), vec2(0, 1)); "
+@@ -4238,7 +4240,7 @@
+                 "left := (a * b) * v; right := (b * a) * v; "
+                 "return left == vec2(2, 7) && right == vec2(2, 9) && "
+                 "a * (b * v) == left && mat2(1) * v == v; }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math homogeneous matrix columns carry translations",
+       .source = "package facts\n"
+                 "Check :: () -> bool { translate := mat3(1, 0, 0, 0, 1, 0, 5, "
+@@ -4247,7 +4249,7 @@
+                 "return (translate * scale) * v == vec3(9, 16, 1) && "
+                 "(scale * translate) * v == vec3(14, 30, 1) && "
+                 "mat4(1) * vec4(v, 1) == vec4(2, 3, 1, 1); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math quaternion Hamilton products retain their order",
+       .source = "package facts\n"
+                 "Check :: () -> bool { x := quat(1, 0, 0, 0); y := quat(0, 1, "
+@@ -4255,7 +4257,7 @@
+                 "return x * y == quat(0, 0, 1, 0) && y * x == quat(0, 0, -1, "
+                 "0) && "
+                 "x * x == quat(0, 0, 0, -1) && quat(0, 0, 0, 1) * y == y; }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math constructor refuses excess components",
+       .source = "package facts\nBad :: () -> vec2 { return vec2(1, 2, 3); }\n",
+       .message = "vec2 needs 2 components; these arguments supply 3",
+@@ -4342,14 +4344,14 @@
+                 "Check :: () -> bool { a := vec3(1, 2, 3); b := vec3(4, 5, 6); "
+                 "return dot(a, b) == 32.0 && cross(a, b) == vec3(-3, 6, -3) && "
+                 "cross(b, a) == vec3(3, -6, 3); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math length and distance use three four five triangles",
+       .source = "package facts\n"
+                 "Check :: () -> bool { return length(vec2(3, 4)) == 5.0 && "
+                 "length(vec3(0, 3, 4)) == 5.0 && length(vec4(0, 0, 3, 4)) == "
+                 "5.0 && "
+                 "distance(vec3(1, 2, 3), vec3(4, 6, 3)) == 5.0; }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math absolute bounds and clamp broadcast scalar arguments",
+       .source = "package facts\n"
+                 "Check :: () -> bool { v := vec3(-2, 0.5, 3); "
+@@ -4357,40 +4359,40 @@
+                 "0.5, 1) && "
+                 "max(0, v) == vec3(0, 0.5, 3) && clamp(v, 0, 1) == vec3(0, "
+                 "0.5, 1); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math mix accepts scalar and component weights",
+       .source = "package facts\n"
+                 "Check :: () -> bool { return "
+                 "mix(vec3(0, 2, 4), vec3(8, 10, 12), 0.25) == vec3(2, 4, 6) && "
+                 "mix(vec3(0), vec3(8), vec3(0, 0.5, 1)) == vec3(0, 4, 8); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math step takes edge before value and includes the edge",
+       .source = "package facts\n"
+                 "Check :: () -> bool { return step(2.0, 1.0) == 0.0 && "
+                 "step(2.0, 2.0) == 1.0 && "
+                 "step(0.5, vec3(0.25, 0.5, 0.75)) == vec3(0, 1, 1) && "
+                 "step(vec3(0.25, 0.5, 0.75), 0.5) == vec3(1, 1, 0); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math smoothstep clamps values outside its edges",
+       .source = "package facts\n"
+                 "Check :: () -> bool { return "
+                 "smoothstep(0, 1, vec4(-1, 0, 0.5, 2)) == vec4(0, 0, 0.5, 1); "
+                 "}\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math floor ceil and fract agree on negative fractions",
+       .source = "package facts\n"
+                 "Check :: () -> bool { v := vec3(-1.25, 1.75, 2); "
+                 "return floor(v) == vec3(-2, 1, 2) && ceil(v) == vec3(-1, 2, "
+                 "2) && "
+                 "fract(v) == vec3(0.75, 0.75, 0); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math reflect and refract distinguish total internal reflection",
+       .source = "package facts\n"
+                 "Check :: () -> bool { normal := vec3(0, 1, 0); "
+                 "return reflect(vec3(1, -1, 0), normal) == vec3(1, 1, 0) && "
+                 "refract(vec3(0, -1, 0), normal, 0.5) == vec3(0, -1, 0) && "
+                 "refract(vec3(1, 0, 0), normal, 2) == vec3(0); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math transpose and determinant use column order",
+       .source = "package facts\n"
+                 "Check :: () -> bool { a := mat2(1, 2, 3, 4); "
+@@ -4399,7 +4401,7 @@
+                 "-2.0 && "
+                 "transpose(b) == mat3(1, 2, 4, 0, 3, 5, 0, 0, 6) && "
+                 "determinant(b) == 18.0; }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math matrix component multiplication is distinct from "
+               "composition",
+       .source = "package facts\n"
+@@ -4407,13 +4409,13 @@
+                 "7, 8); "
+                 "return matrix_comp_mult(a, b) == mat2(5, 12, 21, 32) && "
+                 "a * b == mat2(23, 34, 31, 46); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math quaternion conjugation negates the imaginary components",
+       .source = "package facts\n"
+                 "Check :: () -> bool { q := quat(1, 2, 3, 4); "
+                 "return quat_conjugate(q) == quat(-1, -2, -3, 4) && "
+                 "quat_conjugate(quat_conjugate(q)) == q; }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math normalization handles zero and large finite directions",
+       .source = "package facts\n"
+                 "Check :: () -> bool { zero := normalize_or_zero(vec3(0)); "
+@@ -4421,7 +4423,7 @@
+                 "return zero == vec3(0) && unit.x > 0.599999 && unit.x < "
+                 "0.600001 && "
+                 "unit.y > 0.799999 && unit.y < 0.800001 && unit.z == 0.0; }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math binary left operand is captured before a mutating rhs",
+       .source = "package facts\n"
+                 "Mutate :: (p: ^vec3) -> vec3 { p^ = vec3(10, 20, 30); return "
+@@ -4429,7 +4431,7 @@
+                 "Check :: () -> bool { v := vec3(1, 2, 3); sum := v + "
+                 "Mutate(&v); "
+                 "return sum == vec3(5, 7, 9) && v == vec3(10, 20, 30); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math constructor arguments are captured before later mutation",
+       .source = "package facts\n"
+                 "Mutate :: (p: ^vec4) -> vec2 { p^ = vec4(10, 20, 30, 40); "
+@@ -4438,7 +4440,7 @@
+                 "vec4(v.xy, Mutate(&v)); "
+                 "return made == vec4(1, 2, 5, 6) && v == vec4(10, 20, 30, 40); "
+                 "}\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math function arguments are captured before later mutation",
+       .source = "package facts\n"
+                 "Mutate :: (p: ^vec3) -> vec3 { p^ = vec3(10, 20, 30); return "
+@@ -4446,14 +4448,14 @@
+                 "Check :: () -> bool { v := vec3(1, 2, 3); product := dot(v, "
+                 "Mutate(&v)); "
+                 "return product == 32.0 && v == vec3(10, 20, 30); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math nested swizzles compose their destination components",
+       .source = "package facts\n"
+                 "Check :: () -> bool { v := vec4(1, 2, 3, 4); v.yx.xy = "
+                 "vec2(7, 8); "
+                 "picked := v.wzyx.yx; v.wzyx.yx = v.xy; "
+                 "return picked == vec2(3, 4) && v == vec4(8, 7, 8, 7); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+     { .name = "math compound swizzles snapshot selected fields and retain rhs "
+               "side effects",
+       .source = "package facts\n"
+@@ -4462,7 +4464,7 @@
+                 "Check :: () -> bool { v := vec4(1, 2, 3, 4); v.xy += "
+                 "Right(&v); "
+                 "return v == vec4(6, 8, 30, 40); }\n",
+-      .calls = { { "Check", "[]", "[true]" } } },
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" } } },
+ 
+ };
+ 

@@ -1,0 +1,79 @@
+package asset_compiler
+
+import strings "core:strings"
+
+CacheHash :: (value: string) -> bool {
+    if (strings.ByteLength(value) != 64) {
+        return false;
+    }
+    for (part in strings.Bytes(value)) {
+        if (!((part >= 48 && part <= 57) || (part >= 97 && part <= 102))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The host hashes the actual immutable compiler bytes and the exact compile
+// request transport, including all source, collection, target and catalog facts.
+// No timestamp, result value, execution budget or cache location affects identity.
+pub CacheKey :: (compiler_sha: string, request_sha: string) -> string {
+    if (!CacheHash(compiler_sha) || !CacheHash(request_sha)) {
+        return "";
+    }
+    return format_text("asset-v1-{}-{}", compiler_sha, request_sha);
+}
+
+// Framing and checksums belong to the binary storage transport. The authored
+// policy admits only successful compiled code; Build results are never stored.
+pub CacheAccept :: (status: int, entry_id: u64, prepared_length: u64) -> bool {
+    return status == 1 && entry_id != 0 && prepared_length > 0 && prepared_length <= 16777187;
+}
+
+pub CachePlan :: union {
+    Evict(accepted: bool, indices: int[])
+}
+
+// Metadata arrives in filename order. Publication times affect eviction only,
+// never freshness. One incoming record must fit with 1024 retained records and
+// 256 MiB including binary transport headers.
+pub CacheEvict :: (sizes: u64[], stamps: u64[], incoming: u64) -> CachePlan {
+    limit: u64 = 268435456;
+    indices: int[] = [];
+    if (length(sizes) != length(stamps) || length(sizes) > 4096 || incoming > limit) {
+        return CachePlan.Evict(false, indices);
+    }
+    removed: bool[] = [];
+    total: u64 = 0;
+    kept: int = 0;
+    index: int = 0;
+    while (index < length(sizes)) {
+        discard := sizes[index] > limit;
+        removed.append(discard);
+        if (discard) {
+            indices.append(index);
+        } else {
+            total += sizes[index];
+            kept += 1;
+        }
+        index += 1;
+    }
+    while (total > limit - incoming || kept >= 1024) {
+        oldest: int = -1;
+        index = 0;
+        while (index < length(sizes)) {
+            if (!removed[index] && (oldest < 0 || stamps[index] < stamps[oldest])) {
+                oldest = index;
+            }
+            index += 1;
+        }
+        if (oldest < 0) {
+            return CachePlan.Evict(false, indices);
+        }
+        removed[oldest] = true;
+        indices.append(oldest);
+        total -= sizes[oldest];
+        kept -= 1;
+    }
+    return CachePlan.Evict(true, indices);
+}

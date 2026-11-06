@@ -1,0 +1,16 @@
+diff --git a/Source/Core/ElementStyle.cpp b/Source/Core/ElementStyle.cpp
+index 412f9ba2..6ee7963a 100644
+--- a/Source/Core/ElementStyle.cpp
++++ b/Source/Core/ElementStyle.cpp
+@@ -611,6 +611,11 @@ bool ElementStyle::SetProperty(PropertyId id, const Property& property)
+ 	if (!new_property.definition)
+ 		return false;
+ 
++	// As in browsers, setting a property to the value it holds changes nothing, so it lays nothing out again.
++	const Property* existing = inline_properties.GetProperty(id);
++	if (existing && *existing == new_property)
++		return true;
++
+ 	inline_properties.SetProperty(id, new_property);
+ 	DirtyProperty(id);
+ 

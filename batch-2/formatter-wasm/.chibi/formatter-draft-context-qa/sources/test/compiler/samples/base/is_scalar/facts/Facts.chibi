@@ -1,0 +1,5 @@
+package facts
+U :: union { A | B }
+One :: (n: int) -> bool { return n is .A; }
+
+// error: 3:34: is needs a union value

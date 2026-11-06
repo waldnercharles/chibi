@@ -1,0 +1,31 @@
+{
+  "base": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+  "staged_tree": "706782b1239626574a999d1577aec7ea95018478",
+  "snapshot": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation",
+  "build": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build",
+  "math_source_patch_sha256": "f69daa55d0e6a9431a14f42dc008bcf2ee0f09b0364e7b940a1e0f0f32474efe",
+  "helper_patches": [],
+  "source_file_count": 3472,
+  "source_files_manifest_sha256": "6bcaf38f83423b215f29f2ddb885021719dbabd54f0e4af111ca9ffcc9557f8c",
+  "capture_wall_seconds": 5.092145208036527,
+  "accepted_runtime_delta_files_sha256": {
+    "src/execution/call.c": "5b6fb82214b185b9877b67606fa2a9f7f5259b9d98ab718a15ea96b5630322b4",
+    "src/execution/function.c": "ea8757fd7cd7c15b14a1b9829c22fce3aad4a439cdc6f1387220c085983f3545",
+    "src/execution/function.h": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817",
+    "src/execution/host.c": "6ccafee207cf2a1665bea3299f1e8d942e822da54b40754ec92ea5e3333bec48",
+    "src/support/arena.c": "bacef774cc7ea9b038fbb8135086eefb7adb6f639a8a58044699a8800e741ab9",
+    "src/support/arena.h": "e5b5dc6afee8ec5e8b4b5ec65f81b3eaf9e295c1930fc9864843ea28d1a214f1",
+    "src/toolchain/compiler_host.c": "9524b7dedeca70c20dfe825bf976e8bbff7a25b2971ccf67962927ad4eb59965",
+    "src/types/array.c": "9ebffb1ca1a4446800b20fb6c13897f31a3e5ff61edd494ec8798939140f5f0b",
+    "test/support/arena.c": "9603b774c38d5b43631e8e40b8ed759cf405d42fb44697d30814ca581cd80a16",
+    "tools/compiler/runtime.json": "75fc6e2b260600b3877b0bd3a2068902bb050c23210da2d1061c43fcc0f63289"
+  },
+  "environment_flags": {
+    "CC": null,
+    "CXX": null,
+    "CFLAGS": null,
+    "CPPFLAGS": null,
+    "LDFLAGS": null,
+    "CMAKE_C_COMPILER_LAUNCHER": null
+  }
+}

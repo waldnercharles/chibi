@@ -1,0 +1,83 @@
+package math_layout_tests
+
+import layout "project:math_layout"
+import math "project:math_types"
+
+Expect :: (kind: int, packing: int, size: int, alignment: int, stride: int, column: int) {
+    switch layout.Layout(kind, packing) {
+        case .Rejected(message):
+            assert(false, "unexpected math layout rejection");
+        case .Packed(actual_size, actual_alignment, actual_stride, actual_column):
+            assert(actual_size == size, "packed size");
+            assert(actual_alignment == alignment, "packed alignment");
+            assert(actual_stride == stride, "array stride");
+            assert(actual_column == column, "column stride");
+    }
+}
+
+@test
+pub CompactValues :: () {
+    Expect(math.Vec2, layout.Compact, 8, 4, 8, 0);
+    Expect(math.Vec3, layout.Compact, 12, 4, 12, 0);
+    Expect(math.Vec4, layout.Compact, 16, 4, 16, 0);
+    Expect(math.Quat, layout.Compact, 16, 4, 16, 0);
+    Expect(math.Mat2, layout.Compact, 16, 4, 16, 8);
+    Expect(math.Mat3, layout.Compact, 36, 4, 36, 12);
+    Expect(math.Mat4, layout.Compact, 64, 4, 64, 16);
+}
+
+@test
+pub ShaderBufferPacking :: () {
+    Expect(math.Scalar, layout.Uniform, 4, 4, 16, 0);
+    Expect(math.Vec2, layout.Uniform, 8, 8, 16, 0);
+    Expect(math.Vec3, layout.Uniform, 12, 16, 16, 0);
+    Expect(math.Vec3, layout.Storage, 12, 16, 16, 0);
+    Expect(math.Mat2, layout.Uniform, 32, 16, 32, 16);
+    Expect(math.Mat2, layout.Storage, 16, 8, 16, 8);
+    Expect(math.Mat3, layout.Uniform, 48, 16, 48, 16);
+    Expect(math.Mat3, layout.Storage, 48, 16, 48, 16);
+    Expect(math.Mat4, layout.Uniform, 64, 16, 64, 16);
+    Expect(math.Mat4, layout.Storage, 64, 16, 64, 16);
+}
+
+@test
+pub MatrixColumnsHavePadding :: () {
+    assert(layout.ComponentOffset(math.Mat3, layout.Compact, 3) == 12, "compact second column");
+    assert(layout.ComponentOffset(math.Mat3, layout.Uniform, 3) == 16, "uniform second column");
+    assert(layout.ComponentOffset(math.Mat3, layout.Storage, 8) == 40, "last storage component");
+    assert(layout.ComponentOffset(math.Mat2, layout.Uniform, 2) == 16, "std140 mat2 column");
+    assert(layout.ComponentOffset(math.Vec3, layout.Uniform, 2) == 8, "vec3 z is not padding");
+    assert(layout.ComponentOffset(math.Quat, layout.Storage, 3) == 12, "quaternion w");
+}
+
+@test
+pub ArraysAlignAfterPrecedingFields :: () {
+    // In { float lead; float samples[2]; }, samples begins at byte16 in
+    // std140, despite the scalar element itself only needing alignment4.
+    scalar_array := layout.ArrayAlignment(math.Scalar, layout.Uniform);
+    assert(scalar_array == 16, "uniform scalar array base alignment");
+    assert((4 + scalar_array - 1) / scalar_array * scalar_array == 16, "array offset after a scalar field");
+    assert(layout.ArrayAlignment(math.Vec2, layout.Uniform) == 16, "uniform vec2 array");
+    assert(layout.ArrayAlignment(math.Vec2, layout.Storage) == 8, "storage vec2 array");
+    assert(layout.ArrayAlignment(math.Mat2, layout.Storage) == 8, "storage mat2 array");
+    assert(layout.ArrayAlignment(math.Mat3, layout.Compact) == 4, "compact matrix array");
+    assert(layout.ArrayAlignment(math.Double, layout.Uniform) == -1, "f64 is not f32 math");
+}
+
+@test
+pub RejectsInvalidLayoutInputs :: () {
+    assert(layout.ComponentOffset(math.Mat3, layout.Uniform, -1) == -1, "negative component");
+    assert(layout.ComponentOffset(math.Mat3, layout.Uniform, 9) == -1, "past last component");
+    assert(layout.ComponentOffset(math.Unknown, layout.Uniform, 0) == -1, "unknown type");
+    assert(layout.ComponentOffset(math.Double, layout.Uniform, 0) == -1, "f64 is not f32 math");
+    assert(layout.ComponentOffset(math.Vec3, 9, 0) == -1, "unknown packing");
+}
+
+pub Check :: () -> int {
+    CompactValues();
+    ShaderBufferPacking();
+    MatrixColumnsHavePadding();
+    ArraysAlignAfterPrecedingFields();
+    RejectsInvalidLayoutInputs();
+    return 0;
+}

@@ -1,0 +1,14 @@
+{
+  "head": "1dce69547515ebaa7f1741f3ba025c56103cb4fe",
+  "argv": [
+    "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/s795i/bin/chibi",
+    "test",
+    "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-sdk-consumer"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-sdk-consumer",
+  "exit_code": 0,
+  "seconds": 2.5375900419894606,
+  "consumer_sha256": "bde7427fca9f1b5b9e437f60c2b0511862fe032cbf5486a4fd990e91c0e40cf0",
+  "log_sha256": "5cc11203ecdd8068310d7f561a2e6d7bae224581904a2fb99e6ff499d507595e",
+  "output": "PASS consumer.PublicImports\n1 tests, 0 failed\n"
+}

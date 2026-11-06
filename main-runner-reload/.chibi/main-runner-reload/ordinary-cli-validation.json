@@ -1,0 +1,1002 @@
+[
+  {
+    "selector": "chibi-cli",
+    "phase": "accepted-first",
+    "returncode": 1,
+    "wall_seconds": 24.934,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-ordinary-cli-accepted-first.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--chibi-cli",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi"
+    ],
+    "passed": 28,
+    "failed": 3,
+    "cases": 31,
+    "suites": 0,
+    "assertions": 444
+  },
+  {
+    "selector": "program-sdk",
+    "phase": "accepted-first",
+    "returncode": 0,
+    "wall_seconds": 0.271,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-ordinary-cli-accepted-first.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--program-sdk"
+    ],
+    "passed": 1,
+    "failed": 0,
+    "cases": 1,
+    "suites": 0,
+    "assertions": 13
+  },
+  {
+    "selector": "build-graph-resources",
+    "phase": "accepted-first",
+    "returncode": 0,
+    "wall_seconds": 51.338,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/build-graph-resources-ordinary-cli-accepted-first.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--build-graph-resources",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi-build-host",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference"
+    ],
+    "passed": 2,
+    "failed": 0,
+    "cases": 2,
+    "suites": 0,
+    "assertions": 20
+  },
+  {
+    "selector": "chibi-cli",
+    "phase": "accepted-fixed",
+    "returncode": 0,
+    "wall_seconds": 25.092,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-ordinary-cli-accepted-fixed.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--chibi-cli",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi"
+    ],
+    "passed": 32,
+    "failed": 0,
+    "cases": 32,
+    "suites": 0,
+    "assertions": 473,
+    "candidate_state": "intermediate; app source review fixes pending"
+  },
+  {
+    "selector": "native-build",
+    "phase": "accepted-intermediate",
+    "returncode": 0,
+    "wall_seconds": 0.494,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native-build-ordinary-cli-accepted-intermediate.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "native-build"
+    ],
+    "coverage": "unexecuted on this platform",
+    "passed": 0,
+    "failed": 0,
+    "cases": 0,
+    "suites": 0,
+    "assertions": 0,
+    "runner_wall_seconds": 0.383
+  },
+  {
+    "selector": "chibi-cli",
+    "phase": "accepted-final",
+    "returncode": 0,
+    "wall_seconds": 24.846,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-ordinary-cli-accepted-final.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--chibi-cli",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi"
+    ],
+    "passed": 32,
+    "failed": 0,
+    "cases": 32,
+    "suites": 0,
+    "assertions": 473
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "accepted-red",
+    "returncode": 1,
+    "wall_seconds": 8.52,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-accepted-red.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--chibi-cli-process",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi"
+    ],
+    "passed": 0,
+    "failed": 1,
+    "cases": 1,
+    "suites": 0,
+    "assertions": 4
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "accepted-basic-green",
+    "returncode": 0,
+    "wall_seconds": 6.66,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-accepted-basic-green.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-process"
+    ],
+    "passed": 2,
+    "failed": 0,
+    "cases": 2,
+    "suites": 0,
+    "assertions": 20,
+    "runner_wall_seconds": 6.572
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "version815-tty-red",
+    "returncode": 1,
+    "wall_seconds": 11.732,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-version815-tty-red.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-process"
+    ],
+    "passed": 1,
+    "failed": 1,
+    "cases": 2,
+    "suites": 0,
+    "assertions": 18,
+    "runner_wall_seconds": 11.641
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "version815-tty-green",
+    "returncode": 1,
+    "wall_seconds": 5.622,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-version815-tty-green.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-process"
+    ],
+    "passed": 1,
+    "failed": 1,
+    "cases": 2,
+    "suites": 0,
+    "assertions": 18,
+    "runner_wall_seconds": 5.531
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "version815-export-red",
+    "returncode": 134,
+    "wall_seconds": 7.186,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-version815-export-red.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-process"
+    ],
+    "runner_wall_seconds": 7.104
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "version815-export-red-direct-cat",
+    "returncode": 1,
+    "wall_seconds": 13.838,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-version815-export-red-direct-cat.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-process"
+    ],
+    "passed": 1,
+    "failed": 2,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 26,
+    "runner_wall_seconds": 13.761
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "version815-export-red-cont-restart",
+    "returncode": 1,
+    "wall_seconds": 14.131,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-version815-export-red-cont-restart.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-process"
+    ],
+    "passed": 1,
+    "failed": 2,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 26,
+    "runner_wall_seconds": 14.037
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "accepted817-export-red",
+    "returncode": 1,
+    "wall_seconds": 14.583,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-accepted817-export-red.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-process"
+    ],
+    "passed": 2,
+    "failed": 1,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 44,
+    "runner_wall_seconds": 14.499
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "accepted817-tty-red",
+    "returncode": 1,
+    "wall_seconds": 17.965,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-accepted817-tty-red.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-process"
+    ],
+    "passed": 1,
+    "failed": 2,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 36,
+    "runner_wall_seconds": 17.886
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "accepted817-green",
+    "returncode": 0,
+    "wall_seconds": 14.998,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-accepted817-green.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-process"
+    ],
+    "passed": 3,
+    "failed": 0,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 50,
+    "runner_wall_seconds": 14.916
+  },
+  {
+    "selector": "chibi-cli",
+    "phase": "accepted817-final",
+    "returncode": 1,
+    "wall_seconds": 38.665,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-ordinary-cli-accepted817-final.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli"
+    ],
+    "passed": 34,
+    "failed": 1,
+    "cases": 35,
+    "suites": 0,
+    "assertions": 524,
+    "runner_wall_seconds": 38.589
+  },
+  {
+    "selector": "program-sdk",
+    "phase": "accepted817-final",
+    "returncode": 2,
+    "wall_seconds": 0.157,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-ordinary-cli-accepted817-final.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "program-sdk"
+    ],
+    "runner_wall_seconds": 0.069
+  },
+  {
+    "selector": "program-sdk",
+    "phase": "accepted817-final-verified",
+    "returncode": 0,
+    "wall_seconds": 0.409,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-ordinary-cli-accepted817-final-verified.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "program-sdk"
+    ],
+    "passed": 1,
+    "failed": 0,
+    "cases": 1,
+    "suites": 0,
+    "assertions": 13,
+    "runner_wall_seconds": 0.361
+  },
+  {
+    "selector": "build-graph-resources",
+    "phase": "accepted817-final",
+    "returncode": 0,
+    "wall_seconds": 53.957,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/build-graph-resources-ordinary-cli-accepted817-final.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--build-graph-resources",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi-build-host",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference"
+    ],
+    "passed": 3,
+    "failed": 0,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 26
+  },
+  {
+    "selector": "chibi-cli",
+    "phase": "accepted817-final-verified",
+    "returncode": 0,
+    "wall_seconds": 39.041,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-ordinary-cli-accepted817-final-verified.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli"
+    ],
+    "passed": 35,
+    "failed": 0,
+    "cases": 35,
+    "suites": 0,
+    "assertions": 524,
+    "runner_wall_seconds": 38.949
+  },
+  {
+    "selector": "chibi-cli-installed",
+    "phase": "clean-fee955dc",
+    "returncode": 0,
+    "wall_seconds": 26.293,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-installed-ordinary-cli-clean-fee955dc.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-installed"
+    ],
+    "passed": 15,
+    "failed": 0,
+    "cases": 15,
+    "suites": 0,
+    "assertions": 213,
+    "runner_wall_seconds": 26.213
+  },
+  {
+    "selector": "chibi-cli-export",
+    "phase": "clean-fee955dc",
+    "returncode": 0,
+    "wall_seconds": 9.975,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-export-ordinary-cli-clean-fee955dc.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "native",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--chibi-cli-export",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/bin/chibi"
+    ],
+    "passed": 2,
+    "failed": 0,
+    "cases": 2,
+    "suites": 0,
+    "assertions": 25,
+    "runner_wall_seconds": 9.887
+  },
+  {
+    "selector": "chibi-cli-build",
+    "phase": "standalone-layout-red",
+    "returncode": 1,
+    "wall_seconds": 1.829,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-build-ordinary-cli-standalone-layout-red.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-build"
+    ],
+    "passed": 0,
+    "failed": 4,
+    "cases": 4,
+    "suites": 0,
+    "assertions": 4,
+    "runner_wall_seconds": 1.745
+  },
+  {
+    "selector": "chibi-cli-doctor",
+    "phase": "browser-readable-red",
+    "returncode": 1,
+    "wall_seconds": 3.416,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-doctor-ordinary-cli-browser-readable-red.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-doctor"
+    ],
+    "passed": 0,
+    "failed": 1,
+    "cases": 1,
+    "suites": 0,
+    "assertions": 56,
+    "runner_wall_seconds": 3.325
+  },
+  {
+    "selector": "chibi-cli-doctor",
+    "phase": "protocol14-repairs-green",
+    "returncode": 0,
+    "wall_seconds": 4.548,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-doctor-ordinary-cli-protocol14-repairs-green.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-doctor"
+    ],
+    "passed": 1,
+    "failed": 0,
+    "cases": 1,
+    "suites": 0,
+    "assertions": 60,
+    "runner_wall_seconds": 4.441
+  },
+  {
+    "selector": "chibi-cli",
+    "phase": "protocol14-repairs-green",
+    "returncode": 0,
+    "wall_seconds": 40.954,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-ordinary-cli-protocol14-repairs-green.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli"
+    ],
+    "passed": 35,
+    "failed": 0,
+    "cases": 35,
+    "suites": 0,
+    "assertions": 550,
+    "runner_wall_seconds": 40.859
+  },
+  {
+    "selector": "chibi-cli-build",
+    "phase": "protocol14-layout-green",
+    "returncode": 0,
+    "wall_seconds": 6.677,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-build-ordinary-cli-protocol14-layout-green.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-build"
+    ],
+    "passed": 4,
+    "failed": 0,
+    "cases": 4,
+    "suites": 0,
+    "assertions": 39,
+    "runner_wall_seconds": 6.589
+  },
+  {
+    "selector": "build-graph-resources",
+    "phase": "protocol14-repairs-green",
+    "returncode": 0,
+    "wall_seconds": 56.004,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/build-graph-resources-ordinary-cli-protocol14-repairs-green.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--build-graph-resources",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi-build-host",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference"
+    ],
+    "passed": 3,
+    "failed": 0,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 26
+  },
+  {
+    "selector": "program-sdk",
+    "phase": "protocol14-repairs-green",
+    "returncode": 0,
+    "wall_seconds": 0.472,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-ordinary-cli-protocol14-repairs-green.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "program-sdk"
+    ],
+    "passed": 2,
+    "failed": 0,
+    "cases": 2,
+    "suites": 0,
+    "assertions": 17,
+    "runner_wall_seconds": 0.39
+  },
+  {
+    "selector": "chibi-cli-installed",
+    "phase": "clean-1dd12f7c",
+    "returncode": 0,
+    "wall_seconds": 29.401,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-installed-ordinary-cli-clean-1dd12f7c.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-installed"
+    ],
+    "passed": 15,
+    "failed": 0,
+    "cases": 15,
+    "suites": 0,
+    "assertions": 213,
+    "runner_wall_seconds": 29.312
+  },
+  {
+    "selector": "chibi-cli-export",
+    "phase": "clean-1dd12f7c",
+    "returncode": 0,
+    "wall_seconds": 9.922,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-export-ordinary-cli-clean-1dd12f7c.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "native",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--chibi-cli-export",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/bin/chibi"
+    ],
+    "passed": 2,
+    "failed": 0,
+    "cases": 2,
+    "suites": 0,
+    "assertions": 25,
+    "runner_wall_seconds": 9.833
+  },
+  {
+    "selector": "package-ownership",
+    "phase": "merged-9ccb1477",
+    "returncode": 0,
+    "wall_seconds": 10.184,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-ownership-ordinary-cli-merged-9ccb1477.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--package-ownership"
+    ],
+    "passed": 5,
+    "failed": 0,
+    "cases": 5,
+    "suites": 0,
+    "assertions": 275
+  },
+  {
+    "selector": "build-graph-resources",
+    "phase": "merged-9ccb1477",
+    "returncode": 0,
+    "wall_seconds": 56.061,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/build-graph-resources-ordinary-cli-merged-9ccb1477.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--build-graph-resources",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi-build-host",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference"
+    ],
+    "passed": 3,
+    "failed": 0,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 26
+  },
+  {
+    "selector": "chibi-cli",
+    "phase": "merged-9ccb1477",
+    "returncode": 0,
+    "wall_seconds": 39.4,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-ordinary-cli-merged-9ccb1477.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli"
+    ],
+    "passed": 35,
+    "failed": 0,
+    "cases": 35,
+    "suites": 0,
+    "assertions": 550,
+    "runner_wall_seconds": 39.307
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "merged-9ccb1477",
+    "returncode": 0,
+    "wall_seconds": 14.41,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-merged-9ccb1477.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-process"
+    ],
+    "passed": 3,
+    "failed": 0,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 50,
+    "runner_wall_seconds": 14.326
+  },
+  {
+    "selector": "chibi-cli-build",
+    "phase": "merged-9ccb1477",
+    "returncode": 0,
+    "wall_seconds": 4.215,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-build-ordinary-cli-merged-9ccb1477.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-build"
+    ],
+    "passed": 4,
+    "failed": 0,
+    "cases": 4,
+    "suites": 0,
+    "assertions": 39,
+    "runner_wall_seconds": 4.162
+  },
+  {
+    "selector": "chibi-cli-doctor",
+    "phase": "merged-9ccb1477",
+    "returncode": 0,
+    "wall_seconds": 3.034,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-doctor-ordinary-cli-merged-9ccb1477.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-doctor"
+    ],
+    "passed": 1,
+    "failed": 0,
+    "cases": 1,
+    "suites": 0,
+    "assertions": 60,
+    "runner_wall_seconds": 2.982
+  },
+  {
+    "selector": "chibi-cli-installed",
+    "phase": "merged-9ccb1477",
+    "returncode": 1,
+    "wall_seconds": 22.528,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-installed-ordinary-cli-merged-9ccb1477.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-installed"
+    ],
+    "passed": 13,
+    "failed": 2,
+    "cases": 15,
+    "suites": 0,
+    "assertions": 209,
+    "runner_wall_seconds": 22.476
+  },
+  {
+    "selector": "program-sdk",
+    "phase": "merged-9ccb1477",
+    "returncode": 0,
+    "wall_seconds": 0.179,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-ordinary-cli-merged-9ccb1477.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "program-sdk"
+    ],
+    "passed": 2,
+    "failed": 0,
+    "cases": 2,
+    "suites": 0,
+    "assertions": 17,
+    "runner_wall_seconds": 0.125
+  },
+  {
+    "selector": "chibi-cli-export",
+    "phase": "merged-9ccb1477",
+    "returncode": 1,
+    "wall_seconds": 1.667,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-export-ordinary-cli-merged-9ccb1477.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "native",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--chibi-cli-export",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi"
+    ],
+    "passed": 0,
+    "failed": 2,
+    "cases": 2,
+    "suites": 0,
+    "assertions": 5,
+    "runner_wall_seconds": 1.615
+  },
+  {
+    "selector": "build-sdk",
+    "phase": "merged-9ccb1477",
+    "returncode": 0,
+    "wall_seconds": 311.394,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/build-sdk-ordinary-cli-merged-9ccb1477.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--build-sdk",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi-build-host",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native",
+      ""
+    ],
+    "passed": 8,
+    "failed": 0,
+    "cases": 8,
+    "suites": 0,
+    "assertions": 212
+  },
+  {
+    "selector": "chibi-cli-installed",
+    "phase": "final-7134851e",
+    "returncode": 0,
+    "wall_seconds": 26.798,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-installed-ordinary-cli-final-7134851e.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-installed"
+    ],
+    "passed": 15,
+    "failed": 0,
+    "cases": 15,
+    "suites": 0,
+    "assertions": 213,
+    "runner_wall_seconds": 26.705
+  },
+  {
+    "selector": "chibi-cli-export",
+    "phase": "final-7134851e",
+    "returncode": 0,
+    "wall_seconds": 9.606,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-export-ordinary-cli-final-7134851e.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "native",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--chibi-cli-export",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/bin/chibi"
+    ],
+    "passed": 2,
+    "failed": 0,
+    "cases": 2,
+    "suites": 0,
+    "assertions": 25,
+    "runner_wall_seconds": 9.518
+  },
+  {
+    "selector": "package-ownership",
+    "phase": "final-7134851e",
+    "returncode": 0,
+    "wall_seconds": 10.515,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-ownership-ordinary-cli-final-7134851e.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--package-ownership"
+    ],
+    "passed": 5,
+    "failed": 0,
+    "cases": 5,
+    "suites": 0,
+    "assertions": 275
+  },
+  {
+    "selector": "build-graph-resources",
+    "phase": "final-7134851e",
+    "returncode": 0,
+    "wall_seconds": 56.248,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/build-graph-resources-ordinary-cli-final-7134851e.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--build-graph-resources",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi-build-host",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference"
+    ],
+    "passed": 3,
+    "failed": 0,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 26
+  },
+  {
+    "selector": "chibi-cli",
+    "phase": "final-7134851e",
+    "returncode": 0,
+    "wall_seconds": 40.237,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-ordinary-cli-final-7134851e.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli"
+    ],
+    "passed": 35,
+    "failed": 0,
+    "cases": 35,
+    "suites": 0,
+    "assertions": 550,
+    "runner_wall_seconds": 40.154
+  },
+  {
+    "selector": "chibi-cli-process",
+    "phase": "final-7134851e",
+    "returncode": 0,
+    "wall_seconds": 14.447,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-process-ordinary-cli-final-7134851e.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-process"
+    ],
+    "passed": 3,
+    "failed": 0,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 50,
+    "runner_wall_seconds": 14.357
+  },
+  {
+    "selector": "chibi-cli-build",
+    "phase": "final-7134851e",
+    "returncode": 0,
+    "wall_seconds": 4.091,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-build-ordinary-cli-final-7134851e.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-build"
+    ],
+    "passed": 4,
+    "failed": 0,
+    "cases": 4,
+    "suites": 0,
+    "assertions": 39,
+    "runner_wall_seconds": 4.032
+  },
+  {
+    "selector": "chibi-cli-doctor",
+    "phase": "final-7134851e",
+    "returncode": 0,
+    "wall_seconds": 3.442,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-doctor-ordinary-cli-final-7134851e.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "chibi-cli-doctor"
+    ],
+    "passed": 1,
+    "failed": 0,
+    "cases": 1,
+    "suites": 0,
+    "assertions": 60,
+    "runner_wall_seconds": 3.39
+  },
+  {
+    "selector": "program-sdk",
+    "phase": "final-7134851e",
+    "returncode": 0,
+    "wall_seconds": 0.176,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-ordinary-cli-final-7134851e.log",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+      "tool",
+      "program-sdk"
+    ],
+    "passed": 2,
+    "failed": 0,
+    "cases": 2,
+    "suites": 0,
+    "assertions": 17,
+    "runner_wall_seconds": 0.123
+  },
+  {
+    "selector": "build-sdk",
+    "phase": "final-7134851e",
+    "returncode": 0,
+    "wall_seconds": 264.489,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/build-sdk-ordinary-cli-final-7134851e.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--build-sdk",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi-build-host",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native",
+      ""
+    ],
+    "passed": 8,
+    "failed": 0,
+    "cases": 8,
+    "suites": 0,
+    "assertions": 212
+  },
+  {
+    "selector": "package-ownership",
+    "phase": "merge-f2f57ec6",
+    "returncode": 0,
+    "wall_seconds": 14.092,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-ownership-ordinary-cli-merge-f2f57ec6.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--package-ownership"
+    ],
+    "passed": 5,
+    "failed": 0,
+    "cases": 5,
+    "suites": 0,
+    "assertions": 275
+  },
+  {
+    "selector": "build-graph-resources",
+    "phase": "merge-f2f57ec6",
+    "returncode": 0,
+    "wall_seconds": 78.296,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/build-graph-resources-ordinary-cli-merge-f2f57ec6.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+      "--build-graph-resources",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi-build-host",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference"
+    ],
+    "passed": 3,
+    "failed": 0,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 26
+  }
+]

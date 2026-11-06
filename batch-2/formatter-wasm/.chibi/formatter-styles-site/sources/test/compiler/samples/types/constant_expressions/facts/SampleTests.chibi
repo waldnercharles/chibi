@@ -1,0 +1,9 @@
+package facts
+
+// constant expressions
+@test
+Calls :: () {
+    r1: i64 = Folded();
+    e1: i64 = 56553;
+    assert(r1 == e1, "Folded call 1");
+}

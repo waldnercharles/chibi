@@ -1,0 +1,50 @@
+[
+  {
+    "selector": "package-files",
+    "returncode": 0,
+    "outer_wall_seconds": 0.467,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-files-ordinary-cli-accepted.log",
+    "passed": 8,
+    "failed": 0,
+    "cases": 8,
+    "suites": 0,
+    "assertions": 149,
+    "runner_wall_seconds": 0.384
+  },
+  {
+    "selector": "package-resolution",
+    "returncode": 0,
+    "outer_wall_seconds": 0.695,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-resolution-ordinary-cli-accepted.log",
+    "passed": 8,
+    "failed": 0,
+    "cases": 8,
+    "suites": 0,
+    "assertions": 164,
+    "runner_wall_seconds": 0.612
+  },
+  {
+    "selector": "package-paths-chibi",
+    "returncode": 0,
+    "outer_wall_seconds": 0.856,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-paths-chibi-ordinary-cli-accepted.log",
+    "passed": 3,
+    "failed": 0,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 1763,
+    "runner_wall_seconds": 0.767
+  },
+  {
+    "selector": "package-routes-chibi",
+    "returncode": 0,
+    "outer_wall_seconds": 0.889,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/package-routes-chibi-ordinary-cli-accepted.log",
+    "passed": 4,
+    "failed": 0,
+    "cases": 4,
+    "suites": 0,
+    "assertions": 13775,
+    "runner_wall_seconds": 0.807
+  }
+]

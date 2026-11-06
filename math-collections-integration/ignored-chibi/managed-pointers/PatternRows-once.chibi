@@ -1,0 +1,87 @@
+package managed_pattern_rows
+
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import abi "project:native_abi"
+import os "core:os"
+import strings "core:strings"
+
+Row :: (kind: int, type: int, value: int, count: int, start: int, end: int) -> facts.Row {
+    return {kind: kind, type: type, value: value, count: count, literal: 0, name: "", text: "",
+            start: start, end: end, line: 1, column: start + 1};
+}
+Literal :: (value: int, start: int, end: int) -> facts.Row {
+    row := Row(facts.LiteralRow, facts.IntType, 0, 0, start, end);
+    row.literal = i64(value);
+    return row;
+}
+Rows :: () -> facts.Row[] {
+    pointers := facts.ArrayType + facts.PointerType;
+    numbers := facts.ArrayType + facts.IntType;
+    source := Row(facts.SourceRow, 0, 0, 0, 0, 0);
+    source.name = "PatternArray.chibi";
+    source.text = strings.Repeat(" ", 128);
+    source.line = 0; source.column = 0;
+    document := source;
+    document.kind = facts.DocumentRow;
+    document.name = "project:PatternArray.chibi"; document.text = "";
+    main := Row(facts.FunctionRow, facts.IntType, 0, 0, 0, 100); main.name = "Main";
+    counter := Row(facts.LocalRow, facts.IntType, 0, 1, 0, 1); counter.name = "counter";
+    scope := Row(facts.ScopeRow, 0, 0, 0, 1, 80);
+    binding := Row(facts.LocalRow, pointers, 1, 1, 1, 2);
+    binding.name = "binding"; binding.literal = i64(facts.PatternStorage);
+    loop := Row(facts.WhileRow, 0, 0, 5, 2, 70); loop.literal = i64(facts.PatternLoop);
+    call := Row(facts.CallRow, pointers, 1, 0, 2, 3); call.name = "Make";
+    scratch := Row(facts.LocalRow, numbers, 2, 3, 3, 4); scratch.name = "scratch";
+    checked := Row(facts.AssertRow, 0, 0, 6, 4, 5);
+    checked.text = "the rebound pointer-array local owns the returned cell";
+    dereference := Row(facts.ManagedRow, facts.IntType, facts.ManagedRead, 1, 4, 5);
+    dereference.literal = -123;
+    increment := Row(facts.AssignRow, facts.IntType, 0, 3, 5, 6);
+    loop_end := loop; loop_end.kind = facts.EndRow; loop_end.count = 0; loop_end.literal = 0;
+    scope_end := scope; scope_end.kind = facts.EndRow;
+    twice := Row(facts.AssertRow, 0, 0, 3, 80, 81);
+    twice.text = "both pattern iterations ran";
+    returned := Row(facts.ReturnRow, 0, 0, 1, 81, 82);
+    make := Row(facts.FunctionRow, pointers, 0, 0, 100, 120); make.name = "Make";
+    value := Row(facts.LocalRow, facts.IntType, 0, 1, 100, 101); value.name = "value";
+    address := Row(facts.ManagedAddressRow, facts.PointerType, 0, 0, 101, 102); address.literal = -123;
+    made := Row(facts.ReturnRow, 0, 0, 2, 101, 102);
+    // The helper's scalar pointer roots disappear when it returns. Only the
+    // bound array keeps its cell live during the body's allocator callback.
+    // PatternLoop clears that array root after each pass; OperandBind must
+    // register the same local again before the second scratch allocation.
+    return [source, document, main,
+        counter, Literal(0, 0, 1), scope,
+        binding, Row(facts.ArrayRow, pointers, facts.ArrayNew, 0, 1, 2),
+        loop, call, Row(facts.OperandBindRow, pointers, 1, 1, 2, 3),
+              Row(facts.ReadRow, facts.IntType, 0, 0, 2, 3), Literal(1, 2, 3), Row(facts.CompareRow, facts.BoolType, facts.Less, 2, 2, 3),
+        scratch, Literal(0, 3, 4), Literal(1, 3, 4), Row(facts.ArrayRow, numbers, facts.ArrayNew, 2, 3, 4),
+        checked, Row(facts.ReadRow, pointers, 1, 0, 4, 5), Literal(0, 4, 5),
+                 Row(facts.ArrayRow, facts.PointerType, facts.ArrayGet, 2, 4, 5), dereference,
+                 Literal(7, 4, 5), Row(facts.CompareRow, facts.BoolType, facts.Equal, 2, 4, 5),
+        increment, Row(facts.ReadRow, facts.IntType, 0, 0, 5, 6), Literal(1, 5, 6), Row(facts.ArithmeticRow, facts.IntType, facts.Add, 2, 5, 6),
+        loop_end, scope_end,
+        twice, Row(facts.ReadRow, facts.IntType, 0, 0, 80, 81), Literal(1, 80, 81), Row(facts.CompareRow, facts.BoolType, facts.Equal, 2, 80, 81),
+        returned, Literal(0, 81, 82),
+        make, value, Literal(7, 100, 101), made, address, Row(facts.ArrayRow, pointers, facts.ArrayNew, 1, 101, 102)];
+}
+
+// Emits real public facts through the program lowering, for SourceProbe's
+// callback collector and poisoned allocator at O0/O2, with forced GC as well.
+Main :: () -> int {
+    args := os.Arguments();
+    if (length(args) != 1) { return 2; }
+    rows := Rows();
+    error := scalar.Validate(rows);
+    if (error != "") { os.Print(error); return 1; }
+    target := abi.LinuxX64();
+    if (os.Platform() == "Darwin") { target = abi.MacOSArm64(); }
+    switch scalar.EmitProgramFor(target, rows, "") {
+        case .Emitted(text):
+            if (os.WriteText(args[0], text) != nil) { return 2; }
+        case .Invalid(message): os.Print(message); return 1;
+        case .Rejected(_): os.Print("pattern facts were rejected"); return 1;
+    }
+    return 0;
+}

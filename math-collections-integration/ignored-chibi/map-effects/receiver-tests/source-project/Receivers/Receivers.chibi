@@ -1,0 +1,33 @@
+package map_receiver_effects
+
+Reset :: (values: ^([int: int])) -> int { values^ = [9: 99]; return 1; }
+Scoped :: (read: ^([int: int]), changed: ^([int: int])) -> int {
+    read^ = [1: 11];
+    return read^[Reset(changed)];
+}
+ResetText :: (values: ^([string: string])) -> string {
+    values^ = ["replacement": "new"];
+    return "key\u0000a";
+}
+Main :: () -> int {
+    values: [int: int] = [1: 11];
+    before := values[Reset(&values)];
+    assert(before == 11);
+    assert(values[9] == 99);
+    values = [1: 11];
+    present := values.has(Reset(&values));
+    assert(present);
+    values = [1: 11];
+    contained := Reset(&values) in values;
+    assert(contained);
+    values = [1: 11];
+    absent := Reset(&values) not in values;
+    assert(!absent);
+    scoped := Scoped(&values, &values);
+    assert(scoped == 11);
+    number: int = 11;
+    words: [string: string] = ["key\u0000a": format_text("old{}", number)];
+    text := words[ResetText(&words)];
+    assert(text == "old11");
+    return 0;
+}

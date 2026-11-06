@@ -1,0 +1,95 @@
+package native_link_tests
+
+import link "project:native_link"
+
+Plan3 :: (triple: string, libraries: string[], libpaths: string[], static: bool) -> link.Plan {
+    plan: link.Plan = {triple: triple, llvm: "/llvm", objects: ["/w/a.o", "/w/b.o"], archives: ["/v/libbox3d.a"],
+                       libraries: libraries, libpaths: libpaths, output: "/w/program", work: "/w/stubs",
+                       libc: "/usr/lib/x86_64-linux-gnu", interpreter: "/lib64/ld-linux-x86-64.so.2",
+                       static: static};
+    return plan;
+}
+
+Plan :: (triple: string, static: bool) -> link.Plan {
+    return Plan3(triple, ["m"], [], static);
+}
+
+Same :: (got: string[], expected: string[]) {
+    assert(length(got) == length(expected), "the argument vector has a different length");
+    for (index in 0..<length(expected)) {
+        assert(got[index] == expected[index]);
+    }
+}
+
+@test
+TriplesNameTheirTargets :: () {
+    assert(link.TargetOf("x86_64-unknown-linux-gnu") == link.LinuxX64, "linux");
+    assert(link.TargetOf("arm64-apple-macosx11.0.0") == link.MacOSArm64, "macos");
+    assert(link.TargetOf("aarch64-apple-darwin") == link.MacOSArm64, "macos by another name");
+    assert(link.TargetOf("x86_64-pc-windows-msvc") == link.WindowsX64, "windows");
+    assert(link.TargetOf("riscv64-unknown-linux-gnu") == -1, "unknown");
+}
+
+@test
+EachTargetHasItsLinker :: () {
+    assert(link.Linker(link.LinuxX64) == "ld.lld", "linux");
+    assert(link.Linker(link.MacOSArm64) == "ld64.lld", "macos");
+    assert(link.Linker(link.WindowsX64) == "lld-link", "windows");
+}
+
+@test
+ObjectsAreLlcOutputPositionIndependent :: () {
+    Same(link.ObjectCommand("/llvm/llc", "m.ll", "m.o", 0),
+         ["/llvm/llc", "-filetype=obj", "-O=0", "-relocation-model=pic", "-o", "m.o", "m.ll"]);
+    Same(link.ObjectCommand("/llvm/llc", "m.ll", "m.o", 2),
+         ["/llvm/llc", "-filetype=obj", "-O=2", "-relocation-model=pic", "-o", "m.o", "m.ll"]);
+}
+
+@test
+LinuxLinksLibcDynamicallyByDefault :: () {
+    Same(link.Command(Plan("x86_64-unknown-linux-gnu", false), "/w/program.partial"),
+         ["/llvm/ld.lld", "--dynamic-linker", "/lib64/ld-linux-x86-64.so.2", "--gc-sections", "-o",
+          "/w/program.partial", "/usr/lib/x86_64-linux-gnu/crt1.o", "/usr/lib/x86_64-linux-gnu/crti.o", "/w/a.o",
+          "/w/b.o", "/v/libbox3d.a", "-L", "/usr/lib/x86_64-linux-gnu", "-lm", "-lc",
+          "/usr/lib/x86_64-linux-gnu/crtn.o"]);
+}
+
+@test
+LinuxStaticLinkTakesNoStartFilesOrLibc :: () {
+    Same(link.Command(Plan("x86_64-unknown-linux-gnu", true), "/w/program.partial"),
+         ["/llvm/ld.lld", "-static", "--gc-sections", "-e", "_start", "-o", "/w/program.partial", "/w/a.o", "/w/b.o",
+          "/v/libbox3d.a", "-lm"]);
+}
+
+@test
+MacOSLinksTextStubsAndLooksUpTheRestWhenItRuns :: () {
+    plan := Plan3("arm64-apple-macosx11.0.0", ["c++", "framework:Cocoa"], [], false);
+    Same(link.Command(plan, "/w/program.partial"),
+         ["/llvm/ld64.lld", "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0", "-dead_strip",
+          "-undefined", "dynamic_lookup", "-e", "_main", "-o", "/w/program.partial", "/w/a.o", "/w/b.o",
+          "/v/libbox3d.a", "/w/stubs/System.tbd", "/w/stubs/cpp.tbd", "/w/stubs/framework-Cocoa.tbd"]);
+}
+
+@test
+StubsNameTheLibrariesTheProgramLoads :: () {
+    assert(link.InstallName("c++") == "/usr/lib/libc++.1.dylib", "c++");
+    assert(link.InstallName("z") == "/usr/lib/libz.dylib", "plain");
+    assert(link.InstallName("framework:Cocoa") == "/System/Library/Frameworks/Cocoa.framework/Cocoa", "framework");
+    stub := link.Stub("/usr/lib/libSystem.B.dylib", true);
+    assert(stub == "--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '/usr/lib/libSystem.B.dylib'\nexports:\n  - targets: [ arm64-macos ]\n    symbols: [ dyld_stub_binder ]\n...\n", "libSystem");
+    assert(link.StubPath("/w", "framework:Cocoa") == "/w/framework-Cocoa.tbd", "path");
+    assert(link.StubPath("/w", "c++") == "/w/cpp.tbd", "plus signs");
+}
+
+@test
+WindowsLinksTheCRuntimeFromTheSdkUnlessStatic :: () {
+    plan := Plan3("x86_64-pc-windows-msvc", ["user32.lib"], ["C:/sdk/lib"], false);
+    Same(link.Command(plan, "/w/program.exe.partial"),
+         ["/llvm/lld-link", "/nologo", "/subsystem:console", "/machine:x64", "/opt:ref", "/out:/w/program.exe.partial",
+          "/libpath:C:/sdk/lib", "/w/a.o", "/w/b.o", "/v/libbox3d.a", "user32.lib"]);
+    plan = Plan3("x86_64-pc-windows-msvc", ["user32.lib"], ["C:/sdk/lib"], true);
+    Same(link.Command(plan, "/w/program.exe.partial"),
+         ["/llvm/lld-link", "/nologo", "/subsystem:console", "/machine:x64", "/opt:ref", "/out:/w/program.exe.partial",
+          "/nodefaultlib", "/entry:mainCRTStartup", "/libpath:C:/sdk/lib", "/w/a.o", "/w/b.o", "/v/libbox3d.a",
+          "/w/stubs/kernel32.lib", "user32.lib"]);
+}

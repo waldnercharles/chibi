@@ -1,0 +1,2 @@
+package literal_exit
+Main :: () -> int { return 134 }

@@ -1,0 +1,16 @@
+package alignment_probe
+import format "project:source_format"
+Main :: () -> int {
+    o := format.Defaults();
+    o.data_alignment = 1;
+    switch format.Format("package p\nA :: () {\nrows := [\n[  1,200],\n[300,  4],\n]\n}\n", o) {
+        case .Formatted(text, notes): print_string(text); print_string(notes);
+        case .Rejected(message): print_string(message);
+    }
+    o.data_alignment = 2;
+    switch format.Format("package p\nA :: () {\nrows := [{x: 1, y: 200}, {x: 30, y: 4}];\n}\n", o) {
+        case .Formatted(text, notes): print_string(text); print_string(notes);
+        case .Rejected(message): print_string(message);
+    }
+    return 0;
+}

@@ -1,0 +1,4 @@
+name "DriftSystem"
+components {
+    EngineSystem asset="Drift"
+}

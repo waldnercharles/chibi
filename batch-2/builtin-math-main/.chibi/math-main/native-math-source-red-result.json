@@ -1,0 +1,8 @@
+{
+  "status": 1,
+  "seconds": 31.104,
+  "binary_sha256": "12c039be71a6f00ed8b1cb7a52c261b76741b143fda3fae5990e9d96d4042d56",
+  "source_math_sha256": "90db58b390430e8ee1babeddcab8f01d66569699f29c27037079644a45192231",
+  "test_source_sha256": "3d2c01d2645a2a6d53eebe0ff838d850337adadf0e7fdca222dbb493b4a7cc9d",
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/native-math-source-red.log"
+}

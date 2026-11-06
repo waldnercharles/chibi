@@ -1,0 +1,25 @@
+package facts
+
+// shift counts clamp
+@test
+Calls :: () {
+    a1_0: u8 = 1;
+    r1: u8 = Literal(a1_0);
+    e1: u8 = 0;
+    assert(r1 == e1, "Literal call 1");
+    a2_0: u8 = 1;
+    a2_1: u32 = 300;
+    r2: u8 = Counted(a2_0, a2_1);
+    e2: u8 = 0;
+    assert(r2 == e2, "Counted call 2");
+    a3_0: u8 = 1;
+    a3_1: u32 = 7;
+    r3: u8 = Counted(a3_0, a3_1);
+    e3: u8 = 128;
+    assert(r3 == e3, "Counted call 3");
+    a4_0: i8 = -5;
+    a4_1: u64 = 4096;
+    r4: i8 = Signed(a4_0, a4_1);
+    e4: i8 = -1;
+    assert(r4 == e4, "Signed call 4");
+}

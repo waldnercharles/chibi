@@ -1,0 +1,42 @@
+{
+  "base": "7c6ca2f5d2c0fd10b4577f2c319ab5680b66ad62",
+  "tree": "1bd44605222127a350663baf87b69bd55225576c",
+  "patch": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/frozen-7c6-source.patch",
+  "patch_sha256": "603614eb9cd80866c2a36bc1d1b19ac8c49af394a268af1a5b5fa63693e67358",
+  "compiler_closure_sha256": "f1a6bdffc9d8bec2de2b55f61bad48a2d8593c2a8ab1fc21cca42f46a6497c9c",
+  "current_native_backend_proof": {
+    "status": 0,
+    "seconds": 26.158,
+    "binary_sha256": "40b3a464779faf71330848b9909258a84a121642b0de2e69f1228c81bc0cf78f",
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/native-math-backend-proof-final.log"
+  },
+  "accepted_asset_failure": {
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/release/sdk/chibi-build-host",
+      "--compiler",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/tools/compiler",
+      "--compiler-core",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/packages/core",
+      "--root",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation",
+      "--source",
+      "tools/toolchain/AssetCompiler.chibi",
+      "--core",
+      "packages/core",
+      "--collection",
+      "asset_generator=tools/graph/asset_compiler",
+      "--entry",
+      "Build",
+      "--timeout-ms",
+      "600000",
+      "--",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/release/sdk/chibi-compiler-host",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-assets",
+      "--compiler-timeout-ms=600000"
+    ],
+    "status": 1,
+    "seconds": 283.591,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-assets-build.log"
+  },
+  "publication": "source-only frozen local checkpoint; no checked artifacts changed"
+}

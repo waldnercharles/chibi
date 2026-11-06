@@ -1,0 +1,4 @@
+package facts
+@error Failure :: union { Denied | Platform(code: int) }
+Read :: (fail: bool) -> Failure? { if fail { return Failure.Platform(7); } return nil; }
+Use :: (fail: bool) -> int { error := Read(fail); if error { error = Failure.Denied; if error { switch error { case .Denied: return 19; case .Platform(code): return code; } } } return 0; }

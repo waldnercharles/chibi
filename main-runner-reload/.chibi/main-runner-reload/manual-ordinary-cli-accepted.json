@@ -1,0 +1,21 @@
+[
+  {
+    "selector": "authored-cli-tests",
+    "returncode": 0,
+    "wall_seconds": 0.283,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/authored-cli-tests-ordinary-cli-accepted.log"
+  },
+  {
+    "selector": "version",
+    "returncode": 0,
+    "wall_seconds": 0.062,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/version-ordinary-cli-accepted.log"
+  },
+  {
+    "selector": "self-cli-version",
+    "returncode": 0,
+    "wall_seconds": 0.123,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/self-cli-version-ordinary-cli-accepted.log",
+    "identical_to_public_version": true
+  }
+]

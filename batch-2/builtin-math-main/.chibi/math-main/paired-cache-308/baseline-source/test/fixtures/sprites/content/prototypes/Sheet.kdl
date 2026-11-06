@@ -1,0 +1,5 @@
+name "Sheet"
+components {
+    Sprite image="content/images/props.png" layer=1
+    (object)Transform
+}

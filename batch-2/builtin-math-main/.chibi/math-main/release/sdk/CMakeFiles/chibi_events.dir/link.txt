@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_events.a "CMakeFiles/chibi_events.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/events.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_events.a

@@ -1,0 +1,238 @@
+diff --git a/test/native_aot/managed_pointers/NativeProbe.chibi b/test/native_aot/managed_pointers/NativeProbe.chibi
+index c182b3979..eac4b2bb3 100644
+--- a/test/native_aot/managed_pointers/NativeProbe.chibi
++++ b/test/native_aot/managed_pointers/NativeProbe.chibi
+@@ -120,7 +120,7 @@ Main :: () -> int {
+         "call void @managed_runtime.visit(ptr %heap, ptr %at)");
+     start := strings.Concatenate([work, "/native-start.ll"]);
+     if (os.WriteText(start, link.ManagedProgramContext(link.ProgramStart(target.triple, false, true, false)))) { return 2; }
+-    for (mode in ["positive", "wrong_tag", "wrong_storage", "wrong_range", "nil", "wrong_owner", "array_owner", "epoch_wrap"]) {
++    for (mode in ["positive", "persistent", "wrong_tag", "wrong_storage", "wrong_range", "nil", "wrong_owner", "array_owner", "epoch_wrap"]) {
+         module := format_text("{}/native-{}.ll", work, mode);
+         body := format_text("\ndefine i32 @managed_source.entry(ptr %ctx) {{\n  %native = call i32 @managed_native.entry(ptr %ctx)\n  %runtime = call i32 @managed_runtime.{}(ptr %ctx)\n  %result = or i32 %native, %runtime\n  ret i32 %result\n}}\n", mode);
+         if (os.WriteText(module, strings.Concatenate([text, fixture.text, body, audit.text]))) { return 2; }
+@@ -136,7 +136,7 @@ Main :: () -> int {
+             if (host.Link(plan)) { return 1; }
+             result := os.Capture([output]);
+             valid := result.status == 0;
+-            if (mode != "positive" && mode != "epoch_wrap") {
++            if (mode != "positive" && mode != "persistent" && mode != "epoch_wrap") {
+                 valid = result.status == 134 && strings.Contains(result.stderr, "native failure: another failure");
+             }
+             if (mode == "epoch_wrap") { valid = result.status != 0; }
+diff --git a/test/native_aot/managed_pointers/README.md b/test/native_aot/managed_pointers/README.md
+index 5bd3ed684..0708c38a5 100644
+--- a/test/native_aot/managed_pointers/README.md
++++ b/test/native_aot/managed_pointers/README.md
+@@ -27,6 +27,10 @@ allocations and a fixed peak bound, both at the normal collection threshold
+ and with collection forced before every cell allocation. Native probes cover
+ descriptor rejection, shared tracing once per backing/epoch, borrowed array
+ imports, cross-heap rejection before epoch shortcuts and malformed pin CFGs.
++Persistent roots also survive a spawning function's stack-boundary restore.
++Real collection after middle, tail and head removal checks non-LIFO cleanup
++and the surviving value at O0/O2. The heap is 56 bytes; persistent nodes are
++32 bytes and unlink in constant time. Stack roots retain their 24-byte ABI.
+ 
+ Raw native IR clients must pin each live pointer-array owning place or fresh
+ descriptor around collecting calls and cell construction; borrowed Read slots
+diff --git a/test/native_aot/managed_pointers/Runtime.ll b/test/native_aot/managed_pointers/Runtime.ll
+index 6bfb3cbc8..609e4cca7 100644
+--- a/test/native_aot/managed_pointers/Runtime.ll
++++ b/test/native_aot/managed_pointers/Runtime.ll
+@@ -26,7 +26,7 @@ entry:
+   %cell.bytes = ptrtoint ptr getelementptr (%chibi.managed.cell, ptr null, i32 1) to i64
+   %root.bytes = ptrtoint ptr getelementptr (%chibi.managed.root, ptr null, i32 1) to i64
+   %pointer.bytes = ptrtoint ptr getelementptr ({ ptr, i64, i64 }, ptr null, i32 1) to i64
+-  %heap.sized = icmp eq i64 %heap.bytes, 48
++  %heap.sized = icmp eq i64 %heap.bytes, 56
+   %cell.sized = icmp eq i64 %cell.bytes, 64
+   %root.sized = icmp eq i64 %root.bytes, 24
+   %pointer.sized = icmp eq i64 %pointer.bytes, 24
+@@ -162,3 +162,69 @@ entry:
+   call void @chibi_managed.collect(ptr %ctx, ptr %heap)
+   ret i32 0
+ }
++
++; Non-LIFO frame cancellation must not disturb other suspended roots, and a
++; spawning function restoring its stack boundary must leave those roots live.
++define internal i32 @managed_runtime.persistent(ptr %ctx) {
++entry:
++  %heap = call ptr @chibi_managed.owner(ptr %ctx)
++  %node.bytes = ptrtoint ptr getelementptr (%chibi.managed.persistent, ptr null, i32 1) to i64
++  %node.sized = icmp eq i64 %node.bytes, 32
++  br i1 %node.sized, label %initialize, label %bad
++initialize:
++  %first = call { ptr, i64, i64 } @managed_runtime.new(ptr %ctx)
++  %second = call { ptr, i64, i64 } @managed_runtime.new(ptr %ctx)
++  %third = call { ptr, i64, i64 } @managed_runtime.new(ptr %ctx)
++  %a = alloca { ptr, i64, i64 }
++  %b = alloca { ptr, i64, i64 }
++  %c = alloca { ptr, i64, i64 }
++  store { ptr, i64, i64 } %first, ptr %a
++  store { ptr, i64, i64 } %second, ptr %b
++  store { ptr, i64, i64 } %third, ptr %c
++  %ra = alloca %chibi.managed.persistent
++  %rb = alloca %chibi.managed.persistent
++  %rc = alloca %chibi.managed.persistent
++  store %chibi.managed.persistent zeroinitializer, ptr %ra
++  store %chibi.managed.persistent zeroinitializer, ptr %rb
++  store %chibi.managed.persistent zeroinitializer, ptr %rc
++  %stack = alloca %chibi.managed.root
++  %stack.head = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 1
++  %previous = load ptr, ptr %stack.head
++  call void @chibi_managed.push(ptr %heap, ptr %stack, ptr %b, ptr @chibi_managed.trace.pointer)
++  call void @chibi_managed.hold(ptr %heap, ptr %ra, ptr %a, ptr @chibi_managed.trace.pointer)
++  call void @chibi_managed.hold(ptr %heap, ptr %rb, ptr %b, ptr @chibi_managed.trace.pointer)
++  call void @chibi_managed.hold(ptr %heap, ptr %rc, ptr %c, ptr @chibi_managed.trace.pointer)
++  store ptr %previous, ptr %stack.head
++  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
++  %used.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 3
++  %all.bytes = load i64, ptr %used.at
++  %all.live = icmp eq i64 %all.bytes, 204
++  br i1 %all.live, label %middle, label %bad
++middle:
++  call void @chibi_managed.unhold(ptr %rb)
++  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
++  %pair.bytes = load i64, ptr %used.at
++  %pair.live = icmp eq i64 %pair.bytes, 136
++  br i1 %pair.live, label %tail, label %bad
++tail:
++  call void @chibi_managed.unhold(ptr %ra)
++  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
++  %last.bytes = load i64, ptr %used.at
++  %last.live = icmp eq i64 %last.bytes, 68
++  %address = call ptr @chibi_managed.address(ptr %heap, { ptr, i64, i64 } %third, i64 -123, i64 4, i32 6)
++  %value = load i32, ptr %address
++  %correct = icmp eq i32 %value, 7
++  %survived = and i1 %last.live, %correct
++  br i1 %survived, label %head, label %bad
++head:
++  call void @chibi_managed.unhold(ptr %rc)
++  call void @chibi_managed.unhold(ptr %rc)
++  call void @chibi_managed.collect(ptr %ctx, ptr %heap)
++  %empty.bytes = load i64, ptr %used.at
++  %empty = icmp eq i64 %empty.bytes, 0
++  br i1 %empty, label %done, label %bad
++done:
++  ret i32 0
++bad:
++  ret i32 98
++}
+diff --git a/tools/compiler/llvm_native/Managed.chibi b/tools/compiler/llvm_native/Managed.chibi
+index a084b6c85..2aef2e05d 100644
+--- a/tools/compiler/llvm_native/Managed.chibi
++++ b/tools/compiler/llvm_native/Managed.chibi
+@@ -6,7 +6,7 @@ import strings "core:strings"
+ // A nonmoving heap whose zero value is empty. Its owner supplies all live
+ // roots and calls collection only with execution quiescent or roots spilled.
+ // Cells retain typed payload trace/drop callbacks; callbacks must outlive them.
+-// At 64-bit targets the heap is 48 bytes, each cell header 64 and root node 24.
++// At 64-bit targets the heap is 56 bytes, each cell header 64, stack root 24 and persistent root 32.
+ // Mark/sweep is O(roots + cells + edges), with no per-edge allocation/recursion.
+ // This raw collector is a backend contract. Source admission additionally
+ // validates typed descriptors and supplies roots around each safe point.
+@@ -15,6 +15,7 @@ pub ManagedRuntime :: () -> string {
+         format_text("%chibi.managed.heap = type {}\n", abi.ManagedHeapType()),
+         "%chibi.managed.cell = type { ptr, ptr, ptr, ptr, i64, i1, ptr, i32 }\n",
+         "%chibi.managed.root = type { ptr, ptr, ptr }\n",
++        "%chibi.managed.persistent = type { ptr, ptr, ptr, ptr }\n",
+         "\n",
+         "; A heap's cells never move. Trace and drop callbacks receive payload storage.\n",
+         "; Tracing only queues managed cells; dropping only releases external owners.\n",
+@@ -118,6 +119,50 @@ pub ManagedRuntime :: () -> string {
+         "  unreachable\n",
+         "}\n",
+         "\n",
++        "; Hold requires an unlinked node and an initialized stable slot until unhold.\n",
++        "; Backlinks name the previous link, including the heap head, for O(1) removal.\n",
++        "define internal void @chibi_managed.hold(ptr %heap, ptr %node, ptr %slot, ptr %trace) {\n",
++        "entry:\n",
++        "  %head.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 6\n",
++        "  %head = load ptr, ptr %head.at\n",
++        "  store ptr %head, ptr %node\n",
++        "  %back.at = getelementptr %chibi.managed.persistent, ptr %node, i32 0, i32 1\n",
++        "  %slot.at = getelementptr %chibi.managed.persistent, ptr %node, i32 0, i32 2\n",
++        "  %trace.at = getelementptr %chibi.managed.persistent, ptr %node, i32 0, i32 3\n",
++        "  store ptr %head.at, ptr %back.at\n",
++        "  store ptr %slot, ptr %slot.at\n",
++        "  store ptr %trace, ptr %trace.at\n",
++        "  %has.head = icmp ne ptr %head, null\n",
++        "  br i1 %has.head, label %link, label %publish\n",
++        "link:\n",
++        "  %head.back = getelementptr %chibi.managed.persistent, ptr %head, i32 0, i32 1\n",
++        "  store ptr %node, ptr %head.back\n",
++        "  br label %publish\n",
++        "publish:\n",
++        "  store ptr %node, ptr %head.at\n",
++        "  ret void\n",
++        "}\n",
++        "define internal void @chibi_managed.unhold(ptr %node) {\n",
++        "entry:\n",
++        "  %back.at = getelementptr %chibi.managed.persistent, ptr %node, i32 0, i32 1\n",
++        "  %back = load ptr, ptr %back.at\n",
++        "  %held = icmp ne ptr %back, null\n",
++        "  br i1 %held, label %remove, label %exit\n",
++        "remove:\n",
++        "  %next = load ptr, ptr %node\n",
++        "  store ptr %next, ptr %back\n",
++        "  %has.next = icmp ne ptr %next, null\n",
++        "  br i1 %has.next, label %link, label %clear\n",
++        "link:\n",
++        "  %next.back = getelementptr %chibi.managed.persistent, ptr %next, i32 0, i32 1\n",
++        "  store ptr %back, ptr %next.back\n",
++        "  br label %clear\n",
++        "clear:\n",
++        "  store %chibi.managed.persistent zeroinitializer, ptr %node\n",
++        "  br label %exit\n",
++        "exit:\n",
++        "  ret void\n",
++        "}\n",
+         "; Only quiescent code with complete spilled roots may call collect/safepoint.\n",
+         "; Callbacks never allocate or collect and drop never follows managed edges.\n",
+         "define internal void @chibi_managed.collect(ptr %ctx, ptr %heap) {\n",
+@@ -135,7 +180,7 @@ pub ManagedRuntime :: () -> string {
+         "roots:\n",
+         "  %root = phi ptr [ %first.root, %start ], [ %next.root, %trace.root ]\n",
+         "  %roots.done = icmp eq ptr %root, null\n",
+-        "  br i1 %roots.done, label %work, label %trace.root\n",
++        "  br i1 %roots.done, label %persistent.start, label %trace.root\n",
+         "trace.root:\n",
+         "  %next.root = load ptr, ptr %root\n",
+         "  %slot.at = getelementptr %chibi.managed.root, ptr %root, i32 0, i32 1\n",
+@@ -144,6 +189,22 @@ pub ManagedRuntime :: () -> string {
+         "  %root.trace = load ptr, ptr %root.trace.at\n",
+         "  call void %root.trace(ptr %heap, ptr %slot)\n",
+         "  br label %roots\n",
++        "persistent.start:\n",
++        "  %persistent.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 6\n",
++        "  %first.persistent = load ptr, ptr %persistent.at\n",
++        "  br label %persistent\n",
++        "persistent:\n",
++        "  %held.root = phi ptr [ %first.persistent, %persistent.start ], [ %next.held, %trace.held ]\n",
++        "  %held.done = icmp eq ptr %held.root, null\n",
++        "  br i1 %held.done, label %work, label %trace.held\n",
++        "trace.held:\n",
++        "  %next.held = load ptr, ptr %held.root\n",
++        "  %held.slot.at = getelementptr %chibi.managed.persistent, ptr %held.root, i32 0, i32 2\n",
++        "  %held.trace.at = getelementptr %chibi.managed.persistent, ptr %held.root, i32 0, i32 3\n",
++        "  %held.slot = load ptr, ptr %held.slot.at\n",
++        "  %held.trace = load ptr, ptr %held.trace.at\n",
++        "  call void %held.trace(ptr %heap, ptr %held.slot)\n",
++        "  br label %persistent\n",
+         "work:\n",
+         "  %work.at = getelementptr %chibi.managed.heap, ptr %heap, i32 0, i32 2\n",
+         "  %cell = load ptr, ptr %work.at\n",
+diff --git a/tools/compiler/native_abi/Abi.chibi b/tools/compiler/native_abi/Abi.chibi
+index 4b9e2d028..36d95c266 100644
+--- a/tools/compiler/native_abi/Abi.chibi
++++ b/tools/compiler/native_abi/Abi.chibi
+@@ -189,7 +189,8 @@ pub ManagedContextType :: () -> string {
+     return "{ ptr, ptr, ptr, ptr, ptr, ptr }";
+ }
+ pub ManagedHeapType :: () -> string {
+-    return "{ ptr, ptr, ptr, i64, i64, i64 }";
++    // Cells, stack roots, work, used bytes, threshold, epoch, suspended roots.
++    return "{ ptr, ptr, ptr, i64, i64, i64, ptr }";
+ }
+ // Root cell, payload byte offset and complete semantic pointee identity.
+ // None is all zero; local type-table ordinals never cross module boundaries.

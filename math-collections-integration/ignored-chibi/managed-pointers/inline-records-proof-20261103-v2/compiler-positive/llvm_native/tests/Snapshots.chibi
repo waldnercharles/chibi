@@ -1,0 +1,125 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+SnapshotShape :: () -> native.SnapshotShapes {
+    return {nodes: [
+        {kind: native.SnapshotArray, type: native.ArrayType + native.RecordType, extra: 0, first: 0, count: 1},
+        {kind: native.SnapshotRecord, type: native.RecordType, extra: 0, first: 1, count: 2},
+        {kind: native.SnapshotScalar, type: abi.IntStorage, extra: abi.ValueTag(abi.IntStorage), first: 0, count: 0},
+        {kind: native.SnapshotScalar, type: abi.TextStorage, extra: abi.ValueTag(abi.TextStorage), first: 0, count: 0}],
+        edges: [{name: "", target: 1}, {name: "count", target: 2}, {name: "text", target: 3}], roots: [0]};
+}
+SnapshotValidation :: (shapes: native.SnapshotShapes) -> string {
+    binding := Code(native.StateLoad, native.ArrayType + native.RecordType, 0, 1, 0, 0, 0);
+    return native.SnapshotShapesValid([{first: 0, count: 2, identity: 0}], [abi.IntStorage, abi.TextStorage],
+                                      ["count", "text"], [binding], shapes);
+}
+@test
+SnapshotShapesPreserveNamedTypedLayout :: () {
+    assert(SnapshotValidation(SnapshotShape()) == "");
+}
+@test
+SnapshotShapesRejectUnknownEdgeTargets :: () {
+    shape := SnapshotShape();
+    edges := shape.edges;
+    edge := edges[2];
+    edge.target = 99;
+    edges[2] = edge;
+    shape.edges = edges;
+    assert(SnapshotValidation(shape) == "snapshot edge has no target node");
+}
+@test
+SnapshotShapesPartitionEdgesOnce :: () {
+    shape := SnapshotShape();
+    nodes := shape.nodes;
+    node := nodes[1];
+    node.first = 0;
+    nodes[1] = node;
+    shape.nodes = nodes;
+    assert(SnapshotValidation(shape) == "snapshot edges differ from node spans");
+    shape = SnapshotShape();
+    edges := shape.edges;
+    edges.append({name: "unused", target: 2});
+    shape.edges = edges;
+    assert(SnapshotValidation(shape) == "snapshot edges differ from node spans");
+}
+@test
+SnapshotShapesRejectRepeatedAggregateTypes :: () {
+    shape := SnapshotShape();
+    nodes := shape.nodes;
+    node := nodes[1];
+    node.first = 3;
+    nodes.append(node);
+    edges := shape.edges;
+    edges.extend([{name: "count", target: 2}, {name: "text", target: 3}]);
+    shape.nodes = nodes;
+    shape.edges = edges;
+    assert(SnapshotValidation(shape) == "snapshot aggregate type has more than one shape");
+}
+@test
+SnapshotShapesRequireManagedRoots :: () {
+    shape := SnapshotShape();
+    shape.roots = [-1];
+    assert(SnapshotValidation(shape) == "snapshot root is required for its retained value");
+}
+@test
+SnapshotShapesRejectChangedFieldNames :: () {
+    shape := SnapshotShape();
+    edges := shape.edges;
+    edge := edges[2];
+    edge.name = "changed";
+    edges[2] = edge;
+    shape.edges = edges;
+    assert(SnapshotValidation(shape) == "snapshot fields differ from their record");
+}
+@test
+SnapshotCharacterDefaultsAreUnicodeScalars :: () {
+    character: native.SnapshotShapeNode = {kind: native.SnapshotScalar, type: abi.IntStorage, extra: 14, first: 0, count: 0};
+    shapes: native.SnapshotShapes = {nodes: [character], edges: [], roots: [0]};
+    for value in [i64(-1), i64(55296), i64(1114112)] {
+        binding := Code(native.StateLoad, abi.IntStorage, 0, 0, 0, 0, value);
+        assert(native.SnapshotShapesValid([], [], [], [binding], shapes) == "snapshot character initial value is not a Unicode scalar");
+    }
+    binding := Code(native.StateLoad, abi.IntStorage, 0, 0, 0, 0, 1114111);
+    assert(native.SnapshotShapesValid([], [], [], [binding], shapes) == "");
+}
+
+SnapshotCharacterLibrary :: (tag: int, characters: bool[]) -> native.Result {
+    shapes: native.SnapshotShapes = {nodes: [{kind: native.SnapshotScalar, type: abi.IntStorage, extra: tag, first: 0, count: 0}], edges: [], roots: [0]};
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.StateLoad, abi.IntStorage, 0, 0, 0, 0, 65),
+             Code(native.Constant, abi.IntStorage, 1, 0, 0, 0, 0), Code(native.Publish, abi.IntStorage, 0, 1, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    return native.EmitSnapshotLibrary(abi.LinuxX64(), "SnapshotCharacters", ["Frame"], [i64(1)],
+        [Function(abi.IntStorage, 0, 0, 2, 0, length(code), 0, 0)], [], [abi.IntStorage, abi.IntStorage], [], code, [],
+        [], [], ["Frame.character"], 1, [], -1, characters, shapes);
+}
+@test
+SnapshotCharacterMetadataMustAgree :: () {
+    diagnostic := "native character state metadata differs from snapshot shape";
+    Rejects(SnapshotCharacterLibrary(abi.ValueTag(abi.IntStorage), [true]), diagnostic);
+    Rejects(SnapshotCharacterLibrary(14, [false]), diagnostic);
+    // Without a legacy vector, the full shape alone specifies nominal char.
+    text := Emitted(SnapshotCharacterLibrary(14, []));
+    assert(text != "");
+    text = Emitted(SnapshotCharacterLibrary(14, [true]));
+    assert(text != "");
+}
+
+@test
+RetainedStoresRejectUnknownCompositeOrdinals :: () {
+    source: native.Source = {file: "", directory: ""};
+    for type in [native.RecordType + 100, native.ArrayType + native.RecordType + 100] {
+        code := [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.StateLoad, abi.IntStorage, 0, 0, 0, 0, 0),
+                 Code(native.StateStore, type, 0, 0, 0, 0, 0), Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0),
+                 Code(native.Return, 0, 0, 0, 0, 0, 0)];
+        functions := [Function(abi.IntStorage, 0, 0, 1, 0, length(code), 0, 0)];
+        diagnostic := "native retained state differs from its operands";
+        Rejects(native.EmitProgramTyped(abi.LinuxX64(), functions, [], [abi.IntStorage], [], code, [], [], [], [], ["Frame.value"],
+                                        source, [], [], []), diagnostic);
+        shapes: native.SnapshotShapes = {nodes: [], edges: [], roots: [-1]};
+        Rejects(native.EmitSnapshotLibrary(abi.LinuxX64(), "InvalidStore", ["Frame"], [i64(1)], functions, [],
+            [abi.IntStorage], [], code, [], [], [], ["Frame.value"], 1, [], -1, [], shapes), diagnostic);
+    }
+}

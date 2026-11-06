@@ -1,0 +1,9 @@
+package facts
+
+// optional coalescing and nil comparisons
+@test
+Calls :: () {
+    r1: int = Main();
+    e1: int = 1144;
+    assert(r1 == e1, "Main call 1");
+}

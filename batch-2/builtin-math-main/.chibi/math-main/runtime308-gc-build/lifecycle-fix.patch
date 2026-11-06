@@ -1,0 +1,18 @@
+--- a/test/language/package_compiler_chibi.c
++++ b/test/language/package_compiler_chibi.c
+@@ -9155,6 +9155,7 @@
+         "    }\n"
+         "}\n";
+     const char *variants[] = { source, pressure_source };
++    REQUIRE(prepare());
+     for (int pressure = 0; pressure < 2; pressure++) {
+         source = variants[pressure];
+         test->syntax = script_parse(source);
+@@ -9195,7 +9196,6 @@
+                 native_math_play(test->expected[backend], backend, pressure != 0)
+             );
+         }
+-        REQUIRE(prepare());
+         native_prepared_context context = { .native = test->native };
+         execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+         for (int b = 0; b < 2; b++) {

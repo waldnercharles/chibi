@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_CALLABLE_HEADERS_CHIBI_H
+#define CHIBI_TEST_CALLABLE_HEADERS_CHIBI_H
+void test_language_callable_headers_chibi();
+#endif

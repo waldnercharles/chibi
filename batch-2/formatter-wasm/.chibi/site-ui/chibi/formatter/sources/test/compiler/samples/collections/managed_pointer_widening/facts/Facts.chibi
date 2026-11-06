@@ -1,0 +1,3 @@
+package facts
+Widened :: () -> i64 { x: i64 = 0; y: int = 1; p := &x; x = y; p^ = y + 1; return x; }
+Floated :: () -> f64 { x: f64 = 0; f: number = 1.5; p := &x; p^ = f; return x; }

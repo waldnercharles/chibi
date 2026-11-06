@@ -1,0 +1,92 @@
+[
+  {
+    "phase": "accepted817",
+    "build": "reference",
+    "returncode": 0,
+    "wall_seconds": 2.634,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference-accepted817-configure.log",
+    "command": [
+      "cmake",
+      "-S",
+      ".",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference"
+    ]
+  },
+  {
+    "phase": "accepted817",
+    "build": "program-sdk-configure",
+    "returncode": 0,
+    "wall_seconds": 0.576,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-configure-accepted817-configure.log",
+    "command": [
+      "cmake",
+      "-S",
+      "sdk",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-configure"
+    ]
+  },
+  {
+    "phase": "accepted817",
+    "build": "public-sdk-build",
+    "returncode": 0,
+    "wall_seconds": 0.725,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build-accepted817-configure.log",
+    "command": [
+      "cmake",
+      "-S",
+      "sdk",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build"
+    ]
+  },
+  {
+    "phase": "protocol14-repairs",
+    "step": "configure",
+    "build": "reference",
+    "returncode": 0,
+    "wall_seconds": 3.112,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference-protocol14-configure.log",
+    "command": [
+      "cmake",
+      "-S",
+      ".",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference",
+      "-DCHIBI_ASSET_GENERATOR_HOSTS=/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk"
+    ]
+  },
+  {
+    "phase": "protocol14-repairs",
+    "step": "configure",
+    "build": "program-sdk-configure",
+    "returncode": 0,
+    "wall_seconds": 1.089,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-configure-protocol14-configure.log",
+    "command": [
+      "cmake",
+      "-S",
+      "sdk",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-configure",
+      "-DCHIBI_ASSET_GENERATOR_HOSTS=/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk"
+    ]
+  },
+  {
+    "phase": "protocol14-repairs",
+    "step": "configure",
+    "build": "public-sdk-build",
+    "returncode": 0,
+    "wall_seconds": 0.732,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build-protocol14-configure.log",
+    "command": [
+      "cmake",
+      "-S",
+      "sdk",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build",
+      "-DCHIBI_ASSET_GENERATOR_HOSTS=/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk"
+    ]
+  }
+]

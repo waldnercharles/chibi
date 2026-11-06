@@ -1,0 +1,23 @@
+package source_format_tests
+
+import format "project:source_format"
+import strings "core:strings"
+
+@test
+PortableAnnotationsAcceptEquivalentTypesAcrossTargetImplementations :: () {
+    source := "package p\nimport target \"core:target\"\nwhen target.Os == target.Linux { Count :: () -> int { return 4; } } else { Count :: () -> int { return 5; } }\nMain :: () { value := Count(); }\n";
+    options := format.Defaults(); options.binding_types = 2;
+    result := PipelineOutput(format.FormatProject(source, options, TargetContext(source)));
+    assert(strings.Contains(result.text, "value: int = Count()") && result.notes == "", "different target-specific implementations may share one proved annotation");
+}
+
+@test
+PortableOmissionRetainsAnotherTargetsNumericConversion :: () {
+    source := "package p\nimport target \"core:target\"\nwhen target.Os == target.Linux { Count :: () -> int { return 4; } } else { Count :: () -> i8 { return 4; } }\nMain :: () { value: int = Count(); }\n";
+    options := format.Defaults(); options.binding_types = 1;
+    result := PipelineOutput(format.FormatProject(source, options, TargetContext(source)));
+    assert(strings.Contains(result.text, "value: int = Count()") && strings.Contains(result.notes, "Cross-platform validation"), "an annotation that widens on another target remains written");
+    options.semantic_targets = 1;
+    selected := PipelineOutput(format.FormatProject(source, options, TargetContext(source)));
+    assert(strings.Contains(selected.text, "value := Count()") && strings.Contains(selected.notes, "only"), "explicit Linux scope can omit the Linux-redundant annotation");
+}

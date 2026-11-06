@@ -1,0 +1,14 @@
+{
+  "status": 1,
+  "seconds": 22.032,
+  "binary_sha256": "c63f107999b06f176bc0eb2d0813048f9f82e8e8953b23d02a99c779825f8b65",
+  "inputs_sha256": {
+    "src/language/semantic_expression.c": "c803a9ff75e90c200bbdd12e07ac040e2d43ede0e724943dca377f37d70cfabe",
+    "tools/compiler/package_compiler/Math.chibi": "58c41ab30361f9c7a3e78426ec4dfdbc39844efc038bd016c597bc40c9ed9a47",
+    "tools/compiler/package_compiler/Body.chibi": "5a7f9dc60a56264fc55a98baa63c864150e80e5ce35055da726453a2fa405614",
+    "tools/compiler/package_compiler/Pointers.chibi": "b33a3530e4c4d3cc955d8e5332e4a0946c2b6aa3beeb7018d17e0f974fa34b48",
+    "tools/compiler/package_compiler/Sequences.chibi": "d963c2f14a2350de551c17a71e758bccbab188b6d4b8ea1a929dedf157cafb97",
+    "test/language/package_compiler_chibi.c": "c4dadcd9f5bb53e1b057a1b3546e5a683ce5b3c4fb012556e64f0a57b5a7742a"
+  },
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/native-math-preserved-layout.log"
+}

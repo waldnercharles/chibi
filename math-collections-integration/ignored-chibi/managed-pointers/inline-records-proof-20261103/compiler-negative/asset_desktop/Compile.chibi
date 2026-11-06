@@ -1,0 +1,258 @@
+package asset_desktop
+
+import os "core:os"
+import strings "core:strings"
+import cache "project:asset_cache"
+import call "project:asset_call"
+import store "project:asset_store"
+import children "project:asset_process"
+import target "core:target"
+
+
+
+Join :: (parts: string[]) -> string { return strings.Concatenate(parts); }
+
+Parent :: (path: string) -> string {
+    normalized := strings.ReplaceAll(path, "\\", "/");
+    separator := strings.LastIndex(normalized, "/");
+    if (separator < 0) { return ""; }
+    if (separator == 0) { return "/"; }
+    return strings.Slice(normalized, 0, separator);
+}
+
+Program :: () -> string {
+    explicit := call.Option(0);
+    explicit_size := explicit.size;
+    explicit_path := explicit.text;
+    if (explicit_size == -1 && os.HasEnv("CHIBI_ASSET_COMPILER")) {
+        explicit_path = os.Getenv("CHIBI_ASSET_COMPILER");
+        explicit_size = strings.ByteLength(explicit_path);
+    }
+    if (explicit_size != -1) {
+        if (explicit_size <= 0 || explicit_size >= 4096) { return ""; }
+        return os.RealPath(explicit_path);
+    }
+    // This queries the running executable, independent of process argv and
+    // environment setup in a C consumer. Windows returns counted UTF-8 bytes.
+    buffer := resize([u8(0)], 4096);
+    count := call.ExecutableCopy(&buffer, length(buffer));
+    if (count <= 0 || count >= length(buffer)) { return ""; }
+    executable := text_from_bytes(buffer.slice(0, count));
+    if (target.Os == target.Windows) {
+        // The loader may return an extended-length namespace path. Resolve
+        // its original spelling before adding SDK-relative parent segments;
+        // that namespace does not normalize slashes or '..'.
+        executable = os.RealPath(executable);
+    }
+    folder := Parent(executable);
+    if (folder == "") { return ""; }
+    suffix := "";
+    if (target.Os == target.Windows) { suffix = ".exe"; }
+    for (relative in ["/chibi-asset-compiler", "/sdk/chibi-asset-compiler", "/../libexec/chibi/chibi-asset-compiler"]) {
+        path := Join([folder, relative, suffix]);
+        if (strings.ByteLength(path) >= 4096) { continue; }
+        candidate := os.RealPath(path);
+        if (candidate != "" && os.FindExecutable(candidate) != "") { return candidate; }
+    }
+    return "";
+}
+
+Fail :: (message: string) -> int {
+    reported := call.Rejected(-1, 0, 0, message);
+    assert(reported == 0, "the diagnostic ABI copies a bounded message");
+    return 2;
+}
+
+Decimal :: (value: u64) -> string {
+    remaining := value;
+    reverse: u8[] = [];
+    while remaining >= u64(10) {
+        reverse.append(u8(remaining % u64(10)) + u8(48));
+        remaining /= u64(10);
+    }
+    reverse.append(u8(remaining) + u8(48));
+    result := resize([u8(0)], length(reverse));
+    for (index in 0..<length(reverse)) { result[index] = reverse[length(reverse) - index - 1]; }
+    return text_from_bytes(result);
+}
+
+// The C protocol admits leading ASCII whitespace and a sign, then requires
+// digits through newline. Check the int32 bound before multiply.
+Signed :: (text: string) -> (valid: bool, value: int) {
+    count := strings.ByteLength(text);
+    if (count == 0 || count > 30) { return (false, 0); }
+    first := 0;
+    while first < count {
+        byte := strings.ByteAt(text, first);
+        if (byte != 32 && byte != 9 && byte != 11 && byte != 12 && byte != 13) { break; }
+        first += 1;
+    }
+    if (first == count) { return (false, 0); }
+    negative := strings.ByteAt(text, first) == 45;
+    if (negative || strings.ByteAt(text, first) == 43) { first += 1; }
+    if (first == count) { return (false, 0); }
+    limit: u64 = 2147483647;
+    if (negative) { limit = 2147483648; }
+    value: u64 = 0;
+    for (index in first..<count) {
+        digit := strings.ByteAt(text, index) - 48;
+        if (digit < 0 || digit > 9 || value > (limit - u64(digit)) / u64(10)) { return (false, 0); }
+        value = value * u64(10) + u64(digit);
+    }
+    if (negative) { return (true, int(u32(0) - u32(value))); }
+    return (true, int(value));
+}
+
+Rejected :: (path: string) -> int {
+    contents := store.ReadService(path, 351, false);
+    switch contents {
+        case .Unavailable:
+            return Fail("The native package compiler rejected its input without a diagnostic");
+        case .Invalid:
+            return Fail("The native package compiler returned an invalid diagnostic");
+        case .Bytes(data):
+            parts := strings.SplitN(text_from_bytes(data), "\n", 4);
+            if (length(parts) != 4 || strings.ByteLength(parts[3]) == 0) { return Fail("The native package compiler returned an invalid diagnostic"); }
+            document := Signed(parts[0]);
+            line := Signed(parts[1]);
+            column := Signed(parts[2]);
+            if (!document.valid || !line.valid || !column.valid) { return Fail("The native package compiler returned an invalid diagnostic"); }
+            return call.Rejected(document.value, line.value, column.value, parts[3]) + 1;
+    }
+}
+
+Temporary :: () -> string {
+    base := "";
+    if (target.Os == target.Windows) {
+        base = os.Getenv("TEMP");
+        if (base == "") { base = os.Getenv("TMP"); }
+    } else {
+        base = os.Getenv("TMPDIR");
+        if (base == "") { base = "/tmp"; }
+    }
+    if (strings.ByteLength(base) >= 4096) { return ""; }
+    made := os.TemporaryDirectory(base);
+    if (made.error != nil) { return ""; }
+    return os.RealPath(made.path);
+}
+
+CompileIn :: (program: string, request: u8[], directory: string, ticket: store.Ticket) -> int {
+    input := Join([directory, "/request.json"]);
+    output := Join([directory, "/closure.chibip"]);
+    diagnostic := Join([directory, "/diagnostic.txt"]);
+    if (strings.ByteLength(output) >= 4096 || strings.ByteLength(diagnostic) >= 4096) {
+        return Fail("The native package compiler request could not be written");
+    }
+    if (os.WriteBytes(input, request) != nil) { return Fail("The native package compiler request could not be written"); }
+    if (call.Cancelled() != 0) { return Fail("The package compile was cancelled"); }
+    started := call.Milliseconds();
+    if (started < i64(0)) { return Fail("The native package compiler could not run"); }
+    child := children.Start([program, input, output, diagnostic, Decimal(call.Budget())], directory);
+    if (child.id <= 0) { return Fail("The native package compiler could not run"); }
+    // Once started, this scope owns the child through every branch. Callback
+    // cancellation returns here; it does not unwind across the owned process.
+    code := os.StillRunning;
+    while code == os.StillRunning {
+        if (call.Cancelled() != 0) {
+            killed := os.Kill(child.id);
+            return Fail("The package compile was cancelled");
+        }
+        now := call.Milliseconds();
+        if (now < started || now - started >= i64(600000)) {
+            killed := os.Kill(child.id);
+            return Fail("The native package compile timed out");
+        }
+        code = children.Wait(&child, 10);
+    }
+    if (code < 0) { return Fail("The native package compiler was terminated by a signal"); }
+    if (code == 125) { return Fail("The package compile exceeded its step budget"); }
+    if (code == 1) { return Rejected(diagnostic); }
+    if (code != 0) { return Fail("The native package compiler failed"); }
+    contents := store.ReadService(output, cache.OutputLimit, true);
+    switch contents {
+        case .Unavailable: return Fail("The native package compiler returned no valid closure");
+        case .Invalid: return Fail("The native package compiler returned no valid closure");
+        case .Bytes(data):
+            if (length(data) == 0) { return Fail("The native package compiler returned no valid closure"); }
+            Publish(program, ticket, data);
+            return call.Publish(data, length(data));
+    }
+}
+
+CacheDirectory :: () -> string {
+    if (target.Os == target.Windows) { return ""; }
+    option := call.Option(1);
+    size := option.size;
+    path := option.text;
+    if (size == -1 && os.HasEnv("CHIBI_ASSET_CACHE_DIR")) {
+        path = os.Getenv("CHIBI_ASSET_CACHE_DIR");
+        size = strings.ByteLength(path);
+    }
+    if (size == -1) {
+        base := "";
+        suffix := "";
+        if (target.Os == target.Darwin) { base = os.Getenv("HOME"); suffix = "/Library/Caches/Chibi/assets"; }
+        else {
+            base = os.Getenv("XDG_CACHE_HOME"); suffix = "/chibi/assets";
+            if (base == "") { base = os.Getenv("HOME"); suffix = "/.cache/chibi/assets"; }
+        }
+        if (base == "" || strings.ByteLength(base) > 4096) { return ""; }
+        path = Join([base, suffix]);
+    } else if (size <= 0 || size > 4096) { return ""; }
+    if (strings.ByteLength(path) > 4096) { return ""; }
+    return Join([path, "/closures"]);
+}
+
+pub Compile :: () -> int {
+    count := call.RequestLength();
+    if (count < 0 || count > cache.RequestLimit) { return Fail("The package compiler request exceeds its byte limit"); }
+    data := resize([u8(0)], count);
+    if (call.RequestCopy(&data, count) != 0) { return Fail("The package compiler request is missing"); }
+    program := Program();
+    if (program == "" || !os.IsFile(program)) { return Fail("The native package compiler is unavailable"); }
+    if (call.Cancelled() != 0) { return Fail("The package compile was cancelled"); }
+    ticket := CacheTicket(program, data);
+    cached := Cached(ticket);
+    if (cached.found) {
+        if (call.Cancelled() != 0) { return Fail("The package compile was cancelled"); }
+        return call.Publish(cached.data, length(cached.data));
+    }
+    directory := Temporary();
+    if (directory == "") { return Fail("The native package compiler temporary directory could not be created"); }
+    result := CompileIn(program, data, directory, ticket);
+    // No arbitrary recursion: only these fixed protocol files are owned by a
+    // call. A hostile service cannot make cleanup traverse unrelated paths.
+    for (name in ["request.json", "closure.chibip", "diagnostic.txt", "closure.chibip.partial"]) {
+        removed := os.Remove(Join([directory, "/", name]));
+        if (removed != nil) { /* Best effort cleanup matches the existing API. */ }
+    }
+    removed := os.Remove(directory);
+    if (removed != nil) { /* Keep the original compile outcome on cleanup error. */ }
+    return result;
+}
+
+// Persistent storage is not an admitted Windows capability. Exclude those
+// callees before emission; a runtime empty-directory branch leaves cache IO
+// imports reachable across independently optimized compiler pieces.
+when target.Os == target.Windows {
+    CacheTicket :: (program: string, data: u8[]) -> store.Ticket {
+        return {directory: "", key: "", identity: ""};
+    }
+    Cached :: (ticket: store.Ticket) -> store.ReadResult { return {found: false, data: []}; }
+    Publish :: (program: string, ticket: store.Ticket, data: u8[]) { }
+} else {
+    CacheTicket :: (program: string, data: u8[]) -> store.Ticket {
+        unavailable: store.Ticket = {directory: "", key: "", identity: ""};
+        if (!call.Cached()) { return unavailable; }
+        directory := CacheDirectory();
+        if (directory == "" || call.SaltLength() == call.NoSalt) { return unavailable; }
+        return store.Bind(directory, store.Digest(program), data);
+    }
+    Cached :: (ticket: store.Ticket) -> store.ReadResult { return store.Read(ticket); }
+    Publish :: (program: string, ticket: store.Ticket, data: u8[]) {
+        if (ticket.directory != "" && call.Cancelled() == 0) {
+            current := store.Digest(program);
+            if (current == ticket.identity) { store.Publish(ticket, data); }
+        }
+    }
+}

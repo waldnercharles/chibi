@@ -1,0 +1,10 @@
+package different_result_producers_rejection
+Main :: () -> int {
+    handle := Integer();
+    handle = Boolean();
+    return 0;
+}
+Integer :: () -> int { yield
+    return 1; }
+Boolean :: () -> bool { yield
+    return true; }

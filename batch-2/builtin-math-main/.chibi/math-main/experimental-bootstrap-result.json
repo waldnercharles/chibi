@@ -1,0 +1,38 @@
+[
+  {
+    "operation": "write",
+    "status": 0,
+    "seconds": 125.889,
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/release/sdk/chibi-compiler-host",
+      "--bootstrap",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-bootstrap",
+      "--compiler",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/tools/compiler",
+      "--core",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/packages/core",
+      "--seed",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/seed",
+      "--revision",
+      "experimental-math-7c6-source-tree8e97cbaf"
+    ],
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-bootstrap-write.log"
+  },
+  {
+    "operation": "recover",
+    "status": 0,
+    "seconds": 98.786,
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/release/sdk/chibi-compiler-host",
+      "--bootstrap",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-bootstrap",
+      "--compiler",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/tools/compiler",
+      "--core",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/packages/core",
+      "--recover",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/recovered-compiler.chibip"
+    ],
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-bootstrap-recover.log"
+  }
+]

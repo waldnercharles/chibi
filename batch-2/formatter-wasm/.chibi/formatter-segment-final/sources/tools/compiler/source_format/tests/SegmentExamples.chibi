@@ -1,0 +1,130 @@
+package source_format_tests
+
+import format "project:source_format"
+
+// Wang, Exploring Action Unit Granularity of Source Code for Supporting
+// Software Maintenance, chapter 6, printed pp. 78-85, Listings 6.1-6.11.
+// https://udspace.udel.edu/bitstream/handle/19716/21806/Wang_udel_0060D_12922.pdf
+// Java declarations become typed Chibi bindings; creation becomes a record
+// literal. These examples assert the published boundaries through Format.
+// The first seven tests cover Listings 6.1, 6.2-6.3, 6.4-6.5, 6.6-6.7,
+// 6.8, 6.9-6.10 and 6.11 in order. Later tests exercise the stated rules.
+
+@test
+SegmentExampleStrongInitializationsWinObjectOverlap :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nam: ActionMap = tlb.getActionMap();\nim: InputMap = tlb.getInputMap();\nim.put(prefs.getKey(), \"close\");\nam.put(\"close\", closeAction);\n}\n",
+         "package p\nMain :: () {\n    am: ActionMap = tlb.getActionMap();\n    im: InputMap = tlb.getInputMap();\n\n    im.put(prefs.getKey(), \"close\");\n    am.put(\"close\", closeAction);\n}\n");
+}
+
+@test
+SegmentExampleInitializationStartsTheSecondObjectUnit :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nt: Tree = {};\nt.getNodeTable().addColumns(LABEL_SCHEMA);\nr: Node = t.addRoot();\nr.setString(LABEL, \"0,0\");\n}\n",
+         "package p\nMain :: () {\n    t: Tree = {};\n    t.getNodeTable().addColumns(LABEL_SCHEMA);\n\n    r: Node = t.addRoot();\n    r.setString(LABEL, \"0,0\");\n}\n");
+}
+
+@test
+SegmentExampleObjectUseWinsWeakSyntaxOverlap :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nimage: Image = ii.getImage();\nmt: MediaTracker = {};\nmt.addImage(image, 0);\nmt.waitForID(0);\n}\n",
+         "package p\nMain :: () {\n    image: Image = ii.getImage();\n\n    mt: MediaTracker = {};\n    mt.addImage(image, 0);\n    mt.waitForID(0);\n}\n");
+}
+
+@test
+SegmentExampleStrongObjectCallsWinEarlierObjectOverlap :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nicon_url = getResource();\nicon = {url: icon_url};\no1.putValue(Action.SMALL_ICON, icon);\no2.putValue(Action.SHORT_DESCRIPTION, description);\n}\n",
+         "package p\nMain :: () {\n    icon_url = getResource();\n    icon = {url: icon_url};\n\n    o1.putValue(Action.SMALL_ICON, icon);\n    o2.putValue(Action.SHORT_DESCRIPTION, description);\n}\n");
+}
+
+@test
+SegmentExampleObjectUnitWinsControlPreambleOverlap :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nimageWidth: int = image.getWidth(none);\nimageHeight: int = image.getHeight(none);\nimageRatio: int = imageWidth / imageHeight;\nif thumbRatio < imageRatio {\nthumbHeight = thumbWidth / imageRatio;\n} else {\nthumbWidth = thumbHeight * imageRatio;\n}\n}\n",
+         "package p\nMain :: () {\n    imageWidth: int = image.getWidth(none);\n    imageHeight: int = image.getHeight(none);\n    imageRatio: int = imageWidth / imageHeight;\n\n    if thumbRatio < imageRatio {\n        thumbHeight = thumbWidth / imageRatio;\n    } else {\n        thumbWidth = thumbHeight * imageRatio;\n    }\n}\n");
+}
+
+@test
+SegmentExampleRefinesTheMethodCallRun :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    // Listings 6.9-6.10 claim method-name levels {1, 0}. Compound names
+    // preserve that contrast under the paper's single-word ID rule.
+    With(options,
+         "package p\nMain :: () {\ninputReader.startStream();\noutputWriter.startStream();\nerrorMonitor.startStream();\noutputWriter.joinWorker();\nerrorMonitor.joinWorker();\n}\n",
+         "package p\nMain :: () {\n    inputReader.startStream();\n    outputWriter.startStream();\n    errorMonitor.startStream();\n\n    outputWriter.joinWorker();\n    errorMonitor.joinWorker();\n}\n");
+}
+
+@test
+SegmentExampleMergesCreationSingletons :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nlabel1: JLabel = {text: \"Search Name:\"};\nsearchNameField = {size: 12};\nlabel2: JLabel = {text: \"Search Type:\"};\n}\n",
+         "package p\nMain :: () {\n    label1: JLabel = {text: \"Search Name:\"};\n    searchNameField = {size: 12};\n    label2: JLabel = {text: \"Search Type:\"};\n}\n");
+}
+
+@test
+SegmentIdentifierSingleWordsKeepUniformSimilarity :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nx = 1;\ny = 2;\nz = 3;\nw = 4;\nv = 5;\nu = 6;\nt = 7;\ns = 8;\nr = 9;\n}\n",
+         "package p\nMain :: () {\n    x = 1;\n    y = 2;\n    z = 3;\n    w = 4;\n    v = 5;\n    u = 6;\n    t = 7;\n    s = 8;\n    r = 9;\n}\n");
+}
+
+@test
+SegmentIdentifierWordsRefineAssignmentRuns :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nstrTmp = 1;\nstrMsg = 2;\nsrcPixels = 3;\ndstInPixels = 4;\n}\n",
+         "package p\nMain :: () {\n    strTmp = 1;\n    strMsg = 2;\n\n    srcPixels = 3;\n    dstInPixels = 4;\n}\n");
+}
+
+@test
+SegmentRhsCallsUseIdentifierSimilarity :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nsrcWidth = getPrintAction();\ndstHeight = getCloseAction();\nrawBuffer = readFileBytes();\nbyteArray = readFileText();\n}\n",
+         "package p\nMain :: () {\n    srcWidth = getPrintAction();\n    dstHeight = getCloseAction();\n\n    rawBuffer = readFileBytes();\n    byteArray = readFileText();\n}\n");
+}
+
+@test
+SegmentRhsCategoriesRefineAssignmentRuns :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nleftEdge = 1;\nrightSide = 2;\npayloadData = {};\noutputSink = {};\n}\n",
+         "package p\nMain :: () {\n    leftEdge = 1;\n    rightSide = 2;\n\n    payloadData = {};\n    outputSink = {};\n}\n");
+}
+
+@test
+SegmentRecursesIntoFourStatementControlBodies :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nif ready {\nwhile running {\ninputReader.startStream();\noutputWriter.startStream();\nerrorMonitor.joinWorker();\nfileWorker.joinWorker();\n}\n}\n}\n",
+         "package p\nMain :: () {\n    if ready {\n        while running {\n            inputReader.startStream();\n            outputWriter.startStream();\n\n            errorMonitor.joinWorker();\n            fileWorker.joinWorker();\n        }\n    }\n}\n");
+}
+
+@test
+SegmentDoesNotRecurseIntoThreeStatementControlBodies :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nif ready {\nimage: Image = ii.getImage();\nmt: MediaTracker = {};\nmt.addImage(image, 0);\n}\n}\n",
+         "package p\nMain :: () {\n    if ready {\n        image: Image = ii.getImage();\n        mt: MediaTracker = {};\n        mt.addImage(image, 0);\n    }\n}\n");
+}

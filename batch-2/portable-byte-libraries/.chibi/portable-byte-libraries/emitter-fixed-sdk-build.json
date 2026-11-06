@@ -1,0 +1,16 @@
+{
+  "head": "4800a2a9d5c83a0ff63666a0252bb922df9e534d",
+  "tree": "fdb2c96527960775a94ab6e5b238b617067c5c25",
+  "argv": [
+    "make",
+    "package-sdk",
+    "SDK_BUILD_DIR=.chibi/portable-byte-libraries/sdk-build",
+    "SDK_REFLECT_BUILD_DIR=.chibi/portable-byte-libraries/sdk-reflect",
+    "SDK_PREFIX=.chibi/portable-byte-libraries/sdk-installed",
+    "SDK_CMAKE_FLAGS=-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF",
+    "JOBS=3"
+  ],
+  "exit_code": 0,
+  "seconds": 31.468834083992988,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-4800-sdk-build.log"
+}

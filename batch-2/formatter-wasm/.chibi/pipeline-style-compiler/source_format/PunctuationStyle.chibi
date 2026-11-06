@@ -1,0 +1,519 @@
+package source_format
+
+import strings "core:strings"
+import syntax "project:compiler_syntax"
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+import directives "project:source_directives"
+
+// Controls: preserve 0, omit 1, require 2. Expressions: preserve 0, omit
+// redundant 1, add readability groups 2. Commas: preserve 0, omit 1,
+// require on multiline lists 2. The caller runs comma style after layout.
+pub PunctuationPolicies :: struct {
+    if_parens: int;
+    while_parens: int;
+    for_parens: int;
+    switch_parens: int;
+    when_parens: int;
+    expression_parens: int;
+    readability_mixed_operators: bool;
+    flatten_parens: bool;
+    trailing_commas: int;
+    trailing_commas_arguments: int;
+    trailing_commas_parameters: int;
+    trailing_commas_arrays: int;
+    trailing_commas_records: int;
+    trailing_commas_tuples: int;
+    trailing_commas_bindings: int;
+}
+
+pub PunctuationDefaults :: () -> PunctuationPolicies {
+    return {if_parens: Keep, while_parens: Keep, for_parens: Keep, switch_parens: Keep, when_parens: Keep,
+            expression_parens: Keep, readability_mixed_operators: false, flatten_parens: false, trailing_commas: Keep,
+            trailing_commas_arguments: -1, trailing_commas_parameters: -1, trailing_commas_arrays: -1,
+            trailing_commas_records: -1, trailing_commas_tuples: -1, trailing_commas_bindings: -1};
+}
+
+PunctuationPolicyProblem :: (policies: PunctuationPolicies) -> string {
+    if (policies.if_parens < Keep || policies.if_parens > Always ||
+        policies.while_parens < Keep || policies.while_parens > Always ||
+        policies.for_parens < Keep || policies.for_parens > Always ||
+        policies.switch_parens < Keep || policies.switch_parens > Always ||
+        policies.when_parens < Keep || policies.when_parens > Always) {
+        return "Invalid control parenthesis policy";
+    }
+    if (policies.expression_parens < Keep || policies.expression_parens > Always) {
+        return "Invalid expression parenthesis policy";
+    }
+    return "";
+}
+
+PunctuationBounds :: struct {
+    first: int[];
+    last: int[];
+    comments: bool[];
+    protected: bool[];
+}
+
+// One-based visible leaf handles keep the all-zero array value empty. Every
+// row and edge is visited once; grouping candidates never rescan subtrees.
+PunctuationRanges :: (text: string, rows: diag.Node[]) -> PunctuationBounds {
+    first := resize([int(0)], length(rows));
+    last := resize([int(0)], length(rows));
+    comments := resize([false], length(rows));
+    protected := resize([false], length(rows));
+    verbatim := false;
+    for (node in 0..<length(rows)) {
+        if (rows[node].first_child >= 0 || rows[node].start == rows[node].end) { continue; }
+        first[node] = node + 1;
+        last[node] = node + 1;
+        if (rows[node].kind == diag.Comment) {
+            next := directives.Apply(text_slice(text, rows[node].start, rows[node].end - rows[node].start), verbatim);
+            comments[node] = true;
+            protected[node] = verbatim || next;
+            verbatim = next;
+        } else {
+            protected[node] = verbatim;
+        }
+    }
+    node := length(rows) - 1;
+    while (node >= 0) {
+        parent := rows[node].parent;
+        if (parent >= 0) {
+            if (first[node] > 0 && (first[parent] == 0 || first[node] < first[parent])) {
+                first[parent] = first[node];
+            }
+            if (last[node] > last[parent]) { last[parent] = last[node]; }
+            comments[parent] = comments[parent] || comments[node];
+            protected[parent] = protected[parent] || protected[node];
+        }
+        node -= 1;
+    }
+    return {first: first, last: last, comments: comments, protected: protected};
+}
+
+PunctuationControl :: (kind: int, policies: PunctuationPolicies) -> int {
+    if (kind == diag.IfStatement) { return policies.if_parens; }
+    if (kind == diag.WhileStatement) { return policies.while_parens; }
+    if (kind == diag.ForStatement) { return policies.for_parens; }
+    if (kind == diag.SwitchStatement) { return policies.switch_parens; }
+    if (kind == diag.WhenDeclaration) { return policies.when_parens; }
+    return Keep;
+}
+
+PunctuationCondition :: (rows: diag.Node[], fields: int[], node: int) -> int {
+    kind := rows[node].kind;
+    if (kind == diag.IfStatement || kind == diag.WhileStatement || kind == diag.WhenDeclaration) {
+        return ChildByField(rows, fields, node, diag.FieldCondition);
+    }
+    if (kind == diag.SwitchStatement) {
+        return ChildByField(rows, fields, node, diag.FieldValue);
+    }
+    return -1;
+}
+
+// The parser's binding powers. This is used only to choose conservative
+// candidates. The normalized-tree proof below is the authority on safety.
+PunctuationPower :: (rows: diag.Node[], fields: int[], node: int) -> int {
+    kind := rows[node].kind;
+    if (kind == diag.IsExpression || kind == diag.AsExpression) { return 7; }
+    if (kind != diag.BinaryExpression) { return 100; }
+    operator := ChildByField(rows, fields, node, diag.FieldOperator);
+    token := KindOf(rows, operator);
+    if (token == tk.CmpOr || token == tk.OrKeyword) { return 1; }
+    if (token == tk.CmpAnd || token == tk.AndKeyword) { return 2; }
+    if (token == tk.Or) { return 3; }
+    if (token == tk.Xor) { return 4; }
+    if (token == tk.And) { return 5; }
+    if (token == tk.CmpEq || token == tk.NotEq) { return 6; }
+    if (token == tk.Lt || token == tk.LtEq || token == tk.Gt || token == tk.GtEq ||
+        token == tk.In || token == diag.NotIn) { return 7; }
+    if (token == tk.Coalesce) { return 8; }
+    if (token == tk.Shl || token == tk.Shr) { return 9; }
+    if (token == tk.Add || token == tk.Sub) { return 10; }
+    if (token == tk.Mul || token == tk.Quo || token == tk.Mod) { return 11; }
+    return 0;
+}
+
+PunctuationRedundant :: (rows: diag.Node[], fields: int[], group: int, whole_chain: bool) -> bool {
+    inner := ChildByField(rows, fields, group, diag.FieldExpression);
+    if (inner < 0) { return false; }
+    parent := rows[group].parent;
+    if (parent < 0) { return false; }
+    if (!whole_chain && rows[inner].kind == diag.ParenthesizedExpression) { return true; }
+    // Only the outermost repeated group asks for the entire chain. Its
+    // descendants are dropped directly below, keeping traversal linear.
+    while (rows[inner].kind == diag.ParenthesizedExpression) {
+        inner = ChildByField(rows, fields, inner, diag.FieldExpression);
+        if (inner < 0) { return false; }
+    }
+    effective_field := fields[group];
+    while (parent >= 0 && rows[parent].kind == diag.ParenthesizedExpression) {
+        effective_field = fields[parent];
+        parent = rows[parent].parent;
+    }
+    if (parent < 0) { return false; }
+    kind := rows[parent].kind;
+    power := PunctuationPower(rows, fields, inner);
+    if (kind == diag.BinaryExpression || kind == diag.IsExpression || kind == diag.AsExpression) {
+        outer := PunctuationPower(rows, fields, parent);
+        if (power > outer) { return true; }
+        if (power < outer) { return false; }
+        // Binary arithmetic is left associative; coalescing is right
+        // associative. Equal-precedence right arithmetic groups stay intact.
+        if (kind != diag.BinaryExpression) { return false; }
+        operator := ChildByField(rows, fields, parent, diag.FieldOperator);
+        if (KindOf(rows, operator) == tk.Coalesce) { return effective_field == diag.FieldRight; }
+        return effective_field == diag.FieldLeft;
+    }
+    if (kind == diag.UnaryExpression || kind == diag.AddressExpression || kind == diag.AwaitExpression) {
+        return power == 100;
+    }
+    if ((kind == diag.CallExpression && effective_field == diag.FieldFunction) ||
+        (kind == diag.MemberExpression && effective_field == diag.FieldObject) ||
+        (kind == diag.IndexExpression && effective_field == diag.FieldObject) ||
+        kind == diag.DereferenceExpression || kind == diag.ForceUnwrapExpression ||
+        kind == diag.OptionalMemberExpression) {
+        inner_kind := rows[inner].kind;
+        return power == 100 && inner_kind != diag.UnaryExpression && inner_kind != diag.AddressExpression &&
+               inner_kind != diag.AwaitExpression && inner_kind != diag.LambdaExpression &&
+               inner_kind != diag.RangeExpression;
+    }
+    return true;
+}
+
+PunctuationWordByte :: (byte: int) -> bool {
+    return (byte >= 97 && byte <= 122) || (byte >= 65 && byte <= 90) ||
+           (byte >= 48 && byte <= 57) || byte == 95 || byte >= 128;
+}
+
+PunctuationOperatorByte :: (byte: int) -> bool {
+    return byte == 43 || byte == 45 || byte == 42 || byte == 47 ||
+           byte == 37 || byte == 33 || byte == 61 || byte == 60 ||
+           byte == 62 || byte == 38 || byte == 124 || byte == 94 ||
+           byte == 126 || byte == 63 || byte == 58 || byte == 46;
+}
+
+PunctuationList :: (kind: int) -> bool {
+    return kind == diag.ArgumentList || kind == diag.ParameterList ||
+           kind == diag.ArrayExpression || kind == diag.MapExpression ||
+           kind == diag.StructExpression || kind == diag.PatternBindings || kind == diag.PrototypeBases;
+}
+
+PunctuationCommaProblem :: (policies: PunctuationPolicies) -> string {
+    if (policies.trailing_commas < Keep || policies.trailing_commas > Always) { return "Invalid trailing comma policy"; }
+    for (policy in [policies.trailing_commas_arguments, policies.trailing_commas_parameters,
+                    policies.trailing_commas_arrays, policies.trailing_commas_records,
+                    policies.trailing_commas_tuples, policies.trailing_commas_bindings]) {
+        if (policy < -1 || policy > Always) { return "Invalid list-specific trailing comma policy"; }
+    }
+    return "";
+}
+
+pub AnyCommaStyle :: (policies: PunctuationPolicies) -> bool {
+    return policies.trailing_commas != Keep || policies.trailing_commas_arguments > Keep ||
+           policies.trailing_commas_parameters > Keep || policies.trailing_commas_arrays > Keep ||
+           policies.trailing_commas_records > Keep || policies.trailing_commas_tuples > Keep ||
+           policies.trailing_commas_bindings > Keep;
+}
+
+// The same resolved policy owns comma edits and their wrapping signal. A
+// return argument list is a tuple; ordinary calls retain the argument policy.
+pub CommaPolicy :: (rows: diag.Node[], node: int, policies: PunctuationPolicies) -> int {
+    kind := KindOf(rows, node);
+    policy := -1;
+    if (kind == diag.ArgumentList) {
+        policy = policies.trailing_commas_arguments;
+        if (ParentKind(rows, node) == diag.ReturnStatement) { policy = policies.trailing_commas_tuples; }
+    } else if (kind == diag.ParameterList) { policy = policies.trailing_commas_parameters; }
+    else if (kind == diag.ArrayExpression || kind == diag.MapExpression) { policy = policies.trailing_commas_arrays; }
+    else if (kind == diag.StructExpression) { policy = policies.trailing_commas_records; }
+    else if (kind == diag.PatternBindings || kind == diag.PrototypeBases) { policy = policies.trailing_commas_bindings; }
+    if (policy >= 0) { return policy; }
+    return policies.trailing_commas;
+}
+
+PunctuationOperatorKind :: (rows: diag.Node[], fields: int[], node: int) -> int {
+    kind := rows[node].kind;
+    if (kind == diag.IsExpression) { return tk.Is; }
+    if (kind == diag.AsExpression) { return tk.As; }
+    return KindOf(rows, ChildByField(rows, fields, node, diag.FieldOperator));
+}
+
+PunctuationTrailingComma :: (rows: diag.Node[], node: int) -> bool {
+    if (rows[node].kind != tk.Comma) { return false; }
+    parent := rows[node].parent;
+    if (parent < 0 || !PunctuationList(rows[parent].kind)) { return false; }
+    next := rows[node].next_sibling;
+    while (next >= 0 && rows[next].kind == diag.Comment) { next = rows[next].next_sibling; }
+    kind := KindOf(rows, next);
+    return kind == tk.CloseParen || kind == tk.CloseBracket || kind == tk.CloseBrace;
+}
+
+PunctuationWrapper :: (rows: diag.Node[], node: int) -> bool {
+    if (rows[node].kind == diag.ParenthesizedExpression) { return true; }
+    kind := rows[node].kind;
+    parent := rows[node].parent;
+    return parent >= 0 && (kind == tk.OpenParen || kind == tk.CloseParen) &&
+           (rows[parent].kind == diag.ParenthesizedExpression || rows[parent].kind == diag.ForStatement);
+}
+
+PunctuationNext :: (rows: diag.Node[], at: int, leaves: bool) -> int {
+    while (at < length(rows)) {
+        if (rows[at].start != rows[at].end && rows[at].kind != tk.Semicolon &&
+            !PunctuationWrapper(rows, at) && !PunctuationTrailingComma(rows, at) &&
+            ((!leaves && rows[at].kind != diag.Comment) || (leaves && rows[at].first_child < 0))) { return at; }
+        at += 1;
+    }
+    return at;
+}
+
+// Parenthesis wrappers are transparent: their expression inherits their outer
+// field and depth. Every other syntax row, token spelling and comment remains.
+// In particular, reassociation changes BinaryExpression nesting and rejects.
+SamePunctuationTree :: (a_text: string, a: diag.Node[], a_fields: int[], a_named: bool[],
+                        b_text: string, b: diag.Node[], b_fields: int[], b_named: bool[]) -> bool {
+    a_depth := resize([int(0)], length(a));
+    b_depth := resize([int(0)], length(b));
+    a_effective := a_fields;
+    b_effective := b_fields;
+    for (node in 1..<length(a)) {
+        parent := a[node].parent;
+        if (parent >= 0) {
+            a_depth[node] = a_depth[parent] + 1;
+            if (a[node].kind == diag.ParenthesizedExpression) { a_depth[node] -= 1; }
+            if (a[parent].kind == diag.ParenthesizedExpression) { a_effective[node] = a_effective[parent]; }
+        }
+    }
+    for (node in 1..<length(b)) {
+        parent := b[node].parent;
+        if (parent >= 0) {
+            b_depth[node] = b_depth[parent] + 1;
+            if (b[node].kind == diag.ParenthesizedExpression) { b_depth[node] -= 1; }
+            if (b[parent].kind == diag.ParenthesizedExpression) { b_effective[node] = b_effective[parent]; }
+        }
+    }
+    pass := 0;
+    while (pass < 2) {
+        leaves := pass == 1;
+        i := PunctuationNext(a, 0, leaves);
+        j := PunctuationNext(b, 0, leaves);
+        while (i < length(a) && j < length(b)) {
+            if (a[i].kind != b[j].kind) { return false; }
+            if (!leaves && (a_named[i] != b_named[j] ||
+                a_depth[i] != b_depth[j] || a_effective[i] != b_effective[j])) { return false; }
+            if (leaves) {
+                size := a[i].end - a[i].start;
+                if (size != b[j].end - b[j].start ||
+                    text_slice(a_text, a[i].start, size) != text_slice(b_text, b[j].start, size)) { return false; }
+            }
+            i = PunctuationNext(a, i + 1, leaves);
+            j = PunctuationNext(b, j + 1, leaves);
+        }
+        if (i < length(a) || j < length(b)) { return false; }
+        pass += 1;
+    }
+    return true;
+}
+
+PunctuationCodeEnds :: (rows: diag.Node[]) -> int[] {
+    ends := resize([int(0)], length(rows));
+    node := length(rows) - 1;
+    while (node >= 0) {
+        if (rows[node].first_child < 0 && rows[node].kind != diag.Comment &&
+            rows[node].kind != tk.Semicolon && rows[node].start != rows[node].end) { ends[node] = node + 1; }
+        parent := rows[node].parent;
+        if (parent >= 0 && ends[node] > ends[parent]) { ends[parent] = ends[node]; }
+        node -= 1;
+    }
+    return ends;
+}
+
+PunctuationEmit :: (text: string, rows: diag.Node[], dropped: bool[], opens: int[],
+                    closes: int[], commas: bool[]) -> string {
+    pieces: string[] = [];
+    copied := 0;
+    previous := -1;
+    joined := false;
+    for (node in 0..<length(rows)) {
+        if (rows[node].first_child >= 0 || rows[node].start == rows[node].end) { continue; }
+        gap := text_slice(text, copied, rows[node].start - copied);
+        pieces.append(gap);
+        if (text_byte_length(gap) > 0) {
+            previous = strings.ByteAt(gap, text_byte_length(gap) - 1);
+            joined = false;
+        }
+        count := 0;
+        while (count < opens[node]) { pieces.append("("); previous = 40; count += 1; }
+        if (!dropped[node]) {
+            beginning := strings.ByteAt(text, rows[node].start);
+            if (joined && ((PunctuationWordByte(previous) && PunctuationWordByte(beginning)) ||
+                           (PunctuationOperatorByte(previous) && PunctuationOperatorByte(beginning)))) {
+                pieces.append(" ");
+            }
+            pieces.append(text_slice(text, rows[node].start, rows[node].end - rows[node].start));
+            previous = strings.ByteAt(text, rows[node].end - 1);
+            joined = false;
+        } else {
+            joined = true;
+        }
+        count = 0;
+        while (count < closes[node]) { pieces.append(")"); previous = 41; joined = false; count += 1; }
+        if (commas[node]) { pieces.append(","); previous = 44; joined = false; }
+        copied = rows[node].end;
+    }
+    pieces.append(text_slice(text, copied, text_byte_length(text) - copied));
+    return strings.Join(pieces, "");
+}
+
+PunctuationChecked :: (text: string, rows: diag.Node[], fields: int[], named: bool[],
+                       dropped: bool[], opens: int[], closes: int[], commas: bool[]) -> Result {
+    rewritten := PunctuationEmit(text, rows, dropped, opens, closes, commas);
+    if (rewritten == text) { return Result.Formatted(text, ""); }
+    switch syntax.Parse(rewritten) {
+        case .Rejected(diagnostic):
+            return Result.Formatted(text, "Punctuation style kept the original spelling because the requested edit did not parse equivalently.");
+        case .Parsed(next_rows, next_fields, next_named, next_extras, next_root):
+            if (!SamePunctuationTree(text, rows, fields, named, rewritten, next_rows, next_fields, next_named)) {
+                return Result.Formatted(text, "Punctuation style kept the original spelling because the requested edit changed expression grouping or list structure.");
+            }
+            return Result.Formatted(rewritten, "");
+    }
+}
+
+pub PunctuationParens :: (text: string, rows: diag.Node[], fields: int[], named: bool[], root: int,
+                          policies: PunctuationPolicies) -> Result {
+    problem := PunctuationPolicyProblem(policies);
+    if (problem != "") { return Result.Rejected(problem); }
+    if (policies.if_parens == Keep && policies.while_parens == Keep && policies.for_parens == Keep &&
+        policies.when_parens == Keep &&
+        policies.switch_parens == Keep && policies.expression_parens == Keep && !policies.flatten_parens) {
+        return Result.Formatted(text, "");
+    }
+    ranges := PunctuationRanges(text, rows);
+    dropped := resize([false], length(rows));
+    opens := resize([int(0)], length(rows));
+    closes := resize([int(0)], length(rows));
+    commas := resize([false], length(rows));
+    for (node in 0..<length(rows)) {
+        kind := rows[node].kind;
+        control := PunctuationControl(kind, policies);
+        if (kind == diag.ForStatement && control != Keep) {
+            child := rows[node].first_child;
+            first := -1;
+            last := -1;
+            opener := -1;
+            closer := -1;
+            blocked := false;
+            while (child >= 0 && fields[child] != diag.FieldBody) {
+                child_kind := rows[child].kind;
+                blocked = blocked || ranges.protected[child] || ranges.comments[child];
+                if (child_kind == tk.OpenParen) { opener = child; }
+                else if (child_kind == tk.CloseParen) { closer = child; }
+                else if (child_kind != tk.For && fields[child] != diag.FieldReverse) {
+                    if (first < 0) { first = child; }
+                    last = child;
+                }
+                child = rows[child].next_sibling;
+            }
+            if (!blocked && control == Always && opener < 0 && first >= 0 && last >= 0) {
+                opens[ranges.first[first] - 1] += 1;
+                closes[ranges.last[last] - 1] += 1;
+            } else if (!blocked && control == Omit && opener >= 0 && closer >= 0) {
+                dropped[opener] = true;
+                dropped[closer] = true;
+            }
+        } else if (control != Keep) {
+            condition := PunctuationCondition(rows, fields, node);
+            if (condition >= 0 && !ranges.comments[condition] && !ranges.protected[condition]) {
+                grouped := rows[condition].kind == diag.ParenthesizedExpression;
+                if (control == Always && !grouped) {
+                    opens[ranges.first[condition] - 1] += 1;
+                    closes[ranges.last[condition] - 1] += 1;
+                } else if (control == Omit && grouped) {
+                    group := condition;
+                    while (group >= 0 && rows[group].kind == diag.ParenthesizedExpression &&
+                           !ranges.protected[group] && !ranges.comments[group]) {
+                        dropped[ranges.first[group] - 1] = true;
+                        dropped[ranges.last[group] - 1] = true;
+                        group = ChildByField(rows, fields, group, diag.FieldExpression);
+                    }
+                }
+            }
+        }
+        if (ranges.protected[node] || ranges.comments[node]) { continue; }
+        if (kind == diag.ParenthesizedExpression) {
+            parent := rows[node].parent;
+            inner := ChildByField(rows, fields, node, diag.FieldExpression);
+            controlling := parent >= 0 && PunctuationCondition(rows, fields, parent) == node;
+            nested := KindOf(rows, parent) == diag.ParenthesizedExpression;
+            if (!controlling &&
+                ((policies.flatten_parens && nested) ||
+                 (policies.expression_parens == Omit && (!policies.flatten_parens || !nested) &&
+                  PunctuationRedundant(rows, fields, node, policies.flatten_parens)))) {
+                dropped[ranges.first[node] - 1] = true;
+                dropped[ranges.last[node] - 1] = true;
+            }
+        } else if ((kind == diag.BinaryExpression || kind == diag.IsExpression || kind == diag.AsExpression) &&
+                   policies.expression_parens == Always) {
+            parent := rows[node].parent;
+            if (KindOf(rows, parent) == diag.BinaryExpression &&
+                (PunctuationPower(rows, fields, node) != PunctuationPower(rows, fields, parent) ||
+                 (policies.readability_mixed_operators &&
+                  PunctuationOperatorKind(rows, fields, node) != PunctuationOperatorKind(rows, fields, parent)))) {
+                opens[ranges.first[node] - 1] += 1;
+                closes[ranges.last[node] - 1] += 1;
+            }
+        }
+    }
+    return PunctuationChecked(text, rows, fields, named, dropped, opens, closes, commas);
+}
+
+pub PunctuationCommas :: (text: string, rows: diag.Node[], fields: int[], named: bool[], root: int,
+                          policies: PunctuationPolicies) -> Result {
+    problem := PunctuationCommaProblem(policies);
+    if (problem != "") { return Result.Rejected(problem); }
+    if (!AnyCommaStyle(policies)) { return Result.Formatted(text, ""); }
+    ranges := PunctuationRanges(text, rows);
+    code_ends := PunctuationCodeEnds(rows);
+    dropped := resize([false], length(rows));
+    opens := resize([int(0)], length(rows));
+    closes := resize([int(0)], length(rows));
+    commas := resize([false], length(rows));
+    for (node in 0..<length(rows)) {
+        if (!PunctuationList(rows[node].kind) || ranges.protected[node]) { continue; }
+        policy := CommaPolicy(rows, node, policies);
+        if (policy == Keep) { continue; }
+        child := rows[node].first_child;
+        previous := -1;
+        closing := -1;
+        items := 0;
+        single_kind := 0;
+        while (child >= 0) {
+            kind := rows[child].kind;
+            if (kind == tk.CloseParen || kind == tk.CloseBracket || kind == tk.CloseBrace) {
+                closing = child;
+                break;
+            }
+            if (named[child] && kind != diag.Comment) { items += 1; single_kind = kind; }
+            if (kind != diag.Comment) { previous = child; }
+            child = rows[child].next_sibling;
+        }
+        if (items == 0 || previous < 0 || closing < 0) { continue; }
+        existing := rows[previous].kind == tk.Comma;
+        if (policy == Omit && existing) {
+            // A singleton tuple return requires its comma to stay an
+            // ArgumentList rather than become a grouped scalar expression.
+            if (rows[node].kind == diag.ArgumentList && ParentKind(rows, node) == diag.ReturnStatement &&
+                items == 1 && single_kind != diag.NamedArgument && single_kind != diag.TypedArgument) { continue; }
+            dropped[previous] = true;
+        } else if (policy == Always && !existing) {
+            opener := ranges.first[node] - 1;
+            if (opener >= 0 && rows[closing].row > rows[opener].row) {
+                end := code_ends[previous] - 1;
+                if (end >= 0) { commas[end] = true; }
+            }
+        }
+    }
+    return PunctuationChecked(text, rows, fields, named, dropped, opens, closes, commas);
+}

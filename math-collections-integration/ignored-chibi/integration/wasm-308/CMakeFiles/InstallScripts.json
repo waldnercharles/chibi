@@ -1,0 +1,9 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm-308/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm-308/sdk/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm-308/sdk/language/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

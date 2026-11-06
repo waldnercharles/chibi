@@ -1,0 +1,6 @@
+package native_test_waiting_helper_arguments_rejection
+foreign { chibi_native_test_begin :: (unexpected: int) -> int }
+Main :: () -> int {
+    if (false) { yield }
+    return chibi_native_test_begin(1);
+}

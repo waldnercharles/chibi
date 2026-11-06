@@ -1,0 +1,14 @@
+package facts
+import lib "project:constants/lib"
+Base: int : 40;
+Down: int : -2;
+Plain: int : 7;
+Sum :: (n: int) -> int { return n + Base + Down + Plain + lib.Step; }
+Hidden :: () -> int { Base: int = 1; return Base; }
+Limits :: () -> int {
+    high := lib.High;
+    if (lib.Low < 0 && high > 0) { return high + lib.Low; }
+    return 0;
+}
+Scale :: () -> int { return lib.Scaled(2); }
+Tripled :: () -> int { return Triple(2); }

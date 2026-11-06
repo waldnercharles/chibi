@@ -1,0 +1,56 @@
+{
+  "feature": "Structural inline collector-owned records remain separate from nominal cell layouts",
+  "base": "5f39e0411c27b1cfd5a679c68830a6e8e5081139",
+  "compiler": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/chibi-inline-owners-v2",
+  "compiler_build_seconds": 38.0,
+  "pure_transform": {
+    "seconds": 0.84,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/inline-owners-proof/producer.log"
+  },
+  "native_units": {
+    "passed": 262,
+    "failed": 0,
+    "seconds": 3.98,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/inline-owners-proof/native-units.log"
+  },
+  "ordinary": {
+    "compile_async_source_bytes": 21951,
+    "compile_seconds": 0.12,
+    "tests": 2,
+    "failed": 0,
+    "seconds": 1.27,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/inline-owners-proof/ordinary.log"
+  },
+  "ordinary_owned_cell": {
+    "passed": 1,
+    "seconds": 1.02,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/inline-owners-proof/ordinary-owned-cell.log"
+  },
+  "normal_forced": {
+    "modes": 4,
+    "seconds": 3.04,
+    "live": 0,
+    "peak": [
+      977,
+      24
+    ],
+    "total": 8022,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/inline-owners-proof/normal.log"
+  },
+  "callbacks": {
+    "modes": 4,
+    "seconds": 2.85,
+    "live": 0,
+    "peak": 25,
+    "total": 16044,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/inline-owners-proof/callbacks.log"
+  },
+  "negative_controls": {
+    "old_producer": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/inline-owners-before.log",
+    "owned_cell_rejection_preserves_output": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/inline-owners-proof/rejected.log"
+  },
+  "review": {
+    "production": "One O(rows) demand scan and same existing nominal metadata pass only for actual managed record pointees; inline value metadata stays zero. No runtime tables, ABI or tracing changes. Scalar member validation still rejects arbitrary tags; native cell/project gates retain nonzero identities and flat/plain payload restrictions.",
+    "independent": "Root external source/API/owned-cell review clear; three diagnostic expectation updates verified by native units."
+  }
+}

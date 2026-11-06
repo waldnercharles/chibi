@@ -1,0 +1,3 @@
+package facts
+Maybe :: () -> int? { return nil; }
+Use :: () -> int { Maybe(); return 9; }

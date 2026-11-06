@@ -1,0 +1,22 @@
+{
+  "head": "ea596f9dfd9d353e129e6e7cb11d3cdd811d794c",
+  "tree": "3f0905af823bb8e11c671ac96f84815c0afc2514",
+  "tracked_clean_before": true,
+  "commands": [
+    {
+      "name": "wasm-build",
+      "command": [
+        "make",
+        "wasm-language-build",
+        "WASM_BUILD_DIR=.chibi/integration/wasm",
+        "JOBS=4"
+      ],
+      "environment_overrides": {},
+      "exit_code": 2,
+      "wall_seconds": 52.06272145919502,
+      "log": ".chibi/integration/wasm-build.log",
+      "log_sha256": "6e58879b6b0a9e3f8cf072f14772beb9668ef7217d7d709997e1d3e436c9fa6c",
+      "summaries": []
+    }
+  ]
+}

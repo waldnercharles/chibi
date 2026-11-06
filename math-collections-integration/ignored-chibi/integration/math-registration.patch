@@ -1,0 +1,454 @@
+diff --git a/test/language/CMakeLists.txt b/test/language/CMakeLists.txt
+index 3145b97ec..9b846fae2 100644
+--- a/test/language/CMakeLists.txt
++++ b/test/language/CMakeLists.txt
+@@ -263,7 +263,7 @@ target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UND
+ set_source_files_properties(binding_benchmark.c inferred_string_arrays.c record_publication.c outliner_projection.c row_array.c record_state.c record_prepared_runtime.c record_runtime.c record_semantic.c record_prepared.c runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c query_values.c query_migration.c program.c capture.c maps.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+ add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c retention.c capture.c query_boundary.c query_values.c query_migration.c incremental.c operations.c modules.c native_calls.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
+ # Package tests consume the owning SDK implementation; extraction stays private.
+-target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_tests.c package_graph_chibi.c docs_markdown.c)
++target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_math.c package_tests.c package_graph_chibi.c docs_markdown.c)
+ target_link_libraries(test_language PRIVATE Chibi::tasks)
+ if(TARGET Chibi::task_pool_runtime)
+     target_link_libraries(test_language PRIVATE Chibi::task_pool_runtime Chibi::conversion_capabilities)
+@@ -339,6 +339,28 @@ set_source_files_properties(scalar_lowering_chibi.c
+ target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c)
+ set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c
+     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
++set_source_files_properties(package_math.c PROPERTIES
++    COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
++if(CHIBI_INSTALLED_SDK)
++    set(core_math_source_root "${Chibi_CORE_SOURCE_DIR}/math")
++else()
++    set(core_math_source_root "${CHIBI_LANGUAGE_TEST_ROOT}/packages/core/math")
++endif()
++set(core_math_fixture_root "${core_math_source_root}")
++if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
++    # Only the six shipped math sources enter this fixture filesystem.
++    # Installed consumers embed their installed bytes, not this checkout's.
++    set(core_math_fixture_root "/chibi-fixtures/core/math")
++    foreach(source Math.chibi Spring.chibi MathTests.chibi SpringTests.chibi
++                   ease/Ease.chibi ease/EaseTests.chibi)
++        set(math_source "${core_math_source_root}/${source}")
++        set_property(TARGET test_language APPEND PROPERTY LINK_DEPENDS "${math_source}")
++        target_link_options(test_language PRIVATE
++            "SHELL:--embed-file \"${math_source}@${core_math_fixture_root}/${source}\"")
++    endforeach()
++endif()
++set_property(SOURCE package_math.c package_compiler_chibi.c APPEND PROPERTY
++    COMPILE_DEFINITIONS "CHIBI_CORE_MATH_ROOT=\"${core_math_fixture_root}\"")
+ target_sources(test_language PRIVATE numeric.c)
+ set_source_files_properties(numeric.c
+     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+diff --git a/test/language/main.c b/test/language/main.c
+index 52d6e742d..6273b7f95 100644
+--- a/test/language/main.c
++++ b/test/language/main.c
+@@ -97,6 +97,8 @@ void test_language_package_resolution();
+ void test_language_package_imports();
+ void test_language_package_files();
+ void test_language_package_core();
++void test_language_package_math();
++void test_language_package_math_benchmark();
+ void test_language_package_tests();
+ void test_language_docs_markdown();
+ void test_language_scalarize();
+@@ -314,6 +316,9 @@ int main(int argc, char **argv)
+     bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
+     bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
+     bool package_core = argc == 2 && !strcmp(argv[1], "--package-core");
++    bool package_math = argc == 2 && !strcmp(argv[1], "--package-math");
++    bool package_math_benchmark = argc == 2 &&
++                                  !strcmp(argv[1], "--package-math-benchmark");
+     bool package_tests = argc == 2 && !strcmp(argv[1], "--package-tests");
+     bool docs_markdown = argc == 2 && !strcmp(argv[1], "--docs-markdown");
+     bool package_files = argc == 2 && !strcmp(argv[1], "--package-files");
+@@ -374,11 +379,11 @@ int main(int argc, char **argv)
+          !package_compiler_chibi_native_arguments_oracle && !lexical_binding_chibi &&
+          !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
+          !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
+-         !snapshot_reader_chibi && !callable_headers_chibi &&
+-         !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
+-         !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
+-         !package_execution && !package_resolution && !package_imports &&
+-         !package_files && !package_core && !package_tests && !docs_markdown &&
++         !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
++         !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
++         !effect_analysis_chibi && !record_members_chibi && !package_execution &&
++         !package_resolution && !package_imports && !package_files && !package_core &&
++         !package_math && !package_math_benchmark && !package_tests && !docs_markdown &&
+          !component_write && !component_write_layout && !scalarize && !borrow &&
+          !reductions && !binding_schedule && !activation_cache && !headless &&
+          !build_workflow && !navigation && !publication && !field_runtime &&
+@@ -438,7 +443,8 @@ int main(int argc, char **argv)
+             "--package-syntax | --package-syntax-chibi | --package-execution | "
+             "--package-resolution | "
+             "--package-imports | --package-files | --package-core | "
+-            "--package-tests | --docs-markdown | "
++            "--package-math | --package-math-benchmark | --package-tests | "
++            "--docs-markdown | "
+             "--component-write | --component-write-layout | --scalarize | "
+             "--borrow | --reductions | "
+             "--binding-schedule | "
+@@ -711,6 +717,10 @@ int main(int argc, char **argv)
+         test_language_package_imports();
+     } else if (package_core) {
+         test_language_package_core();
++    } else if (package_math) {
++        test_language_package_math();
++    } else if (package_math_benchmark) {
++        test_language_package_math_benchmark();
+     } else if (package_tests) {
+         test_language_package_tests();
+     } else if (docs_markdown) {
+diff --git a/test/language/package_compiler_chibi.c b/test/language/package_compiler_chibi.c
+index e196fc85a..aee11cf25 100644
+--- a/test/language/package_compiler_chibi.c
++++ b/test/language/package_compiler_chibi.c
+@@ -17,6 +17,7 @@
+ #include "package_compiler_chibi_source.h"
+ #include "runtime/arrays_definition.h"
+ #include "runtime/core_definition.h"
++#include "runtime/math_definition.h"
+ #include "runtime/native_capabilities.h"
+ #include "runtime/native_prepared.h"
+ #include "runtime/text_definition.h"
+@@ -63,6 +64,10 @@
+ extern char **environ;
+ #endif
+ 
++#ifndef CHIBI_CORE_MATH_ROOT
++#define CHIBI_CORE_MATH_ROOT "packages/core/math"
++#endif
++
+ /* The authored package compiler, prepared by stage zero, compiles each sample
+  * package, with the packages it imports, to a closure against the natives the
+  * compiler host links. A fresh runtime host loads it and calls every function
+@@ -129,8 +134,9 @@ typedef struct
+     const char *name, *source, *more, *library;
+     const char *collection_source, *collection_dependency;
+     sample_group group;
+-    bool core, updates, boxed, game, moves, aliases, variants, built, same_rejection,
+-        c_string_probe, host_effects, update_order, debug_metadata, traced;
++    bool core, math, updates, boxed, game, moves, aliases, variants, built,
++        same_rejection, c_string_probe, host_effects, update_order,
++        debug_metadata, traced;
+     sample_call calls[CALLS];
+     const char *message;
+     const char *oracle_message;
+@@ -950,6 +956,37 @@ static const sample samples[] = {
+       .collection_source = HOST_ONLY_SOURCE,
+       .project_modules = 2,
+       .calls = { { .function = "Value", .arguments = "[]", .expected = "[7]" } } },
++    { .name = "core-math-imported-values",
++      .group = IMPORT_SAMPLES,
++      .math = true,
++      .game = true,
++      .source =
++          "package facts\nimport math \"core:math\"\nimport ease "
++          "\"core:math/ease\"\n"
++          "pub Check :: () -> bool { x: number = 16777215; "
++          "return math.InverseLerp(-1, 16777216, x) == 1 && "
++          "math.InverseLerp(6, 2, 3) == 0.75 && math.Lerp(2, 6, 0.25) == 3 && "
++          "ease.QuadraticInOut(0.5) == 0.5; }\n"
++          "pub Spring :: () -> bool { spring: math.Spring = {position: 1, "
++          "velocity: 0}; "
++          "next := math.AdvanceSpring(spring, 0, 1, 1, 0.125); "
++          "return next.position > 0.8140309 && next.position < 0.8140313 && "
++          "next.velocity > -2.2499655 && next.velocity < -2.2499635; }\n"
++          "pub Narrow :: () -> bool { wide: f64 = 16777217; "
++          "return math.InverseLerp(16777216, 16777218, number(wide)) == 0; }\n",
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" },
++                 { .function = "Spring", .arguments = "[]", .expected = "[true]" },
++                 { .function = "Narrow", .arguments = "[]", .expected = "[true]" } } },
++    { .name = "core-math-rejects-implicit-f64-narrowing",
++      .group = IMPORT_SAMPLES,
++      .math = true,
++      .game = true,
++      .source = "package facts\nimport math \"core:math\"\n"
++                "pub Narrow :: (value: f64) -> number { return "
++                "math.InverseLerp(16777216, 16777218, value); }\n",
++      .message = "argument differs from its parameter type",
++      .line = 3,
++      .column = 47 },
+     { .name = "array update debug order",
+       .group = COLLECTION_SAMPLES,
+       .update_order = true,
+@@ -3697,11 +3734,12 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
+             CORE_DEFINITION_PACK,          CSTRING_PACK
+         };
+         char error[256];
+-        native_definition_pack selected[6];
++        native_definition_pack selected[7];
+         int count = 4;
+         memcpy(selected, packs, (size_t)count * sizeof *selected);
+         if (game) {
+             selected[count++] = CORE_DEFINITION_PACK;
++            selected[count++] = NATIVE_MATH_DEFINITION_PACK;
+         }
+         if (probe) {
+             selected[count++] = CSTRING_PACK;
+@@ -3824,6 +3862,30 @@ static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INP
+             strlen(s->collection_dependency)
+         };
+     }
++    if (s->math) {
++        static char sources[3][32768];
++        static const char *const names[] = { "Math.chibi", "Spring.chibi", "ease/Ease.chibi" };
++        static const char *const paths[] = { "/sdk/core/math/Math.chibi",
++                                             "/sdk/core/math/Spring.chibi",
++                                             "/sdk/core/math/ease/Ease.chibi" };
++        const char *root = getenv("CHIBI_CORE_MATH_ROOT");
++        if (!root || !root[0]) {
++            root = CHIBI_CORE_MATH_ROOT;
++        }
++        for (int i = 0; i < 3; i++) {
++            char path[4096];
++            int n = snprintf(path, sizeof path, "%s/%s", root, names[i]);
++            assert(n > 0 && (size_t)n < sizeof path && count < SAMPLE_INPUTS);
++            FILE *file = fopen(path, "rb");
++            assert(file);
++            size_t length = fread(sources[i], 1, sizeof sources[i] - 1, file);
++            bool read = !ferror(file) && feof(file);
++            fclose(file);
++            assert(read);
++            sources[i][length] = 0;
++            inputs[count++] = (source_package_input){ paths[i], sources[i], length };
++        }
++    }
+     return count;
+ }
+ static pin_value files(const source_package_input *inputs, int count, bool sources)
+@@ -3962,6 +4024,89 @@ static uint64_t function_id(const char *name)
+     snprintf(text, sizeof text, "project:facts:1:%s:callable", name);
+     return script_catalog_id("package-symbol", text);
+ }
++/* Math packages link the ordinary native libm pack, outside the compiler
++ * host's intentionally restricted JSON/text/array execution profile. */
++static bool run_math(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
++{
++    REQUIRE(!strcmp(call->arguments, "[]") && !strcmp(call->expected, "[true]"));
++    native_prepared_context native = { .native = linked[1][0] };
++    execution_prepared_linker linker = native_capabilities_prepared_linker(&native);
++    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
++    uint64_t root;
++    char error[256];
++    behavior_backend mode = backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE;
++    package_collection *collection = compiler_artifact_read(
++        bytes,
++        length,
++        &linker,
++        mode,
++        &remaining,
++        &root,
++        error,
++        sizeof error
++    );
++    if (!collection) {
++        fprintf(stderr, "math artifact: %s\n", error);
++    }
++    REQUIRE(collection);
++    const behavior_function *body = NULL;
++    for (int i = 0; i < package_collection_count(collection); i++) {
++        execution_module *module = package_collection_module(collection, i);
++        if (execution_module_id(module) != root) {
++            continue;
++        }
++        for (int j = 0; j < execution_module_function_count(module); j++) {
++            execution_module_function_info info = execution_module_function_at(module, j);
++            if (info.id == function_id(call->function)) {
++                body = info.body;
++            }
++        }
++    }
++    REQUIRE(body);
++    arena memory = { 0 };
++    behavior_managed_heap heap = { 0 };
++    behavior_managed_heap_init(&heap);
++    behavior_function_activation activation = { 0 };
++    if (behavior_function_resumable(body)) {
++        behavior_function_activation_init(body, &activation);
++    }
++    pin_value answer = { .type = PIN_BOOL };
++    behavior_function_context context = {
++        .results = &answer,
++        .activation = behavior_function_resumable(body) ? &activation : NULL,
++        .managed_heap = &heap,
++        .budget = TARGET_BUDGET
++    };
++    behavior_function_bind_storage(&context, &memory);
++    REQUIRE(behavior_function_bind(body, &context, NULL, 0));
++    behavior_run_scope counts = { 0 };
++    behavior_run_scope_begin(&counts);
++    int status = behavior_function_run(body, &context, backend != 0);
++    behavior_run_scope_end(&counts);
++    bool passed = status == FLOW_OK && context.returned && answer.type == PIN_BOOL &&
++                  answer.b && !counts.counts.inspection_bytecode_fallbacks &&
++                  (!backend || ((TEST_COMPILED_BACKEND == BEHAVIOR_WASM
++                                     ? counts.counts.wasm_entries > 0
++                                     : counts.counts.sljit_entries > 0) &&
++                                !counts.counts.bytecode_entries));
++    if (!passed) {
++        fprintf(
++            stderr,
++            "math artifact %s backend=%d status=%d: %s\n",
++            call->function,
++            backend,
++            status,
++            context.error_message ? context.error_message : "wrong result"
++        );
++    }
++    behavior_function_release_host(&context);
++    behavior_function_activation_free(&activation);
++    behavior_managed_heap_free(&heap);
++    arena_free(&memory);
++    package_collection_free(collection);
++    REQUIRE(passed);
++    return true;
++}
+ static bool run(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
+ {
+     char error[256];
+@@ -4190,7 +4335,8 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
+     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
+                                        COMPILER_SYNTAX_DEFINITION_PACK,
+                                        CSTRING_PACK,
+-                                       CORE_DEFINITION_PACK };
++                                       CORE_DEFINITION_PACK,
++                                       NATIVE_MATH_DEFINITION_PACK };
+     /* Only this bytecode owner is serialized and compared below. Each
+      * caller still chooses its original target execution backends. */
+     REQUIRE(compiler_fixture_prepare_backends(
+@@ -4199,7 +4345,9 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
+         inputs,
+         count,
+         packs,
+-        s->game ? 4 : 3
++        s->math   ? 5
++        : s->game ? 4
++                  : 3
+     ));
+     const authoring_packages *owner = oracle.owners[0];
+     package_module rows[3];
+@@ -5548,13 +5696,17 @@ static bool run_samples(sample_group group, int b)
+                    (!s->built || builds_results(bytes, length)) &&
+                    ((b && !s->host_effects && !s->debug_metadata) ||
+                     (oracle_closure(s, &expected, &expected_length) &&
+-                     points_like_oracle(bytes, length, s->host_effects)));
++                     (s->math || points_like_oracle(bytes, length, s->host_effects))));
+         bool hosted = !s->traced || !s->c_string_probe;
+         for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
+             for (int backend = 0; ran && backend < 2; backend++) {
+-                ran = run(bytes, length, &s->calls[c], backend);
++                ran = s->math ? run_math(bytes, length, &s->calls[c], backend)
++                              : run(bytes, length, &s->calls[c], backend);
+             }
+-            ran = ran && (b || run(expected, expected_length, &s->calls[c], 0));
++            ran = ran &&
++                  (b ||
++                   (s->math ? run_math(expected, expected_length, &s->calls[c], 0)
++                            : run(expected, expected_length, &s->calls[c], 0)));
+         }
+         ran = ran && (!s->traced || traces_like_oracle(bytes, length, s));
+         if (ran && s->update_order) {
+diff --git a/test/language/packed.c b/test/language/packed.c
+index 5f5fabb3d..17e249675 100644
+--- a/test/language/packed.c
++++ b/test/language/packed.c
+@@ -642,14 +642,13 @@ TEST_CASE(float_math_stays_float_and_f64_math_stays_f64)
+                 narrow
+                     ? "Packed :: library { Math :: (value:number) -> number { "
+                       "return "
+-                      "sqrt(value)+sin(value)+pow(value,2)+mix(value,value,"
+-                      "0.5); } }"
++                      "sqrt(value)+sin(value)+pow(value,2); } }"
+                     : "Packed :: library { Math :: () -> f64 { return "
+                       "sqrt(f64(2)); } }",
+                 backends[b]
+             );
+             REQUIRE(function);
+-            REQUIRE(kernel_calls(narrow ? PIN_F32 : PIN_F64) == (narrow ? 4 : 1));
++            REQUIRE(kernel_calls(narrow ? PIN_F32 : PIN_F64) == (narrow ? 3 : 1));
+             pin_value value = { .type = PIN_F32, .f = 2 },
+                       result = { .type = narrow ? PIN_F32 : PIN_F64 };
+             context = (behavior_function_context){ .arguments = narrow ? &value : NULL,
+@@ -663,7 +662,6 @@ TEST_CASE(float_math_stays_float_and_f64_math_stays_f64)
+             if (narrow) {
+                 float expected = sqrtf(2) + cos_sin_compute(2).s;
+                 expected += powf(2, 2);
+-                expected += 2;
+                 REQUIRE(result.type == PIN_F32 && result.f == expected);
+             } else {
+                 REQUIRE(result.type == PIN_F64 && result.d == sqrt(2));
+diff --git a/tools/graph/engine/Targets.chibi b/tools/graph/engine/Targets.chibi
+index 5892c0a8c..b70b3e562 100644
+--- a/tools/graph/engine/Targets.chibi
++++ b/tools/graph/engine/Targets.chibi
+@@ -738,7 +738,7 @@ Files :: (target: string) -> string[] {
+             "test/language/packages.c", "test/language/package_syntax.c",
+             "test/language/package_execution.c", "test/language/package_resolution.c",
+             "test/language/package_imports.c", "test/language/package_files.c",
+-            "test/language/package_core.c", "test/language/package_tests.c",
++            "test/language/package_core.c", "test/language/package_math.c", "test/language/package_tests.c",
+             "test/language/package_graph_chibi.c", "test/language/docs_markdown.c",
+             "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
+             "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",
+@@ -3511,6 +3511,9 @@ LanguageTestsOverSource :: () -> string[] {
+ // source property adds them; Expand fills {source_root}, {build_type},
+ // {sha256:PATH} and {program:NAME}.
+ pub SourceDefines :: (target: string, file: string) -> string[] {
++    if (target == "test_language" && file == "test/language/package_compiler_chibi.c") {
++        return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
++    }
+     if (target == "test_language" && file == "test/language/runtime_attribution.c") {
+         return [
+             "CHIBI_ATTRIBUTION_BASE=\"3c65bb60b6f3443aef6ccf4ab15acbe09b04b191\"",
+@@ -3520,7 +3523,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
+     }
+     if (target == "test_language" &&
+         (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/asset_packaging_chibi.c" ||
+-         file == "test/language/integer_semantics.c")) {
++         file == "test/language/integer_semantics.c" || file == "test/language/package_math.c")) {
+         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
+     }
+     return [];
+diff --git a/tools/test_policy.py b/tools/test_policy.py
+index 9a320ffbf..54e684089 100644
+--- a/tools/test_policy.py
++++ b/tools/test_policy.py
+@@ -452,6 +452,8 @@ TOOLS = {
+                               '--package-core'],
+     'language-docs-markdown': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                '--docs-markdown'],
++    'language-package-math': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--package-math'],
++    'language-package-math-benchmark': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--package-math-benchmark'],
+     'language-package-tests': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                '--package-tests'],
+     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],
+@@ -503,7 +505,7 @@ for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions')
+     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
+ 
+ wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
+-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
++for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection', 'package-math'):
+     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
+ for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
+                  '-imports', '-imports-compiled', '-behaviors',
+@@ -565,7 +567,7 @@ GROUPS = {
+     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
+              'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
+              'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection',
+-             'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
++             'wasm-package-math', 'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
+     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
+                'player-url', 'player-clock',
+                'physics', 'physics3d',
+@@ -596,7 +598,7 @@ GROUPS = {
+                   'material-simulation', 'material-ecs', 'material-render'],
+     'language': ['language-test-parallel', 'execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-query-program', 'language-query-values', 'language-query-migration', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write',
+                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
+-                 'language-headless', 'language-format', 'language-package-tests', 'language-package-core', 'language-docs-markdown', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
++                 'language-headless', 'language-format', 'language-package-math', 'language-package-tests', 'language-package-core', 'language-docs-markdown', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
+                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
+                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
+                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-package-compiler-chibi-scalar',

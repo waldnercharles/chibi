@@ -1,0 +1,184 @@
+{
+  "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+  "snapshot_revision": "b87afaea2-dirty",
+  "actual_object_count": 486,
+  "actual_compile_log_lines": 485,
+  "selected_objects": [
+    {
+      "source": "test/language/package_math.c",
+      "object": "CMakeFiles/test_language.dir/package_math.c.o",
+      "sha256": "cc679a977df3a7cb726ce81a16d89054122dc334934b3cd161175632b2d46247",
+      "mtime_ns": 1793211806619287153
+    },
+    {
+      "source": "test/language/native_calls.c",
+      "object": "CMakeFiles/test_language.dir/native_calls.c.o",
+      "sha256": "44b699386ff1c5d848701c80315419455e0d4869bb25d26679c7fd1fce184b1c",
+      "mtime_ns": 1793211802640526056
+    },
+    {
+      "source": "test/language/package_compiler_chibi.c",
+      "object": "CMakeFiles/test_language.dir/package_compiler_chibi.c.o",
+      "sha256": "6638043276046698e2d75d57a608838223f7bcec3ccd6d9a0d82e925090ee6d1",
+      "mtime_ns": 1793211816371740854
+    },
+    {
+      "source": "test/language/package_imports.c",
+      "object": "CMakeFiles/test_language.dir/package_imports.c.o",
+      "sha256": "ab56b5aecbeda16a17e49727c23d18a1b2063b51f71230fed8751549bb0e93dd",
+      "mtime_ns": 1793211806611627691
+    },
+    {
+      "source": "test/language/package_snapshot_chibi.c",
+      "object": "CMakeFiles/test_language.dir/package_snapshot_chibi.c.o",
+      "sha256": "e7ef784b91e69e9165e667eb6de0beff6646eccb159c9b84ba6cf0f2a0eddd3b",
+      "mtime_ns": 1793211807651734672
+    },
+    {
+      "source": "test/language/record_publication.c",
+      "object": "CMakeFiles/test_language.dir/record_publication.c.o",
+      "sha256": "aa4ab676551fffaa018994810d63312153b6f00c5408090cd122430e49d04018",
+      "mtime_ns": 1793211798490911555
+    },
+    {
+      "source": "test/language/main.c",
+      "object": "CMakeFiles/test_language.dir/main.c.o",
+      "sha256": "f71a5f138facc93a584cfa88ccaa66452d62d3c748ebf16d6427678fc9d9a90a",
+      "mtime_ns": 1793211798545537661
+    },
+    {
+      "source": "test/language/compiler_fixture.c",
+      "object": "CMakeFiles/test_language.dir/compiler_fixture.c.o",
+      "sha256": "1ee09cfb7b7ccad470286f578c73c8452c7d61449643f1577aa442512775dffc",
+      "mtime_ns": 1793211807112120569
+    }
+  ],
+  "driver": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/test_language",
+  "driver_sha256": "f5de82109feeda547055a7c14f247a5eb8521c6be31dc0b2f6dcfc3b7d64b7fa",
+  "driver_mtime_ns": 1793211821024886192,
+  "asset_generation_or_complete_host_executables": false,
+  "link_command": "/opt/homebrew/opt/llvm@22/bin/clang -O3 -DNDEBUG -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names -Wl,-dead_strip CMakeFiles/test_language.dir/main.c.o CMakeFiles/test_language.dir/inferred_string_arrays.c.o CMakeFiles/test_language.dir/build_workflow.c.o CMakeFiles/test_language.dir/record_publication.c.o CMakeFiles/test_language.dir/outliner_projection.c.o CMakeFiles/test_language.dir/row_array.c.o CMakeFiles/test_language.dir/record_compatibility.c.o CMakeFiles/test_language.dir/record_state.c.o CMakeFiles/test_language.dir/record_document.c.o CMakeFiles/test_language.dir/record_producer.c.o CMakeFiles/test_language.dir/record_prepared_runtime.c.o CMakeFiles/test_language.dir/record_runtime.c.o CMakeFiles/test_language.dir/record_semantic.c.o CMakeFiles/test_language.dir/record_values.c.o CMakeFiles/test_language.dir/record_prepared.c.o CMakeFiles/test_language.dir/runtime_attribution.c.o CMakeFiles/test_language.dir/syntax.c.o CMakeFiles/test_language.dir/semantic.c.o CMakeFiles/test_language.dir/execution.c.o CMakeFiles/test_language.dir/program.c.o CMakeFiles/test_language.dir/retention.c.o CMakeFiles/test_language.dir/capture.c.o CMakeFiles/test_language.dir/query_boundary.c.o CMakeFiles/test_language.dir/query_values.c.o CMakeFiles/test_language.dir/query_migration.c.o CMakeFiles/test_language.dir/incremental.c.o CMakeFiles/test_language.dir/operations.c.o CMakeFiles/test_language.dir/modules.c.o CMakeFiles/test_language.dir/native_calls.c.o CMakeFiles/test_language.dir/ranges.c.o CMakeFiles/test_language.dir/scalarize.c.o CMakeFiles/test_language.dir/component_write.c.o CMakeFiles/test_language.dir/component_write_source.c.o CMakeFiles/test_language.dir/component_write_ir.c.o CMakeFiles/test_language.dir/borrow.c.o CMakeFiles/test_language.dir/reductions.c.o CMakeFiles/test_language.dir/benchmark.c.o CMakeFiles/test_language.dir/activation_cache.c.o CMakeFiles/test_language.dir/activation_benchmark.c.o CMakeFiles/test_language.dir/binding_benchmark.c.o CMakeFiles/test_language.dir/borrow_benchmark.c.o CMakeFiles/test_language.dir/incremental_benchmark.c.o CMakeFiles/test_language.dir/wasm.c.o CMakeFiles/test_language.dir/headless.c.o CMakeFiles/test_language.dir/prepared.c.o CMakeFiles/test_language.dir/format.c.o CMakeFiles/test_language.dir/navigation.c.o CMakeFiles/test_language.dir/publication.c.o CMakeFiles/test_language.dir/field_runtime.c.o CMakeFiles/test_language.dir/prototype.c.o CMakeFiles/test_language.dir/ui.c.o CMakeFiles/test_language.dir/text_format.c.o CMakeFiles/test_language.dir/graph_model.c.o CMakeFiles/test_language.dir/graph_authoring.c.o \"CMakeFiles/test_language.dir/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/test/authoring/model_runtime.c.o\" CMakeFiles/test_language.dir/packages.c.o CMakeFiles/test_language.dir/package_syntax.c.o CMakeFiles/test_language.dir/package_execution.c.o CMakeFiles/test_language.dir/package_resolution.c.o CMakeFiles/test_language.dir/package_imports.c.o CMakeFiles/test_language.dir/package_files.c.o CMakeFiles/test_language.dir/package_core.c.o CMakeFiles/test_language.dir/package_math.c.o CMakeFiles/test_language.dir/package_tests.c.o CMakeFiles/test_language.dir/package_graph_chibi.c.o CMakeFiles/test_language.dir/docs_markdown.c.o CMakeFiles/test_language.dir/syntax_corpus.c.o CMakeFiles/test_language.dir/syntax_chibi.c.o CMakeFiles/test_language.dir/compiler_fixture.c.o CMakeFiles/test_language.dir/package_syntax_chibi.c.o CMakeFiles/test_language.dir/package_paths_chibi.c.o CMakeFiles/test_language.dir/source_tokenizer_chibi.c.o CMakeFiles/test_language.dir/package_routes_chibi.c.o CMakeFiles/test_language.dir/package_snapshot_chibi.c.o CMakeFiles/test_language.dir/compiler_artifact_chibi.c.o CMakeFiles/test_language.dir/bounded_compiler_chibi.c.o CMakeFiles/test_language.dir/prepared_writer_chibi.c.o CMakeFiles/test_language.dir/shader_source_chibi.c.o CMakeFiles/test_language.dir/asset_packaging_chibi.c.o CMakeFiles/test_language.dir/package_compiler_chibi.c.o \"CMakeFiles/test_language.dir/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/src/host/native_libraries.c.o\" \"CMakeFiles/test_language.dir/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/src/host/process.c.o\" \"CMakeFiles/test_language.dir/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/src/host/stack_overflow.c.o\" CMakeFiles/test_language.dir/native_census.c.o CMakeFiles/test_language.dir/execution_scope.c.o CMakeFiles/test_language.dir/integer_semantics.c.o CMakeFiles/test_language.dir/scalar_lowering_chibi.c.o CMakeFiles/test_language.dir/constant_proof_chibi.c.o CMakeFiles/test_language.dir/constant_scalar_chibi.c.o CMakeFiles/test_language.dir/lexical_binding_chibi.c.o CMakeFiles/test_language.dir/nominal_binding_chibi.c.o CMakeFiles/test_language.dir/named_binding_chibi.c.o CMakeFiles/test_language.dir/type_constructors_chibi.c.o CMakeFiles/test_language.dir/type_relations_chibi.c.o CMakeFiles/test_language.dir/unit_algebra_chibi.c.o CMakeFiles/test_language.dir/signature_fixture.c.o CMakeFiles/test_language.dir/signature_reader_chibi.c.o CMakeFiles/test_language.dir/callable_headers_chibi.c.o CMakeFiles/test_language.dir/unit_analysis_chibi.c.o CMakeFiles/test_language.dir/union_members_chibi.c.o CMakeFiles/test_language.dir/effect_analysis_chibi.c.o CMakeFiles/test_language.dir/record_members_chibi.c.o CMakeFiles/test_language.dir/numeric.c.o \"CMakeFiles/test_language.dir/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/test/parallel.c.o\" CMakeFiles/test_language.dir/parallel.c.o CMakeFiles/test_language.dir/effects.c.o CMakeFiles/test_language.dir/maps.c.o CMakeFiles/test_language.dir/generic.c.o CMakeFiles/test_language.dir/symbol_references.c.o CMakeFiles/test_language.dir/packed.c.o CMakeFiles/test_language.dir/iteration.c.o CMakeFiles/test_behavior_consumer.dir/headless_consumer.c.o -o test_language  sdk/libchibi_json.a sdk/language/libchibi_language_syntax.a sdk/libchibi_asset_json.a sdk/libchibi_native_prepared.a sdk/libchibi_compiler_host.a sdk/libchibi_native_prepared.a sdk/libchibi_math_capabilities.a sdk/libchibi_value_document.a sdk/libchibi_array_capabilities.a sdk/libchibi_authoring.a sdk/libchibi_source_catalog.a sdk/libchibi_input_map.a sdk/libchibi_source_presentation.a sdk/libchibi_behavior_runtime.a sdk/libchibi_field_catalog.a sdk/libchibi_field_capabilities.a sdk/libchibi_project_document.a sdk/libchibi_prototype_document.a sdk/libchibi_scene_document.a sdk/libchibi_ui_authoring.a sdk/libchibi_ui_document.a sdk/libchibi_text_capabilities.a sdk/libchibi_state_capabilities.a sdk/libchibi_arithmetic_capabilities.a sdk/libchibi_core_capabilities.a sdk/libchibi_graph_model.a sdk/libchibi_graph_authoring.a sdk/libchibi_graph_compilation.a sdk/libchibi_mesh_runtime.a sdk/libchibi_ui_documents.a sdk/libchibi_asset_json.a sdk/libchibi_scene_runtime.a sdk/libchibi_authoring.a sdk/libchibi_compiler.a sdk/language/libchibi_language.a sdk/libchibi_reference_index.a sdk/libchibi_json.a sdk/language/libchibi_language_syntax.a sdk/libchibi_ui_document_values.a sdk/libchibi_text_source.a sdk/libchibi_text_search.a /Users/cwaldner/Personal/chibi/chibi/.git/chibi/third_party/602d82c6d59563b5af00c5be2d69c0447654ff00728ddcd94acf179c27c1092b/lib/chibi-vendor/libchibi_vendor_tree_sitter_css.a /Users/cwaldner/Personal/chibi/chibi/.git/chibi/third_party/602d82c6d59563b5af00c5be2d69c0447654ff00728ddcd94acf179c27c1092b/lib/chibi-vendor/libchibi_vendor_tree_sitter_html.a /Users/cwaldner/Personal/chibi/chibi/.git/chibi/third_party/602d82c6d59563b5af00c5be2d69c0447654ff00728ddcd94acf179c27c1092b/lib/chibi-vendor/libchibi_vendor_tree_sitter.a sdk/libchibi_field_catalog.a sdk/libchibi_field_capabilities.a sdk/libchibi_graph_authoring.a sdk/libchibi_math_capabilities.a sdk/libchibi_value_document.a sdk/libchibi_array_capabilities.a sdk/libchibi_text_capabilities.a sdk/libchibi_fmt.a sdk/libchibi_state_capabilities.a sdk/libchibi_arithmetic_capabilities.a sdk/libchibi_core_capabilities.a sdk/libchibi_graph_model.a sdk/libchibi_asset_text.a sdk/libchibi_asset_values.a sdk/libchibi_asset_kdl.a sdk/libchibi_conversion_capabilities.a sdk/libchibi_comparison_capabilities.a sdk/libchibi_vector_capabilities.a sdk/libchibi_selection_capabilities.a sdk/libchibi_set_capabilities.a sdk/libchibi_native_capabilities.a sdk/libchibi_fields.a sdk/libchibi_model_runtime.a sdk/libchibi_shader_runtime.a sdk/libchibi_behavior_runtime.a sdk/libchibi_execution.a sdk/libchibi_ecs.a sdk/libchibi_capabilities.a /Users/cwaldner/Personal/chibi/chibi/.git/chibi/third_party/602d82c6d59563b5af00c5be2d69c0447654ff00728ddcd94acf179c27c1092b/lib/chibi-vendor/libchibi_vendor_sljit.a sdk/libchibi_events.a sdk/libchibi_types.a sdk/libchibi_support.a -lm",
+  "compiler_target": {
+    "source_sha256": "266ed2bcc132c29c6e1a30f3f34445be36ba29fa113c902697b566b76081424c",
+    "object": "sdk/CMakeFiles/chibi_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/src/toolchain/compiler_target.c.o",
+    "object_sha256": "64bef407ce29f4e1f0e239c6f76909a7b7ca400afb6c6c8827339e8193bd9503",
+    "object_mtime_ns": 1793211789465227743,
+    "dependency_file_sha256": "bee03af324ea74f8c40aa888d85cd46e8365092c4df56076004a818c767cb55c",
+    "actual_generated_header_dependencies": [
+      {
+        "path": "sdk/private/compiler-host/toolchain/compiler_target.h",
+        "sha256": "d323ebaad3106802f95692b4a3194b5a63800252231bf974f74c48906ab12ffa"
+      },
+      {
+        "path": "sdk/public/capabilities/capabilities/catalog.h",
+        "sha256": "b1220fabea73d28ee98df316e97c14bd3350168b9a2783526cb2c8eca56e1857"
+      },
+      {
+        "path": "sdk/public/types/types/state_machine.h",
+        "sha256": "d4c47f6243a9ee865eccac9cf35dc9e8493ed828af54152c7402b1884698d81f"
+      },
+      {
+        "path": "sdk/public/types/types/value.h",
+        "sha256": "ab1e219b28444bbb56672a5e432f0ddff91c90b74d22208e43314d3641a9c435"
+      },
+      {
+        "path": "sdk/public/support/support/enum.h",
+        "sha256": "2e06b3d664bb509e7fbcd2bb8e87427503b035fb397afc9388817bfdcffafd1d"
+      },
+      {
+        "path": "sdk/public/ecs/ecs/ecs.h",
+        "sha256": "a6fd59849270894be455fa5cbd670c663c7bf12f763990fb0169a5d2ad2c0912"
+      },
+      {
+        "path": "sdk/public/types/types/type.h",
+        "sha256": "dcf7e2344be192394c475110b9d51c8e2b0b50951d63dd12f94b3b080599146c"
+      },
+      {
+        "path": "sdk/public/execution_contract/execution/function.h",
+        "sha256": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817"
+      },
+      {
+        "path": "sdk/public/execution_contract/execution/diagnostic.h",
+        "sha256": "2422a6d402dc0c8901a1c6da65f76d83da17b1fe1ac704c720d9b9c462069c5f"
+      },
+      {
+        "path": "sdk/public/execution_contract/execution/host.h",
+        "sha256": "8c1b9592d5cc6ba625f6003a87c15e5bf50e5b7a8782332a8e6eaebb6a8fd4a3"
+      },
+      {
+        "path": "sdk/public/execution_contract/execution/managed.h",
+        "sha256": "295ff1bd16204d171a5852384c86b0dd99b4bc624a786928c3b60987763b5088"
+      },
+      {
+        "path": "sdk/public/support/support/arena.h",
+        "sha256": "e5b5dc6afee8ec5e8b4b5ec65f81b3eaf9e295c1930fc9864843ea28d1a214f1"
+      },
+      {
+        "path": "sdk/public/execution_contract/execution/source_debug.h",
+        "sha256": "3f74ca92e54cc5df84924fffa1a256e03fb38d2bae50487c1836a86bf5b43859"
+      },
+      {
+        "path": "sdk/public/execution_contract/execution/state.h",
+        "sha256": "c8637ed95a48693a6c6393758788cc137497da10ae89498c4314a4d7f4dabfc8"
+      },
+      {
+        "path": "sdk/public/execution_contract/execution/value_kind.h",
+        "sha256": "49e639ea89befdc44475ef567e8ff4e7140c07928b13d48d6cb010b61f4a343b"
+      },
+      {
+        "path": "sdk/public/types/types/array.h",
+        "sha256": "8e534280a867a14cc27d3eef0e9780a383dd8f8aedfa00015b6d3bb48ab3c2cf"
+      },
+      {
+        "path": "sdk/public/execution_contract/execution/instruction.h",
+        "sha256": "d8588e4d9cc1df8e619c8da8a08c44a762df1120bee01ad79ebc3234c8810bb3"
+      },
+      {
+        "path": "sdk/public/support/support/cos_sin.h",
+        "sha256": "e38f458835e9201f2dc49180d77bb318ee285df4e6341c03401975e8da4d80ba"
+      },
+      {
+        "path": "sdk/public/execution/execution/prepared.h",
+        "sha256": "02d219f2f7d637efdcb6abacd1e3b78c9e8eba1207463373295dfa5c445c4254"
+      },
+      {
+        "path": "sdk/public/execution/execution/module.h",
+        "sha256": "82ca2085088aca529b99fbed8f1c703fdb273d89badc1ec5e7a3f5919f3653d3"
+      },
+      {
+        "path": "sdk/public/execution_contract/execution/backend.h",
+        "sha256": "e91ac9f385c40963a4ad72da57a2a45d7d10664922c44e0c758372d39fc7be23"
+      },
+      {
+        "path": "sdk/public/execution_contract/execution/service.h",
+        "sha256": "fbf5e3dc5b4ab310412ef083fd1457c2ba244c162a508b19440c9f04bfedfd9f"
+      },
+      {
+        "path": "sdk/public/native_capabilities/runtime/native_capabilities.h",
+        "sha256": "f85acc774ae938939e69d3831bb6fdf9ef60db4186ef6a7cd16a3d9cd0f69335"
+      },
+      {
+        "path": "sdk/public/support/support/array.h",
+        "sha256": "62a43c9f1c66eb131da2baa918e04669e54b73c4b80a0ef964a19e575269d576"
+      },
+      {
+        "path": "sdk/public/support/support/xalloc.h",
+        "sha256": "843983fa5a8f9d139d49b9c76b2cd6bddab8741f8e2dab48c13e5b21d1c6a1ff"
+      },
+      {
+        "path": "sdk/public/types/types/map.h",
+        "sha256": "b25fbb0bb7005453d4585e7503714a9a5763f225c6ee04b48fc7beeabea33e67"
+      },
+      {
+        "path": "sdk/public/types/types/text.h",
+        "sha256": "c28a2261a4122594487cbd83b1b9a1fb02610f93b2df907df0d62bc4c1b03dfc"
+      }
+    ],
+    "raw_target_json_not_captured": true,
+    "historical_target_json_not_reused": true,
+    "target_byte_equality_not_claimed": true
+  },
+  "actual_compile_invocations": 486,
+  "all_objects_new_mtime": true,
+  "physical_compile_log_lines_note": "485 physical lines contain486 compile invocations due parallel output sharing a line"
+}

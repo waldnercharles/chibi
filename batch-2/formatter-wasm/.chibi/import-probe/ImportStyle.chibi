@@ -1,0 +1,301 @@
+package import_probe
+
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+import strings "core:strings"
+import json_string "project:json_string"
+import directives "project:source_directives"
+
+// Source spans remain in source order. The sort order is a separate index
+// array, so no comment, literal or whitespace byte needs to be reconstructed.
+ImportItem :: struct {
+    node: int;
+    parent: int;
+    start: int;
+    end: int;
+    alias: int;
+    group: int;
+    path: string;
+    conditional: bool;
+    protected: bool;
+    leading: bool;
+    commented: bool;
+    decoded: bool;
+    dropped: bool;
+}
+
+ImportNameOrder :: (rows: diag.Node[], bytes: int[], left: int, right: int) -> int {
+    if (left == 0 || right == 0) {
+        if (left == right) { return 0; }
+        if (left == 0) { return -1; }
+        return 1;
+    }
+    a := rows[left - 1]; b := rows[right - 1];
+    size := a.end - a.start;
+    other := b.end - b.start;
+    at: int = 0;
+    while (at < size && at < other) {
+        x := bytes[a.start + at]; y := bytes[b.start + at];
+        if (x < y) { return -1; }
+        if (x > y) { return 1; }
+        at += 1;
+    }
+    if (size < other) { return -1; }
+    if (size > other) { return 1; }
+    return 0;
+}
+
+ImportNames :: (rows: diag.Node[], bytes: int[], owners: int[]) -> int[] {
+    names: int[] = [];
+    for (node in 0..<length(rows)) {
+        // Including declarations and inactive/template bodies is deliberate.
+        // A shadowed spelling keeps the import instead of guessing a binding.
+        if (rows[node].kind == diag.Identifier && owners[node] == 0) { names.append(node + 1); }
+    }
+    count := length(names);
+    other := resize([int(0)], count);
+    width: int = 1;
+    while (width < count) {
+        first: int = 0;
+        while (first < count) {
+            middle := first + width; if (middle > count) { middle = count; }
+            end := middle + width; if (end > count) { end = count; }
+            left := first; right := middle; out := first;
+            while (out < end) {
+                take_left := right >= end;
+                if (left < middle && right < end) { take_left = ImportNameOrder(rows, bytes, names[left], names[right]) <= 0; }
+                if (take_left) { other[out] = names[left]; left += 1; }
+                else { other[out] = names[right]; right += 1; }
+                out += 1;
+            }
+            first = end;
+        }
+        swap := names; names = other; other = swap;
+        width *= 2;
+    }
+    return names;
+}
+
+ImportMentioned :: (rows: diag.Node[], bytes: int[], names: int[], alias: int) -> bool {
+    low: int = 0; high := length(names);
+    while (low < high) {
+        middle := low + (high - low) / 2;
+        compared := ImportNameOrder(rows, bytes, names[middle], alias);
+        if (compared < 0) { low = middle + 1; }
+        else { high = middle; }
+    }
+    return low < length(names) && ImportNameOrder(rows, bytes, names[low], alias) == 0;
+}
+
+ImportSpace :: (byte: int) -> bool {
+    return byte == 32 || byte == 9 || byte == 10 || byte == 13;
+}
+
+ImportGap :: (bytes: int[], start: int, end: int) -> bool {
+    lines: int = 0;
+    for (at in start..<end) {
+        if (!ImportSpace(bytes[at])) { return false; }
+        if (bytes[at] == 10 || (bytes[at] == 13 && !(at + 1 < end && bytes[at + 1] == 10))) { lines += 1; }
+    }
+    return lines <= 1;
+}
+
+ImportLine :: (starts: int[], position: int) -> int {
+    low: int = 0; high := length(starts);
+    while (low < high) {
+        middle := low + (high - low) / 2;
+        if (starts[middle] <= position) { low = middle + 1; }
+        else { high = middle; }
+    }
+    return low - 1;
+}
+
+ImportItemOrder :: (items: ImportItem[], rows: diag.Node[], bytes: int[], left: int, right: int) -> int {
+    a := items[left]; b := items[right];
+    if (a.group < b.group) { return -1; }
+    if (a.group > b.group) { return 1; }
+    // Removed entries sort last, while their physical source gaps stay put.
+    if (a.dropped && !b.dropped) { return 1; }
+    if (!a.dropped && b.dropped) { return -1; }
+    compared := strings.Compare(a.path, b.path);
+    if (compared != 0) { return compared; }
+    return ImportNameOrder(rows, bytes, a.alias, b.alias);
+}
+
+ImportOrder :: (items: ImportItem[], rows: diag.Node[], bytes: int[]) -> int[] {
+    count := length(items);
+    order := resize([int(0)], count);
+    other := resize([int(0)], count);
+    for (index in 0..<count) { order[index] = index; }
+    width: int = 1;
+    while (width < count) {
+        first: int = 0;
+        while (first < count) {
+            middle := first + width; if (middle > count) { middle = count; }
+            end := middle + width; if (end > count) { end = count; }
+            left := first; right := middle; out := first;
+            while (out < end) {
+                take_left := right >= end;
+                if (left < middle && right < end) { take_left = ImportItemOrder(items, rows, bytes, order[left], order[right]) <= 0; }
+                if (take_left) { other[out] = order[left]; left += 1; }
+                else { other[out] = order[right]; right += 1; }
+                out += 1;
+            }
+            first = end;
+        }
+        swap := order; order = other; other = swap;
+        width *= 2;
+    }
+    return order;
+}
+
+// This pass proposes source edits only. ANY changed result requires the
+// caller's compiler proof, including order changes: package initialization and
+// binding identities are not whitespace semantics.
+// Names/paths use stable merge sorts and binary lookup, O(rows log rows), not
+// a whole-tree scan for each import. Implicit aliases are never guessed.
+pub ImportSyntax :: (source: string, rows: diag.Node[], fields: int[], named: bool[], root: int,
+                     mode: int) -> (text: string, needs_semantics: bool, notes: string) {
+    if (mode == 0) { return (source, false, ""); }
+    bytes := text_bytes(source);
+    count := length(rows);
+    owners := resize([int(0)], count);
+    conditional := resize([false], count);
+    protected := resize([false], count);
+    starts: int[] = [0];
+    for (at in 0..<length(bytes)) {
+        if (bytes[at] == 10 || (bytes[at] == 13 && !(at + 1 < length(bytes) && bytes[at + 1] == 10))) {
+            starts.append(at + 1);
+        }
+    }
+    code_lines := resize([false], length(starts));
+    comments: int[] = [];
+    verbatim := false;
+    for (node in 0..<count) {
+        parent := rows[node].parent;
+        if (parent >= 0) {
+            owners[node] = owners[parent];
+            conditional[node] = conditional[parent] || rows[parent].kind == diag.WhenDeclaration;
+        }
+        if (rows[node].kind == diag.ImportDeclaration || rows[node].kind == diag.ForeignImportDeclaration) { owners[node] = node + 1; }
+        if (rows[node].first_child >= 0 || rows[node].end <= rows[node].start) { continue; }
+        if (rows[node].kind == diag.Comment) {
+            comments.append(node);
+            next := directives.Apply(text_slice(source, rows[node].start, rows[node].end - rows[node].start), verbatim);
+            protected[node] = verbatim || next;
+            verbatim = next;
+        } else {
+            protected[node] = verbatim;
+            first := ImportLine(starts, rows[node].start);
+            last := ImportLine(starts, rows[node].end - 1);
+            for (line in first..last) { code_lines[line] = true; }
+        }
+    }
+    // A protected/commented child protects its import regardless of how the
+    // parser attached an adjacent comment to a declaration.
+    at := count - 1;
+    while (at >= 0) {
+        parent := rows[at].parent;
+        if (parent >= 0) { protected[parent] = protected[parent] || protected[at]; }
+        at -= 1;
+    }
+    names: int[] = [];
+    if (mode == 2) { names = ImportNames(rows, bytes, owners); }
+    items: ImportItem[] = [];
+    implicit: int = 0;
+    conditional_kept: int = 0;
+    commented_kept: int = 0;
+    invalid: int = 0;
+    comment_at: int = 0;
+    previous_comment: int = -1;
+    for (node in 0..<count) {
+        if (rows[node].kind != diag.ImportDeclaration) { continue; }
+        keyword := rows[node].first_child;
+        while (keyword >= 0 && rows[keyword].kind != tk.Import) { keyword = rows[keyword].next_sibling; }
+        path := ChildByField(rows, fields, node, diag.FieldPath);
+        alias := ChildByField(rows, fields, node, diag.FieldAlias);
+        if (keyword < 0 || path < 0) { continue; }
+        begin := rows[keyword].start;
+        end := rows[path].end;
+        child := rows[node].first_child;
+        while (child >= 0) {
+            if (rows[child].kind == tk.Semicolon && rows[child].end > end) { end = rows[child].end; }
+            child = rows[child].next_sibling;
+        }
+        while (comment_at < length(comments) && rows[comments[comment_at]].end <= begin) {
+            previous_comment = comments[comment_at];
+            comment_at += 1;
+        }
+        leading := false;
+        if (previous_comment >= 0 && ImportGap(bytes, rows[previous_comment].end, begin)) {
+            line := ImportLine(starts, rows[previous_comment].start);
+            leading = !code_lines[line] || ImportLine(starts, rows[previous_comment].end - 1) == ImportLine(starts, begin);
+        }
+        commented := false;
+        cursor := comment_at;
+        while (cursor < length(comments)) {
+            comment := rows[comments[cursor]];
+            if (comment.start < end) { commented = true; cursor += 1; continue; }
+            if (Breaks(bytes, true, end, comment.start) != 0 || !ImportGap(bytes, end, comment.start)) { break; }
+            end = comment.end;
+            commented = true;
+            cursor += 1;
+        }
+        comment_at = cursor;
+        decoded := json_string.Metadata(text_slice(source, rows[path].start, rows[path].end - rows[path].start));
+        valid := decoded.valid && decoded.value != "" && strings.IndexByte(decoded.value, 0) < 0;
+        dropped := false;
+        if (mode == 2 && !protected[node]) {
+            if (alias < 0) { implicit += 1; }
+            else if (text_slice(source, rows[alias].start, rows[alias].end - rows[alias].start) != "_" &&
+                     !ImportMentioned(rows, bytes, names, alias + 1)) {
+                if (conditional[node]) { conditional_kept += 1; }
+                else if (leading || commented) { commented_kept += 1; }
+                else { dropped = valid; }
+            }
+        }
+        if (!valid) { invalid += 1; }
+        group := length(items);
+        if (length(items) > 0) {
+            prior := items[length(items) - 1];
+            if (prior.parent == rows[node].parent && !prior.protected && !protected[node] &&
+                !prior.leading && !leading && prior.decoded && valid && ImportGap(bytes, prior.end, begin)) {
+                group = prior.group;
+            }
+        }
+        items.append({node: node, parent: rows[node].parent, start: begin, end: end, alias: alias + 1,
+                      group: group, path: decoded.value, conditional: conditional[node], protected: protected[node],
+                      leading: leading, commented: commented, decoded: valid, dropped: dropped});
+    }
+    if (length(items) == 0) { return (source, false, ""); }
+    order := ImportOrder(items, rows, bytes);
+    pieces: string[] = [];
+    copied: int = 0;
+    slot: int = 0;
+    while (slot < length(items)) {
+        end := slot + 1;
+        while (end < length(items) && items[end].group == items[slot].group) { end += 1; }
+        chosen := slot;
+        current := slot;
+        while (current < end) {
+            item := items[current];
+            pieces.append(text_slice(source, copied, item.start - copied));
+            if (!item.dropped) {
+                replacement := items[order[chosen]];
+                pieces.append(text_slice(source, replacement.start, replacement.end - replacement.start));
+                chosen += 1;
+            }
+            copied = item.end;
+            current += 1;
+        }
+        slot = end;
+    }
+    pieces.append(text_slice(source, copied, text_byte_length(source) - copied));
+    notes: string[] = [];
+    if (implicit > 0) { notes.append(format_text("Kept {} implicit import(s): their namespace comes from dependency headers, not the path basename.", implicit)); }
+    if (conditional_kept > 0) { notes.append(format_text("Kept {} conditional import(s) because other when configurations may need them.", conditional_kept)); }
+    if (commented_kept > 0) { notes.append(format_text("Kept {} apparently unused import(s) to preserve attached comments.", commented_kept)); }
+    if (invalid > 0) { notes.append(format_text("Kept {} import(s) with unresolved package-string syntax.", invalid)); }
+    rewritten := strings.Join(pieces, "");
+    return (rewritten, rewritten != source, strings.Join(notes, "\n"));
+}

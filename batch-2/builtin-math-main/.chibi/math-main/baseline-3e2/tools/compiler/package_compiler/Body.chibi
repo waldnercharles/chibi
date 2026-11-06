@@ -1,0 +1,3760 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+import binding "project:lexical_binding"
+import strings "core:strings"
+
+// One function body, emitted in one pass. A work stack visits statements and
+// expressions in evaluation order; each expression pushes its typed value.
+// Scalars and strings live in the locals bank. Records and arrays are
+// pointers held in data cells. Records copy their values; array stores share
+// their managed root.
+// Host calls and authored calls pass values through cells, whose headers
+// carry each value's type.
+//
+// EmitBody keeps every table and emits control flow. Every other node is a
+// step (Steps.chibi) that returns only what it adds, so no one definition
+// grows past what the runtime's verifier admits.
+
+// A slot's or a local's storage and kind.
+Slot :: struct {
+    storage: int;
+    kind: int;
+}
+// A local holding a value of `storage`.
+ValueLocal :: (storage: int) -> Slot {
+    return {storage: storage, kind: ValueKind};
+}
+// An instruction with the value a constant or header read carries, the
+// message a failing check reports and the source range it lowers. `payload`
+// is a scalar's 64 bits, sign-extended for signed types.
+Code :: struct {
+    op: int;
+    type: int;
+    output: int;
+    left: int;
+    right: int;
+    target: int;
+    offset: int;
+    value_storage: int;
+    value_container: int;
+    value_record: int;
+    payload: u64;
+    text: string;
+    has_text: bool;
+    message: string;
+    has_message: bool;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+}
+// An integer literal's exact value, or none.
+Literal :: union {
+    Number(negative: bool, magnitude: u64) | Invalid
+}
+// A data cell's header type and kind. Some cells hold a constant payload: the
+// bits `constant`, or the tag of variant types[variant] when that is not -1.
+Cell :: struct {
+    storage: int;
+    container: int;
+    record: int;
+    constant: u64;
+    variant: int;
+    kind: int;
+}
+Invocation :: struct {
+    owned_arguments: bool;
+    callee: int;
+    first: int;
+    count: int;
+    result_first: int;
+    result_count: int;
+    task: bool;
+}
+// A host call: runtime intrinsic `intrinsic`, or the native natives[linked]
+// when `linked` is not -1. A component reference's make is `written` when
+// the body writes through the reference.
+Host :: struct {
+    owned_arguments: bool;
+    intrinsic: int;
+    // Nonzero identifies an existing task command, rather than a host intrinsic.
+    command: int;
+    syntax_node: int;
+    linked: int;
+    first: int;
+    result_first: int;
+    result_count: int;
+    written: bool;
+}
+// A slot holding a record or array pointer the collector must trace.
+Root :: struct {
+    slot: int;
+    storage: int;
+    container: int;
+    record: int;
+}
+// Entry points state the native-effect contract explicitly: the masks of the
+// selected catalog's natives, or none when the catalog does not supply them.
+BodyContext :: union {
+    Unknown | Known(masks: int[])
+}
+// Sparse preparation facts identify update items and the resolved operations
+// inside them. Nodes are global forest indices, never document byte ranges.
+SemanticFact :: struct {
+    node: int;
+    kind: int;
+    target: int;
+}
+UpdateFact: int : 0;
+NativeFact: int : 1;
+CallFact: int : 2;
+WriteFact: int : 3;
+UnknownWrite: int : -1;
+Body :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Inferred(value: ValueType)
+    | Emitted(slots: Slot[], locals: Slot[], cells: Cell[], code: Code[], calls: Invocation[],
+              hosts: Host[], roots: Root[], points: SourcePoint[], watches: SourceWatch[], effects: int,
+              direct_write: int, facts: SemanticFact[])
+}
+// A debugger point: a record of stage zero's kind at a source range, which
+// breakpoints find by its occurrence; `meaning` names what it is, such as the
+// event a handler takes, and a function's completion points mark its returns.
+SourcePoint :: struct {
+    occurrence: u64;
+    meaning: u64;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    kind: int;
+    completion: bool;
+}
+// A debugger watch: the value of the expression whose occurrence and range it
+// holds, of the type that storage, container and record give, or, unless
+// `output`, its input numbered `ordinal`, such as a call's argument.
+SourceWatch :: struct {
+    occurrence: u64;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    storage: int;
+    container: int;
+    record: int;
+    ordinal: int;
+    output: bool;
+    reference: bool;
+}
+// Record kinds, as the SDK numbers them.
+SymbolRecord: int : 0;
+FunctionRecord: int : 1;
+ExpressionRecord: int : 2;
+StatementRecord: int : 3;
+// Point indexes of SOURCE_POINTs that EmitBody makes points once the body is
+// emitted, each at the instruction's own position: the function's completion
+// point, an expression's point, and the point of the symbol whose declaring
+// node the instruction's `right` holds.
+CompletionPoint: int : -2;
+SymbolPoint: int : -3;
+ExpressionPoint: int : -4;
+// The point index of a point of the record kind the instruction's `right`
+// holds, whose occurrence its payload holds, for a record that need not be in
+// the function's document.
+OccurrencePoint: int : -5;
+// A scheduled visit. Storage, container and record are the type a literal at
+// `node` takes from its context; storage 0 means none. EffectsPhase is a
+// directive with no node; its `a` holds source-semantic effect flags.
+Work :: struct {
+    node: int;
+    phase: int;
+    a: int;
+    b: int;
+    c: int;
+    storage: int;
+    container: int;
+    record: int;
+    capture: bool;
+}
+Value :: struct {
+    cell: int;
+    owned: bool;
+    place: bool;
+    newkey: bool;
+    slot: int;
+    storage: int;
+    container: int;
+    record: int;
+    // Slot containing a native record header schema, or -1 when absent.
+    schema: int;
+}
+// The resolved singleton result of a native call in this body. Its AST node
+// identifies the original selection even through local aliases.
+NativeCallFact :: struct {
+    node: int;
+    native: int;
+    storage: int;
+    container: int;
+    record: int;
+}
+// An initializer's call and the names visible when that call was declared.
+CallSource :: struct {
+    node: int;
+    visible: int;
+}
+// A name in scope: a locals-bank value, a record or array held in a data
+// cell, a record or array parameter read in place, or a behavior's state or
+// owner. Pattern bindings are not writable.
+Name :: struct {
+    owned: bool;
+    name: string;
+    place: int;
+    index: int;
+    storage: int;
+    container: int;
+    record: int;
+    writable: bool;
+    // The node that declares the name, -1 when the source declares none, as
+    // for `self`.
+    node: int;
+}
+// A loop being emitted. A while loop's continues jump to `head`; a for
+// loop patches them to its increment, and owns its index local, the names to
+// drop and its exit jump, `leave`. A for loop counts down when `reverse`; a
+// range loop keeps its other end in the `bound` local and, when `counted`,
+// stops once the index reaches it, before a step that could wrap; `empty`
+// skips a reversed `..<` range that holds nothing.
+Loop :: struct {
+    held_slot: int;
+    held_storage: int;
+    held_container: int;
+    held_record: int;
+    held_owned: bool;
+    head: int;
+    first_break: int;
+    first_continue: int;
+    each: bool;
+    index: int;
+    mark: int;
+    leave: int;
+    reverse: bool;
+    counted: bool;
+    bound: int;
+    empty: int;
+}
+// A switch being emitted: the local holding its union, where its exit jumps
+// start in `exits` and its matched variants in `covered`, whether it has a
+// default arm, the pending jump past the current arm, and the names the arm's
+// bindings start at. A switch on an integer of `storage` compares the value
+// with each arm's in turn and runs its default arm, `fallback`, after them
+// all, as stage zero does; -2 once that arm is emitted.
+Switch :: struct {
+    subject: int;
+    held: int;
+    first_exit: int;
+    first_cover: int;
+    defaulted: bool;
+    skip: int;
+    mark: int;
+    value: bool;
+    storage: int;
+    fallback: int;
+}
+// The size of each table when a step starts.
+Bases :: struct {
+    pc: int;
+    slot: int;
+    local: int;
+    cell: int;
+    host: int;
+    call: int;
+}
+// What a step adds: instructions and table rows, names it binds, work it
+// schedules, how many values it pops, the value it produces, a value to copy
+// into a fresh cell, and positions it reports to EmitBody.
+Step :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Emitted(code: Code[], slots: Slot[], locals: Slot[], cells: Cell[], hosts: Host[], roots: Root[],
+              calls: Invocation[], bound: Name[], next: Work[], popped: int, produced: Value, retained: Value,
+              marks: int[])
+}
+
+ValueKind: int : 0;
+AddressKind: int : 1;
+// A slot or cell holding a reference the reference intrinsics take.
+ReferenceKind: int : 2;
+LocalPlace: int : 0;
+CellPlace: int : 1;
+ParameterPlace: int : 2;
+// An import alias; its index is the package it names.
+AliasPlace: int : 3;
+// A catalog source library's namespace, without package privacy.
+LibraryPlace: int : 10;
+Alias :: (place: int) -> bool {
+    return place == AliasPlace || place == LibraryPlace;
+}
+// A local holding a native call's several results: its index is the first
+// result's cell and its record the native.
+ResultsPlace: int : 4;
+// A behavior's retained state; its index is the state's.
+StatePlace: int : 5;
+// `self`, the entity that owns the behavior.
+SelfPlace: int : 6;
+// A name the game binds; its index is the global's.
+GlobalPlace: int : 7;
+SystemStepPlace: int : 15;
+ArrayContainer: int : 1;
+// A bounded shared array view, as PIN_CONTAINER_VIEW.
+ViewContainer: int : 4;
+// A map, as PIN_CONTAINER_MAP; its record is its MapDecl.
+MapContainer: int : 3;
+// A jump whose target a later instruction supplies.
+Pending: int : -1;
+SnapshotIntrinsic: int : 1;
+ConstructIntrinsic: int : 2;
+ArrayPushIntrinsic: int : 27;
+ArrayStoreIntrinsic: int : 28;
+ArrayExtendIntrinsic: int : 29;
+ReferenceMakeIntrinsic: int : 3;
+ReferenceFieldIntrinsic: int : 4;
+ReferenceReadIntrinsic: int : 5;
+ReferenceWriteIntrinsic: int : 6;
+UnionMakeIntrinsic: int : 20;
+// union_make in the caller's storage, keeping the payload values it names.
+UnionKeepIntrinsic: int : 45;
+// Added to an intrinsic, runs it in the caller's storage, where a function
+// builds the locals it returns.
+InResult: int : 256;
+UnionTestIntrinsic: int : 21;
+UnionGetIntrinsic: int : 22;
+// Statement phases after the value is ready.
+ValuePhase: int : 1;
+RetainedPhase: int : 2;
+PushPhase: int : 3;
+StorePhase: int : 4;
+FieldPhase: int : 5;
+ComponentPhase: int : 6;
+// The phase of a binary operator or compound assignment whose two values on
+// top are records, which a numeric aggregate native combines.
+AggregatePhase: int : 7;
+ComponentAssignPhase: int : 8;
+// The phase of a compound assignment that combines the two values on top with
+// its operator.
+CombinePhase: int : 9;
+// The phase of a named return: store one value, then evaluate the next.
+ReturnsPhase: int : 10;
+// The phase of a write to a component of another entity, with the entity on
+// top.
+EntityComponentPhase: int : 15;
+EffectsPhase: int : -1;
+// A private directive: publish the resolved native without emitting code.
+NativeCallPhase: int : -2;
+OwnerArgumentPhase: int : -3;
+SemanticPhase: int : -4;
+RecordOwnerArgument :: (node: int, slot: int, record: int) -> Work {
+    item := Resume(node, OwnerArgumentPhase, slot, 0);
+    item.storage = HandleStorage;
+    item.record = record;
+    return item;
+}
+
+// The FNV-1a mix of the eight bytes of `value`, low first, as the SDK mixes
+// a word into an identity.
+MixWord :: (hash: u64, value: u64) -> u64 {
+    mixed := hash;
+    rest := value;
+    index: int = 0;
+    while (index < 8) {
+        mixed = (mixed ^ (rest & 255)) * 1099511628211;
+        rest = rest >> 8;
+        index += 1;
+    }
+    return mixed;
+}
+// A record's occurrence, as the SDK's script_occurrence gives it: its
+// document `key`, its kind and its range counted in bytes that are not
+// whitespace.
+Occurrence :: (key: string, kind: int, start: int, end: int) -> u64 {
+    return OccurrenceIn(DocumentHash(key), kind, start, end);
+}
+// The part of every occurrence that the document `key` fixes.
+DocumentHash :: (key: string) -> u64 {
+    hash := binding.ID("source-occurrence", "");
+    count := strings.ByteLength(key);
+    hash = MixWord(hash, u64(count));
+    index: int = 0;
+    while (index < count) {
+        hash = (hash ^ u64(strings.ByteAt(key, index))) * 1099511628211;
+        index += 1;
+    }
+    return hash;
+}
+// An occurrence in the document whose DocumentHash is `document`.
+OccurrenceIn :: (document: u64, kind: int, start: int, end: int) -> u64 {
+    hash := MixWord(MixWord(MixWord(document, u64(kind)), u64(start)), u64(end));
+    if (hash == 0) {
+        return 1;
+    }
+    return hash;
+}
+// How many bytes of `text` before each offset, through its end, are not
+// whitespace. It reads the bytes at once: each ByteAt measures the text.
+SolidOffsets :: (text: string) -> int[] {
+    solid: int[] = [0];
+    count: int = 0;
+    for (byte in strings.Bytes(text)) {
+        if (byte != 32 && byte != 9 && byte != 10 && byte != 13) {
+            count += 1;
+        }
+        solid.append(count);
+    }
+    return solid;
+}
+// The point of the record of `kind` at `node`, in the document whose
+// DocumentHash is `document` and whose bytes `solid` counts.
+PointIn :: (document: u64, solid: int[], kind: int, node: snapshot.SnapshotNode) -> SourcePoint {
+    return {occurrence: OccurrenceIn(document, kind, solid[node.start], solid[node.end]), meaning: 0,
+            start: node.start, end: node.end, line: node.row + 1, column: node.column + 1, kind: kind,
+            completion: false};
+}
+// The point at `node` of the record of `kind` at `record`, in the document
+// `key` whose bytes `solid` counts. A completion point is its function's, at
+// a return.
+PointAt :: (key: string, solid: int[], kind: int, meaning: u64, completion: bool, record: snapshot.SnapshotNode,
+            node: snapshot.SnapshotNode) -> SourcePoint {
+    return {occurrence: Occurrence(key, kind, solid[record.start], solid[record.end]), meaning: meaning,
+            start: node.start, end: node.end, line: node.row + 1, column: node.column + 1, kind: kind,
+            completion: completion};
+}
+// A return's SOURCE_POINT, which EmitBody makes the function's completion
+// point at the return.
+CompletionCode :: (ops: Ops, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(ops.source_point, 0, 0, CompletionPoint, 0, 0, node);
+}
+// The point of the expression at `node`.
+ExpressionCode :: (ops: Ops, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(ops.source_point, 0, 0, ExpressionPoint, 0, 0, node);
+}
+// A point at `node` of the symbol that the node `declared` declares, -1 when
+// the source declares none.
+SymbolCode :: (ops: Ops, declared: int, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(ops.source_point, 0, 0, SymbolPoint, declared, 0, node);
+}
+// A point at `node` of a record of `kind` whose occurrence is `occurrence`.
+OccurrenceCode :: (ops: Ops, kind: int, occurrence: u64, node: snapshot.SnapshotNode) -> Code {
+    return {op: ops.source_point, type: 0, output: 0, left: OccurrencePoint, right: kind, target: 0, offset: 0,
+            value_storage: 0, value_container: 0, value_record: -1, payload: occurrence, text: "", has_text: false,
+            message: "", has_message: false, start: node.start, end: node.end, line: node.row + 1,
+            column: node.column + 1};
+}
+// Whether `binding` is a function's parameter, which stage zero assigns
+// through its reference rather than storing.
+Parameter :: (forest: snapshot.SnapshotNode[], binding: Name) -> bool {
+    if (binding.node < 0) {
+        return false;
+    }
+    declaring := forest[binding.node].parent;
+    return Is(forest, declaring, "parameter") && forest[forest[declaring].parent].field == "parameters";
+}
+// Whether stage zero reads `node` as a literal: a number, string or bool,
+// or a negated number.
+LiteralNode :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    kind := forest[node].kind;
+    return kind == "number" || kind == "string" || kind == "boolean" ||
+           (kind == "unary_expression" && Is(forest, Field(forest, node, "operand"), "number"));
+}
+// Whether `node` is a number literal, negated or not.
+NumberLiteral :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    return Is(forest, node, "number") ||
+           (Is(forest, node, "unary_expression") && Is(forest, Field(forest, node, "operand"), "number"));
+}
+// Whether `node` is an argument of a call that `work[0, top)` will resume as
+// an overloaded native, within any parentheses, which produce no value.
+OverloadArgument :: (forest: snapshot.SnapshotNode[], work: Work[], top: int, node: int) -> bool {
+    if (Is(forest, node, "parenthesized_expression")) {
+        return false;
+    }
+    at := forest[node].parent;
+    while (Is(forest, at, "parenthesized_expression")) {
+        at = forest[at].parent;
+    }
+    if (Is(forest, at, "named_argument")) {
+        at = forest[at].parent;
+    }
+    if (!Is(forest, at, "argument_list")) {
+        return false;
+    }
+    call := forest[at].parent;
+    index: int = 0;
+    while (index < top) {
+        if (work[index].node == call && work[index].phase == 1 && work[index].c == 4) {
+            return true;
+        }
+        index += 1;
+    }
+    return false;
+}
+// What taking an overloaded native's arguments emits: the code that follows
+// the body's, the slots it adds, the values with the arguments as the overload
+// takes them and, for each, the jump it reserved and where its block starts.
+TypedArguments :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Typed(code: Code[], slots: Slot[], values: Value[], jumps: int[], starts: int[])
+}
+// The overloaded native call `item` takes each argument of
+// `values[first, first + item.b)` as its chosen overload's parameter, typed
+// when an untyped literal and converted when a number of another type. Stage
+// zero converts and watches each argument as the call's input where it is
+// written, so the jump the argument last reserved there, `jumps` by its node
+// in `nodes`, runs that in a block the body skips, from `at`.
+OverloadArguments :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[],
+                      callables: Callable[], types: TypeDecl[], names: Name[], package: int,
+                      natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops, item: Work, values: Value[],
+                      first: int, nodes: int[], jumps: int[], at: Bases, node: snapshot.SnapshotNode,
+                      target: Target) -> TypedArguments {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    arguments: Value[] = [];
+    reserved: int[] = [];
+    starts: int[] = [];
+    sources := NativeSources(forest, item.node, false);
+    chosen := Overload(forest, text, document, item.node, constants, callables, types, names, package, natives, ports,
+                       NativeCallName(forest, text, item.node), sources, values, first);
+    if (chosen < 0 || item.b == 0) {
+        return TypedArguments.Typed(code, slots, values, reserved, starts);
+    }
+    bound: NativeArgument[] = [];
+    switch BindNative(forest, text, item.node, sources, natives[chosen], ports) {
+        case .Failed(problem, message):
+            return TypedArguments.Typed(code, slots, values, reserved, starts);
+        case .Bound(supplied, total):
+            bound = supplied;
+    }
+    code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+    for (given in bound) {
+        index := length(arguments);
+        jump := jumps[LastIndexOf(nodes, Unparenthesized(forest, given.node))];
+        reserved.append(jump);
+        starts.append(at.pc + length(code));
+        argument := values[first + index];
+        port := ports[NativePort(natives[chosen], given.parameter)];
+        if (argument.storage == NumberStorage && port.container == 0 && Numeric(port.storage)) {
+            block: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local, cell: at.cell,
+                            host: at.host, call: at.call};
+            switch NumberLiteralStep(forest, text, document, constants, names, package, argument, port.storage, ops,
+                                     block, node) {
+                case .Failed(diagnostic):
+                    return TypedArguments.Failed(diagnostic);
+                case .Emitted(typed_code, typed_slots, typed_locals, typed_cells, typed_hosts, typed_roots,
+                              typed_calls, typed_bound, typed_next, typed_popped, typed_value, typed_retain,
+                              typed_marks):
+                    code.extend(typed_code);
+                    slots.extend(typed_slots);
+                    argument = typed_value;
+            }
+        } else if (Converted(argument, port)) {
+            output := at.slot + length(slots);
+            slots.extend(NumberSlots(argument.storage, port.storage));
+            code.extend(NumberCode(ops, argument.storage, port.storage, argument.slot, output, node));
+            argument = Typed(at.slot + length(slots) - 1, port.storage, 0, -1);
+        }
+        if (argument.storage != NumberStorage) {
+            code.append(WatchCode(ops, argument.slot, argument.storage, argument.container, argument.record,
+                                  given.parameter, false, node, target));
+        }
+        code.append(Instruction(ops.jump, 0, 0, 0, 0, jump + 1, node));
+        arguments.append(argument);
+    }
+    skip := code[0];
+    skip.target = at.pc + length(code);
+    code[0] = skip;
+    typed: Value[] = [];
+    for (value in values) {
+        kept := value;
+        if (length(typed) >= first && length(typed) < first + item.b) {
+            kept = arguments[length(typed) - first];
+        }
+        typed.append(kept);
+    }
+    return TypedArguments.Typed(code, slots, typed, reserved, starts);
+}
+// `code` with the jump at each `jumps[k]` going to `targets[k]`.
+Retargeted :: (code: Code[], jumps: int[], targets: int[]) -> Code[] {
+    if (length(jumps) == 0) {
+        return code;
+    }
+    patched: Code[] = [];
+    for (item in code) {
+        moved := item;
+        at := LastIndexOf(jumps, length(patched));
+        if (at >= 0) {
+            moved.target = targets[at];
+        }
+        patched.append(moved);
+    }
+    return patched;
+}
+// Whether the work `next` schedules visits `node` again. A directive, whose
+// phase is negative, records a fact about the node without visiting it.
+Resumed :: (next: Work[], node: int) -> bool {
+    for (scheduled in next) {
+        if (scheduled.node == node && scheduled.phase >= 0) {
+            return true;
+        }
+    }
+    return false;
+}
+// The index of the last `value` in `values`, -1 for none.
+LastIndexOf :: (values: int[], value: int) -> int {
+    index := length(values) - 1;
+    while (index >= 0 && values[index] != value) {
+        index -= 1;
+    }
+    return index;
+}
+// Whether `node` is an element of an array literal of literals, which stage
+// zero makes as one constant.
+ConstantElement :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    array := forest[node].parent;
+    if (!Is(forest, array, "array_expression")) {
+        return false;
+    }
+    for (element in Members(forest, array)) {
+        if (!LiteralNode(forest, element)) {
+            return false;
+        }
+    }
+    return true;
+}
+// An identifier's points as stage zero evaluates it: the expression's, then
+// the name's when it names one.
+NamePoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], ops: Ops, node: int) -> Code[] {
+    code: Code[] = [ExpressionCode(ops, forest[node])];
+    found := Lookup(names, Text(forest, text, node));
+    if (found >= 0 && !Alias(names[found].place)) {
+        code.append(SymbolCode(ops, names[found].node, forest[node]));
+    }
+    return code;
+}
+// The points stage zero places on an assignment's target before its value:
+// each member the target reaches through, outermost first, then the name it
+// starts from.
+TargetPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], ops: Ops, node: int) -> Code[] {
+    code: Code[] = [];
+    at := node;
+    while (Is(forest, at, "member_expression")) {
+        code.append(ExpressionCode(ops, forest[at]));
+        at = Field(forest, at, "object");
+    }
+    if (Is(forest, at, "identifier")) {
+        code.extend(NamePoints(forest, text, names, ops, at));
+    }
+    return code;
+}
+// Whether stage zero evaluates a node of `kind` as an expression, with a
+// point. Parentheses only group.
+Expression :: (kind: string) -> bool {
+    return kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
+           kind == "member_expression" || kind == "index_expression" || kind == "struct_expression" ||
+           kind == "array_expression" || kind == "map_expression" || kind == "call_expression" ||
+           kind == "unary_expression" || kind == "binary_expression" || kind == "is_expression" ||
+           kind == "address_expression" || kind == "dereference_expression";
+}
+// The occurrence of the symbol the node `declared` declares, or `undeclared`
+// for one the source declares nowhere.
+SymbolOccurrence :: (forest: snapshot.SnapshotNode[], document: u64, solid: int[], undeclared: u64,
+                     declared: int) -> u64 {
+    if (declared < 0) {
+        return undeclared;
+    }
+    return OccurrenceIn(document, SymbolRecord, solid[forest[declared].start], solid[forest[declared].end]);
+}
+// The SOURCE_WATCH of slot `slot`, holding a value of the type storage,
+// container and record give, that EmitBody makes the watch of the expression
+// at `node`: its output, or its input `ordinal`.
+WatchCode :: (ops: Ops, slot: int, storage: int, container: int, record: int, ordinal: int, output: bool,
+              node: snapshot.SnapshotNode, target: Target) -> Code {
+    flag: int = 0;
+    if (output) {
+        flag = 1;
+    }
+    code := Instruction(ops.source_watch, SlotStorage(storage, container, target), flag, slot, ordinal, Pending,
+                        node);
+    code.value_storage = storage;
+    code.value_container = container;
+    code.value_record = record;
+    return code;
+}
+// The SOURCE_WATCH of slot `slot`, holding a number or bool of `storage`,
+// that EmitBody makes the watch of the expression at `node`.
+ScalarWatch :: (ops: Ops, slot: int, storage: int, ordinal: int, output: bool, node: snapshot.SnapshotNode) -> Code {
+    flag: int = 0;
+    if (output) {
+        flag = 1;
+    }
+    code := Instruction(ops.source_watch, storage, flag, slot, ordinal, Pending, node);
+    code.value_storage = storage;
+    return code;
+}
+// The output watch of slot `slot`, holding a default of `storage` that a call
+// omits, at `node`. The default of a function in the same package is its own
+// expression, with that occurrence. Stage zero reads another package's default
+// from that package's catalog as a constant at the call's arguments. Its
+// occurrence is 0 and is resolved in the caller's document.
+DefaultWatch :: (ops: Ops, slot: int, storage: int, occurrence: u64, node: snapshot.SnapshotNode) -> Code {
+    return {op: ops.source_watch, type: storage, output: 1, left: slot, right: 0, target: Pending, offset: 0,
+            value_storage: storage, value_container: 0, value_record: -1, payload: occurrence, text: "",
+            has_text: false, message: "", has_message: false, start: node.start, end: node.end,
+            line: node.row + 1, column: node.column + 1};
+}
+// The watch of the number literal at `node` once slot `slot` holds it as
+// `storage`; an element of an array of literals has none.
+LiteralWatch :: (forest: snapshot.SnapshotNode[], ops: Ops, slot: int, storage: int, node: int) -> Code[] {
+    if (ConstantElement(forest, node)) {
+        return [];
+    }
+    return [ScalarWatch(ops, slot, storage, 0, true, forest[node])];
+}
+// The owner read into slot `slot` and watched as the `self` at `node`.
+OwnerWatch :: (ops: Ops, slot: int, node: snapshot.SnapshotNode) -> Code[] {
+    if (!ops.debug) {
+        return [];
+    }
+    watch := Instruction(ops.source_watch, HandleStorage, 1, slot, 0, Pending, node);
+    watch.value_storage = HandleStorage;
+    return [Instruction(ops.owner, HandleStorage, slot, 0, 0, 0, node), watch];
+}
+// The name an assignment's target starts from, through its members.
+TargetRoot :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    at := node;
+    while (Is(forest, at, "member_expression")) {
+        at = Field(forest, at, "object");
+    }
+    return at;
+}
+// Bases `count` slots past `at`, for a step whose slots follow others.
+SlotsPast :: (at: Bases, count: int) -> Bases {
+    return {pc: at.pc, slot: at.slot + count, local: at.local, cell: at.cell, host: at.host, call: at.call};
+}
+// The source position an instruction records, as a node to place at.
+Located :: (code: Code) -> snapshot.SnapshotNode {
+    return {kind: "", start: code.start, end: code.end, row: code.line - 1, column: code.column - 1, parent: -1,
+            first_child: -1, next_sibling: -1, error: false, missing: false, has_error: false, field: "",
+            is_named: false, is_extra: false};
+}
+// `code` without its points and watches. A jump or branch to one goes to the
+// next instruction kept.
+WithoutDebug :: (ops: Ops, code: Code[]) -> Code[] {
+    kept: int[] = [];
+    count: int = 0;
+    for (item in code) {
+        kept.append(count);
+        if (item.op != ops.source_point && item.op != ops.source_watch) {
+            count += 1;
+        }
+    }
+    kept.append(count);
+    stripped: Code[] = [];
+    for (item in code) {
+        if (item.op == ops.jump || item.op == ops.branch_if) {
+            moved := item;
+            moved.target = kept[item.target];
+            stripped.append(moved);
+        } else if (item.op != ops.source_point && item.op != ops.source_watch) {
+            stripped.append(item);
+        }
+    }
+    return stripped;
+}
+// The SOURCE_POINT of points[point].
+PointCode :: (ops: Ops, point: int, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(ops.source_point, 0, 0, point, 0, 0, node);
+}
+// Whether stage zero lowers a node of `kind` as a statement, with a point.
+Statement :: (kind: string) -> bool {
+    return kind == "callable_body" || kind == "block" || kind == "if_statement" || kind == "while_statement" ||
+           kind == "for_statement" || kind == "switch_statement" || kind == "break_statement" ||
+           kind == "continue_statement" || kind == "local_declaration" || kind == "assignment" ||
+           kind == "expression_statement" || kind == "return_statement" || kind == "delete_statement";
+}
+Instruction :: (op: int, type: int, output: int, left: int, right: int, target: int,
+                item: snapshot.SnapshotNode) -> Code {
+    return {op: op, type: type, output: output, left: left, right: right, target: target,
+            offset: 0, value_storage: 0, value_container: 0, value_record: -1, payload: 0, text: "",
+            has_text: false, message: "", has_message: false, start: item.start, end: item.end, line: item.row + 1,
+            column: item.column + 1};
+}
+Visit :: (node: int) -> Work {
+    return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: 0, container: 0, record: -1, capture: false};
+}
+RecordEffects :: (effects: int) -> Work {
+    return {node: -1, phase: EffectsPhase, a: effects, b: 0, c: 0, storage: 0, container: 0, record: -1, capture: false};
+}
+RecordSemantic :: (node: int, kind: int, target: int) -> Work {
+    return {node: node, phase: SemanticPhase, a: kind, b: target, c: 0,
+            storage: 0, container: 0, record: -1, capture: false};
+}
+// WRITE dominates unknown, which dominates a proven clear summary.
+JoinWrite :: (left: int, right: int) -> int {
+    if (left == WriteEffect || right == WriteEffect) {
+        return WriteEffect;
+    }
+    if (left == UnknownWrite || right == UnknownWrite) {
+        return UnknownWrite;
+    }
+    return 0;
+}
+NativeWrite :: (context: BodyContext, native: int) -> int {
+    switch context {
+        case .Unknown:
+            return UnknownWrite;
+        case .Known(masks):
+            return masks[native] & WriteEffect;
+    }
+}
+InSubtree :: (forest: snapshot.SnapshotNode[], node: int, root: int) -> bool {
+    at := node;
+    remaining := length(forest);
+    while (at >= 0 && remaining > 0) {
+        if (at == root) {
+            return true;
+        }
+        at = forest[at].parent;
+        remaining -= 1;
+    }
+    return false;
+}
+InUpdateItem :: (forest: snapshot.SnapshotNode[], facts: SemanticFact[], node: int) -> bool {
+    for (fact in facts) {
+        if (fact.kind == UpdateFact && InSubtree(forest, node, fact.target)) {
+            return true;
+        }
+    }
+    return false;
+}
+HasSemanticFact :: (facts: SemanticFact[], node: int, kind: int, target: int) -> bool {
+    for (fact in facts) {
+        if (fact.node == node && fact.kind == kind && fact.target == target) {
+            return true;
+        }
+    }
+    return false;
+}
+SemanticState :: union {
+    Read(direct_write: int, facts: SemanticFact[])
+}
+// Directives record resolved semantic choices even when lowering replaced a
+// native call with an intrinsic. The sparse facts belong only to item trees.
+DirectiveFacts :: (forest: snapshot.SnapshotNode[], context: BodyContext, direct: int,
+                   facts: SemanticFact[], item: Work) -> SemanticState {
+    recorded := facts;
+    summary := direct;
+    kind := item.a;
+    target := item.b;
+    if (item.phase == NativeCallPhase) {
+        kind = NativeFact;
+        target = item.a;
+    }
+    if (kind == UpdateFact) {
+        fact: SemanticFact = {node: item.node, kind: UpdateFact, target: target};
+        recorded.append(fact);
+        return SemanticState.Read(summary, recorded);
+    }
+    if (kind == WriteFact) {
+        summary = WriteEffect;
+    } else if (kind == NativeFact) {
+        summary = JoinWrite(summary, NativeWrite(context, target));
+    }
+    if (InUpdateItem(forest, recorded, item.node) && !HasSemanticFact(recorded, item.node, kind, target)) {
+        fact: SemanticFact = {node: item.node, kind: kind, target: target};
+        recorded.append(fact);
+    }
+    return SemanticState.Read(summary, recorded);
+}
+// Actual linked hosts and authored invocations come from resolved steps,
+// before retention adds any implementation-only intrinsics.
+StepFacts :: (forest: snapshot.SnapshotNode[], context: BodyContext, direct: int, facts: SemanticFact[],
+              node: int, hosts: Host[], calls: Invocation[]) -> SemanticState {
+    summary := direct;
+    recorded := facts;
+    inside := InUpdateItem(forest, recorded, node);
+    for (host in hosts) {
+        if (host.linked >= 0) {
+            summary = JoinWrite(summary, NativeWrite(context, host.linked));
+            if (inside && !HasSemanticFact(recorded, node, NativeFact, host.linked)) {
+                fact: SemanticFact = {node: node, kind: NativeFact, target: host.linked};
+                recorded.append(fact);
+            }
+        }
+    }
+    if (inside) {
+        for (call in calls) {
+            fact: SemanticFact = {node: node, kind: CallFact, target: call.callee};
+            recorded.append(fact);
+        }
+    }
+    return SemanticState.Read(summary, recorded);
+}
+RecordNativeCall :: (node: int, native: int, result: Value) -> Work {
+    return {node: node, phase: NativeCallPhase, a: native, b: 0, c: 0,
+            storage: result.storage, container: result.container, record: result.record, capture: false};
+}
+Expect :: (node: int, storage: int, container: int, record: int) -> Work {
+    return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: storage, container: container, record: record, capture: false};
+}
+Resume :: (node: int, phase: int, a: int, b: int) -> Work {
+    return {node: node, phase: phase, a: a, b: b, c: 0, storage: 0, container: 0, record: -1, capture: false};
+}
+// Bases for a step whose code stands alone, such as a state's initial value.
+NoBases :: () -> Bases {
+    return {pc: 0, slot: 0, local: 0, cell: 0, host: 0, call: 0};
+}
+NoValue :: () -> Value {
+    return {cell: -1, owned: false, place: false, newkey: false, slot: -1, storage: 0, container: 0, record: -1, schema: -1};
+}
+Typed :: (slot: int, storage: int, container: int, record: int) -> Value {
+    return {cell: -1, owned: false, place: false, newkey: false, slot: slot, storage: storage, container: container, record: record, schema: -1};
+}
+Fail :: (forest: snapshot.SnapshotNode[], node: int, document: int, message: string) -> Step {
+    return Step.Failed(Diagnose(forest, node, document, message));
+}
+// Whether a record, array or union is new in the function's value storage,
+// where a copy would go, and nothing else reaches it: a literal, a variant
+// built with its payload, or an authored function's result, which the call
+// copies there. A native may return an argument, so its result is not fresh.
+Fresh :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: ResolvedNative[], types: TypeDecl[], names: Name[],
+          package: int, node: int) -> bool {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, "struct_expression") || Is(forest, value, "array_expression") ||
+        Is(forest, value, "map_expression")) {
+        return true;
+    }
+    if (!Is(forest, value, "call_expression")) {
+        return false;
+    }
+    callee := Field(forest, value, "function");
+    return CalledFunction(forest, text, callables, natives, names, package, value) >= 0 ||
+           (Is(forest, callee, "member_expression") && UnionOf(forest, text, types, names, package, callee) >= 0);
+}
+// Whether a value is the one a return statement returns, which the function
+// may build in its caller's storage.
+Returned :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    at := node;
+    while (Is(forest, forest[at].parent, "parenthesized_expression")) {
+        at = forest[at].parent;
+    }
+    parent := forest[at].parent;
+    return Is(forest, parent, "return_statement") && Field(forest, parent, "value") == at;
+}
+// The name a place reads or writes, through its fields and elements.
+RootOf :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    at := Unparenthesized(forest, node);
+    while (Is(forest, at, "member_expression") || Is(forest, at, "index_expression")) {
+        at = Unparenthesized(forest, Field(forest, at, "object"));
+    }
+    return at;
+}
+// The names a body changes: each assignment's root, each map a key is
+// deleted from, and each name a scoped argument lends. Shadowing is ignored,
+// so another local of the same spelling counts too.
+MutatedNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, referenced: string[]) -> string[] {
+    found := referenced;
+    pending: int[] = [node];
+    top: int = 1;
+    while (top > 0) {
+        top -= 1;
+        at := pending[top];
+        target: int = -1;
+        if (Is(forest, at, "assignment") || Is(forest, at, "delete_statement")) {
+            target = Field(forest, at, "target");
+        } else if (Is(forest, at, "call_expression") && Is(forest, Field(forest, at, "function"), "member_expression") &&
+                   ChangingMethod(Text(forest, text, Field(forest, Field(forest, at, "function"), "member")))) {
+            target = Field(forest, at, "function");
+        }
+        if (target >= 0 && Is(forest, RootOf(forest, target), "identifier")) {
+            found.append(Text(forest, text, RootOf(forest, target)));
+        }
+        child := forest[at].first_child;
+        while (child >= 0) {
+            if (top < length(pending)) {
+                pending[top] = child;
+            } else {
+                pending.append(child);
+            }
+            top += 1;
+            child = forest[child].next_sibling;
+        }
+    }
+    return found;
+}
+// Whether a method of that name changes what it is called on: a map's
+// `delete`, or an array method such as `append`.
+ChangingMethod :: (name: string) -> bool {
+    changers: string[] = ["delete", "append", "extend", "insert", "remove_index", "remove_item", "add_unique",
+                          "set_array_elem", "clear", "reverse", "swap", "resize"];
+    for (changer in changers) {
+        if (NameMatches(name, changer)) {
+            return true;
+        }
+    }
+    return false;
+}
+// Only a newly produced record is known to be independent. An array can be
+// changed through another name or a called function even when this spelling
+// has no writes in the current body.
+Unchanging :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: ResolvedNative[],
+               types: TypeDecl[], names: Name[], package: int, mutated: string[], node: int) -> bool {
+    return Fresh(forest, text, callables, natives, types, names, package, node);
+}
+// Whether a value names a local or parameter its function never changes,
+// assigns or addresses, so no call or statement of the function changes it.
+FixedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], referenced: string[], mutated: string[],
+               addressed: string[], value: int) -> bool {
+    if (!Is(forest, value, "identifier")) {
+        return false;
+    }
+    name := Text(forest, text, value);
+    found := Lookup(names, name);
+    return found >= 0 && (names[found].place == CellPlace || names[found].place == ParameterPlace) &&
+           Fixed(referenced, mutated, addressed, name);
+}
+// Whether a value is a local its function builds in its caller's storage.
+BuiltName :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], built: int[], value: int) -> bool {
+    at := Unparenthesized(forest, value);
+    if (!Is(forest, at, "identifier")) {
+        return false;
+    }
+    found := Lookup(names, Text(forest, text, at));
+    return found >= 0 && names[found].place == CellPlace && built.contains(names[found].node);
+}
+// Whether an array literal initializes a local its function builds in its
+// caller's storage.
+BuiltLiteral :: (forest: snapshot.SnapshotNode[], built: int[], literal: int) -> bool {
+    at := literal;
+    while (Is(forest, forest[at].parent, "parenthesized_expression")) {
+        at = forest[at].parent;
+    }
+    declaration := forest[at].parent;
+    return Is(forest, declaration, "local_declaration") && Field(forest, declaration, "value") == at &&
+           built.contains(Field(forest, declaration, "name"));
+}
+// The position of a spelling in a list of names, or -1.
+NamePosition :: (spellings: string[], name: string) -> int {
+    index: int = 0;
+    while (index < length(spellings)) {
+        if (spellings[index] == name) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// Whether an identifier declares a name rather than reads one.
+Declares :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    parent := forest[node].parent;
+    if (Is(forest, parent, "pattern_bindings")) {
+        return true;
+    }
+    field := forest[node].field;
+    return ((Is(forest, parent, "local_declaration") || Is(forest, parent, "constant_declaration") ||
+             Is(forest, parent, "parameter")) && field == "name") ||
+           (Is(forest, parent, "for_statement") && (field == "name" || field == "key")) || field == "binding";
+}
+// The names a returned value is made of: itself, or a returned variant's
+// payload values.
+ReturnedNames :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[], package: int,
+                  value: int) -> string[] {
+    at := Unparenthesized(forest, value);
+    if (Is(forest, at, "identifier")) {
+        return [Text(forest, text, at)];
+    }
+    callee := Field(forest, at, "function");
+    found: string[] = [];
+    if (!Is(forest, at, "call_expression") || !Is(forest, callee, "member_expression") ||
+        UnionOf(forest, text, types, aliases, package, callee) < 0) {
+        return found;
+    }
+    argument := FirstMember(forest, Field(forest, at, "arguments"));
+    while (argument >= 0) {
+        if (Is(forest, Unparenthesized(forest, argument), "identifier")) {
+            found.append(Text(forest, text, Unparenthesized(forest, argument)));
+        }
+        argument = NextMember(forest, argument);
+    }
+    return found;
+}
+// The array locals a function builds in its caller's storage, by the nodes
+// that name them. Each is declared once, at the top of the body, from an
+// array literal; changed only by `append`, `extend` and element stores; never
+// assigned, deleted from or lent to a scoped parameter; and returned, itself or
+// as a payload of a returned variant, so the return need not copy it.
+BuiltLocals :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], aliases: Name[], package: int,
+                body: int, referenced: string[]) -> int[] {
+    spellings: string[] = [];
+    nodes: int[] = [];
+    statement := FirstMember(forest, body);
+    while (statement >= 0) {
+        name := Field(forest, statement, "name");
+        if (Is(forest, statement, "local_declaration") &&
+            Is(forest, Unparenthesized(forest, Field(forest, statement, "value")), "array_expression") &&
+            !Holds(referenced, Text(forest, text, name))) {
+            spellings.append(Text(forest, text, name));
+            nodes.append(name);
+        }
+        statement = NextMember(forest, statement);
+    }
+    returned := resize([false], length(spellings));
+    rejected := resize([false], length(spellings));
+    pending: int[] = [body];
+    top: int = 1;
+    while (top > 0 && length(spellings) > 0) {
+        top -= 1;
+        at := pending[top];
+        changed: int = -1;
+        if (Is(forest, at, "identifier") && Declares(forest, at)) {
+            index := NamePosition(spellings, Text(forest, text, at));
+            if (index >= 0 && nodes[index] != at) {
+                rejected[index] = true;
+            }
+        } else if (Is(forest, at, "assignment") || Is(forest, at, "delete_statement")) {
+            target := Unparenthesized(forest, Field(forest, at, "target"));
+            element := Is(forest, at, "assignment") && Is(forest, target, "index_expression") &&
+                       Is(forest, Unparenthesized(forest, Field(forest, target, "object")), "identifier");
+            if (!element) {
+                changed = RootOf(forest, target);
+            }
+        } else if (Is(forest, at, "call_expression") && Is(forest, Field(forest, at, "function"), "member_expression")) {
+            method := Text(forest, text, Field(forest, Field(forest, at, "function"), "member"));
+            if (ChangingMethod(method) && !NameMatches(method, "append") && !NameMatches(method, "extend")) {
+                changed = RootOf(forest, Field(forest, at, "function"));
+            }
+        } else if (Is(forest, at, "return_statement")) {
+            for (made in ReturnedNames(forest, text, types, aliases, package, Field(forest, at, "value"))) {
+                index := NamePosition(spellings, made);
+                if (index >= 0) {
+                    returned[index] = true;
+                }
+            }
+        }
+        if (Is(forest, changed, "identifier")) {
+            index := NamePosition(spellings, Text(forest, text, changed));
+            if (index >= 0) {
+                rejected[index] = true;
+            }
+        }
+        child := forest[at].first_child;
+        while (child >= 0) {
+            if (top < length(pending)) {
+                pending[top] = child;
+            } else {
+                pending.append(child);
+            }
+            top += 1;
+            child = forest[child].next_sibling;
+        }
+    }
+    built: int[] = [];
+    index: int = 0;
+    while (index < length(nodes)) {
+        if (returned[index] && !rejected[index]) {
+            built.append(nodes[index]);
+        }
+        index += 1;
+    }
+    return built;
+}
+// Records and collections are pointers to their storage. A union slot holds
+// the union itself, and explicit managed pointers remain scalar values whose
+// assignment preserves target identity.
+Pointer :: (storage: int, container: int) -> bool {
+    return container != 0 || storage == StructStorage;
+}
+SlotStorage :: (storage: int, container: int, target: Target) -> int {
+    if (Pointer(storage, container)) {
+        return target.pointer_storage;
+    }
+    return storage;
+}
+SlotKind :: (storage: int, container: int) -> int {
+    if (Pointer(storage, container)) {
+        return AddressKind;
+    }
+    return ValueKind;
+}
+SameType :: (storage: int, container: int, record: int, value: Value) -> bool {
+    return storage == value.storage && container == value.container && record == value.record;
+}
+Single :: (value: Value, storage: int) -> bool {
+    return value.storage == storage && value.container == 0;
+}
+// The digit a hexadecimal character stands for, -1 for any other.
+HexDigit :: (character: int) -> int {
+    if (character >= 48 && character <= 57) {
+        return character - 48;
+    }
+    if (character >= 97 && character <= 102) {
+        return character - 87;
+    }
+    if (character >= 65 && character <= 70) {
+        return character - 55;
+    }
+    return -1;
+}
+// The value of a number literal, or of `-` on one; not valid for anything
+// else or beyond 64 bits. Only the operations the runtime allows on uint64
+// touch the magnitude: addition, multiplication and comparison for equality.
+ParseNumber :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> Literal {
+    invalid := Literal.Invalid;
+    digits := node;
+    negative := false;
+    if (Is(forest, node, "unary_expression")) {
+        if (Text(forest, text, Field(forest, node, "operator")) != "-") {
+            return invalid;
+        }
+        digits = Field(forest, node, "operand");
+        negative = true;
+    }
+    if (!Is(forest, digits, "number")) {
+        return invalid;
+    }
+    literal := Text(forest, text, digits);
+    size := strings.ByteLength(literal);
+    base: int = 10;
+    index: int = 0;
+    if (size > 2 && strings.ByteAt(literal, 0) == 48 &&
+        (strings.ByteAt(literal, 1) == 120 || strings.ByteAt(literal, 1) == 88)) {
+        base = 16;
+        index = 2;
+    }
+    // At most 16 hexadecimal or 20 decimal significant digits; twenty decimal
+    // digits must not exceed the largest uint64.
+    first: int = -1;
+    magnitude: u64 = 0;
+    while (index < size) {
+        digit := HexDigit(strings.ByteAt(literal, index));
+        if (digit < 0 || digit >= base) {
+            return invalid;
+        }
+        if (first < 0 && digit != 0) {
+            first = index;
+        }
+        magnitude = magnitude * u64(base) + u64(digit);
+        index += 1;
+    }
+    significant: int = 0;
+    if (first >= 0) {
+        significant = size - first;
+    }
+    if ((base == 16 && significant > 16) || significant > 20 ||
+        (significant == 20 && strings.Compare(strings.Slice(literal, first, 20), "18446744073709551615") > 0)) {
+        return invalid;
+    }
+    return Literal.Number(negative, magnitude);
+}
+Int8Storage: int : 2;
+ByteStorage: int : 3;
+Int16Storage: int : 4;
+Uint16Storage: int : 5;
+UintStorage: int : 7;
+Int64Storage: int : 8;
+// A value no instruction holds yet: an integer literal its use gives a type.
+NumberStorage: int : -3;
+// The several results of a native call: the value's slot is the cell of the
+// first result and its record the native; `.name` reads one result.
+ResultsStorage: int : -4;
+// The named results of a function's call, as ResultsStorage, but the record
+// is the callable.
+FunctionResultsStorage: int : -5;
+// The integer types this compiler emits.
+Integer :: (storage: int) -> bool {
+    return storage >= Int8Storage && storage <= WordStorage;
+}
+Signed :: (storage: int) -> bool {
+    return storage == Int8Storage || storage == Int16Storage || storage == IntStorage || storage == Int64Storage;
+}
+// An integer type's width in bits.
+Width :: (storage: int) -> int {
+    if (storage == Int8Storage || storage == ByteStorage) {
+        return 8;
+    }
+    if (storage == Int16Storage || storage == Uint16Storage) {
+        return 16;
+    }
+    if (storage == IntStorage || storage == UintStorage) {
+        return 32;
+    }
+    return 64;
+}
+TypeName :: (storage: int) -> string {
+    if (!Integer(storage)) {
+        return "";
+    }
+    names: string[] = ["i8", "u8", "i16", "u16", "int", "u32", "i64", "u64"];
+    return names[storage - Int8Storage];
+}
+// Whether a literal's value fits an integer type.
+Fits :: (negative: bool, magnitude: u64, storage: int) -> bool {
+    // Stage zero rejects any signed literal of an unsigned type, -0 included.
+    if (negative && !Signed(storage)) {
+        return false;
+    }
+    if (magnitude == 0) {
+        return true;
+    }
+    if (!Signed(storage)) {
+        return storage == WordStorage || (magnitude >> u64(Width(storage))) == 0;
+    }
+    bits := u64(Width(storage) - 1);
+    return (magnitude >> bits) == 0 || (negative && magnitude == (u64(1) << bits));
+}
+// A literal's bits in an integer type it fits, sign-extended when negative.
+Bits :: (negative: bool, magnitude: u64) -> u64 {
+    if (negative) {
+        return ~magnitude + 1;
+    }
+    return magnitude;
+}
+// The type both integer operands convert to without loss, as stage zero's
+// behavior_scalar_common_integer chooses it: the wider operand, or int or
+// int64 for a signed and unsigned pair; -1 when there is none, as for int64
+// with uint64.
+CommonInteger :: (left: int, right: int) -> int {
+    if (IntegerWidens(left, right)) {
+        return right;
+    }
+    if (IntegerWidens(right, left)) {
+        return left;
+    }
+    if (IntegerWidens(left, IntStorage) && IntegerWidens(right, IntStorage)) {
+        return IntStorage;
+    }
+    if (IntegerWidens(left, Int64Storage) && IntegerWidens(right, Int64Storage)) {
+        return Int64Storage;
+    }
+    return -1;
+}
+// Whether every value of the integer type `from` fits `to`.
+IntegerWidens :: (from: int, to: int) -> bool {
+    if (Signed(from) && !Signed(to)) {
+        return false;
+    }
+    if (!Signed(from) && Signed(to)) {
+        return Width(to) > Width(from);
+    }
+    return Width(to) >= Width(from);
+}
+// Whether an integer converts to another without loss, as stores do
+// implicitly.
+Widens :: (from: int, to: int) -> bool {
+    return from != to && Integer(from) && Integer(to) && CommonInteger(from, to) == to;
+}
+// Whether the runtime computes `op` in a number type: arithmetic other than
+// remainders, and comparisons, for floats; every operator for the integers,
+// negation for the signed ones only.
+Computes :: (ops: Ops, op: int, storage: int) -> bool {
+    if (Floating(storage)) {
+        return op == ops.add || op == ops.sub || op == ops.mul || op == ops.div || op == ops.neg || Comparison(ops, op);
+    }
+    return op != ops.neg || Signed(storage);
+}
+// A constant of an integer or bool type. One literal holds `bits`: stage
+// zero takes any uint64 for a pointer, and storing one into a local record's
+// field would make this function, and every caller, copy its arguments.
+ConstantCode :: (ops: Ops, storage: int, bits: u64, output: int, node: snapshot.SnapshotNode) -> Code {
+    return {op: ops.constant, type: storage, output: output, left: 0, right: 0, target: 0, offset: 0,
+            value_storage: storage, value_container: 0, value_record: -1, payload: bits, text: "",
+            has_text: false, message: "", has_message: false, start: node.start, end: node.end, line: node.row + 1,
+            column: node.column + 1};
+}
+// A conversion to a numeric type: to an integer one, `mode` 0 clamps a value
+// that does not fit and 1 keeps its low bits.
+CastCode :: (ops: Ops, storage: int, output: int, input: int, mode: int, node: snapshot.SnapshotNode) -> Code {
+    return Instruction(ops.cast, storage, output, input, 0, mode, node);
+}
+// The floating types this compiler emits.
+Floating :: (storage: int) -> bool {
+    return storage == FloatStorage || storage == DoubleStorage;
+}
+// The instruction a binary operator lowers to; -1 for logic and unknown ones.
+BinaryOp :: (ops: Ops, operator: string) -> int {
+    if (operator == "+") {
+        return ops.add;
+    }
+    if (operator == "-") {
+        return ops.sub;
+    }
+    if (operator == "*") {
+        return ops.mul;
+    }
+    if (operator == "/") {
+        return ops.div;
+    }
+    if (operator == "%") {
+        return ops.mod;
+    }
+    if (operator == "&") {
+        return ops.bit_and;
+    }
+    if (operator == "|") {
+        return ops.bit_or;
+    }
+    if (operator == "^") {
+        return ops.bit_xor;
+    }
+    if (operator == "<<") {
+        return ops.shl;
+    }
+    if (operator == ">>") {
+        return ops.shr;
+    }
+    if (operator == "<") {
+        return ops.lt;
+    }
+    if (operator == "<=") {
+        return ops.le;
+    }
+    if (operator == ">") {
+        return ops.gt;
+    }
+    if (operator == ">=") {
+        return ops.ge;
+    }
+    if (operator == "==") {
+        return ops.eq;
+    }
+    if (operator == "!=") {
+        return ops.ne;
+    }
+    return -1;
+}
+Comparison :: (ops: Ops, op: int) -> bool {
+    return op == ops.lt || op == ops.le || op == ops.gt || op == ops.ge || op == ops.eq || op == ops.ne;
+}
+// The operator of a compound assignment, "" for plain assignment.
+CompoundOperator :: (text: string) -> string {
+    if (text == "=") {
+        return "";
+    }
+    return strings.Slice(text, 0, strings.ByteLength(text) - 1);
+}
+// The function of `package` named `name`, -1 when none.
+FindCallable :: (callables: Callable[], package: int, name: string) -> int {
+    index: int = 0;
+    while (index < length(callables)) {
+        if (callables[index].package == package && callables[index].name == name) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// Library exports and native functions share the catalog namespace. Exact
+// canonical names precede loose source and canonical names within that kind.
+CatalogCallable :: (callables: Callable[], natives: ResolvedNative[], names: Name[], name: string) -> int {
+    if (ExactNativeKind(natives, name, NativeFunctionKind) >= 0) {
+        return -1;
+    }
+    for (alias in names) {
+        if (alias.place != LibraryPlace) {
+            continue;
+        }
+        index: int = 0;
+        while (index < length(callables)) {
+            candidate := callables[index];
+            if (candidate.package == alias.index && format_text("{}.{}", alias.name, candidate.name) == name) {
+                return index;
+            }
+            index += 1;
+        }
+    }
+    found: int = -1;
+    for (alias in names) {
+        if (alias.place != LibraryPlace) {
+            continue;
+        }
+        index: int = 0;
+        while (index < length(callables)) {
+            candidate := callables[index];
+            if (candidate.package == alias.index &&
+                (NameMatches(format_text("{}.{}", alias.name, candidate.name), name) ||
+                 NameMatches(candidate.name, name))) {
+                if (found >= 0) {
+                    return -2;
+                }
+                found = index;
+            }
+            index += 1;
+        }
+    }
+    if (found >= 0 && FindNativeKind(natives, name, NativeFunctionKind) != -1) {
+        return -2;
+    }
+    return found;
+}
+// Lexical functions precede catalog exports. Ordinary package aliases keep
+// their exact spelling and never fall through to a native declaration.
+NumericConversionName :: (name: string) -> bool {
+    primitive := ScalarStorage(name);
+    return Integer(primitive) || Floating(primitive) || name == "char" || name == "number";
+}
+SourceCallable :: (callables: Callable[], natives: ResolvedNative[], names: Name[], package: int, name: string) -> int {
+    own := FindCallable(callables, package, name);
+    if (own >= 0) {
+        return own;
+    }
+    // Numeric primitive calls remain conversions ahead of foreign exports.
+    if (NumericConversionName(name)) {
+        return -1;
+    }
+    return CatalogCallable(callables, natives, names, name);
+}
+QualifiedCallable :: (callables: Callable[], natives: ResolvedNative[], names: Name[], package: int,
+                      name: string, spelling: string) -> int {
+    for (alias in names) {
+        if (alias.place == LibraryPlace && alias.index == package) {
+            return CatalogCallable(callables, natives, names, spelling);
+        }
+    }
+    return FindCallable(callables, package, name);
+}
+// The field of types[record] named `name`; a native type's matches as the
+// catalog matches it: an exact name first, else the one that matches
+// loosely. -1 for none or several.
+FindField :: (types: TypeDecl[], members: TypeMember[], record: int, name: string) -> int {
+    found: int = -1;
+    at := types[record].first;
+    while (at < types[record].first + types[record].count) {
+        if (members[at].name == name) {
+            return at;
+        }
+        if (types[record].kind >= NativeDecl && NameMatches(members[at].name, name)) {
+            if (found != -1) {
+                found = -2;
+            } else {
+                found = at;
+            }
+        }
+        at += 1;
+    }
+    if (found < 0) {
+        return -1;
+    }
+    return found;
+}
+// The innermost binding of `wanted`, -1 when none.
+Lookup :: (names: Name[], wanted: string) -> int {
+    at := length(names) - 1;
+    while (at >= 0) {
+        if (names[at].name == wanted) {
+            return at;
+        }
+        at -= 1;
+    }
+    return -1;
+}
+Separator :: (byte: int) -> bool {
+    return byte == 95 || byte == 32 || byte == 45;
+}
+Lower :: (byte: int) -> int {
+    if (byte >= 65 && byte <= 90) {
+        return byte + 32;
+    }
+    return byte;
+}
+// Whether two names match as the native catalog matches them: ignoring case,
+// spaces, underscores and hyphens.
+NameMatches :: (left: string, right: string) -> bool {
+    i: int = 0;
+    j: int = 0;
+    left_length := strings.ByteLength(left);
+    right_length := strings.ByteLength(right);
+    while (i <= left_length && j <= right_length) {
+        while (i < left_length && Separator(strings.ByteAt(left, i))) {
+            i += 1;
+        }
+        while (j < right_length && Separator(strings.ByteAt(right, j))) {
+            j += 1;
+        }
+        if (i == left_length || j == right_length) {
+            return i == left_length && j == right_length;
+        }
+        if (Lower(strings.ByteAt(left, i)) != Lower(strings.ByteAt(right, j))) {
+            return false;
+        }
+        i += 1;
+        j += 1;
+    }
+    return false;
+}
+NativeNameMatches :: (native: ResolvedNative, name: string) -> bool {
+    return NameMatches(native.qualified_name, name) || NameMatches(native.name, name);
+}
+ExactNativeKind :: (natives: ResolvedNative[], name: string, kind: int) -> int {
+    index: int = 0;
+    while (index < length(natives)) {
+        native := natives[index];
+        if (native.kind == kind && !native.source && native.qualified_name == name) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+NativeCandidate :: (native: ResolvedNative, name: string, kind: int, exact: bool) -> bool {
+    if (native.kind != kind || native.source) {
+        return false;
+    }
+    if (exact) {
+        return native.qualified_name == name;
+    }
+    return NativeNameMatches(native, name);
+}
+// Within one capability kind, exact canonical names precede loose canonical
+// and source names. Rows owned by parsed source keep their indices but do not
+// compete with native declarations.
+FindNativeKind :: (natives: ResolvedNative[], name: string, kind: int) -> int {
+    exact := ExactNativeKind(natives, name, kind) >= 0;
+    found: int = -1;
+    index: int = 0;
+    while (index < length(natives)) {
+        native := natives[index];
+        if (NativeCandidate(native, name, kind, exact)) {
+            if (found >= 0) {
+                found = -2;
+            } else if (found == -1) {
+                found = index;
+            }
+        }
+        index += 1;
+    }
+    return found;
+}
+// The first candidate, used only after lookup establishes ambiguity
+// among functions and their argument types must select an overload.
+FirstNativeKind :: (natives: ResolvedNative[], name: string, kind: int) -> int {
+    exact := ExactNativeKind(natives, name, kind);
+    if (exact >= 0) {
+        return exact;
+    }
+    index: int = 0;
+    while (index < length(natives)) {
+        native := natives[index];
+        if (native.kind == kind && !native.source && NativeNameMatches(native, name)) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+FindNative :: (natives: ResolvedNative[], name: string) -> int {
+    found := FindNativeKind(natives, name, NativeFunctionKind);
+    if (found != -1) {
+        return found;
+    }
+    return FindNativeKind(natives, name, NativeActionKind);
+}
+// Native qualification has no lexical alias once CallStep admits its unbound
+// prefix. Reconstruct the same spelling when a resumed call selects overloads.
+NativeCallName :: (forest: snapshot.SnapshotNode[], text: string, call: int) -> string {
+    callee := Field(forest, call, "function");
+    if (Is(forest, callee, "member_expression")) {
+        return format_text("{}.{}", Text(forest, text, Field(forest, callee, "object")),
+                           Text(forest, text, Field(forest, callee, "member")));
+    }
+    return Text(forest, text, callee);
+}
+// The package a name of package `package` qualified by `node` names: that
+// package for none, the imported one when `node` is an import alias no local
+// hides, and -1 otherwise.
+QualifierOf :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], package: int, node: int) -> int {
+    if (node < 0) {
+        return package;
+    }
+    if (!Is(forest, node, "identifier")) {
+        return -1;
+    }
+    name := Text(forest, text, node);
+    found := Lookup(names, name);
+    if (found >= 0) {
+        if (Alias(names[found].place)) {
+            return names[found].index;
+        }
+        return -1;
+    }
+    home: int = -1;
+    for (alias in names) {
+        if (alias.place == LibraryPlace && NameMatches(alias.name, name)) {
+            if (home >= 0) {
+                return -1;
+            }
+            home = alias.index;
+        }
+    }
+    return home;
+}
+// Package privacy governs source names, not the runtime functions retained in
+// a module. A native or synthesized declaration has no source node.
+PrivateDeclaration :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    at := node;
+    while (at >= 0) {
+        if (Is(forest, at, "library")) {
+            return false;
+        }
+        at = forest[at].parent;
+    }
+    return node >= 0 && Field(forest, node, "visibility") < 0;
+}
+PrivateMessage :: (name: string) -> string {
+    return format_text("'{}' is private: declare it pub to use it from another package", name);
+}
+// The qualified type name a type spells privately, including a map's key or
+// value and an array's element type. Returns its name node for the diagnostic.
+PrivateType :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
+                node: int) -> int {
+    if (node < 0) {
+        return -1;
+    }
+    if (Is(forest, node, "type")) {
+        named := Field(forest, node, "name");
+        first := FirstMember(forest, named);
+        part: int = -1;
+        if (first >= 0) {
+            part = NextMember(forest, first);
+        }
+        if (part >= 0) {
+            home := QualifierOf(forest, text, names, package, first);
+            declared := FindType(types, home, Text(forest, text, part));
+            if (home >= 0 && home != package && declared >= 0 && PrivateDeclaration(forest, types[declared].node)) {
+                return named;
+            }
+        }
+    }
+    child := FirstMember(forest, node);
+    while (child >= 0) {
+        hidden := PrivateType(forest, text, types, names, package, child);
+        if (hidden >= 0) {
+            return hidden;
+        }
+        child = NextMember(forest, child);
+    }
+    return -1;
+}
+// A qualified source access, with an import alias no local hides. For a
+// variant `alias.Union.Variant`, privacy applies to `alias.Union`.
+PrivateAccess :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], types: TypeDecl[],
+                  constants: ConstDecl[], names: Name[], package: int, node: int) -> int {
+    if (!Is(forest, node, "member_expression")) {
+        return -1;
+    }
+    object := Field(forest, node, "object");
+    if (Is(forest, object, "member_expression")) {
+        return PrivateAccess(forest, text, callables, types, constants, names, package, object);
+    }
+    home := QualifierOf(forest, text, names, package, object);
+    if (home < 0 || home == package) {
+        return -1;
+    }
+    name := Text(forest, text, Field(forest, node, "member"));
+    callable := FindCallable(callables, home, name);
+    declared := FindType(types, home, name);
+    constant := FindConstant(constants, home, name);
+    if ((callable >= 0 && PrivateDeclaration(forest, callables[callable].node)) ||
+        (declared >= 0 && PrivateDeclaration(forest, types[declared].node)) ||
+        (constant >= 0 && PrivateDeclaration(forest, forest[constants[constant].node].parent))) {
+        return node;
+    }
+    return -1;
+}
+// The package constant `node` names: `Name` when no local hides it, or
+// `alias.Name`; -1 otherwise.
+ConstantOf :: (forest: snapshot.SnapshotNode[], text: string, constants: ConstDecl[], names: Name[], package: int,
+               node: int) -> int {
+    if (Is(forest, node, "identifier")) {
+        if (Lookup(names, Text(forest, text, node)) >= 0) {
+            return -1;
+        }
+        return FindConstant(constants, package, Text(forest, text, node));
+    }
+    if (!Is(forest, node, "member_expression")) {
+        return -1;
+    }
+    home := QualifierOf(forest, text, names, package, Field(forest, node, "object"));
+    if (home < 0) {
+        return -1;
+    }
+    return FindConstant(constants, home, Text(forest, text, Field(forest, node, "member")));
+}
+// The union `U` names when `node` is a member expression `U.Variant` or
+// `alias.U.Variant` and no local hides U or the alias; -1 otherwise.
+UnionOf :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], names: Name[], package: int,
+            node: int) -> int {
+    object := Field(forest, node, "object");
+    qualifier: int = -1;
+    if (Is(forest, object, "member_expression")) {
+        qualifier = Field(forest, object, "object");
+        object = Field(forest, object, "member");
+    } else if (!Is(forest, object, "identifier") || Lookup(names, Text(forest, text, object)) >= 0) {
+        return -1;
+    }
+    home := QualifierOf(forest, text, names, package, qualifier);
+    if (home < 0) {
+        return -1;
+    }
+    declared := FindType(types, home, Text(forest, text, object));
+    if (declared < 0 || types[declared].kind != UnionDecl) {
+        return -1;
+    }
+    return declared;
+}
+// Whether `variant` is among `covered` from `first` on.
+Covers :: (covered: int[], first: int, variant: int) -> bool {
+    at := first;
+    while (at < length(covered)) {
+        if (covered[at] == variant) {
+            return true;
+        }
+        at += 1;
+    }
+    return false;
+}
+// Whether `name` is declared in the innermost scope, whose names start at
+// names[scope].
+Declared :: (names: Name[], scope: int, name: string) -> bool {
+    at := scope;
+    while (at < length(names)) {
+        if (names[at].name == name) {
+            return true;
+        }
+        at += 1;
+    }
+    return false;
+}
+// Whether the `is` expression `node` is an if or while condition, alone or
+// joined by `&&` and parentheses, where its bindings may hold the payload.
+BindingCondition :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    at := node;
+    parent := forest[at].parent;
+    while (parent >= 0) {
+        if (Is(forest, parent, "if_statement") || Is(forest, parent, "while_statement")) {
+            return Field(forest, parent, "condition") == at;
+        }
+        if (Is(forest, parent, "binary_expression")) {
+            operator := Text(forest, text, Field(forest, parent, "operator"));
+            if (operator != "&&" && operator != "and") {
+                return false;
+            }
+        } else if (!Is(forest, parent, "parenthesized_expression")) {
+            return false;
+        }
+        at = parent;
+        parent = forest[at].parent;
+    }
+    return false;
+}
+// The next switch arm after `node` among its siblings, -1 when none.
+// Whether a range's bounds are both constant and the first is the greater.
+Descends :: (forest: snapshot.SnapshotNode[], text: string, document: int, constants: ConstDecl[], names: Name[],
+             package: int, node: int) -> bool {
+    bounds: i64[] = [];
+    for (end in [Field(forest, node, "first"), Field(forest, node, "last")]) {
+        switch FoldConstant(forest, text, document, constants, names, package, end, IntStorage) {
+            case .Folded(bits):
+                bounds.append(i64(wrap: bits));
+            case .Failed(diagnostic):
+                return false;
+            case .Waiting:
+                return false;
+        }
+    }
+    return bounds[0] > bounds[1];
+}
+// The name an array loop gives each item: `x` in `for x in xs` and in the
+// keyed `for x, i in xs`, whose second name is the index.
+ItemField :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    if (Field(forest, node, "key") >= 0) {
+        return Field(forest, node, "key");
+    }
+    return Field(forest, node, "name");
+}
+NextArm :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    at := NextMember(forest, node);
+    while (at >= 0 && !Is(forest, at, "switch_arm")) {
+        at = NextMember(forest, at);
+    }
+    return at;
+}
+// The index of a native's result named `name`, matched as natives are: an
+// exact name first, else the one name that matches loosely; -1 for none and
+// -2 when several match.
+FindResult :: (ports: ResolvedPort[], native: ResolvedNative, name: string) -> int {
+    found: int = -1;
+    index: int = 0;
+    while (index < native.results) {
+        result := ports[native.first + native.parameters + index].name;
+        if (result == name) {
+            return index;
+        }
+        if (NameMatches(result, name)) {
+            if (found >= 0) {
+                found = -2;
+            } else if (found == -1) {
+                found = index;
+            }
+        }
+        index += 1;
+    }
+    return found;
+}
+// The port of a native's argument `index`; a variadic native's last
+// parameter takes every argument from it on.
+NativePort :: (native: ResolvedNative, index: int) -> int {
+    if (index >= native.parameters && native.variadic && native.parameters > 0) {
+        return native.first + native.parameters - 1;
+    }
+    return native.first + index;
+}
+ArrayUpdate :: union {
+    NotApplicable | InPlace(mode: int, array: int, item: int, native: int)
+}
+// How `xs = name(xs, value)` updates the local array names[found] in place:
+// mode 0 pushes and mode 1 extends. The actual native and bound parameters
+// identify a candidate; preparation proves whether its item may write.
+InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: ResolvedNative[],
+                  ports: ResolvedPort[], identities: u64[], names: Name[], package: int, found: int, destination: int,
+                  value: int) -> ArrayUpdate {
+    updated := names[found];
+    if (updated.place != CellPlace || updated.container != ArrayContainer || !updated.writable ||
+        !Is(forest, value, "call_expression")) {
+        return ArrayUpdate.NotApplicable;
+    }
+    callee := Field(forest, value, "function");
+    method := Is(forest, callee, "member_expression");
+    native: int = -1;
+    if (method) {
+        native = ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member")));
+    } else if (Is(forest, callee, "identifier") &&
+               SourceCallable(callables, natives, names, package, Text(forest, text, callee)) == -1) {
+        native = FindNative(natives, Text(forest, text, callee));
+    }
+    if (native < 0 || !natives[native].direct || natives[native].intrinsic != 0 ||
+        natives[native].variadic || natives[native].parameters != 2) {
+        return ArrayUpdate.NotApplicable;
+    }
+    capability := identities[2 * native];
+    mode: int = -1;
+    if (capability == binding.ID("capability", "Append")) {
+        mode = 0;
+    } else if (capability == binding.ID("capability", "Extend")) {
+        mode = 1;
+    }
+    if (mode < 0) {
+        return ArrayUpdate.NotApplicable;
+    }
+    switch BindNative(forest, text, value, NativeSources(forest, value, method), natives[native], ports) {
+        case .Failed(problem, message):
+            return ArrayUpdate.NotApplicable;
+        case .Bound(arguments, total):
+            if (total != 2 || length(arguments) != 2) {
+                return ArrayUpdate.NotApplicable;
+            }
+            array: int = -1;
+            item: int = -1;
+            for (argument in arguments) {
+                if (argument.parameter == 0) {
+                    array = argument.node;
+                } else if (argument.parameter == 1) {
+                    item = argument.node;
+                }
+            }
+            if (array < 0 || item < 0 || !Is(forest, array, "identifier") ||
+                Text(forest, text, array) != Text(forest, text, destination)) {
+                return ArrayUpdate.NotApplicable;
+            }
+            // The copying form reads the array before the item, so an item
+            // that changes the array keeps it.
+            if (Holds(MutatedNames(forest, text, item, []), Text(forest, text, destination))) {
+                return ArrayUpdate.NotApplicable;
+            }
+            return ArrayUpdate.InPlace(mode, array, item, native);
+    }
+}
+
+// The array function a method call on an array runs, with the array first.
+// -1 for none.
+ArrayMethod :: (natives: ResolvedNative[], ports: ResolvedPort[], name: string) -> int {
+    index: int = 0;
+    for (native in natives) {
+        if (!native.source && native.kind == NativeFunctionKind && native.parameters > 0 &&
+            ports[native.first].container == ArrayContainer && NameMatches(native.name, name)) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+// Whether an array function returns its array changed, so its method changes
+// the array in place, as `append` does and `slice` does not.
+ArrayChanger :: (natives: ResolvedNative[], native: int) -> bool {
+    changers: string[] = ["append", "add_unique", "extend", "set_array_elem", "insert", "remove_index", "remove_item",
+                          "clear", "reverse", "swap", "resize"];
+    for (changer in changers) {
+        if (NameMatches(natives[native].name, changer)) {
+            return true;
+        }
+    }
+    return false;
+}
+// The array an expression statement's method call changes, as `xs.append(x)`
+// changes xs: the receiver, a name of an array, or -1.
+ChangedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: ResolvedNative[], ports: ResolvedPort[],
+                 statement: int) -> int {
+    call := FirstMember(forest, statement);
+    function := Field(forest, call, "function");
+    if (!Is(forest, statement, "expression_statement") || !Is(forest, call, "call_expression") ||
+        !Is(forest, function, "member_expression") || !Is(forest, Field(forest, function, "object"), "identifier")) {
+        return -1;
+    }
+    object := Field(forest, function, "object");
+    found := Lookup(names, Text(forest, text, object));
+    if (found < 0 || names[found].container != ArrayContainer) {
+        return -1;
+    }
+    method := ArrayMethod(natives, ports, Text(forest, text, Field(forest, function, "member")));
+    if (method < 0 || !ArrayChanger(natives, method)) {
+        return -1;
+    }
+    return object;
+}
+// An assignment's target and value, or the array a method statement changes
+// and its call.
+StatementTarget :: (forest: snapshot.SnapshotNode[], statement: int) -> int {
+    if (Is(forest, statement, "expression_statement")) {
+        return Field(forest, Field(forest, FirstMember(forest, statement), "function"), "object");
+    }
+    return Field(forest, statement, "target");
+}
+StatementValue :: (forest: snapshot.SnapshotNode[], statement: int) -> int {
+    if (Is(forest, statement, "expression_statement")) {
+        return FirstMember(forest, statement);
+    }
+    return Field(forest, statement, "value");
+}
+// The tables a body starts from: its parameters, its record or array result's
+// symbol, its point and its named results, which are locals from `named` on.
+Start :: union {
+    Begun(work: Work[], names: Name[], slots: Slot[], locals: Slot[], cells: Cell[], hosts: Host[], code: Code[],
+          points: SourcePoint[], named: int)
+}
+Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable, aliases: Name[],
+             key: string, solid: int[], meaning: u64, referenced: string[], mutated: string[], addressed: string[],
+             ops: Ops, target: Target, evaluating: bool) -> Start {
+    declaration := forest[callable.node];
+    // Import aliases are the outermost names; every local may hide one.
+    names := aliases;
+    slots: Slot[] = [];
+    locals: Slot[] = [];
+    cells: Cell[] = [];
+    hosts: Host[] = [];
+    code: Code[] = [];
+    // Scalar and string parameters move to locals, so assigning one needs no
+    // other form. Calls lend their arguments, so written pointer parameters
+    // get local copies before the body runs.
+    work: Work[] = [Visit(Field(forest, callable.node, "body"))];
+    if (evaluating) {
+        work = [Visit(callable.node)];
+    }
+    index: int = 0;
+    while (index < callable.count) {
+        param := params[callable.first + index];
+        if (param.reference) {
+            name: Name = {owned: false, name: param.name, place: ReferencePlace, index: index, storage: param.storage,
+                          container: param.container, record: param.record, writable: true, node: param.node};
+            names.append(name);
+        } else if (Holds(addressed, param.name)) {
+            work.append(Resume(callable.node, PointerParameterPhase, index, 0));
+        } else if (Holds(referenced, param.name) && !Pointer(param.storage, param.container)) {
+            work.append(Resume(callable.node, 0, index, 1));
+        } else if (Pointer(param.storage, param.container) && Holds(mutated, param.name)) {
+            work.append(Resume(callable.node, 0, index, 0));
+        } else if (Pointer(param.storage, param.container)) {
+            name: Name = {owned: false, name: param.name, place: ParameterPlace, index: index, storage: param.storage,
+                          container: param.container, record: param.record, writable: true, node: param.node};
+            names.append(name);
+        } else {
+            slot: Slot = {storage: param.storage, kind: ValueKind};
+            slots.append(slot);
+            read := Instruction(ops.argument, param.storage, length(slots) - 1, index, 0, 0, declaration);
+            read.value_storage = param.storage;
+            code.append(read);
+            locals.append(ValueLocal(param.storage));
+            code.append(Instruction(ops.save, param.storage, 0, length(slots) - 1, 0,
+                                    length(locals) - 1, declaration));
+            name: Name = {owned: false, name: param.name, place: LocalPlace, index: length(locals) - 1,
+                          storage: param.storage, container: 0, record: param.record, writable: true,
+                          node: param.node};
+            names.append(name);
+        }
+        index += 1;
+    }
+    // A record or array result is a symbol the function stores before it
+    // starts.
+    if (callable.results == 0 && (callable.result == StructStorage || callable.result_container != 0)) {
+        code.append(SymbolCode(ops, -1, declaration));
+    }
+    // Named results reserve consecutive locals. A record local holds its
+    // stable cell's header address, while its name reads the cell's payload.
+    // A query evaluator returns its row instead.
+    named := length(locals);
+    index = 0;
+    while (!evaluating && index < callable.results) {
+        result := params[callable.first + callable.count + index];
+        place := LocalPlace;
+        location := length(locals);
+        if (result.storage == StructStorage) {
+            // Normalize the typed zero buffer through the constructor, so
+            // native record ranges receive the same defaults as stage zero.
+            cell: Cell = {storage: result.storage, container: result.container, record: result.record,
+                          constant: 0, variant: -1, kind: ValueKind};
+            cells.extend([cell, cell]);
+            host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ConstructIntrinsic, linked: -1, first: length(cells) - 2,
+                          result_first: length(cells) - 1, result_count: 1, written: false};
+            hosts.append(host);
+            code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, length(hosts) - 1, declaration));
+            slots.append(AddressSlot(target));
+            code.append(Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1,
+                                    length(cells) - 1, 0, 0, declaration));
+            locals.append(AddressSlot(target));
+            code.append(Instruction(ops.save, target.pointer_storage, 0, length(slots) - 1, 0,
+                                    length(locals) - 1, declaration));
+            code.append(SymbolCode(ops, result.node, declaration));
+            place = CellPlace;
+            location = length(cells) - 1;
+        } else {
+            slots.append(ValueLocal(result.storage));
+            code.append(ConstantCode(ops, result.storage, 0, length(slots) - 1, declaration));
+            locals.append(ValueLocal(result.storage));
+            code.append(Instruction(ops.save, result.storage, 0, length(slots) - 1, 0, length(locals) - 1,
+                                    declaration));
+        }
+        bound: Name = {owned: false, name: result.name, place: place, index: location, storage: result.storage,
+                       container: result.container, record: result.record, writable: true, node: result.node};
+        names.append(bound);
+        index += 1;
+    }
+    // Initial result construction precedes the function's first point.
+    points: SourcePoint[] = [PointAt(key, solid, FunctionRecord, meaning, false, declaration, declaration)];
+    code.append(PointCode(ops, 0, declaration));
+    return Start.Begun(work, names, slots, locals, cells, hosts, code, points, named);
+}
+
+// The back edge of a counted loop, kept separate from body dispatch so the
+// compiler's own dispatch stays within the runtime definition budget.
+ForTail :: union {
+    Finished(code: Code[], slots: Slot[], breaks: int[], continues: int[])
+}
+FinishFor :: (forest: snapshot.SnapshotNode[], item: Work, input_code: Code[], input_slots: Slot[], input_breaks: int[],
+              input_continues: int[], loop: Loop, ops: Ops, node: snapshot.SnapshotNode) -> ForTail {
+    code := input_code;
+    slots := input_slots;
+    breaks := input_breaks;
+    continues := input_continues;
+    at_continue := loop.first_continue;
+    while (at_continue < length(continues)) {
+        resume := code[continues[at_continue]];
+        resume.target = length(code);
+        code[continues[at_continue]] = resume;
+        at_continue += 1;
+    }
+    continues = slice(continues, 0, loop.first_continue);
+    slots.append(ValueLocal(IntStorage));
+    current := length(slots) - 1;
+    code.append(Instruction(ops.local, IntStorage, current, loop.index, 0, 0, node));
+    // An inclusive or reversed range ends once the index reaches
+    // its bound, so neither INT_MAX nor INT_MIN wraps.
+    at_bound: int = -1;
+    if (loop.counted) {
+        slots.append(ValueLocal(IntStorage));
+        code.append(Instruction(ops.local, IntStorage, length(slots) - 1, loop.bound, 0, 0, node));
+        slots.append(ValueLocal(BoolStorage));
+        code.append(Instruction(ops.eq, IntStorage, length(slots) - 1, current, length(slots) - 2,
+                                -1, node));
+        at_bound = length(code);
+        code.append(Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, Pending, node));
+    }
+    slots.append(ValueLocal(IntStorage));
+    code.append(ConstantCode(ops, IntStorage, 1, length(slots) - 1, node));
+    step_op := ops.add;
+    if (loop.reverse) {
+        step_op = ops.sub;
+    }
+    slots.append(ValueLocal(IntStorage));
+    code.append(Instruction(step_op, IntStorage, length(slots) - 1, current, length(slots) - 2,
+                            -1, node));
+    code.append(Instruction(ops.save, IntStorage, 0, length(slots) - 1, 0, loop.index, node));
+    if (Field(forest, item.node, "bound") >= 0) {
+        code.append(SymbolCode(ops, Field(forest, item.node, "name"), node));
+    }
+    code.append(Instruction(ops.jump, 0, 0, 0, 0, loop.head, node));
+    exits_here: int[] = [loop.leave, at_bound, loop.empty];
+    for (pending in exits_here) {
+        if (pending >= 0) {
+            done := code[pending];
+            done.target = length(code);
+            code[pending] = done;
+        }
+    }
+    at_break := loop.first_break;
+    while (at_break < length(breaks)) {
+        escape := code[breaks[at_break]];
+        escape.target = length(code);
+        code[breaks[at_break]] = escape;
+        at_break += 1;
+    }
+    breaks = slice(breaks, 0, loop.first_break);
+    return ForTail.Finished(code, slots, breaks, continues);
+}
+
+RangeHead :: union {
+    Failed(diagnostic: syntax.Diagnostic) | Ready(code: Code[], slots: Slot[], locals: Slot[], bound: Name, loop: Loop)
+}
+StartRange :: (forest: snapshot.SnapshotNode[], text: string, document: int, bounds: Value[], item: Work, ops: Ops,
+               input_code: Code[], input_slots: Slot[], input_locals: Slot[], break_count: int, continue_count: int,
+               name_count: int) -> RangeHead {
+    code := input_code;
+    slots := input_slots;
+    locals := input_locals;
+    node := forest[item.node];
+    ends: int[] = [];
+    end_index: int = 0;
+    while (end_index < 2) {
+        end := bounds[end_index];
+        if (end.container != 0 || !Integer(end.storage) ||
+            (end.storage != IntStorage && !Widens(end.storage, IntStorage))) {
+            return RangeHead.Failed(Diagnose(forest, item.node, document, "range bounds need int values"));
+        }
+        if (end.storage != IntStorage) {
+            slots.append(ValueLocal(IntStorage));
+            code.append(CastCode(ops, IntStorage, length(slots) - 1, end.slot, 0, node));
+            end = Typed(length(slots) - 1, IntStorage, 0, -1);
+        }
+        ends.append(end.slot);
+        end_index += 1;
+    }
+    reverse := Field(forest, item.node, "reverse") >= 0;
+    exclusive := Text(forest, text, Field(forest, item.node, "bound")) == "..<";
+    start := ends[0];
+    stop := ends[1];
+    if (reverse) {
+        start = ends[1];
+        stop = ends[0];
+    }
+    empty: int = -1;
+    if (reverse && exclusive) {
+        slots.append(ValueLocal(BoolStorage));
+        code.append(Instruction(ops.lt, IntStorage, length(slots) - 1, ends[0], ends[1], -1, node));
+        code.append(Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, length(code) + 2, node));
+        empty = length(code);
+        code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+        slots.append(ValueLocal(IntStorage));
+        code.append(ConstantCode(ops, IntStorage, 1, length(slots) - 1, node));
+        slots.append(ValueLocal(IntStorage));
+        code.append(Instruction(ops.sub, IntStorage, length(slots) - 1, ends[1], length(slots) - 2,
+                                -1, node));
+        start = length(slots) - 1;
+    }
+    locals.append(ValueLocal(IntStorage));
+    index_local := length(locals) - 1;
+    code.append(Instruction(ops.save, IntStorage, 0, start, 0, index_local, node));
+    // The range's name is stored before the loop and at each step.
+    code.append(SymbolCode(ops, Field(forest, item.node, "name"), node));
+    locals.append(ValueLocal(IntStorage));
+    bound_local := length(locals) - 1;
+    code.append(Instruction(ops.save, IntStorage, 0, stop, 0, bound_local, node));
+    head := length(code);
+    code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
+    slots.append(ValueLocal(IntStorage));
+    code.append(Instruction(ops.local, IntStorage, length(slots) - 1, index_local, 0, 0, node));
+    slots.append(ValueLocal(IntStorage));
+    code.append(Instruction(ops.local, IntStorage, length(slots) - 1, bound_local, 0, 0, node));
+    compare := ops.lt;
+    if (reverse) {
+        compare = ops.ge;
+    } else if (!exclusive) {
+        compare = ops.le;
+    }
+    slots.append(ValueLocal(BoolStorage));
+    code.append(Instruction(compare, IntStorage, length(slots) - 1, length(slots) - 3,
+                            length(slots) - 2, -1, node));
+    code.append(Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, length(code) + 2, node));
+    loop: Loop = {held_slot: -1, held_storage: 0, held_container: 0, held_record: -1, held_owned: false, head: head,
+                  first_break: break_count, first_continue: continue_count, each: true,
+                  index: index_local, mark: name_count, leave: length(code), reverse: reverse,
+                  counted: !exclusive || reverse, bound: bound_local, empty: empty};
+    code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+    binding: Name = {owned: false, name: Text(forest, text, Field(forest, item.node, "name")), place: LocalPlace,
+                     index: index_local, storage: IntStorage, container: 0, record: -1, writable: false,
+                     node: Field(forest, item.node, "name")};
+    return RangeHead.Ready(code, slots, locals, binding, loop);
+}
+
+QueryGuardCallPhase: int : 71;
+GuardCall :: union {
+    Failed(diagnostic: syntax.Diagnostic)
+    | Scheduled(code: Code[], slots: Slot[], locals: Slot[], next: Work[], popped: int, produced: Value)
+}
+// Each argument stores the result before its early exit. Pending branches
+// link through their targets until the last argument patches the whole chain.
+QueryGuardCall :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+                   values: Value[], top: int, item: Work, ops: Ops,
+                   input_code: Code[], input_slots: Slot[], input_locals: Slot[]) -> GuardCall {
+    code := input_code;
+    slots := input_slots;
+    locals := input_locals;
+    node := forest[item.node];
+    function := Text(forest, text, Field(forest, item.node, "function"));
+    if (function != "all" && function != "any" && function != "not") {
+        return GuardCall.Failed(Diagnose(forest, item.node, document, "unknown query guard call"));
+    }
+    if (item.phase == 0) {
+        first := FirstMember(forest, Field(forest, item.node, "arguments"));
+        if (function == "not" && (first < 0 || NextMember(forest, first) >= 0)) {
+            return GuardCall.Failed(Diagnose(forest, item.node, document, "not needs exactly one Boolean argument"));
+        }
+        argument := first;
+        while (argument >= 0) {
+            if (Is(forest, argument, "named_argument") || Is(forest, argument, "typed_argument") ||
+                Is(forest, argument, "reference_argument")) {
+                return GuardCall.Failed(Diagnose(forest, argument, document, "query guards need positional Boolean arguments"));
+            }
+            argument = NextMember(forest, argument);
+        }
+        locals.append(ValueLocal(BoolStorage));
+        held := length(locals) - 1;
+        if (first < 0) {
+            identity: u64 = 0;
+            if (function == "all") {
+                identity = 1;
+            }
+            slots.append(ValueLocal(BoolStorage));
+            output := length(slots) - 1;
+            code.append(ConstantCode(ops, BoolStorage, identity, output, node));
+            code.append(Instruction(ops.save, BoolStorage, 0, output, 0, held, node));
+            return GuardCall.Scheduled(code, slots, locals, [], 0, Typed(output, BoolStorage, 0, -1));
+        }
+        resume := Resume(item.node, QueryGuardCallPhase, first, held);
+        resume.c = -1;
+        return GuardCall.Scheduled(code, slots, locals, [Visit(first), resume], 0, NoValue());
+    }
+    if (top <= 0 || values[top - 1].storage != BoolStorage || values[top - 1].container != 0) {
+        return GuardCall.Failed(Diagnose(forest, item.a, document, "query guard arguments need Boolean values"));
+    }
+    value := values[top - 1];
+    result := value.slot;
+    if (function == "not") {
+        slots.append(ValueLocal(BoolStorage));
+        zero := length(slots) - 1;
+        code.append(ConstantCode(ops, BoolStorage, 0, zero, node));
+        slots.append(ValueLocal(BoolStorage));
+        result = length(slots) - 1;
+        code.append(Instruction(ops.eq, BoolStorage, result, value.slot, zero, -1, node));
+    }
+    code.append(Instruction(ops.save, BoolStorage, 0, result, 0, item.b, node));
+    argument := NextMember(forest, item.a);
+    if (argument >= 0) {
+        condition := value.slot;
+        if (function == "all") {
+            slots.append(ValueLocal(BoolStorage));
+            zero := length(slots) - 1;
+            code.append(ConstantCode(ops, BoolStorage, 0, zero, node));
+            slots.append(ValueLocal(BoolStorage));
+            condition = length(slots) - 1;
+            code.append(Instruction(ops.eq, BoolStorage, condition, value.slot, zero, -1, node));
+        }
+        jump := length(code);
+        code.append(Instruction(ops.branch_if, 0, 0, condition, 0, item.c, node));
+        resume := Resume(item.node, QueryGuardCallPhase, argument, item.b);
+        resume.c = jump;
+        return GuardCall.Scheduled(code, slots, locals, [Visit(argument), resume], 1, NoValue());
+    }
+    pending := item.c;
+    while (pending >= 0) {
+        patched := code[pending];
+        prior := patched.target;
+        patched.target = length(code);
+        code[pending] = patched;
+        pending = prior;
+    }
+    slots.append(ValueLocal(BoolStorage));
+    output := length(slots) - 1;
+    code.append(Instruction(ops.local, BoolStorage, output, item.b, 0, 0, node));
+    return GuardCall.Scheduled(code, slots, locals, [], 1, Typed(output, BoolStorage, 0, -1));
+}
+
+OwnerCodes :: union {
+    Failed(diagnostic: syntax.Diagnostic) | Read(code: Code[])
+}
+// The selected constant owner argument becomes the invocation owner, along
+// with its typed output watch. Selection and validation stay unchanged.
+OwnerArgumentCodes :: (forest: snapshot.SnapshotNode[], document: int, original: Code[], item: Work,
+                       ops: Ops) -> OwnerCodes {
+    code := original;
+    producer: int = -1;
+    index: int = 0;
+    while (index < length(code)) {
+        instruction := code[index];
+        if (instruction.output == item.a && instruction.op == ops.constant &&
+            instruction.type == HandleStorage && instruction.value_storage == HandleStorage &&
+            instruction.value_container == 0 && instruction.payload == 0 && !instruction.has_text) {
+            if (producer >= 0) {
+                return OwnerCodes.Failed(Diagnose(forest, item.node, document,
+                                                  "native owner argument has several constant producers"));
+            }
+            producer = index;
+        }
+        index += 1;
+    }
+    if (producer < 0 || item.storage != HandleStorage || item.container != 0 || item.record < 0) {
+        return OwnerCodes.Failed(Diagnose(forest, item.node, document,
+                                          "native owner argument has no constant handle producer"));
+    }
+    instruction := code[producer];
+    instruction.op = ops.owner;
+    instruction.value_record = item.record;
+    code[producer] = instruction;
+    index = 0;
+    while (index < length(code)) {
+        watch := code[index];
+        if (watch.op == ops.source_watch && watch.output == 1 && watch.left == item.a &&
+            watch.value_storage == HandleStorage && watch.value_container == 0) {
+            watch.value_record = item.record;
+            code[index] = watch;
+        }
+        index += 1;
+    }
+    return OwnerCodes.Read(code);
+}
+DebugPrefix :: union {
+    Read(code: Code[], slots: Slot[], points: SourcePoint[])
+}
+// Debugger records before a node's step. The returned tables contain only
+// this node's additions; their instructions use the caller's absolute bases.
+DebugPoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], types: TypeDecl[],
+                constants: ConstDecl[], package: int, key: string, solid: int[], document_hash: u64,
+                point_base: int, slot_base: int, item: Work, negated: bool, ops: Ops) -> DebugPrefix {
+    node := forest[item.node];
+    kind := node.kind;
+    code: Code[] = [];
+    slots: Slot[] = [];
+    points: SourcePoint[] = [];
+    if (Statement(kind)) {
+        points.append(PointAt(key, solid, StatementRecord, 0, false, node, node));
+        code.append(PointCode(ops, point_base + length(points) - 1, node));
+        // Stage zero assigns each returned value to a result, a statement
+        // of its own.
+        value := Field(forest, item.node, "value");
+        returned: int[] = [];
+        if (kind == "return_statement" && Is(forest, value, "argument_list")) {
+            returned = Members(forest, value);
+        } else if (kind == "return_statement" && value >= 0) {
+            returned = [value];
+        }
+        for (each in returned) {
+            points.append(PointAt(key, solid, StatementRecord, 0, false, forest[each], forest[each]));
+            code.append(PointCode(ops, point_base + length(points) - 1, forest[each]));
+        }
+    }
+    if (Expression(kind) && !negated && !ConstantElement(forest, item.node) &&
+        !ElidedTarget(forest, text, names, item.node)) {
+        points.append(PointIn(document_hash, solid, ExpressionRecord, node));
+        code.append(PointCode(ops, point_base + length(points) - 1, node));
+        // A name's symbol, or a package constant's, which is a symbol of
+        // its own document.
+        constant: int = -1;
+        if (kind == "identifier") {
+            found := Lookup(names, Text(forest, text, item.node));
+            if (found >= 0 && !Alias(names[found].place)) {
+                code.append(SymbolCode(ops, names[found].node, node));
+            } else if (found < 0) {
+                constant = FindConstant(constants, package, Text(forest, text, item.node));
+            }
+        } else if (kind == "member_expression") {
+            constant = ConstantOf(forest, text, constants, names, package, item.node);
+            // `self.C` reads the owner's component without visiting `self`.
+            if (constant < 0 && SelfComponent(forest, text, types, names, item.node) >= 0) {
+                code.extend(NamePoints(forest, text, names, ops, Field(forest, item.node, "object")));
+                slots.append(ValueLocal(HandleStorage));
+                code.extend(OwnerWatch(ops, slot_base + length(slots) - 1,
+                                       forest[Field(forest, item.node, "object")]));
+            }
+        }
+        if (constant >= 0) {
+            code.append(OccurrenceCode(ops, SymbolRecord, constants[constant].occurrence, node));
+        }
+    }
+    return DebugPrefix.Read(code, slots, points);
+}
+DebugOutput :: union {
+    Read(code: Code[], slots: Slot[], roots: Root[])
+}
+// Output watches after a node's step, with only their added tables. Result
+// cells already have absolute indices; new slots start at the caller's base.
+DebugWatches :: (forest: snapshot.SnapshotNode[], item: Work, produced: Value, negated: bool,
+                 callables: Callable[], params: Param[], natives: ResolvedNative[], ports: ResolvedPort[],
+                 ops: Ops, target: Target, slot_base: int) -> DebugOutput {
+    node := forest[item.node];
+    kind := node.kind;
+    code: Code[] = [];
+    slots: Slot[] = [];
+    roots: Root[] = [];
+    // The value an expression produced is watched as its output, once:
+    // the step that gives a number literal its type watches it, and a
+    // copy or loan of the value for its consumer is not watched again.
+    // A place a write goes through holds no value of its own.
+    if (produced.storage > 0 && Expression(kind) && !negated && item.phase != CopyValuePhase &&
+        !produced.place && !ConstantElement(forest, item.node) && !NumberLiteral(forest, item.node)) {
+        code.append(WatchCode(ops, produced.slot, produced.storage, produced.container, produced.record,
+                              0, true, node, target));
+    }
+    // A call's several results are each watched, numbered.
+    if (kind == "call_expression" &&
+        (produced.storage == FunctionResultsStorage || produced.storage == ResultsStorage)) {
+        count: int = 0;
+        if (produced.storage == FunctionResultsStorage) {
+            count = callables[produced.record].results;
+        } else {
+            count = natives[produced.record].results;
+        }
+        at_result: int = 0;
+        while (at_result < count) {
+            storage: int = 0;
+            container: int = 0;
+            record: int = -1;
+            if (produced.storage == FunctionResultsStorage) {
+                called := callables[produced.record];
+                result := params[called.first + called.count + at_result];
+                storage = result.storage;
+                container = result.container;
+                record = result.record;
+            } else {
+                linked := natives[produced.record];
+                storage = ports[linked.first + linked.parameters + at_result].storage;
+                container = ports[linked.first + linked.parameters + at_result].container;
+                record = ports[linked.first + linked.parameters + at_result].record;
+            }
+            address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+            loaded: Slot = {storage: SlotStorage(storage, container, target), kind: SlotKind(storage, container)};
+            slots.extend([address, loaded]);
+            code.extend(CellRead(loaded.storage, produced.slot + at_result, ops, target,
+                                 slot_base + length(slots) - 2, node));
+            if (Pointer(storage, container)) {
+                root: Root = {slot: slot_base + length(slots) - 1, storage: storage,
+                              container: container, record: record};
+                roots.append(root);
+            }
+            code.append(WatchCode(ops, slot_base + length(slots) - 1, storage, container, record, at_result,
+                                  true, node, target));
+            at_result += 1;
+        }
+    }
+    return DebugOutput.Read(code, slots, roots);
+}
+EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+             callables: Callable[], params: Param[], table: ^(TypeDecl[]), members: TypeMember[],
+             constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[],
+             operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
+             solid: int[], undeclared: u64, meaning: u64, function: int, referenced: string[],
+             mutated: string[], built: int[], context: BodyContext, generic_updates: int[],
+             ops: Ops, target: Target, query_specs: QuerySpec[]) -> Body {
+    types := table^;
+    callable := callables[function];
+    declaration := forest[callable.node];
+    inferring := Expression(declaration.kind);
+    document_hash := DocumentHash(key);
+    slots: Slot[] = [];
+    // Locals hold scalars and the header addresses of named record results.
+    locals: Slot[] = [];
+    cells: Cell[] = [];
+    code: Code[] = [];
+    calls: Invocation[] = [];
+    hosts: Host[] = [];
+    roots: Root[] = [];
+    names: Name[] = [];
+    work: Work[] = [];
+    points: SourcePoint[] = [];
+    named: int = 0;
+    evaluating := QueryEvaluator(query_specs, function);
+    address_root := Field(forest, callable.node, "body");
+    if (inferring) {
+        address_root = callable.node;
+    }
+    if (evaluating >= 0) {
+        address_root = Field(forest, callable.node, "parameters");
+    }
+    addressed := AddressedNames(forest, text, address_root,
+                                ScopedArguments(forest, text, callables, params, natives, aliases, callable.package,
+                                                address_root));
+    begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, addressed, ops,
+                      target, evaluating >= 0);
+    switch begun {
+        case .Begun(begun_work, begun_names, begun_slots, begun_locals, begun_cells, begun_hosts, begun_code,
+                    begun_points, begun_named):
+            work = begun_work;
+            names = begun_names;
+            slots = begun_slots;
+            locals = begun_locals;
+            cells = begun_cells;
+            hosts = begun_hosts;
+            code = begun_code;
+            points = begun_points;
+            named = begun_named;
+    }
+    if (inferring) {
+        work = [Visit(callable.node)];
+    }
+    values: Value[] = [];
+    native_calls: NativeCallFact[] = [];
+    loops: Loop[] = [];
+    breaks: int[] = [];
+    continues: int[] = [];
+    switches: Switch[] = [];
+    exits: int[] = [];
+    covered: int[] = [];
+    // Where each open scope's names start: blocks, if and while statements,
+    // and switch arms.
+    scopes: int[] = [];
+    work_top: int = 0;
+    value_top: int = 0;
+    watches: SourceWatch[] = [];
+    semantic_effects: int = 0;
+    // The arguments of overloaded natives, by node, and the jump each
+    // reserves where it is written.
+    reserved_nodes: int[] = [];
+    reserved_jumps: int[] = [];
+    // The reserved jumps a call took, retargeted once the body is done.
+    retargets: int[] = [];
+    retarget_starts: int[] = [];
+    direct_write: int = 0;
+    facts: SemanticFact[] = [];
+    work_top = length(work);
+    while (work_top > 0) {
+        work_top -= 1;
+        item := work[work_top];
+        types = table^;
+        if (item.phase == EffectsPhase) {
+            semantic_effects = semantic_effects | item.a;
+            continue;
+        }
+        if (item.phase == SemanticPhase || item.phase == NativeCallPhase) {
+            switch DirectiveFacts(forest, context, direct_write, facts, item) {
+                case .Read(summary, recorded):
+                    direct_write = summary;
+                    facts = recorded;
+            }
+            if (item.phase == SemanticPhase) {
+                continue;
+            }
+            fact: NativeCallFact = {node: item.node, native: item.a, storage: item.storage,
+                                    container: item.container, record: item.record};
+            native_calls.append(fact);
+            continue;
+        }
+        if (item.phase == OwnerArgumentPhase) {
+            switch OwnerArgumentCodes(forest, document, code, item, ops) {
+                case .Failed(diagnostic):
+                    return Body.Failed(diagnostic);
+                case .Read(rewritten):
+                    code = rewritten;
+            }
+            continue;
+        }
+        node := forest[item.node];
+        kind := node.kind;
+        // Items this one schedules, in the order they run.
+        next: Work[] = [];
+        // A value this item leaves for its consumer, when `produced.storage` is set.
+        produced := NoValue();
+        iteration := NoValue();
+        // Whether a for loop reads its record element in place, unowned.
+        lent_element := false;
+        // A record or array to copy into a fresh cell; the copy is produced.
+        retained := NoValue();
+        operator := Text(forest, text, Field(forest, item.node, "operator"));
+        logic := kind == "binary_expression" &&
+                 (operator == "&&" || operator == "and" || operator == "||" || operator == "or");
+        // Stage zero reads `-1` as one literal.
+        negated := kind == "number" && Is(forest, node.parent, "unary_expression") &&
+                   Text(forest, text, Field(forest, node.parent, "operator")) == "-";
+        if (ops.debug && item.phase == 0) {
+            switch DebugPoints(forest, text, names, types, constants, callable.package, key, solid,
+                               document_hash, length(points), length(slots), item, negated, ops) {
+                case .Read(added_code, added_slots, added_points):
+                    code.extend(added_code);
+                    slots.extend(added_slots);
+                    points.extend(added_points);
+            }
+        }
+        if (ops.debug && kind == "call_expression" && item.phase == 1 && item.c == 4) {
+            typed_at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
+                               host: length(hosts), call: length(calls)};
+            switch OverloadArguments(forest, text, document, constants, callables, types, names, callable.package,
+                                     natives, ports, ops, item, values, value_top - item.b, reserved_nodes,
+                                     reserved_jumps, typed_at, node, target) {
+                case .Failed(diagnostic):
+                    return Body.Failed(diagnostic);
+                case .Typed(typed_code, typed_slots, typed_values, typed_jumps, typed_starts):
+                    code.extend(typed_code);
+                    slots.extend(typed_slots);
+                    values = typed_values;
+                    retargets.extend(typed_jumps);
+                    retarget_starts.extend(typed_starts);
+            }
+        }
+        // The step a node other than control flow takes.
+        stepped := true;
+        at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
+                     host: length(hosts), call: length(calls)};
+        step := Fail(forest, item.node, document, "");
+        query_handled := false;
+        switch QueryStep(forest, text, document, types, members, params, query_specs, evaluating, names, values,
+                         value_top, item, ops, target, at) {
+            case .Handled(emitted):
+                step = emitted;
+                query_handled = true;
+            case .Ordinary:
+                query_handled = false;
+        }
+        if (query_handled) {
+        } else if (item.phase == CopyValuePhase) {
+            step = CopyValueStep(values[value_top - 1], 1, ops, target, at, node);
+        } else if (item.phase == MapDeletePlacePhase || item.phase == MapDeleteDonePhase) {
+            step = MapPlaceDeleteStep(forest, document, types, values, value_top, item, ops, target, at);
+        } else if ((item.phase >= PlacePhase && item.phase <= PlacePointerPhase) || item.phase == PlaceComponentPhase) {
+            step = SequencePlaceStep(forest, text, document, types, members, names, values, value_top,
+                                     item, ops, target, at);
+        } else if (QueryGuardFunction(forest, text, item.node)) {
+            stepped = false;
+            switch QueryGuardCall(forest, text, document, values, value_top, item, ops, code, slots, locals) {
+                case .Failed(diagnostic):
+                    return Body.Failed(diagnostic);
+                case .Scheduled(full_code, full_slots, full_locals, scheduled, popped, value):
+                    code = full_code;
+                    slots = full_slots;
+                    locals = full_locals;
+                    next = scheduled;
+                    value_top -= popped;
+                    produced = value;
+            }
+        } else if ((kind == "state_declaration" || kind == "function_declaration" || kind == "handler") &&
+                   Is(forest, forest[item.node].parent, "system_body")) {
+            // System declarations share the behavior collector; only statements execute per row.
+            stepped = false;
+        } else if (kind == "callable_body" || kind == "block" || kind == "system_body") {
+            stepped = false;
+            if (item.phase == 0) {
+                child := FirstMember(forest, item.node);
+                while (child >= 0) {
+                    next.append(Visit(child));
+                    child = NextMember(forest, child);
+                }
+                next.append(Resume(item.node, 1, length(names), 0));
+                scopes.append(length(names));
+            } else {
+                stepped = true;
+                step = DropNamesStep(names, item.a, natives, ports, ops, target, at, node);
+                names = slice(names, 0, item.a);
+                scopes = slice(scopes, 0, length(scopes) - 1);
+            }
+        } else if (kind == "if_statement" || kind == "while_statement") {
+            stepped = false;
+            // Bindings of the condition's patterns last through the consequence
+            // or body; the work item keeps where they start in `c`.
+            if (item.phase == 0) {
+                head := length(code);
+                code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
+                next.append(Visit(Field(forest, item.node, "condition")));
+                resume := Resume(item.node, 1, head, 0);
+                resume.c = length(names);
+                next.append(resume);
+                scopes.append(length(names));
+            } else if (item.phase == 1) {
+                value_top -= 1;
+                condition := values[value_top];
+                optional_condition := condition;
+                if (OptionalElement(types, condition).storage != 0) {
+                    condition_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                                           cell: length(cells), host: length(hosts), call: length(calls)};
+                    switch OptionalPresentStep(condition, false, 0, ops, target, condition_at, node) {
+                        case .Failed(diagnostic):
+                            return Body.Failed(diagnostic);
+                        case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                                      added_calls, added_names, scheduled, popped, value, kept, marks):
+                            code.extend(added_code);
+                            slots.extend(added_slots);
+                            condition = value;
+                    }
+                }
+                if (!Single(condition, BoolStorage)) {
+                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "condition"), document,
+                                                "condition needs a bool"));
+                }
+                code.append(Instruction(ops.branch_if, 0, 0, condition.slot, 0, length(code) + 2, node));
+                code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                leave := length(code) - 1;
+                names.extend(OptionalConditionNames(types, names, forest, text, Field(forest, item.node, "condition"),
+                                                    optional_condition));
+                field := "consequence";
+                if (kind == "while_statement") {
+                    field = "body";
+                    loop: Loop = {held_slot: -1, held_storage: 0, held_container: 0, held_record: -1, held_owned: false, head: item.a, first_break: length(breaks), first_continue: length(continues),
+                                  each: false, index: -1, mark: length(names), leave: leave,
+                                  reverse: false, counted: false, bound: -1, empty: -1};
+                    loops.append(loop);
+                }
+                next.append(Visit(Field(forest, item.node, field)));
+                resume := Resume(item.node, 2, item.a, leave);
+                resume.c = item.c;
+                next.append(resume);
+            } else if (item.phase == 2) {
+                names = slice(names, 0, item.c);
+                scopes = slice(scopes, 0, length(scopes) - 1);
+                alternative := Field(forest, item.node, "alternative");
+                if (kind == "while_statement") {
+                    code.append(Instruction(ops.jump, 0, 0, 0, 0, item.a, node));
+                    loop := loops[length(loops) - 1];
+                    loops = slice(loops, 0, length(loops) - 1);
+                    at_break := loop.first_break;
+                    while (at_break < length(breaks)) {
+                        escape := code[breaks[at_break]];
+                        escape.target = length(code);
+                        code[breaks[at_break]] = escape;
+                        at_break += 1;
+                    }
+                    breaks = slice(breaks, 0, loop.first_break);
+                    skip := code[item.b];
+                    skip.target = length(code);
+                    code[item.b] = skip;
+                } else if (alternative >= 0) {
+                    code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                    skip := code[item.b];
+                    skip.target = length(code);
+                    code[item.b] = skip;
+                    next.append(Visit(alternative));
+                    next.append(Resume(item.node, 3, 0, length(code) - 1));
+                } else {
+                    skip := code[item.b];
+                    skip.target = length(code);
+                    code[item.b] = skip;
+                }
+            } else {
+                end := code[item.b];
+                end.target = length(code);
+                code[item.b] = end;
+            }
+        } else if (kind == "for_statement") {
+            if (item.phase == 0) {
+                if (Field(forest, item.node, "reference") >= 0) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "`for &item` loops are not supported yet"));
+                }
+                stepped = false;
+                code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
+                if (Field(forest, item.node, "first") >= 0) {
+                    // Ranges never count down, so constant bounds that descend
+                    // are a mistake, as stage zero reports.
+                    if (Descends(forest, text, document, constants, names, callable.package, item.node)) {
+                        message := "Range bounds descend; count down with for <";
+                        if (Field(forest, item.node, "reverse") >= 0) {
+                            message = "Range bounds descend; for < takes the low bound first, as in for < i in 0..10";
+                        }
+                        return Body.Failed(Diagnose(forest, item.node, document, message));
+                    }
+                    next.append(Expect(Field(forest, item.node, "first"), IntStorage, 0, -1));
+                    next.append(Expect(Field(forest, item.node, "last"), IntStorage, 0, -1));
+                    next.append(Resume(item.node, 5, 0, 0));
+                } else {
+                    next.append(Visit(Field(forest, item.node, "value")));
+                    next.append(Resume(item.node, 1, 0, 0));
+                }
+            } else if (item.phase == QueryIteratorEndPhase) {
+                loop := loops[length(loops) - 1];
+                switch QueryFinishLoop(code, breaks, continues, loop, ops, target, at, node) {
+                    case .Finished(finished_code, finished_breaks, finished_continues, tail_step):
+                        code = finished_code;
+                        breaks = finished_breaks;
+                        continues = finished_continues;
+                        step = tail_step;
+                }
+                names = slice(names, 0, loop.mark);
+                loops = slice(loops, 0, length(loops) - 1);
+            } else if (item.phase == 5) {
+                stepped = false;
+                value_top -= 2;
+                switch StartRange(forest, text, document, slice(values, value_top, 2), item, ops, code, slots, locals,
+                                  length(breaks), length(continues), length(names)) {
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
+                    case .Ready(range_code, range_slots, range_locals, range_name, range_loop):
+                        code = range_code;
+                        slots = range_slots;
+                        locals = range_locals;
+                        names.append(range_name);
+                        loops.append(range_loop);
+                }
+                next.append(Visit(Field(forest, item.node, "body")));
+                next.append(Resume(item.node, 4, 0, 0));
+            } else if (item.phase == 1) {
+                // The loop walks its own copy, whatever the body changes, or
+                // the array itself when nothing can change it.
+                stepped = false;
+                value_top -= 1;
+                array := values[value_top];
+                iterable := Unparenthesized(forest, Field(forest, item.node, "value"));
+                if (array.storage == QueryStorage && array.container == 0) {
+                    stepped = true;
+                    step = QueryIteratorStep(forest, text, document, types, array, item, ops, target, at);
+                } else if (array.container != ArrayContainer && array.container != ViewContainer && !IsMap(array)) {
+                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document, "for needs an array"));
+                } else if (array.container == ArrayContainer && FixedArray(forest, text, names, referenced, mutated, addressed,
+                                                                           iterable)) {
+                    // A local or parameter nothing changes stays as it is
+                    // while the loop walks it, so the loop walks it itself.
+                    cells.append(MovedCell(array));
+                    slots.append(AddressSlot(target));
+                    code.extend(MoveCode(array, ops, target, length(slots) - 1, length(cells) - 1, node));
+                    produced = array;
+                    produced.cell = length(cells) - 1;
+                } else if (IsMap(array) || array.container == ArrayContainer) {
+                    retained = array;
+                } else {
+                    // Ordinary iteration observes an outer snapshot. Aliases
+                    // can resize the original while the body runs.
+                    stepped = true;
+                    step = SequenceCallStep([array], SequenceCloneIntrinsic,
+                                            Typed(-1, array.storage, ArrayContainer, array.record),
+                                            u64(0), false, 0, ops, target, at, node);
+                }
+                if (array.storage != QueryStorage) {
+                    next.append(Resume(item.node, 2, 0, 0));
+                }
+            } else if (item.phase == 2) {
+                // The array or its copy is in the last cell; the step loads each element.
+                value_top -= 1;
+                if (Text(forest, text, ItemField(forest, item.node)) == "") {
+                    return Body.Failed(Diagnose(forest, ItemField(forest, item.node), document,
+                                                "Invalid string or embedded NUL"));
+                }
+                array := values[value_top];
+                iteration = array;
+                if (IsMap(array)) {
+                    step = MapForStep(forest, text, document, types, array, item, ops, target, at);
+                } else {
+                    // A record element nothing changes or keeps is read in
+                    // place from the loop's array, which the loop alone holds.
+                    name := ItemField(forest, item.node);
+                    lent_element = Fixed(referenced, mutated, addressed, Text(forest, text, name)) &&
+                                   !built.contains(name) &&
+                                   ReadsInPlace(array, SequenceElement(types, {storage: array.storage,
+                                                                               container: array.container,
+                                                                               record: array.record}), true);
+                    step = ForStep(types, array, Packable(array.storage, array.record, types, members),
+                                   Field(forest, item.node, "reverse") >= 0, lent_element, ops, target, at, node);
+                }
+            } else if (item.phase == 3) {
+                // A record element was copied, or read in place, into the
+                // last cell; one read in place from the array (item.a) is
+                // not the binding's to drop.
+                stepped = false;
+                value_top -= 1;
+                kept := values[value_top];
+                binding: Name = {owned: item.a == 0, name: Text(forest, text, ItemField(forest, item.node)), place: CellPlace,
+                                 index: kept.cell, storage: kept.storage, container: kept.container, record: kept.record,
+                                 writable: false, node: ItemField(forest, item.node)};
+                names.append(binding);
+                code.append(SymbolCode(ops, binding.node, node));
+                next.append(Visit(Field(forest, item.node, "body")));
+                next.append(Resume(item.node, 4, 0, 0));
+            } else {
+                stepped = false;
+                loop := loops[length(loops) - 1];
+                loops = slice(loops, 0, length(loops) - 1);
+                drop_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                                  cell: length(cells), host: length(hosts), call: length(calls)};
+                switch DropNamesStep(names, loop.mark, natives, ports, ops, target, drop_at, node) {
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
+                    case .Emitted(drop_code, drop_slots, drop_locals, drop_cells, drop_hosts, drop_roots,
+                                  drop_calls, drop_bound, drop_next, drop_popped, drop_value, drop_retained, drop_marks):
+                        code.extend(drop_code);
+                        slots.extend(drop_slots);
+                        locals.extend(drop_locals);
+                        cells.extend(drop_cells);
+                        hosts.extend(drop_hosts);
+                        roots.extend(drop_roots);
+                        calls.extend(drop_calls);
+                }
+                switch FinishFor(forest, item, code, slots, breaks, continues, loop, ops, node) {
+                    case .Finished(done_code, done_slots, done_breaks, done_continues):
+                        code = done_code;
+                        slots = done_slots;
+                        breaks = done_breaks;
+                        continues = done_continues;
+                }
+                owner_drop_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                                        cell: length(cells), host: length(hosts), call: length(calls)};
+                held := Typed(loop.held_slot, loop.held_storage, loop.held_container, loop.held_record);
+                held.owned = loop.held_owned;
+                switch DropSequenceValues([held], ops, target, owner_drop_at, node) {
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
+                    case .Emitted(drop_code, drop_slots, drop_locals, drop_cells, drop_hosts, drop_roots,
+                                  drop_calls, drop_bound, drop_next, drop_popped, drop_value, drop_retained, drop_marks):
+                        code.extend(drop_code);
+                        slots.extend(drop_slots);
+                        locals.extend(drop_locals);
+                        cells.extend(drop_cells);
+                        hosts.extend(drop_hosts);
+                        roots.extend(drop_roots);
+                        calls.extend(drop_calls);
+                }
+                names = slice(names, 0, loop.mark);
+            }
+        } else if (kind == "switch_statement") {
+            if (item.phase == 0) {
+                stepped = false;
+                code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
+                next.append(Visit(Field(forest, item.node, "value")));
+                next.append(Resume(item.node, 1, 0, 0));
+            } else if (item.phase == 1) {
+                // The union waits in a local while each arm tests it in turn.
+                stepped = false;
+                value_top -= 1;
+                subject := values[value_top];
+                value_switch := subject.container == 0 && Integer(subject.storage);
+                if (!Single(subject, UnionStorage) && !value_switch) {
+                    return Body.Failed(Diagnose(forest, Field(forest, item.node, "value"), document,
+                                                "switch needs a union or integer value"));
+                }
+                locals.append(ValueLocal(subject.storage));
+                code.append(Instruction(ops.save, subject.storage, 0, subject.slot, 0, length(locals) - 1, node));
+                current: Switch = {subject: length(locals) - 1, held: subject.record, first_exit: length(exits),
+                                   first_cover: length(covered), defaulted: false, skip: -1, mark: length(names),
+                                   value: value_switch, storage: subject.storage, fallback: -1};
+                switches.append(current);
+                next.append(Resume(item.node, 2, NextArm(forest, Field(forest, item.node, "value")), 0));
+            } else if (item.phase == 2 && item.a < 0 && switches[length(switches) - 1].fallback >= 0) {
+                // Every value arm missed: the default arm runs last.
+                stepped = false;
+                current := switches[length(switches) - 1];
+                arm := current.fallback;
+                current.fallback = -2;
+                current.mark = length(names);
+                switches[length(switches) - 1] = current;
+                scopes.append(length(names));
+                next.append(Visit(Field(forest, arm, "body")));
+                next.append(Resume(item.node, 3, arm, 1));
+            } else if (item.phase == 2 && item.a < 0) {
+                stepped = false;
+                current := switches[length(switches) - 1];
+                if (!current.value && !current.defaulted &&
+                    length(covered) - current.first_cover < types[current.held].count) {
+                    return Body.Failed(Diagnose(forest, item.node, document,
+                                                "Non-exhaustive switch: a union alternative is missing"));
+                }
+                switches = slice(switches, 0, length(switches) - 1);
+                covered = slice(covered, 0, current.first_cover);
+                at_exit := current.first_exit;
+                while (at_exit < length(exits)) {
+                    exit_jump := code[exits[at_exit]];
+                    exit_jump.target = length(code);
+                    code[exits[at_exit]] = exit_jump;
+                    at_exit += 1;
+                }
+                exits = slice(exits, 0, current.first_exit);
+            } else if (item.phase == 2 && switches[length(switches) - 1].value) {
+                stepped = false;
+                current := switches[length(switches) - 1];
+                pattern := Field(forest, item.a, "value");
+                if (pattern < 0) {
+                    if (current.fallback != -1) {
+                        return Body.Failed(Diagnose(forest, item.a, document, "Duplicate default arm"));
+                    }
+                    current.fallback = item.a;
+                    switches[length(switches) - 1] = current;
+                    next.append(Resume(item.node, 2, NextArm(forest, item.a), 0));
+                } else if (Is(forest, pattern, "variant_pattern")) {
+                    return Body.Failed(Diagnose(forest, pattern, document, "an integer switch's arms need values"));
+                } else {
+                    next.append(Expect(pattern, current.storage, 0, -1));
+                    next.append(Resume(item.node, 4, item.a, 0));
+                }
+            } else if (item.phase == 4) {
+                // An integer arm's test: past the arm unless the value equals it.
+                stepped = false;
+                value_top -= 1;
+                candidate := values[value_top];
+                current := switches[length(switches) - 1];
+                if (candidate.container == 0 && Integer(candidate.storage) && candidate.storage != current.storage &&
+                    Widens(candidate.storage, current.storage)) {
+                    slots.append(ValueLocal(current.storage));
+                    code.append(CastCode(ops, current.storage, length(slots) - 1, candidate.slot, 0, node));
+                    candidate = Typed(length(slots) - 1, current.storage, 0, -1);
+                }
+                if (!Single(candidate, current.storage)) {
+                    return Body.Failed(Diagnose(forest, Field(forest, item.a, "value"), document,
+                                                "case value differs from the switch value"));
+                }
+                slots.append(ValueLocal(current.storage));
+                code.append(Instruction(ops.local, current.storage, length(slots) - 1, current.subject, 0, 0,
+                                        node));
+                slots.append(ValueLocal(BoolStorage));
+                code.append(Instruction(ops.eq, current.storage, length(slots) - 1, length(slots) - 2,
+                                        candidate.slot, -1, node));
+                code.append(Instruction(ops.branch_if, 0, 0, length(slots) - 1, 0, length(code) + 2, node));
+                current.skip = length(code);
+                code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                current.mark = length(names);
+                switches[length(switches) - 1] = current;
+                scopes.append(length(names));
+                next.append(Visit(Field(forest, item.a, "body")));
+                next.append(Resume(item.node, 3, item.a, 0));
+            } else if (item.phase == 2) {
+                current := switches[length(switches) - 1];
+                current.mark = length(names);
+                switches[length(switches) - 1] = current;
+                scopes.append(length(names));
+                pattern := Field(forest, item.a, "value");
+                if (pattern < 0) {
+                    if (current.defaulted) {
+                        return Body.Failed(Diagnose(forest, item.a, document, "Duplicate default arm"));
+                    }
+                    current.defaulted = true;
+                    switches[length(switches) - 1] = current;
+                    stepped = false;
+                } else {
+                    if (!Is(forest, pattern, "variant_pattern")) {
+                        return Body.Failed(Diagnose(forest, pattern, document, "switch arms need a variant pattern"));
+                    }
+                    member := Text(forest, text, Field(forest, pattern, "name"));
+                    variant := FindVariant(types, current.held, member);
+                    if (variant < 0) {
+                        return Body.Failed(Diagnose(forest, pattern, document, format_text("Unknown variant '{}'", member)));
+                    }
+                    if (current.defaulted || Covers(covered, current.first_cover, variant)) {
+                        return Body.Failed(Diagnose(forest, pattern, document, "Unreachable duplicate union pattern"));
+                    }
+                    covered.append(variant);
+                    code.append(ExpressionCode(ops, forest[pattern]));
+                    at.pc = length(code);
+                    bindings := Field(forest, pattern, "bindings");
+                    count: int = 0;
+                    binding := FirstMember(forest, bindings);
+                    while (binding >= 0) {
+                        count += 1;
+                        binding = NextMember(forest, binding);
+                    }
+                    if (count != 0 && count != types[variant].count) {
+                        return Body.Failed(Diagnose(forest, pattern, document, "A union payload pattern must bind every field"));
+                    }
+                    step = MatchStep(forest, text, document, types, members, names, scopes[length(scopes) - 1],
+                                     current.subject, -1, variant, bindings, true, false,
+                                     Field(forest, item.node, "value"), pattern, ops, target, at, node);
+                }
+                next.append(Visit(Field(forest, item.a, "body")));
+                next.append(Resume(item.node, 3, item.a, 0));
+            } else {
+                // The arm is done: leave the switch, and send a failed test here.
+                stepped = false;
+                exits.append(length(code));
+                code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                current := switches[length(switches) - 1];
+                if (current.skip >= 0) {
+                    skip := code[current.skip];
+                    skip.target = length(code);
+                    code[current.skip] = skip;
+                }
+                current.skip = -1;
+                switches[length(switches) - 1] = current;
+                names = slice(names, 0, current.mark);
+                scopes = slice(scopes, 0, length(scopes) - 1);
+                if (item.b == 1) {
+                    // The default arm of an integer switch was the last.
+                    next.append(Resume(item.node, 2, -1, 0));
+                } else {
+                    next.append(Resume(item.node, 2, NextArm(forest, item.a), 0));
+                }
+            }
+        } else if (kind == "break_statement" || kind == "continue_statement") {
+            stepped = false;
+            if (length(loops) == 0) {
+                return Body.Failed(Diagnose(forest, item.node, document, "break or continue outside a loop"));
+            }
+            loop := loops[length(loops) - 1];
+            drop_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                              cell: length(cells), host: length(hosts), call: length(calls)};
+            switch DropNamesStep(names, loop.mark, natives, ports, ops, target, drop_at, node) {
+                case .Failed(diagnostic):
+                    return Body.Failed(diagnostic);
+                case .Emitted(drop_code, drop_slots, drop_locals, drop_cells, drop_hosts, drop_roots,
+                              drop_calls, drop_bound, drop_next, drop_popped, drop_value, drop_retained, drop_marks):
+                    code.extend(drop_code);
+                    slots.extend(drop_slots);
+                    locals.extend(drop_locals);
+                    cells.extend(drop_cells);
+                    hosts.extend(drop_hosts);
+                    roots.extend(drop_roots);
+                    calls.extend(drop_calls);
+            }
+            code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
+            if (kind == "break_statement") {
+                breaks.append(length(code));
+                code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+            } else if (loop.each) {
+                continues.append(length(code));
+                code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+            } else {
+                code.append(Instruction(ops.jump, 0, 0, 0, 0, loop.head, node));
+            }
+        } else if (kind == "binary_expression" && operator == "??") {
+            stepped = false;
+            if (item.phase == 0) {
+                next.append(Visit(Field(forest, item.node, "left")));
+                next.append(Resume(item.node, 1, 0, 0));
+            } else if (item.phase == 1) {
+                value_top -= 1;
+                optional := values[value_top];
+                element := OptionalElement(types, optional);
+                if (element.storage == 0) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "left operand of ?? must be optional"));
+                }
+                cells.append(MovedCell(Typed(-1, element.storage, element.container, element.record)));
+                answer := length(cells) - 1;
+                present := NoValue();
+                probe: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                                cell: length(cells), host: length(hosts), call: length(calls)};
+                switch OptionalPresentStep(optional, false, 0, ops, target, probe, node) {
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
+                    case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                                  added_calls, added_names, scheduled, popped, value, kept, marks):
+                        code.extend(added_code);
+                        slots.extend(added_slots);
+                        present = value;
+                }
+                code.append(Instruction(ops.branch_if, 0, 0, present.slot, 0, length(code) + 2, node));
+                fallback := length(code);
+                code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                unwrapped := NoValue();
+                unwrap_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                                    cell: length(cells), host: length(hosts), call: length(calls)};
+                switch OptionalUnwrapStep(types, optional, 0, ops, target, unwrap_at, node) {
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
+                    case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                                  added_calls, added_names, scheduled, popped, value, kept, marks):
+                        code.extend(added_code);
+                        slots.extend(added_slots);
+                        cells.extend(added_cells);
+                        hosts.extend(added_hosts);
+                        roots.extend(added_roots);
+                        unwrapped = value;
+                }
+                slots.append(AddressSlot(target));
+                code.extend(CellWrite(SlotStorage(element.storage, element.container, target), unwrapped.slot,
+                                      answer, ops, target, length(slots) - 1, node));
+                skip := length(code);
+                code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                absent := code[fallback];
+                absent.target = length(code);
+                code[fallback] = absent;
+                next.append(Expect(Field(forest, item.node, "right"), element.storage, element.container, element.record));
+                finish := Expect(item.node, element.storage, element.container, element.record);
+                finish.phase = 2;
+                finish.a = answer;
+                finish.b = skip;
+                next.append(finish);
+            } else {
+                value_top -= 1;
+                fallback := values[value_top];
+                if (!Accepts(types, item.storage, item.container, item.record, fallback)) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "fallback differs from optional payload type"));
+                }
+                slots.append(AddressSlot(target));
+                code.extend(CellWrite(SlotStorage(item.storage, item.container, target), fallback.slot, item.a,
+                                      ops, target, length(slots) - 1, node));
+                done := code[item.b];
+                done.target = length(code);
+                code[item.b] = done;
+                first := length(slots);
+                slots.extend([AddressSlot(target), {storage: SlotStorage(item.storage, item.container, target),
+                                                    kind: SlotKind(item.storage, item.container)}]);
+                code.extend(CellRead(SlotStorage(item.storage, item.container, target), item.a, ops, target, first, node));
+                produced = Typed(first + 1, item.storage, item.container, item.record);
+                if (Pointer(item.storage, item.container)) {
+                    roots.append({slot: produced.slot, storage: item.storage, container: item.container, record: item.record});
+                }
+            }
+        } else if (logic) {
+            // The temporary local holds the answer whichever side decides it.
+            stepped = false;
+            if (item.phase == 0) {
+                next.append(Visit(Field(forest, item.node, "left")));
+                next.append(Resume(item.node, 1, 0, 0));
+            } else if (item.phase == 1) {
+                value_top -= 1;
+                left := values[value_top];
+                if (!Single(left, BoolStorage)) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "logic needs bool operands"));
+                }
+                locals.append(ValueLocal(BoolStorage));
+                answer := length(locals) - 1;
+                code.append(Instruction(ops.save, BoolStorage, 0, left.slot, 0, answer, node));
+                escape := length(code);
+                if (operator == "&&" || operator == "and") {
+                    code.append(Instruction(ops.branch_if, 0, 0, left.slot, 0, length(code) + 2, node));
+                    escape = length(code);
+                    code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+                } else {
+                    code.append(Instruction(ops.branch_if, 0, 0, left.slot, 0, Pending, node));
+                }
+                next.append(Visit(Field(forest, item.node, "right")));
+                next.append(Resume(item.node, 2, answer, escape));
+            } else {
+                value_top -= 1;
+                right := values[value_top];
+                if (!Single(right, BoolStorage)) {
+                    return Body.Failed(Diagnose(forest, item.node, document, "logic needs bool operands"));
+                }
+                code.append(Instruction(ops.save, BoolStorage, 0, right.slot, 0, item.a, node));
+                escape := code[item.b];
+                escape.target = length(code);
+                code[item.b] = escape;
+                slot: Slot = {storage: BoolStorage, kind: ValueKind};
+                slots.append(slot);
+                code.append(Instruction(ops.local, BoolStorage, length(slots) - 1, item.a, 0, 0, node));
+                produced = Typed(length(slots) - 1, BoolStorage, 0, -1);
+            }
+        } else if (kind == "yield_statement" || kind == "cancel_statement" || kind == "await_expression") {
+            step = TaskStep(forest, text, document, callables, natives, params, types, names, callable.package,
+                            values, value_top, item, ops, target, at);
+        } else if (item.phase == CombinePhase) {
+            step = OperatorStep(forest, text, document, types, constants, names, callable.package, values, value_top, item, ops, at);
+        } else if (item.phase == PointerNilPhase && OptionalElement(types, values[value_top - 1]).storage != 0) {
+            step = OptionalPresentStep(values[value_top - 1], item.c == 0, 1, ops, target, at, node);
+        } else if (PointerWork(item, kind)) {
+            step = PointerStep(forest, text, document, types, members, names, params, callable.first,
+                               values, value_top, item, ops, target, at);
+        } else if (item.phase == ReferencePhase || item.phase == ScopedPhase) {
+            step = ReferenceArgumentStep(forest, text, document, types, members, names, item, ops, target, at);
+        } else if (item.phase == AggregatePhase) {
+            step = AggregateStep(forest, text, document, types, members, operators, natives, values, value_top, item, ops,
+                                 target, at);
+        } else if (ArrayElementAssignment(forest, text, names, item.node)) {
+            step = ElementAssignStep(forest, text, document, types, values, value_top, item, ops, target, at);
+        } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
+                   kind == "return_statement" || kind == "delete_statement") {
+            step = StatementStep(forest, text, document, callables, params, table, members, natives, ports, identities, names,
+                                 scopes[length(scopes) - 1], callable.package, values, value_top, function, named,
+                                 referenced, mutated, built, addressed, generic_updates, item, ops, target, at);
+        } else if (SequenceOperation(forest, text, names, callable.package, item.node) >= 0) {
+            step = SequenceStep(forest, text, document, table, values, value_top, item, ops, target, at);
+        } else if (kind == "call_expression" &&
+                   ArrayMutation(forest, text, names, natives, ports, callable.package, item.node) > 0) {
+            step = MutationStep(forest, text, document, types, members, natives, ports, names, values, value_top, item,
+                                ArrayMutation(forest, text, names, natives, ports, callable.package, item.node),
+                                ops, target, at);
+        } else if (item.phase == 0 && Integer(item.storage) &&
+                   ZeroCompoundDivisor(forest, text, document, constants, names, callable.package, item.node)) {
+            return Body.Failed(Diagnose(forest, forest[item.node].parent, document, "Constant division by zero"));
+        } else if (item.phase == 0 && kind != "parenthesized_expression" &&
+                   Folds(forest, text, constants, names, callable.package, item.node, item.storage) &&
+                   !ShadowedConversion(forest, text, callables, callable.package, item.node)) {
+            // A parenthesized fold folds inside its parentheses, where its
+            // point and watch are.
+            step = FoldStep(forest, text, document, constants, names, callable.package, item, ops, at);
+        } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
+                   kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
+            step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
+                             native_calls, names, callable.package, referenced, mutated, built, addressed, values,
+                             value_top, item, ops, target, at);
+        } else if (kind == "struct_expression" || kind == "array_expression") {
+            step = LiteralStep(forest, text, document, table, members, values, value_top, built, item, ops, target, at);
+        } else if (kind == "map_expression") {
+            step = MapLiteralStep(forest, document, types, values, value_top, item, ops, target, at);
+        } else if ((kind == "binary_expression" && (operator == "in" || NotIn(forest, item.node, operator))) ||
+                   (kind == "call_expression" &&
+                    (item.c == MapHasMark || (item.phase == 0 && MapMethod(forest, text, names, item.node, "has"))))) {
+            step = MapHasStep(forest, text, document, types, values, value_top, item, ops, target, at);
+        } else if (kind == "call_expression") {
+            step = CallStep(forest, text, document, callables, params, table, members, constants, natives, ports, makes,
+                            make_fields, names, callable.package, values, value_top, built, item, ops, target, at);
+        } else if (kind == "unary_expression" && item.phase == 1 && operator == "!" &&
+                   OptionalElement(types, values[value_top - 1]).storage != 0) {
+            step = OptionalPresentStep(values[value_top - 1], true, 1, ops, target, at, node);
+        } else if (kind == "binary_expression" && item.phase == 1 && (operator == "==" || operator == "!=") &&
+                   ((OptionalElement(types, values[value_top - 2]).storage != 0 &&
+                     Is(forest, Unparenthesized(forest, Field(forest, item.node, "right")), "nil")) ||
+                    (OptionalElement(types, values[value_top - 1]).storage != 0 &&
+                     Is(forest, Unparenthesized(forest, Field(forest, item.node, "left")), "nil")))) {
+            optional := values[value_top - 2];
+            if (OptionalElement(types, optional).storage == 0) {
+                optional = values[value_top - 1];
+            }
+            step = OptionalPresentStep(optional, operator == "==", 2, ops, target, at, node);
+        } else if (kind == "unary_expression" || kind == "binary_expression") {
+            step = OperatorStep(forest, text, document, types, constants, names, callable.package, values, value_top, item, ops, at);
+        } else if (kind == "function_declaration") {
+            step = ParameterStep(params, callable, item, ops, target, at, node);
+        } else if (kind == "is_expression" && item.phase == 0) {
+            stepped = false;
+            next.append(Visit(Field(forest, item.node, "value")));
+            next.append(Resume(item.node, 1, 0, 0));
+        } else if (kind == "is_expression") {
+            held := values[value_top - 1];
+            if (held.storage == UnionStorage && held.record >= 0 && types[held.record].kind == TaskResultDecl) {
+                step = TaskResultIsStep(forest, text, document, types, members, names, scopes[length(scopes) - 1],
+                                        values, value_top, item, ops, target, at);
+            } else {
+                step = IsStep(forest, text, document, types, members, names, scopes[length(scopes) - 1], values, value_top,
+                              item, ops, target, at);
+            }
+        } else {
+            return Body.Failed(Diagnose(forest, item.node, document, format_text("unsupported syntax '{}'", kind)));
+        }
+        // Apply the step, then the copy it or the control flow asks for.
+        pass: int = 0;
+        while (pass < 2) {
+            if (pass == 1) {
+                stepped = retained.storage != 0;
+                if (stepped) {
+                    at = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
+                          host: length(hosts), call: length(calls)};
+                    step = RetainStep(retained, ops, target, at, node);
+                }
+            }
+            if (stepped) {
+                if (pass == 0 && kind == "return_statement") {
+                    step = DropBeforeFinish(step, names, natives, ports, ops, target, at, node);
+                }
+                if (kind == "return_statement") {
+                    step = QueryCleanReturn(step, loops, ops, target, at, node);
+                }
+                if (pass == 0 && !item.capture && QueryBooleanPosition(forest, text, item.node)) {
+                    step = QueryBooleanStep(types, step, ops, target, at, node);
+                }
+                switch step {
+                    case .Failed(diagnostic):
+                        return Body.Failed(diagnostic);
+                    case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                                  added_calls, added_names, scheduled, popped, value, kept, marks):
+                        if (pass == 0) {
+                            switch StepFacts(forest, context, direct_write, facts, item.node, added_hosts, added_calls) {
+                                case .Read(summary, recorded):
+                                    direct_write = summary;
+                                    facts = recorded;
+                            }
+                        }
+                        code.extend(added_code);
+                        slots.extend(added_slots);
+                        locals.extend(added_locals);
+                        cells.extend(added_cells);
+                        hosts.extend(added_hosts);
+                        roots.extend(added_roots);
+                        calls.extend(added_calls);
+                        names.extend(added_names);
+                        next.extend(scheduled);
+                        value_top -= popped;
+                        if (value.storage != 0) {
+                            produced = value;
+                        }
+                        if (pass == 0) {
+                            retained = kept;
+                        }
+                        if (length(marks) == 1) {
+                            // A switch arm's test: the jump past the arm.
+                            current := switches[length(switches) - 1];
+                            current.skip = marks[0];
+                            switches[length(switches) - 1] = current;
+                        }
+                        if (length(marks) == 2) {
+                            // A map loop's head, whose step binds its names; leaving
+                            // the loop drops them.
+                            loop: Loop = {held_slot: iteration.slot, held_storage: iteration.storage,
+                                          held_container: iteration.container, held_record: iteration.record,
+                                          held_owned: iteration.owned, head: marks[0], first_break: length(breaks), first_continue: length(continues),
+                                          each: true, index: at.local, mark: length(names) - length(added_names),
+                                          leave: marks[1],
+                                          reverse: false, counted: false, bound: -1, empty: -1};
+                            loops.append(loop);
+                        }
+                        if (length(marks) == 3) {
+                            // A for head: its loop, then its element's binding.
+                            reverse := Field(forest, item.node, "reverse") >= 0;
+                            loop: Loop = {held_slot: iteration.slot, held_storage: iteration.storage,
+                                          held_container: iteration.container, held_record: iteration.record,
+                                          held_owned: iteration.owned, head: marks[0], first_break: length(breaks), first_continue: length(continues),
+                                          each: true, index: marks[2], mark: length(names), leave: marks[1],
+                                          reverse: reverse, counted: false, bound: -1, empty: -1};
+                            loops.append(loop);
+                            // `for x, i in xs` names the item, then the index the loop owns.
+                            if (Field(forest, item.node, "key") >= 0 &&
+                                Text(forest, text, Field(forest, item.node, "key")) ==
+                                Text(forest, text, Field(forest, item.node, "name"))) {
+                                return Body.Failed(Diagnose(forest, Field(forest, item.node, "name"), document,
+                                                            format_text("Duplicate declaration '{}'",
+                                                                        Text(forest, text, Field(forest, item.node, "name")))));
+                            }
+                            if (Field(forest, item.node, "key") >= 0) {
+                                key: Name = {owned: false, name: Text(forest, text, Field(forest, item.node, "name")), place: LocalPlace,
+                                             index: marks[2], storage: IntStorage, container: 0, record: -1,
+                                             writable: false, node: Field(forest, item.node, "name")};
+                                names.append(key);
+                                code.append(SymbolCode(ops, key.node, node));
+                            }
+                            element := produced;
+                            produced = NoValue();
+                            if (Pointer(element.storage, element.container) &&
+                                (lent_element ||
+                                 Unchanging(forest, text, callables, natives, types, names, callable.package, mutated,
+                                            Field(forest, item.node, "value")))) {
+                                // The array cannot change, so the element is read in place.
+                                cells.append(MovedCell(element));
+                                slots.append(AddressSlot(target));
+                                code.extend(MoveCode(element, ops, target, length(slots) - 1,
+                                                     length(cells) - 1, node));
+                                produced = element;
+                                lent: int = 0;
+                                if (lent_element) {
+                                    produced.cell = length(cells) - 1;
+                                    lent = 1;
+                                }
+                                next.append(Resume(item.node, 3, lent, 0));
+                            } else if (Pointer(element.storage, element.container)) {
+                                retained = element;
+                                next.append(Resume(item.node, 3, 0, 0));
+                            } else {
+                                locals.append(ValueLocal(element.storage));
+                                code.append(Instruction(ops.save, element.storage, 0, element.slot, 0,
+                                                        length(locals) - 1, node));
+                                binding: Name = {owned: false, name: Text(forest, text, ItemField(forest, item.node)),
+                                                 place: LocalPlace, index: length(locals) - 1, storage: element.storage,
+                                                 container: 0, record: element.record, writable: false,
+                                                 node: ItemField(forest, item.node)};
+                                names.append(binding);
+                                code.append(SymbolCode(ops, binding.node, node));
+                                next.append(Visit(Field(forest, item.node, "body")));
+                                next.append(Resume(item.node, 4, 0, 0));
+                            }
+                        }
+                        if (length(marks) == 4) {
+                            loop: Loop = {held_slot: -1, held_storage: 0, held_container: 0, held_record: -1,
+                                          held_owned: false, head: marks[0], first_break: length(breaks),
+                                          first_continue: length(continues), each: true, index: -1, mark: length(names) - length(added_names), leave: marks[1],
+                                          reverse: false, counted: false, bound: marks[2], empty: -1};
+                            loops.append(loop);
+                        }
+                }
+            }
+            pass += 1;
+        }
+        types = table^;
+        if (ops.debug) {
+            // A pointer whose member is read next is watched by that read.
+            transient := length(next) > 0 && next[length(next) - 1].phase == PointerMemberReadPhase;
+            switch DebugWatches(forest, item, produced, negated || transient, callables, params, natives, ports,
+                                ops, target, length(slots)) {
+                case .Read(added_code, added_slots, added_roots):
+                    code.extend(added_code);
+                    slots.extend(added_slots);
+                    roots.extend(added_roots);
+            }
+        }
+        // An argument of an overloaded native, on its last visit, reserves a
+        // jump, a no-op until the call chooses its overload.
+        if (ops.debug && !Resumed(next, item.node) && OverloadArgument(forest, work, work_top, item.node)) {
+            reserved_nodes.append(item.node);
+            reserved_jumps.append(length(code));
+            code.append(Instruction(ops.jump, 0, 0, 0, 0, length(code) + 1, node));
+        }
+        // A compound assignment watches the value it stores at its target.
+        if (item.phase == CombinePhase && kind == "assignment" && produced.storage > 0) {
+            code.append(WatchCode(ops, produced.slot, produced.storage, produced.container, produced.record,
+                                  0, true, forest[Field(forest, item.node, "target")], target));
+        }
+        if (produced.storage != 0) {
+            if (value_top < length(values)) {
+                values[value_top] = produced;
+            } else {
+                values.append(produced);
+            }
+            value_top += 1;
+        }
+        // Run scheduled items in order: the last pushed runs first.
+        at_next := length(next) - 1;
+        while (at_next >= 0) {
+            scheduled := next[at_next];
+            scheduled.capture = scheduled.capture || item.capture;
+            if (work_top < length(work)) {
+                work[work_top] = scheduled;
+            } else {
+                work.append(scheduled);
+            }
+            work_top += 1;
+            at_next -= 1;
+        }
+    }
+    cleanup_at: Bases = {pc: length(code), slot: length(slots), local: length(locals),
+                         cell: length(cells), host: length(hosts), call: length(calls)};
+    switch DropNamesStep(names, 0, natives, ports, ops, target, cleanup_at, declaration) {
+        case .Failed(diagnostic):
+            return Body.Failed(diagnostic);
+        case .Emitted(drop_code, drop_slots, drop_locals, drop_cells, drop_hosts, drop_roots,
+                      drop_calls, drop_bound, drop_next, drop_popped, drop_value, drop_retained, drop_marks):
+            code.extend(drop_code);
+            slots.extend(drop_slots);
+            locals.extend(drop_locals);
+            cells.extend(drop_cells);
+            hosts.extend(drop_hosts);
+            roots.extend(drop_roots);
+            calls.extend(drop_calls);
+    }
+    // A function completes at its end, and one with named results returns
+    // them.
+    if (inferring && value_top > 0) {
+        value := values[value_top - 1];
+        return Body.Inferred({storage: value.storage, container: value.container, record: value.record});
+    }
+    points.append(PointAt(key, solid, FunctionRecord, meaning, true, declaration, declaration));
+    code.append(PointCode(ops, length(points) - 1, declaration));
+    if (callable.results > 0 && evaluating < 0) {
+        at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
+                     host: length(hosts), call: length(calls)};
+        switch NamedResultsStep([], ops, target, params, callable, named, at, declaration) {
+            case .Failed(diagnostic):
+                return Body.Failed(diagnostic);
+            case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                          added_calls, added_names, scheduled, popped, value, kept, marks):
+                code.extend(added_code);
+                slots.extend(added_slots);
+                cells.extend(added_cells);
+                hosts.extend(added_hosts);
+        }
+    }
+    code.append(Instruction(ops.end, 0, 0, 0, 0, 0, declaration));
+    code = Retargeted(code, retargets, retarget_starts);
+    if (callable.result_container == ViewContainer && ReachesBodyEnd(code, ops)) {
+        return Body.Failed(Diagnose(forest, callable.node, document,
+                                    "view result requires an initialized value on every return path"));
+    }
+    if (!ops.debug) {
+        code = WithoutDebug(ops, code);
+        points = [];
+    }
+    return NumberPoints(forest, solid, undeclared, meaning, document_hash, declaration, ops, slots, locals, cells,
+                        code, calls, hosts, roots, points, watches, semantic_effects, direct_write, facts);
+}
+
+// Follow both sides of each branch. A metadata-only view result header is
+// never a live value, so a successful return must publish a value before END.
+ReachesBodyEnd :: (code: Code[], ops: Ops) -> bool {
+    visited := resize([false], length(code));
+    pending: int[] = [int(0)];
+    top: int = 1;
+    while (top > 0) {
+        top -= 1;
+        at := pending[top];
+        if (at >= 0 && at < length(code) && !visited[at]) {
+            visited[at] = true;
+            instruction := code[at];
+            if (instruction.op == ops.end) {
+                return true;
+            }
+            successors: int[] = [];
+            if (instruction.op == ops.jump) {
+                successors = [instruction.target];
+            } else if (instruction.op == ops.branch_if) {
+                successors = [instruction.target, at + 1];
+            } else if (instruction.op != ops.finish) {
+                successors = [at + 1];
+            }
+            for (successor in successors) {
+                if (top < length(pending)) {
+                    pending[top] = successor;
+                } else {
+                    pending.append(successor);
+                }
+                top += 1;
+            }
+        }
+    }
+    return false;
+}
+
+// A body's tables, with the points and watches the steps placed, each at its
+// instruction's position. The runtime numbers each instruction that suspends,
+// an invocation or a point, by its order, and a prepared module's bytes hold
+// that number.
+NumberPoints :: (forest: snapshot.SnapshotNode[], solid: int[], undeclared: u64, meaning: u64,
+                 document_hash: u64, declaration: snapshot.SnapshotNode, ops: Ops, slots: Slot[], locals: Slot[],
+                 cells: Cell[], code: Code[], calls: Invocation[], hosts: Host[], roots: Root[],
+                 points: SourcePoint[], watches: SourceWatch[], effects: int, direct_write: int,
+                 facts: SemanticFact[]) -> Body {
+    numbered_code := code;
+    numbered_points := points;
+    numbered_watches := watches;
+    suspension: int = 0;
+    at_point: int = 0;
+    while (at_point < length(numbered_code)) {
+        op := numbered_code[at_point].op;
+        if (op == ops.source_point && numbered_code[at_point].left < 0) {
+            placed := numbered_code[at_point];
+            occurrence := OccurrenceIn(document_hash, ExpressionRecord, solid[placed.start], solid[placed.end]);
+            point_meaning: u64 = 0;
+            point_kind := ExpressionRecord;
+            if (placed.left == CompletionPoint) {
+                occurrence = OccurrenceIn(document_hash, FunctionRecord, solid[declaration.start],
+                                          solid[declaration.end]);
+                point_meaning = meaning;
+                point_kind = FunctionRecord;
+            } else if (placed.left == SymbolPoint) {
+                occurrence = SymbolOccurrence(forest, document_hash, solid, undeclared, placed.right);
+                point_kind = SymbolRecord;
+            } else if (placed.left == OccurrencePoint) {
+                occurrence = placed.payload;
+                point_kind = placed.right;
+            }
+            point: SourcePoint = {occurrence: occurrence, meaning: point_meaning, start: placed.start, end: placed.end,
+                                  line: placed.line, column: placed.column, kind: point_kind,
+                                  completion: placed.left == CompletionPoint};
+            numbered_points.append(point);
+            numbered_code[at_point] = {op: ops.source_point, type: 0, output: 0, left: length(numbered_points) - 1, right: 0,
+                                       target: suspension, offset: 0, value_storage: 0, value_container: 0, value_record: -1,
+                                       payload: 0, text: "", has_text: false, message: "", has_message: false,
+                                       start: placed.start, end: placed.end, line: placed.line, column: placed.column};
+            suspension += 1;
+        } else if (op == ops.invoke || op == ops.source_point || op == ops.suspend) {
+            numbered := numbered_code[at_point];
+            numbered.target = suspension;
+            numbered_code[at_point] = numbered;
+            suspension += 1;
+        } else if (op == ops.source_watch) {
+            placed := numbered_code[at_point];
+            // A default of another document carries its occurrence.
+            occurrence := placed.payload;
+            if (occurrence == 0) {
+                occurrence = OccurrenceIn(document_hash, ExpressionRecord, solid[placed.start], solid[placed.end]);
+            }
+            watch: SourceWatch = {occurrence: occurrence,
+                                  start: placed.start, end: placed.end, line: placed.line, column: placed.column,
+                                  storage: placed.value_storage, container: placed.value_container,
+                                  record: placed.value_record, ordinal: placed.right, output: placed.output == 1,
+                                  reference: placed.offset == 1};
+            numbered_watches.append(watch);
+            numbered_code[at_point] = Instruction(ops.source_watch, placed.type, 0, placed.left, 0,
+                                                  length(numbered_watches) - 1, Located(placed));
+        }
+        at_point += 1;
+    }
+    return Body.Emitted(slots, locals, cells, numbered_code, calls, hosts, roots, numbered_points, numbered_watches,
+                        effects, direct_write, facts);
+}

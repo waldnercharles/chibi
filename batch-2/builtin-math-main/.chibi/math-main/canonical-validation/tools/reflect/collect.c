@@ -1,0 +1,783 @@
+#include "reflect_internal.h"
+#include "types/type.h"
+
+#include <ctype.h>
+#include <limits.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
+
+static void reflect_error(CXCursor c, const char *message)
+{
+    CXSourceLocation loc = clang_getCursorLocation(c);
+    CXFile file = NULL;
+    unsigned line = 0, column = 0, offset = 0;
+    clang_getSpellingLocation(loc, &file, &line, &column, &offset);
+    CXString name = clang_getCursorSpelling(c);
+    fprintf(
+        stderr,
+        "reflect: %s:%u:%u: %s (%s)\n",
+        file ? clang_getCString(clang_getFileName(file)) : "<unknown>",
+        line,
+        column,
+        message,
+        clang_getCString(name)
+    );
+    clang_disposeString(name);
+    g_failed = 1;
+}
+
+static char *cxstr(CXString s)
+{
+    const char *c = clang_getCString(s);
+    char *r = strdup(c ? c : "");
+    clang_disposeString(s);
+    return r;
+}
+
+/* parent_dir: buf = directory containing path (dirname semantics). */
+static char *cursor_file_basename(CXCursor c)
+{
+    CXSourceLocation loc = clang_getCursorLocation(c);
+    CXFile file = NULL;
+    unsigned line, col, off;
+    clang_getSpellingLocation(loc, &file, &line, &col, &off);
+    char *full = file ? cxstr(clang_getFileName(file)) : strdup("?");
+    const char *base = strrchr(full, '/');
+    base = base ? base + 1 : full;
+    char *r = strdup(base);
+    free(full);
+    return r;
+}
+
+int ends_with(const char *s, const char *suffix)
+{
+    size_t ls = strlen(s), lx = strlen(suffix);
+    return ls >= lx && strcmp(s + ls - lx, suffix) == 0;
+}
+
+/* ---------- annotation detection ---------- */
+
+typedef struct
+{
+    const char *want;
+    int found;
+} ann_ctx;
+
+static enum CXChildVisitResult find_annotate(CXCursor c, CXCursor, CXClientData data)
+{
+    ann_ctx *ctx = (ann_ctx *)data;
+    if (clang_getCursorKind(c) == CXCursor_AnnotateAttr) {
+        CXString s = clang_getCursorSpelling(c);
+        if (strcmp(clang_getCString(s), ctx->want) == 0) {
+            ctx->found = 1;
+        }
+        clang_disposeString(s);
+        if (ctx->found) {
+            return CXChildVisit_Break;
+        }
+    }
+    return CXChildVisit_Continue;
+}
+
+static int has_annotate(CXCursor c, const char *want)
+{
+    ann_ctx ctx = { want, 0 };
+    clang_visitChildren(c, find_annotate, &ctx);
+    return ctx.found;
+}
+
+typedef struct
+{
+    const char *prefix;
+    char *value;
+} ann_value_ctx;
+
+static enum CXChildVisitResult find_annotate_prefix(CXCursor c, CXCursor, CXClientData data)
+{
+    ann_value_ctx *ctx = (ann_value_ctx *)data;
+    if (clang_getCursorKind(c) != CXCursor_AnnotateAttr) {
+        return CXChildVisit_Continue;
+    }
+    CXString spelling = clang_getCursorSpelling(c);
+    const char *text = clang_getCString(spelling);
+    size_t length = strlen(ctx->prefix);
+    if (text && strncmp(text, ctx->prefix, length) == 0) {
+        ctx->value = strdup(text + length);
+        clang_disposeString(spelling);
+        return CXChildVisit_Break;
+    }
+    clang_disposeString(spelling);
+    return CXChildVisit_Continue;
+}
+
+static char *annotation_value(CXCursor c, const char *prefix)
+{
+    ann_value_ctx ctx = { prefix, NULL };
+    clang_visitChildren(c, find_annotate_prefix, &ctx);
+    return ctx.value;
+}
+
+/* ---------- type mapping ---------- */
+
+static const char *pin_name(CXType t)
+{
+    CXType canon = clang_getCanonicalType(t);
+    switch (canon.kind) {
+        case CXType_Bool: return "PIN_BOOL";
+        case CXType_Char_S:
+        case CXType_SChar: return "PIN_I8";
+        case CXType_Char_U:
+        case CXType_UChar: return "PIN_U8";
+        case CXType_Short: return "PIN_I16";
+        case CXType_UShort: return "PIN_U16";
+        case CXType_Int: return "PIN_I32";
+        case CXType_UInt: return "PIN_U32";
+        case CXType_Long:
+        case CXType_LongLong: {
+            long long size = clang_Type_getSizeOf(canon);
+            return size == 4 ? "PIN_I32" : size == 8 ? "PIN_I64" : NULL;
+        }
+        case CXType_ULong:
+        case CXType_ULongLong: {
+            long long size = clang_Type_getSizeOf(canon);
+            return size == 4 ? "PIN_U32" : size == 8 ? "PIN_U64" : NULL;
+        }
+        case CXType_Float: return "PIN_F32";
+        case CXType_Double: return "PIN_F64";
+        case CXType_Enum: return "PIN_ENUM";
+        case CXType_Record: return "PIN_STRUCT";
+        case CXType_Pointer: {
+            CXType pointee = clang_getCanonicalType(clang_getPointeeType(t));
+            if (pointee.kind == CXType_Char_U || pointee.kind == CXType_UChar ||
+                pointee.kind == CXType_Char_S || pointee.kind == CXType_SChar) {
+                return "PIN_STR";
+            }
+            return NULL;
+        }
+        default: return NULL;
+    }
+}
+
+/* ---------- collection ---------- */
+
+static int enum_name_exists(const collect_ctx *ctx, const char *name)
+{
+    for (int i = 0; i < acount(ctx->enums); i++) {
+        if (!strcmp(ctx->enums[i].name, name)) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static char *enum_label(const char *name, const char *prefix)
+{
+    const char *start = name + strlen(prefix);
+    size_t size = strlen(start);
+    char *label = malloc(size + 1);
+    if (!label) {
+        abort();
+    }
+    int word_start = 1;
+    size_t out = 0;
+    for (size_t i = 0; i < size; i++) {
+        unsigned char c = (unsigned char)start[i];
+        if (c == '_') {
+            label[out++] = ' ';
+            word_start = 1;
+        } else if (word_start) {
+            label[out++] = (char)toupper(c);
+            word_start = 0;
+        } else {
+            label[out++] = (char)tolower(c);
+        }
+    }
+    label[out] = '\0';
+    return label;
+}
+
+static void enum_labels(enum_info *enumeration)
+{
+    if (!acount(enumeration->values)) {
+        return;
+    }
+    size_t common = strlen(enumeration->values[0].name);
+    for (int i = 1; i < acount(enumeration->values); i++) {
+        size_t j = 0;
+        while (j < common &&
+               enumeration->values[0].name[j] == enumeration->values[i].name[j]) {
+            j++;
+        }
+        common = j;
+    }
+    while (common && enumeration->values[0].name[common - 1] != '_') {
+        common--;
+    }
+    char *prefix = malloc(common + 1);
+    if (!prefix) {
+        abort();
+    }
+    memcpy(prefix, enumeration->values[0].name, common);
+    prefix[common] = '\0';
+    for (int i = 0; i < acount(enumeration->values); i++) {
+        if (!enumeration->values[i].label) {
+            enumeration->values[i].label = enum_label(enumeration->values[i].name, prefix);
+        }
+    }
+    free(prefix);
+}
+
+static enum CXChildVisitResult enum_value_visitor(CXCursor c, CXCursor, CXClientData data)
+{
+    if (clang_getCursorKind(c) != CXCursor_EnumConstantDecl) {
+        return CXChildVisit_Continue;
+    }
+    enum_info *enumeration = data;
+    char *name = cxstr(clang_getCursorSpelling(c));
+    if (ends_with(name, "_COUNT")) {
+        free(name);
+        return CXChildVisit_Continue;
+    }
+    long long value = clang_getEnumConstantDeclValue(c);
+    if (value < INT_MIN || value > INT_MAX) {
+        free(name);
+        reflect_error(c, "enum values must fit in an int");
+        return CXChildVisit_Continue;
+    }
+    apush(
+        enumeration->values,
+        ((enum_value_info){ .name = name,
+                            .value = (int)value,
+                            .label = annotation_value(c, "node:name:") })
+    );
+    return CXChildVisit_Continue;
+}
+
+static void collect_enum_alias(collect_ctx *ctx, CXCursor c, const char *name)
+{
+    if (!name || !name[0] || enum_name_exists(ctx, name)) {
+        return;
+    }
+    CXType underlying = clang_getTypedefDeclUnderlyingType(c);
+    CXType enum_type = clang_getCanonicalType(underlying);
+    CXCursor definition = clang_getTypeDeclaration(enum_type);
+    if (clang_getCursorKind(definition) != CXCursor_EnumDecl ||
+        !clang_isCursorDefinition(definition)) {
+        return;
+    }
+    enum_info enumeration = { .name = strdup(name) };
+    clang_visitChildren(definition, enum_value_visitor, &enumeration);
+    if (g_failed || !acount(enumeration.values)) {
+        free(enumeration.name);
+        for (int i = 0; i < acount(enumeration.values); i++) {
+            free(enumeration.values[i].name);
+            free(enumeration.values[i].label);
+        }
+        afree(enumeration.values);
+        return;
+    }
+    enum_labels(&enumeration);
+    apush(ctx->enums, enumeration);
+}
+
+/* The first paragraph of a field's comment, with comment markers removed and
+ * lines joined by spaces. */
+static char *field_description(CXCursor c)
+{
+    char *raw = cxstr(clang_Cursor_getRawCommentText(c));
+    char *text = xmalloc(strlen(raw) + 1);
+    size_t n = 0;
+    for (char *line = raw, *next; line; line = next) {
+        next = strchr(line, '\n');
+        if (next) {
+            *next++ = '\0';
+        }
+        line += strspn(line, " \t");
+        line += strspn(line, "/*!<");
+        line += strspn(line, " \t");
+        if (!n && *line == '@') { /* Doxygen command, e.g. Cute's @member */
+            line += strcspn(line, " \t");
+            line += strspn(line, " \t");
+        }
+        size_t len = strlen(line);
+        if (len >= 2 && !strcmp(line + len - 2, "*/")) {
+            len -= 2;
+        }
+        while (len && (line[len - 1] == ' ' || line[len - 1] == '\t')) {
+            len--;
+        }
+        if (!len) {
+            if (n) {
+                break;
+            }
+            continue;
+        }
+        if (n) {
+            text[n++] = ' ';
+        }
+        memcpy(text + n, line, len);
+        n += len;
+    }
+    text[n] = '\0';
+    free(raw);
+    if (n) {
+        return text;
+    }
+    free(text);
+    return NULL;
+}
+
+static void dispose_fields(field_info *fields)
+{
+    for (int i = 0; i < acount(fields); i++) {
+        free(fields[i].name);
+        free(fields[i].spelling);
+        free(fields[i].handle);
+        free(fields[i].description);
+        free(fields[i].unit);
+    }
+    afree(fields);
+}
+
+static bool numeric_pin(const char *pin)
+{
+    static const char *const pins[] = { "PIN_I8",  "PIN_U8",  "PIN_I16",
+                                        "PIN_U16", "PIN_I32", "PIN_U32",
+                                        "PIN_I64", "PIN_U64", "PIN_F32",
+                                        "PIN_F64" };
+    for (int i = 0; i < (int)(sizeof pins / sizeof *pins); i++) {
+        if (!strcmp(pin, pins[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Reads a field's unit and range annotations into `f`; false after reporting
+ * an invalid one. */
+static bool field_presentation(CXCursor c, field_info *f)
+{
+    f->unit = annotation_value(c, "node:unit:");
+    f->min = f->max = 0;
+    char *range = annotation_value(c, "node:range:");
+    char *hint = annotation_value(c, "node:range-hint:");
+    char *fallback = annotation_value(c, "node:range-default:");
+    f->range_contract = range != NULL;
+    f->range_default = 0;
+    if ((range && hint) || (fallback && !range)) {
+        reflect_error(c, "range hint and contract are exclusive; default requires a contract");
+        free(range);
+        free(hint);
+        free(fallback);
+        return false;
+    }
+    if (!range) {
+        range = hint;
+    }
+    if (!f->unit && !range) {
+        return true;
+    }
+    bool ok = !f->color && numeric_pin(f->pin);
+    if (!ok) {
+        reflect_error(c, "unit and range require a numeric field");
+    } else if (f->unit && !f->unit[0]) {
+        reflect_error(c, "unit must not be empty");
+        ok = false;
+    } else if (range) {
+        char *middle, *end;
+        f->min = strtod(range, &middle);
+        f->max = strtod(middle, &end);
+        ok = middle != range && end != middle && !*end && isfinite(f->min) &&
+             isfinite(f->max) && f->min < f->max;
+        if (!ok) {
+            reflect_error(c, "range requires a minimum below its maximum");
+        }
+    }
+    if (fallback) {
+        char *end;
+        f->range_default = strtod(fallback, &end);
+        if (end == fallback || *end || !isfinite(f->range_default)) {
+            reflect_error(c, "range default requires a finite number");
+            ok = false;
+        }
+    }
+    if (ok && f->range_contract) {
+        pin_type storage = PIN_FLOW;
+#define MATCH(PIN, NAME)                                                       \
+    if (!strcmp(f->pin, #PIN)) {                                               \
+        storage = PIN;                                                         \
+    }
+        PIN_TYPE_LIST(MATCH)
+#undef MATCH
+        type_field field = { .type = storage,
+                             .min = f->min,
+                             .max = f->max,
+                             .range_contract = true,
+                             .range_default = f->range_default };
+        if (!type_field_range_valid(&field)) {
+            reflect_error(c, "range endpoints must fit the field's numeric storage");
+            ok = false;
+        }
+    }
+    free(range);
+    free(fallback);
+    return ok;
+}
+
+static enum CXChildVisitResult field_visitor(CXCursor c, CXCursor, CXClientData data)
+{
+    if (clang_getCursorKind(c) != CXCursor_FieldDecl) {
+        return CXChildVisit_Continue;
+    }
+    field_info **l = (field_info **)data;
+    field_info f;
+    CXType t = clang_getCursorType(c);
+    f.name = cxstr(clang_getCursorSpelling(c));
+    f.spelling = cxstr(clang_getTypeSpelling(t));
+    f.handle = annotation_value(c, "node:handle:");
+    f.pin = pin_name(t);
+    f.color = has_annotate(c, "node:color");
+    if (f.color && (!f.pin || strcmp(f.pin, "PIN_U32"))) {
+        reflect_error(c, "color fields require unsigned 32-bit storage");
+        free(f.name);
+        free(f.spelling);
+        free(f.handle);
+        return CXChildVisit_Continue;
+    }
+    if (f.handle) {
+        if (!f.pin || strcmp(f.pin, "PIN_U64") || !f.handle[0]) {
+            reflect_error(c, "handle fields require uint64_t storage and a nominal type");
+            free(f.name);
+            free(f.spelling);
+            free(f.handle);
+            return CXChildVisit_Continue;
+        }
+        f.pin = "PIN_HANDLE";
+    }
+    if (!f.pin) {
+        reflect_error(c, "unsupported field type");
+        free(f.name);
+        free(f.spelling);
+        return CXChildVisit_Continue;
+    }
+    f.offset = clang_Cursor_getOffsetOfField(c) / 8; /* bits -> bytes */
+    f.size = clang_Type_getSizeOf(clang_getCanonicalType(t));
+    if (f.size < 0) {
+        reflect_error(c, "field size is unavailable");
+        free(f.name);
+        free(f.spelling);
+        free(f.handle);
+        return CXChildVisit_Continue;
+    }
+    if (clang_Cursor_isBitField(c)) {
+        reflect_error(c, "bit-fields are unsupported");
+        free(f.name);
+        free(f.spelling);
+        free(f.handle);
+        return CXChildVisit_Continue;
+    }
+    if (!strcmp(f.pin, "PIN_ENUM") &&
+        clang_Type_getSizeOf(clang_getCanonicalType(t)) != sizeof(int32_t)) {
+        reflect_error(c, "enum fields must use a 32-bit representation");
+        free(f.name);
+        free(f.spelling);
+        free(f.handle);
+        return CXChildVisit_Continue;
+    }
+    if (!field_presentation(c, &f)) {
+        free(f.name);
+        free(f.spelling);
+        free(f.handle);
+        free(f.unit);
+        return CXChildVisit_Continue;
+    }
+    f.description = field_description(c);
+    apush(*l, f);
+    return CXChildVisit_Continue;
+}
+
+static enum CXChildVisitResult param_visitor(CXCursor c, CXCursor, CXClientData data)
+{
+    if (clang_getCursorKind(c) != CXCursor_ParmDecl) {
+        return CXChildVisit_Continue;
+    }
+    fn_info *f = (fn_info *)data;
+    CXType raw = clang_getCursorType(c);
+    int output = has_annotate(c, "node:out");
+    char *service = annotation_value(c, "node:service:");
+    char *label = annotation_value(c, "node:pin-name:");
+    if (output && raw.kind != CXType_Pointer) {
+        reflect_error(c, "explicit output parameters must be pointers");
+        free(service);
+        free(label);
+        return CXChildVisit_Continue;
+    }
+    CXType graph_type = output && raw.kind == CXType_Pointer
+                          ? clang_getPointeeType(raw)
+                          : raw;
+    const char *pin = pin_name(graph_type);
+    if ((!pin && !service) ||
+        (!strcmp(pin ? pin : "", "PIN_ENUM") &&
+         clang_Type_getSizeOf(clang_getCanonicalType(graph_type)) != sizeof(int32_t))) {
+        reflect_error(c, "unsupported parameter type or missing explicit output annotation");
+        free(service);
+        free(label);
+        return CXChildVisit_Continue;
+    }
+    apush(f->pname, cxstr(clang_getCursorSpelling(c)));
+    apush(f->plabel, label);
+    apush(f->ptype, cxstr(clang_getTypeSpelling(raw)));
+    apush(f->ppin, service ? "PIN_HANDLE" : pin);
+    apush(f->pout, output);
+    apush(f->pservice, service != NULL);
+    apush(f->pservice_type, service ? strdup(service) : NULL);
+    apush(f->pout_type, output ? cxstr(clang_getTypeSpelling(graph_type)) : NULL);
+    free(service);
+    return CXChildVisit_Continue;
+}
+
+static void collect_alias(
+    collect_ctx *ctx,
+    CXCursor c,
+    const char *name,
+    const char *c_name,
+    int component,
+    int dense
+)
+{
+    CXType underlying = clang_getTypedefDeclUnderlyingType(c);
+    CXType record_type = clang_getCanonicalType(underlying);
+    CXCursor definition = clang_getTypeDeclaration(record_type);
+    if (clang_getCursorKind(definition) != CXCursor_StructDecl ||
+        !clang_isCursorDefinition(definition)) {
+        reflect_error(c, "type aliases must name a defined struct");
+        return;
+    }
+
+    struct_info s = { 0 };
+    s.name = strdup(name);
+    s.c_name = c_name ? strdup(c_name) : NULL;
+    s.file = cursor_file_basename(c);
+    clang_getSpellingLocation(clang_getCursorLocation(c), NULL, &s.line, NULL, NULL);
+    s.size = clang_Type_getSizeOf(underlying);
+    s.component = component;
+    s.dense = dense;
+    s.constructor_name = annotation_value(c, "node:constructor:");
+    CXString definition_name = clang_getCursorSpelling(definition);
+    const char *underlying_name = clang_getCString(definition_name);
+    if (underlying_name && strcmp(c_name ? c_name : name, underlying_name) != 0) {
+        s.alias_of = strdup(underlying_name);
+    }
+    clang_disposeString(definition_name);
+    clang_visitChildren(definition, field_visitor, &s.fields);
+    if (g_failed) {
+        free(s.name);
+        free(s.c_name);
+        free(s.file);
+        free(s.alias_of);
+        free(s.constructor_name);
+        dispose_fields(s.fields);
+        return;
+    }
+    apush(ctx->structs, s);
+}
+
+static enum CXChildVisitResult visitor(CXCursor c, CXCursor parent, CXClientData data)
+{
+    collect_ctx *ctx = (collect_ctx *)data;
+    enum CXCursorKind k = clang_getCursorKind(c);
+
+    if (k == CXCursor_TypedefDecl) {
+        char *typedef_name = cxstr(clang_getCursorSpelling(c));
+        CXType underlying = clang_getCanonicalType(clang_getTypedefDeclUnderlyingType(c));
+        char *component_alias = annotation_value(c, "node:component-alias:");
+        char *type_alias = annotation_value(c, "node:type-alias:");
+        char *external_type = annotation_value(c, "node:external-type:");
+        char *type_name = annotation_value(c, "node:type-name:");
+        if (underlying.kind == CXType_Enum) {
+            collect_enum_alias(ctx, c, typedef_name);
+        } else if (type_name && !external_type) {
+            reflect_error(c, "only external types take an authored type name");
+        } else if (type_name) {
+            collect_alias(ctx, c, type_name, external_type, 0, 0);
+        } else if (component_alias || type_alias || external_type) {
+            const char *name = external_type ? external_type : typedef_name;
+            collect_alias(ctx, c, name, NULL, component_alias != NULL, 0);
+        }
+        free(typedef_name);
+        free(component_alias);
+        free(type_alias);
+        free(external_type);
+        free(type_name);
+    } else if (k == CXCursor_StructDecl && clang_isCursorDefinition(c) && clang_getCursorKind(parent) != CXCursor_TypedefDecl) {
+        int is_type = has_annotate(c, "node:type");
+        int is_component = has_annotate(c, "node:component") ||
+                           has_annotate(c, "node:component:index:dense");
+        if (is_type || is_component) {
+            struct_info s = { 0 };
+            s.name = cxstr(clang_getCursorSpelling(c));
+            s.file = cursor_file_basename(c);
+            clang_getSpellingLocation(clang_getCursorLocation(c), NULL, &s.line, NULL, NULL);
+            s.size = clang_Type_getSizeOf(clang_getCursorType(c));
+            s.component = is_component;
+            s.dense = has_annotate(c, "node:component:index:dense");
+            s.constructor_name = annotation_value(c, "node:constructor:");
+            s.derived_from = annotation_value(c, "node:derived-from:");
+            s.fields = NULL;
+            clang_visitChildren(c, field_visitor, &s.fields);
+            if (g_failed) {
+                free(s.name);
+                free(s.file);
+                free(s.alias_of);
+                free(s.constructor_name);
+                free(s.derived_from);
+                dispose_fields(s.fields);
+            } else {
+                apush(ctx->structs, s);
+            }
+        }
+    } else if (k == CXCursor_FunctionDecl) {
+        int pure = has_annotate(c, "node:fn");
+        int read = has_annotate(c, "node:read");
+        int exec = has_annotate(c, "node:exec");
+        if (pure || read || exec) {
+            if (pure + read + exec > 1) {
+                reflect_error(c, "a function must choose exactly one node contract");
+                return CXChildVisit_Recurse;
+            }
+            fn_info f = { 0 };
+            f.name = cxstr(clang_getCursorSpelling(c));
+            f.ret = cxstr(clang_getTypeSpelling(clang_getCursorResultType(c)));
+            f.ret_void = clang_getCursorResultType(c).kind == CXType_Void;
+            f.ret_pin = f.ret_void ? NULL : pin_name(clang_getCursorResultType(c));
+            f.read = read;
+            f.exec = exec;
+            if (read) {
+                f.effect_flags |= 1u << 3;
+            }
+            CXType result_type = clang_getCursorResultType(c);
+            int read_error = result_type.kind != CXType_Pointer ||
+                             !clang_isConstQualifiedType(clang_getPointeeType(result_type));
+            if (read &&
+                (read_error || !f.ret_pin || strcmp(f.ret_pin, "PIN_STR") != 0)) {
+                reflect_error(c, "read nodes must return const char * errors");
+                free(f.name);
+                free(f.ret);
+                return CXChildVisit_Recurse;
+            }
+            if (!read && !f.ret_void &&
+                (!f.ret_pin || (!strcmp(f.ret_pin, "PIN_ENUM") &&
+                                clang_Type_getSizeOf(clang_getCanonicalType(
+                                    clang_getCursorResultType(c)
+                                )) != sizeof(int32_t)))) {
+                reflect_error(c, "unsupported return type");
+                free(f.name);
+                free(f.ret);
+                return CXChildVisit_Recurse;
+            }
+            f.display_name = annotation_value(c, "node:name:");
+            f.category = annotation_value(c, "node:category:");
+            f.keywords = annotation_value(c, "node:keywords:");
+            f.description = annotation_value(c, "node:description:");
+            f.jit_kind = annotation_value(c, "node:jit:");
+            if (f.jit_kind && strcmp(f.jit_kind, "v2-scale") != 0 &&
+                strcmp(f.jit_kind, "v2-add") != 0 &&
+                strcmp(f.jit_kind, "v2-move") != 0 &&
+                strcmp(f.jit_kind, "identity") != 0) {
+                reflect_error(c, "unknown node JIT lowering kind");
+            }
+            f.conversion_from = annotation_value(c, "node:conversion-from:");
+            f.conversion_to = annotation_value(c, "node:conversion-to:");
+            if ((f.conversion_from == NULL) != (f.conversion_to == NULL)) {
+                reflect_error(c, "a conversion needs both source and target types");
+            }
+            clang_visitChildren(c, param_visitor, &f);
+            if (f.jit_kind && !strcmp(f.jit_kind, "identity") &&
+                (!pure || !f.ret_pin || strcmp(f.ret_pin, "PIN_STRUCT") ||
+                 acount(f.pname) != 1 || f.pout[0] || f.pservice[0] ||
+                 !clang_equalTypes(
+                     clang_getCanonicalType(result_type),
+                     clang_getCanonicalType(clang_getCursorType(clang_Cursor_getArgument(c, 0)))
+                 ))) {
+                reflect_error(c, "identity requires one struct argument with the same underlying return type");
+            }
+            if (read) {
+                int output_count = 0;
+                for (int i = 0; i < acount(f.pname); i++) {
+                    output_count += f.pout[i];
+                    if (f.pservice[i]) {
+                        reflect_error(c, "read nodes cannot use service parameters");
+                    }
+                }
+                if (!output_count) {
+                    reflect_error(c, "read nodes need at least one NODE_OUT parameter");
+                }
+            }
+            apush(ctx->fns, f);
+        }
+    }
+    return CXChildVisit_Recurse;
+}
+
+/* ---------- emission helpers ---------- */
+
+void reflect_collect(CXTranslationUnit tu, collect_ctx *ctx)
+{
+    clang_visitChildren(clang_getTranslationUnitCursor(tu), visitor, ctx);
+}
+
+static void free_strings(char **strings)
+{
+    for (int i = 0; i < acount(strings); i++) {
+        free(strings[i]);
+    }
+    afree(strings);
+}
+
+void reflect_dispose(collect_ctx *ctx)
+{
+    for (int i = 0; i < acount(ctx->structs); i++) {
+        struct_info *s = &ctx->structs[i];
+        free(s->name);
+        free(s->c_name);
+        free(s->file);
+        free(s->alias_of);
+        free(s->constructor_name);
+        free(s->derived_from);
+        dispose_fields(s->fields);
+    }
+    for (int i = 0; i < acount(ctx->fns); i++) {
+        fn_info *f = &ctx->fns[i];
+        free(f->name);
+        free(f->ret);
+        free_strings(f->pname);
+        free_strings(f->plabel);
+        free_strings(f->ptype);
+        afree(f->ppin);
+        afree(f->pout);
+        afree(f->pservice);
+        free_strings(f->pservice_type);
+        free_strings(f->pout_type);
+        free(f->display_name);
+        free(f->category);
+        free(f->keywords);
+        free(f->description);
+        free(f->jit_kind);
+        free(f->conversion_from);
+        free(f->conversion_to);
+    }
+    for (int i = 0; i < acount(ctx->enums); i++) {
+        enum_info *enumeration = &ctx->enums[i];
+        free(enumeration->name);
+        for (int j = 0; j < acount(enumeration->values); j++) {
+            free(enumeration->values[j].name);
+            free(enumeration->values[j].label);
+        }
+        afree(enumeration->values);
+    }
+    afree(ctx->structs);
+    afree(ctx->fns);
+    afree(ctx->enums);
+    g_collection = NULL;
+}

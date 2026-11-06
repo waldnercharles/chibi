@@ -1,0 +1,333 @@
+package core_strings
+
+import strings "core:strings"
+
+// Case and spaces are ASCII. UTF-8 bytes neither fold nor trim.
+@test
+TextEqualFoldIgnoresAsciiCase :: () {
+    assert(strings.EqualFold("Go", "GO"));
+    return;
+}
+
+@test
+TextEqualFoldMatchesMixedCaseWords :: () {
+    assert(strings.EqualFold("Test", "tEsT"));
+    return;
+}
+
+@test
+TextEqualFoldRequiresEqualLength :: () {
+    assert(!strings.EqualFold("test", "tes"));
+    return;
+}
+
+@test
+TextEqualFoldMatchesEmptyStrings :: () {
+    assert(strings.EqualFold("", ""));
+    return;
+}
+
+@test
+TextEqualFoldKeepsAsciiPunctuationDistinct :: () {
+    assert(!strings.EqualFold("@[", "`{"));
+    return;
+}
+
+@test
+TextEqualFoldKeepsUtf8CaseDistinct :: () {
+    assert(!strings.EqualFold("é", "É"));
+    return;
+}
+
+@test
+TextToLowerLowersSentence :: () {
+    assert(strings.ToLower("Hello, World!") == "hello, world!");
+    return;
+}
+
+@test
+TextToLowerPreservesBoundaryPunctuation :: () {
+    assert(strings.ToLower("@AZ[`az{") == "@az[`az{");
+    return;
+}
+
+@test
+TextToLowerPreservesEmpty :: () {
+    assert(strings.ToLower("") == "");
+    return;
+}
+
+@test
+TextToLowerPreservesUtf8Bytes :: () {
+    assert(strings.ToLower("ÀB") == "Àb");
+    return;
+}
+
+@test
+TextToUpperRaisesMixedCase :: () {
+    assert(strings.ToUpper("hello wOrld") == "HELLO WORLD");
+    return;
+}
+
+@test
+TextToUpperRaisesSingleLetter :: () {
+    assert(strings.ToUpper("z") == "Z");
+    return;
+}
+
+@test
+TextToUpperPreservesBoundaryPunctuation :: () {
+    assert(strings.ToUpper("@AZ[`az{") == "@AZ[`AZ{");
+    return;
+}
+
+@test
+TextAsciiSpaceAcceptsTab :: () {
+    assert(strings.IsAsciiSpace(9));
+    return;
+}
+
+@test
+TextAsciiSpaceAcceptsCarriageReturn :: () {
+    assert(strings.IsAsciiSpace(13));
+    return;
+}
+
+@test
+TextAsciiSpaceAcceptsSpace :: () {
+    assert(strings.IsAsciiSpace(32));
+    return;
+}
+
+@test
+TextAsciiSpaceRejectsBackspace :: () {
+    assert(!strings.IsAsciiSpace(8));
+    return;
+}
+
+@test
+TextAsciiSpaceRejectsShiftOut :: () {
+    assert(!strings.IsAsciiSpace(14));
+    return;
+}
+
+@test
+TextAsciiSpaceRejectsHighByte :: () {
+    assert(!strings.IsAsciiSpace(160));
+    return;
+}
+
+@test
+TextTrimLeftOnlyRemovesLeadingCutset :: () {
+    assert(strings.TrimLeft("xxhixx", "x") == "hixx");
+    return;
+}
+
+@test
+TextTrimRightOnlyRemovesTrailingCutset :: () {
+    assert(strings.TrimRight("xxhixx", "x") == "xxhi");
+    return;
+}
+
+@test
+TextTrimRemovesBothEdges :: () {
+    assert(strings.Trim("xxhixx", "x") == "hi");
+    return;
+}
+
+@test
+TextTrimMatchesAnyCutsetByte :: () {
+    assert(strings.Trim("abcba", "ab") == "c");
+    return;
+}
+
+@test
+TextTrimAllMatchingBytesReturnsEmpty :: () {
+    assert(strings.Trim("xxxx", "x") == "");
+    return;
+}
+
+@test
+TextTrimEmptyCutsetPreservesValue :: () {
+    assert(strings.Trim("hi", "") == "hi");
+    return;
+}
+
+@test
+TextTrimEmptyValueStaysEmpty :: () {
+    assert(strings.Trim("", "x") == "");
+    return;
+}
+
+@test
+TextTrimSpaceRemovesAllAsciiWhitespace :: () {
+    value := format_text(" \t\n hi there \r{}{}", RawByte(11), RawByte(12));
+    AssertBytes(value, [32, 9, 10, 32, 104, 105, 32, 116, 104, 101, 114, 101, 32, 13, 11, 12]);
+    assert(strings.TrimSpace(value) == "hi there");
+    return;
+}
+
+@test
+TextTrimSpaceAllSpacesReturnsEmpty :: () {
+    assert(strings.TrimSpace("   ") == "");
+    return;
+}
+
+@test
+TextTrimSpaceKeepsNonAsciiByte :: () {
+    space := RawByte(160);
+    value := format_text("{}a{}", space, space);
+    AssertBytes(value, [160, 97, 160]);
+    assert(strings.TrimSpace(value) == value);
+    return;
+}
+
+@test
+TextTrimLeftSpaceKeepsTrailingSpace :: () {
+    assert(strings.TrimLeftSpace("  a ") == "a ");
+    return;
+}
+
+@test
+TextTrimRightSpaceKeepsLeadingSpace :: () {
+    assert(strings.TrimRightSpace("  a ") == "  a");
+    return;
+}
+
+@test
+TextTrimPrefixRemovesMatch :: () {
+    assert(strings.TrimPrefix("testing", "test") == "ing");
+    return;
+}
+
+@test
+TextTrimPrefixKeepsMissingMatch :: () {
+    assert(strings.TrimPrefix("testing", "ing") == "testing");
+    return;
+}
+
+@test
+TextTrimPrefixEmptyMatchPreservesValue :: () {
+    assert(strings.TrimPrefix("a", "") == "a");
+    return;
+}
+
+@test
+TextTrimSuffixRemovesMatch :: () {
+    assert(strings.TrimSuffix("todo.txt", ".txt") == "todo");
+    return;
+}
+
+@test
+TextTrimSuffixKeepsMissingMatch :: () {
+    assert(strings.TrimSuffix("todo.txt", ".doc") == "todo.txt");
+    return;
+}
+
+@test
+TextTrimSuffixWholeMatchReturnsEmpty :: () {
+    assert(strings.TrimSuffix("x", "x") == "");
+    return;
+}
+
+@test
+TextTruncateToByteCutsAtFirstDelimiter :: () {
+    assert(strings.TruncateToByte("a/b/c", 47) == "a");
+    return;
+}
+
+@test
+TextTruncateToByteKeepsMissingDelimiter :: () {
+    assert(strings.TruncateToByte("abc", 47) == "abc");
+    return;
+}
+
+@test
+TextTruncateToByteLeadingDelimiterReturnsEmpty :: () {
+    assert(strings.TruncateToByte("/abc", 47) == "");
+    return;
+}
+
+@test
+TextCutSelectsLeadingBytes :: () {
+    assert(strings.Cut("some example text", 0, 4) == "some");
+    return;
+}
+
+@test
+TextCutSelectsShortMiddleRange :: () {
+    assert(strings.Cut("some example text", 2, 2) == "me");
+    return;
+}
+
+@test
+TextCutSelectsMiddleWord :: () {
+    assert(strings.Cut("some example text", 5, 7) == "example");
+    return;
+}
+
+@test
+TextCutZeroCountUsesRemainder :: () {
+    assert(strings.Cut("some example text", 5, 0) == "example text");
+    return;
+}
+
+@test
+TextCutClampsLengthToRemainder :: () {
+    assert(strings.Cut("abc", 1, 99) == "bc");
+    return;
+}
+
+@test
+TextCutOffsetAtEndKeepsOriginalPrefix :: () {
+    assert(strings.Cut("abc", 3, 1) == "a");
+    return;
+}
+
+@test
+TextCutNegativeOffsetKeepsWholeValue :: () {
+    assert(strings.Cut("abc", -1, 0) == "abc");
+    return;
+}
+
+@test
+TextCutEmptyValueStaysEmpty :: () {
+    assert(strings.Cut("", 0, 0) == "");
+    return;
+}
+
+@test
+TextRepeatCopiesPattern :: () {
+    assert(strings.Repeat("na", 3) == "nanana");
+    return;
+}
+
+@test
+TextRepeatCopiesSingleByte :: () {
+    assert(strings.Repeat("x", 5) == "xxxxx");
+    return;
+}
+
+@test
+TextRepeatOneCopyPreservesValue :: () {
+    assert(strings.Repeat("abc", 1) == "abc");
+    return;
+}
+
+@test
+TextRepeatZeroCountReturnsEmpty :: () {
+    assert(strings.Repeat("ab", 0) == "");
+    return;
+}
+
+@test
+TextRepeatNegativeCountReturnsEmpty :: () {
+    assert(strings.Repeat("ab", -1) == "");
+    return;
+}
+
+@test
+TextRepeatEmptyValueStaysEmpty :: () {
+    assert(strings.Repeat("", 5) == "");
+    return;
+}

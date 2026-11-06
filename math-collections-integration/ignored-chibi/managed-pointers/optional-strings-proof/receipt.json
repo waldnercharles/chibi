@@ -1,0 +1,84 @@
+{
+  "feature": "Whole optional Text cells import present payloads and clear Nil",
+  "base": "c2069113b01a9cea4eac6bd4d46c3a8761a10e56",
+  "compiler": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/chibi-optional-strings-v2",
+  "compiler_build_seconds": 35.17,
+  "native_units": {
+    "passed": 264,
+    "failed": 0,
+    "seconds": 4.16,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/native-units.log"
+  },
+  "ordinary": {
+    "tests": 1,
+    "failed": 0,
+    "seconds": 1.28,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/ordinary-final.log"
+  },
+  "normal_forced": {
+    "modes": 4,
+    "seconds": 2.01,
+    "live": 0,
+    "peak": [
+      1369,
+      15
+    ],
+    "total": 6020,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/normal-v2.log"
+  },
+  "callback_source_and_raw": {
+    "modes": 12,
+    "seconds": 4.24,
+    "live": 0,
+    "peak": {
+      "source": 17,
+      "present_constructor": 4,
+      "none_constructor": 2
+    },
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/callbacks-v2.log"
+  },
+  "assertion_cleanup": {
+    "modes": 8,
+    "seconds": 3.29,
+    "live": 0,
+    "logs": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/failure.log",
+      "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/failure-callbacks.log"
+    ]
+  },
+  "source_image_retirement": {
+    "levels": [
+      0,
+      2
+    ],
+    "seconds": 18.13,
+    "control_status": 33,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/images-v2.log",
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/v2/text-cell-images-optional"
+  },
+  "scalar_image_fixture_regression": {
+    "seconds": 17.03,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/images-scalar.log"
+  },
+  "diagnostics": {
+    "seconds": 54.25,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/diagnostics.log",
+    "replacement_ordinary": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/diagnostic-ordinary.log",
+    "replacement_native": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/diagnostic-native.log",
+    "single_and_imported_columns": [
+      55,
+      55
+    ]
+  },
+  "nonexecuting_nil_edge_control": {
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/branch-control.log",
+    "changed": "One Nil skip redirects to Some; SourceProbe rejects before LLVM compilation or execution.",
+    "no_unsafe_payloads_executed": true
+  },
+  "old_producer_negative": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/optional-strings-proof/old-producer.log",
+  "review": {
+    "transform": "Demanded OptionalDecl(Text) gets existing nominal+layout identity and exact Int/Text whole-cell metadata. Constructor imports present payload and clears Nil; writes acquire/import before previous owner drop. Existing typed ValueDrop owns final release under the cell image lease. No ABI, opcode, graph or registry addition.",
+    "cost": "One O(1) optional shape check at existing metadata consumers; one shared constructor helper per used optional type. Each source write emits 11 native instructions, eight value slots and one unowned temporary record local. Nil skips Text extraction/import. No ownership table or work scales with prior writes at runtime.",
+    "independent": "External source/API/lifetime review closed the inactive-payload issue after the tag-first branch. Native field/cell gates and output preservation remain strict."
+  }
+}

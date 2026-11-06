@@ -1,0 +1,40 @@
+package native_checkout
+
+import os "core:os"
+import strings "core:strings"
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 3, "compiler, LLVM and private work directory");
+    compiler := os.RealPath(arguments[0]);
+    llvm := os.RealPath(arguments[1]);
+    root := strings.Concatenate([os.RealPath(arguments[2]), "/checkout Ω"]);
+    for (folder in ["tools/toolchain", "tools/graph", "packages/core", "sub"]) {
+        made := os.MakeDirectory(strings.Concatenate([root, "/", folder]));
+        assert(made == nil, "make a private checkout");
+    }
+    source := strings.Concatenate([root, "/tools/toolchain/Driver.chibi"]);
+    written := os.WriteText(source, "package fixture\nMain :: () -> int { return 23; }\n");
+    assert(written == nil, "write an authored checkout entry");
+    previous := os.Root();
+    entered := os.ChangeDirectory(strings.Concatenate([root, "/sub"]));
+    assert(entered == nil, "enter a checkout descendant");
+    failed := os.Capture([compiler, "build", "--llvm", llvm]);
+    assert(failed.status == 23, "the authored checkout exit status is preserved");
+    incomplete := os.Capture([compiler, "build", "--llvm", llvm, "--native-driver"]);
+    assert(incomplete.status == 2 && strings.Contains(incomplete.stderr, "needs a value"),
+           "a missing bootstrap option value is rejected before dispatch");
+    written = os.WriteText(source, "package fixture\nMain :: () -> int { return missing; }\n");
+    assert(written == nil, "write a rejected checkout entry");
+    rejected := os.Capture([compiler, "build", "--llvm", llvm]);
+    assert(rejected.status == 1 && strings.Contains(rejected.stderr, "native: rejected"),
+           "rejected checkout source cannot run a stale entry or a host fallback");
+    written = os.WriteText(source, "package fixture\nMain :: () -> int { return 0; }\n");
+    assert(written == nil, "repair the authored checkout entry");
+    repaired := os.Capture([compiler, "build", "--llvm", llvm]);
+    assert(repaired.status == 0, "the repaired checkout entry runs");
+    restored := os.ChangeDirectory(previous);
+    assert(restored == nil && os.Root() == previous, "restore the fixture working directory");
+    os.Print("PASS native checkout entry status, rejection and repair");
+    return 0;
+}

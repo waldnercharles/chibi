@@ -1,0 +1,5 @@
+package facts
+@error Failure :: struct { code: int; }
+Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }
+Choose :: (error: Failure?) -> int { if error { return error.code; } return 0; }
+Use :: (subject: int) -> int { result := Read(); switch subject { case Choose(result.error): return 1; case: return 2; } }

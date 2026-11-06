@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_image_preparation.a "CMakeFiles/chibi_image_preparation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/image_prepare.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_image_preparation.a

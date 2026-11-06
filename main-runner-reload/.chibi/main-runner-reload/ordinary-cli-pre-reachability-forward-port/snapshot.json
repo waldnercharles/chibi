@@ -1,0 +1,28 @@
+{
+  "head": "498f1b9aebca18597f1ce93fd292fd0739b2e39a",
+  "incoming": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+  "overlap": [
+    "src/authoring/project_compile.c"
+  ],
+  "untracked": [
+    "apps/chibi/Arguments.chibi",
+    "apps/chibi/Export.chibi",
+    "apps/chibi/Inspect.chibi",
+    "apps/chibi/Main.chibi",
+    "apps/chibi/Programs.chibi",
+    "apps/chibi/Projects.chibi",
+    "src/authoring/program.c",
+    "src/authoring/program.h",
+    "src/authoring/program_service.c",
+    "src/authoring/program_service.h",
+    "src/host/application.c",
+    "src/host/application.h",
+    "src/host/application_io.c",
+    "src/host/application_io.h",
+    "src/host/application_tools.c",
+    "src/host/application_tools.h",
+    "test/language/program_session.c",
+    "test/tools/program_consumer.c"
+  ],
+  "tracked_patch_sha256": "0e169088b33a85528b8c281c382b31cb6b19b8469af9e188cbe4d78c85ca4f5c"
+}

@@ -1,0 +1,9 @@
+package task_void_result_rejection
+Main :: () -> int {
+    pending := Nothing();
+    pending = Zero();
+    return 0;
+}
+Nothing :: () { yield }
+Zero :: () -> int { yield
+    return 0; }

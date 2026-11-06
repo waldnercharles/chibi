@@ -1,0 +1,5 @@
+package lib
+pub ReadForward :: (input: $T, operation: fn(data: T) -> int) -> int { return Read(input, operation); }
+Read :: (input: $T, operation: fn(data: T) -> int) -> int { return operation(data: input); }
+pub TransformForward :: (input: $T, operation: fn(data: T) -> T) -> T { return Transform(input, operation); }
+Transform :: (input: $T, operation: fn(data: T) -> T) -> T { return operation(data: input); }

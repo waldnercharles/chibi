@@ -1,0 +1,112 @@
+{
+  "compiler": {
+    "artifact": {
+      "bytes": 20792064,
+      "sha256": "27d8f3d0568e442e1a70b167c04ba97c671ea0d0b1e85e3a7493d88fc59bb912"
+    },
+    "bootstrap_manifest": {
+      "bytes": 26287,
+      "sha256": "2204ba9cce1e68ab95d8a5b7ed6158ba4d1bbae864f0dee624aaa550672c80f1"
+    },
+    "runtime_pin": {
+      "bytes": 922,
+      "sha256": "e1adf32b577f9a20993e9db40d4c3777d2b3a8325d1bb8a19a57bf2256f23348"
+    },
+    "source_inputs": {
+      "bytes": 11110,
+      "sha256": "376cf7ae89bf3b9a14d7d1498e7d451bb54ac6605337743b3a0abac64740f530"
+    },
+    "unchanged_after": true
+  },
+  "contract": {
+    "canonical": "Python json.dumps(sort_keys=True,separators=(comma,colon),ensure_ascii=True); -0 becomes 0",
+    "json_domain": "signed64 integer/string/bool/null/array/object",
+    "limits": {
+      "text_bytes": 16777216,
+      "value_nesting": 128
+    },
+    "rejects": [
+      "fraction/exponent numbers",
+      "signed64 integer overflow",
+      "duplicate decoded keys",
+      "invalid UTF8 including overlong encodings/surrogates/out-of-range/truncated sequences",
+      "unpaired JSON surrogate escapes",
+      "non-JSON whitespace and syntax",
+      "trailing bytes"
+    ]
+  },
+  "host": {
+    "bytes": 1969120,
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/cmake-retirement/chibi/build-sdk-reflect/host/chibi-build-host",
+    "protocol": 14,
+    "sha256": "de63381c9f0cbca82c932db0d9117aa48448d0ff50cd600c3b08efea64f20335",
+    "unchanged_after": true
+  },
+  "remaining_scope": [
+    "Root owns SDK installer/evidence integration and dispatcher wiring.",
+    "No package consumer or native SDK construction validation is claimed."
+  ],
+  "run": {
+    "argv": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/cmake-retirement/chibi/build-sdk-reflect/host/chibi-build-host",
+      "--compiler",
+      "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler",
+      "--compiler-core",
+      "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/packages/core",
+      "--root",
+      "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi",
+      "--source",
+      "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/.chibi/runtime-sdk/json/RuntimeSDKJSON.chibi",
+      "--core",
+      "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/packages/core",
+      "--collection",
+      "graph=/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/.chibi/runtime-sdk/json/graph",
+      "--entry",
+      "Build",
+      "--timeout-ms",
+      "300000",
+      "--",
+      "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/.chibi/runtime-sdk/json"
+    ],
+    "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi",
+    "exit_code": 0,
+    "log": {
+      "bytes": 64,
+      "sha256": "ba96a9328390367cf5488ca4f6db53c1ab253cc587e2745ed13cc661eea8a584"
+    },
+    "wall_seconds": 3.2443271670490503
+  },
+  "scope": "Authored SDK JSON codec only, compiled and executed by existing frozen build host. No native/SDK/compiler/asset production or package claim.",
+  "source_base": "907b1fe02c5cf09fe7d0b5b76f3472f0dc9f8c05",
+  "source_modules": {
+    "test/tools/RuntimeSDKJSON.chibi": {
+      "bytes": 7304,
+      "sha256": "a005f7a0bbec2343a74e1c73251a001b1a60a8365094ff7bcb156e9e3585d5e4"
+    },
+    "tools/graph/sdk/JSON.chibi": {
+      "bytes": 17199,
+      "sha256": "90fcd3d4878d3b112b651d730ccd94a0c34c70b78966a71d088e2766994bdfb9"
+    }
+  },
+  "status": "pass",
+  "tests": {
+    "actual_outputs_sha256": "061310ce3794053379064444759b6f95a203db58bf2db3287934e2f00ce82577",
+    "authored_test_groups": 5,
+    "differential_vectors": 294,
+    "entry": "Build explicitly calls all five @test functions",
+    "groups": [
+      "CanonicalManifest",
+      "CanonicalUnicode",
+      "CanonicalRejectsMalformed",
+      "CanonicalDepth",
+      "CanonicalFields"
+    ],
+    "malformed_vectors": 25,
+    "random_seed": 801,
+    "valid_vectors": 269,
+    "vector_manifest": {
+      "bytes": 63053,
+      "sha256": "bd58e49d55ae0a23a1781e7c90a4bc675bce9e3fdd8d3e25eb23a416162a41d9"
+    }
+  }
+}

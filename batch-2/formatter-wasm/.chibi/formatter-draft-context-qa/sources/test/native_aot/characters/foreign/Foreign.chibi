@@ -1,0 +1,8 @@
+package foreign_character
+foreign import libc "system:c"
+foreign libc { char :: (value: i32) -> i32 }
+// The ordinary checker binds a conversion before a foreign declaration.
+Main :: () -> int { return int(char(7)) - 7; }
+
+@test
+ForeignCharacterNameIsStillAConversion :: () { assert(int(char(7)) == 7); }

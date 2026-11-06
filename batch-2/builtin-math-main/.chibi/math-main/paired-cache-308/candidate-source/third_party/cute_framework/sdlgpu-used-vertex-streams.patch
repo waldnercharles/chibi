@@ -1,0 +1,38 @@
+--- a/src/cute_graphics_sdlgpu.cpp
++++ b/src/cute_graphics_sdlgpu.cpp
+@@ -2265,6 +2265,7 @@
+ 	bool has_instance_data = mesh->instances.buffer ? true : false;
+ 	SDL_GPUVertexAttribute* attributes = SDL_stack_alloc(SDL_GPUVertexAttribute, mesh->attribute_count);
+ 	int attribute_count = 0;
++	bool vertex_inputs = false, instance_inputs = false;
+ 	for (int i = 0; i < mesh->attribute_count; ++i) {
+ 		SDL_GPUVertexAttribute* attr = attributes + attribute_count;
+ 		int idx = shader->get_input_index(mesh->attributes[i].name);
+@@ -2277,6 +2278,8 @@
+ 			} else {
+ 				attr->buffer_slot = 0;
+ 			}
++			vertex_inputs |= !mesh->attributes[i].per_instance;
++			instance_inputs |= mesh->attributes[i].per_instance;
+ 			attr->location = shader->input_locations[idx];
+ 			attr->format = s_wrap(mesh->attributes[i].format);
+ 			attr->offset = mesh->attributes[i].offset;
+@@ -2288,14 +2291,16 @@
+ 	pip_info.vertex_input_state.vertex_attributes = attributes;
+ 	SDL_GPUVertexBufferDescription vertex_buffer_descriptions[2];
+ 	int vertex_buffer_descriptions_count = 0;
+-	if (has_vertex_data) {
++	// Metal rejects buffer layouts with no reflected attributes. Keep the
++	// original slots; unused streams still determine the draw instance count.
++	if (has_vertex_data && vertex_inputs) {
+ 		vertex_buffer_descriptions[vertex_buffer_descriptions_count].slot = 0;
+ 		vertex_buffer_descriptions[vertex_buffer_descriptions_count].pitch = mesh->vertices.stride;
+ 		vertex_buffer_descriptions[vertex_buffer_descriptions_count].input_rate = SDL_GPU_VERTEXINPUTRATE_VERTEX;
+ 		vertex_buffer_descriptions[vertex_buffer_descriptions_count].instance_step_rate = 0;
+ 		vertex_buffer_descriptions_count++;
+ 	}
+-	if (has_instance_data) {
++	if (has_instance_data && instance_inputs) {
+ 		int instance_slot = has_vertex_data ? 1 : 0;
+ 		vertex_buffer_descriptions[vertex_buffer_descriptions_count].slot = instance_slot;
+ 		vertex_buffer_descriptions[vertex_buffer_descriptions_count].pitch = mesh->instances.stride;

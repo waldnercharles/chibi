@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_CONSTANT_PROOF_CHIBI_H
+#define CHIBI_TEST_CONSTANT_PROOF_CHIBI_H
+void test_language_constant_proof_chibi();
+#endif

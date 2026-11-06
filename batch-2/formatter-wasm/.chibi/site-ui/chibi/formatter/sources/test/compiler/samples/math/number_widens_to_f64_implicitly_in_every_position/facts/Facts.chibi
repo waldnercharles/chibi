@@ -1,0 +1,6 @@
+package facts
+pub InDeclaration :: (value: number) -> f64 { result: f64 = value; return result; }
+pub InAssignment :: (value: number) -> f64 { result: f64 = 0.0; result = value; return result; }
+pub InReturn :: (value: number) -> f64 { return value; }
+Take :: (value: f64) -> f64 { return value; }
+pub InArgument :: (value: number) -> f64 { return Take(value); }

@@ -1,0 +1,41 @@
+package segment_examples_parse
+
+import parser "project:compiler_syntax"
+
+Check :: (text: string) {
+    switch parser.Parse(text) {
+        case .Rejected(problem):
+            assert(false, "a SEGMENT fixture must parse");
+        case .Parsed(nodes, fields, named, extra, root):
+            assert(root >= 0, "the fixture parses");
+    }
+}
+
+Main :: () {
+    Check("package p\nMain :: () {\nam: ActionMap = tlb.getActionMap();\nim: InputMap = tlb.getInputMap();\nim.put(prefs.getKey(), \"close\");\nam.put(\"close\", closeAction);\n}\n");
+    Check("package p\nMain :: () {\n    am: ActionMap = tlb.getActionMap();\n    im: InputMap = tlb.getInputMap();\n\n    im.put(prefs.getKey(), \"close\");\n    am.put(\"close\", closeAction);\n}\n");
+    Check("package p\nMain :: () {\nt: Tree = {};\nt.getNodeTable().addColumns(LABEL_SCHEMA);\nr: Node = t.addRoot();\nr.setString(LABEL, \"0,0\");\n}\n");
+    Check("package p\nMain :: () {\n    t: Tree = {};\n    t.getNodeTable().addColumns(LABEL_SCHEMA);\n\n    r: Node = t.addRoot();\n    r.setString(LABEL, \"0,0\");\n}\n");
+    Check("package p\nMain :: () {\nimage: Image = ii.getImage();\nmt: MediaTracker = {};\nmt.addImage(image, 0);\nmt.waitForID(0);\n}\n");
+    Check("package p\nMain :: () {\n    image: Image = ii.getImage();\n\n    mt: MediaTracker = {};\n    mt.addImage(image, 0);\n    mt.waitForID(0);\n}\n");
+    Check("package p\nMain :: () {\nicon_url = getResource();\nicon = {url: icon_url};\no1.putValue(Action.SMALL_ICON, icon);\no2.putValue(Action.SHORT_DESCRIPTION, description);\n}\n");
+    Check("package p\nMain :: () {\n    icon_url = getResource();\n    icon = {url: icon_url};\n\n    o1.putValue(Action.SMALL_ICON, icon);\n    o2.putValue(Action.SHORT_DESCRIPTION, description);\n}\n");
+    Check("package p\nMain :: () {\nimageWidth: int = image.getWidth(none);\nimageHeight: int = image.getHeight(none);\nimageRatio: int = imageWidth / imageHeight;\nif thumbRatio < imageRatio {\nthumbHeight = thumbWidth / imageRatio;\n} else {\nthumbWidth = thumbHeight * imageRatio;\n}\n}\n");
+    Check("package p\nMain :: () {\n    imageWidth: int = image.getWidth(none);\n    imageHeight: int = image.getHeight(none);\n    imageRatio: int = imageWidth / imageHeight;\n\n    if thumbRatio < imageRatio {\n        thumbHeight = thumbWidth / imageRatio;\n    } else {\n        thumbWidth = thumbHeight * imageRatio;\n    }\n}\n");
+    Check("package p\nMain :: () {\ninputReader.startStream();\noutputWriter.startStream();\nerrorMonitor.startStream();\noutputWriter.joinWorker();\nerrorMonitor.joinWorker();\n}\n");
+    Check("package p\nMain :: () {\n    inputReader.startStream();\n    outputWriter.startStream();\n    errorMonitor.startStream();\n\n    outputWriter.joinWorker();\n    errorMonitor.joinWorker();\n}\n");
+    Check("package p\nMain :: () {\nlabel1: JLabel = {text: \"Search Name:\"};\nsearchNameField = {size: 12};\nlabel2: JLabel = {text: \"Search Type:\"};\n}\n");
+    Check("package p\nMain :: () {\n    label1: JLabel = {text: \"Search Name:\"};\n    searchNameField = {size: 12};\n    label2: JLabel = {text: \"Search Type:\"};\n}\n");
+    Check("package p\nMain :: () {\nx = 1;\ny = 2;\nz = 3;\nw = 4;\nv = 5;\nu = 6;\nt = 7;\ns = 8;\nr = 9;\n}\n");
+    Check("package p\nMain :: () {\n    x = 1;\n    y = 2;\n    z = 3;\n    w = 4;\n    v = 5;\n    u = 6;\n    t = 7;\n    s = 8;\n    r = 9;\n}\n");
+    Check("package p\nMain :: () {\nstrTmp = 1;\nstrMsg = 2;\nsrcPixels = 3;\ndstInPixels = 4;\n}\n");
+    Check("package p\nMain :: () {\n    strTmp = 1;\n    strMsg = 2;\n\n    srcPixels = 3;\n    dstInPixels = 4;\n}\n");
+    Check("package p\nMain :: () {\nsrcWidth = getPrintAction();\ndstHeight = getCloseAction();\nrawBuffer = readFileBytes();\nbyteArray = readFileText();\n}\n");
+    Check("package p\nMain :: () {\n    srcWidth = getPrintAction();\n    dstHeight = getCloseAction();\n\n    rawBuffer = readFileBytes();\n    byteArray = readFileText();\n}\n");
+    Check("package p\nMain :: () {\nleftEdge = 1;\nrightSide = 2;\npayloadData = {};\noutputSink = {};\n}\n");
+    Check("package p\nMain :: () {\n    leftEdge = 1;\n    rightSide = 2;\n\n    payloadData = {};\n    outputSink = {};\n}\n");
+    Check("package p\nMain :: () {\nif ready {\nwhile running {\ninputReader.startStream();\noutputWriter.startStream();\nerrorMonitor.joinWorker();\nfileWorker.joinWorker();\n}\n}\n}\n");
+    Check("package p\nMain :: () {\n    if ready {\n        while running {\n            inputReader.startStream();\n            outputWriter.startStream();\n\n            errorMonitor.joinWorker();\n            fileWorker.joinWorker();\n        }\n    }\n}\n");
+    Check("package p\nMain :: () {\nif ready {\nimage: Image = ii.getImage();\nmt: MediaTracker = {};\nmt.addImage(image, 0);\n}\n}\n");
+    Check("package p\nMain :: () {\n    if ready {\n        image: Image = ii.getImage();\n        mt: MediaTracker = {};\n        mt.addImage(image, 0);\n    }\n}\n");
+}

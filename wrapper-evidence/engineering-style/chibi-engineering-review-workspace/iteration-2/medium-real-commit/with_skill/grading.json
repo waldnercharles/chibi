@@ -1,0 +1,119 @@
+{
+  "expectations": [
+    {
+      "text": "The review identifies that the change reshapes the parser to fit the VM's call-depth limit and treats it as an architecture issue, with a number (the limit, a depth count or the remaining headroom).",
+      "passed": true,
+      "evidence": "[ARCH] 'the grammar's call structure is fitted to stage zero's 64-call VM limit'. Evidence: 'SCRIPT_CALL_DEPTH_LIMIT is 64 (src/language/semantic.h:12) ... A nested call argument went from 7 frames to 3 ... The corpus model puts the peak at ≈78 frames before and ≈51 after, which leaves ≈13 frames ... of headroom'."
+    },
+    {
+      "text": "The review proposes a concrete alternative or target shape for that workaround (for example raising the limit, a different iteration structure, or restoring the removed procedures after a limit change).",
+      "passed": true,
+      "evidence": "Fix: 'remove the cause. Either run the differential on stage-one output, as deep_operands does, or raise SCRIPT_CALL_DEPTH_LIMIT ... Then restore ParseExpression (3 lines), call ParseIndexValue from ParseArguments, and either return ParseIf to recursion or keep the loop with the fix-up below.' The Target shape table also lists the depth-limit row and a ParseExpression sketch."
+    },
+    {
+      "text": "The review flags avoidable work in the change (such as the per-if array allocation in the ParseIf end fixup, or the rescans in the new error message) with a count or estimate.",
+      "passed": true,
+      "evidence": "[SIMPLIFY] Statements.chibi:211-224: 'Each if statement allocates one int[] (≈6,040 per corpus parse, ≈24 k per test run)'. [PERF] Tree.chibi:116-118: '≈10 discarded scans, or ≈0.6 M token reads, against one scan of at most pos tokens: about 10×'."
+    },
+    {
+      "text": "Architecture and performance findings come before correctness, test or commit-message findings in the review's ordering.",
+      "passed": true,
+      "evidence": "Findings order: [ARCH] depth limit, [PERF] Differ double build, [ARCH] Targets registration, [PERF] Expect discarded work, [SIMPLIFY] ×2, [TEST] ×2, [STYLE] ×2, then '## Correctness notes', which includes the commit-message note ('The commit message mentions none of this'). Every ARCH and PERF finding precedes every test, correctness and commit-message item."
+    },
+    {
+      "text": "Every architecture or performance finding includes a count, estimate or measurement.",
+      "passed": true,
+      "evidence": "ARCH depth: 51 call sites, 7→3 frames, ≈78/≈51 peak, ≈13 headroom. PERF Differ: '2 × 2.89 MB per backend, or 4 builds per file per test run where 2 are enough'. ARCH Targets: 'three entries in the graph and two in CMake', two index-aligned arrays. PERF Expect: '≈10 discarded scans, or ≈0.6 M token reads ... about 10×'. The SIMPLIFY findings also carry counts (≈6,040 allocations; 'deletes 7 lines')."
+    },
+    {
+      "text": "The review does not recommend splitting functions for length or adding defensive checks.",
+      "passed": true,
+      "evidence": "No length-based splitting. 'What I would leave alone' keeps the folds: 'Folding ParsePostfix into ParseUnary and ParseArgument into ParseArguments. Each had one caller, and a single loop reads well'. Restoring ParseExpression is argued from the 51 duplicated call sites and the depth cause, not from length. The recommended 'if (c.failed) { return -1; }' guard skips discarded failure-path work and isn't a defensive check against invalid state."
+    }
+  ],
+  "summary": {
+    "passed": 6,
+    "failed": 0,
+    "total": 6,
+    "pass_rate": 1.0
+  },
+  "claims": [
+    {
+      "claim": "51 sites now spell ParseBinary(c, n, OrPower)",
+      "type": "factual",
+      "verified": true,
+      "evidence": "At 2797053cb: Declarations.chibi 17 + Expressions.chibi 15 + Statements.chibi 19 = 51. The parent had 49 ParseExpression(c, n) calls."
+    },
+    {
+      "claim": "234 .chibi files under packages/, test/ and tools/, totalling 2,888,323 bytes; Steps.chibi is 313,206 B",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git ls-tree -r -l 2797053cb packages test tools filtered to .chibi: 234 files, 2,888,323 bytes. git cat-file -s gives 313206 for Steps.chibi."
+    },
+    {
+      "claim": "6,505 'if (' occurrences, 464 of them 'else if'; the longest chain has 36 links (Body.chibi:2728-3423) and the next longest have 17",
+      "type": "factual",
+      "verified": true,
+      "evidence": "A scan at 2797053cb finds 6505 'if (' and 464 'else if ('. The longest chain is 36 links starting at Body.chibi:2728 (last 'else if' at 3412), then 17 (prepared_writer/Writer.chibi:818, llvm_native/Emit.chibi:722)."
+    },
+    {
+      "claim": "SCRIPT_CALL_DEPTH_LIMIT is 64 at src/language/semantic.h:12",
+      "type": "factual",
+      "verified": true,
+      "evidence": "semantic.h line 12: '#define SCRIPT_CALL_DEPTH_LIMIT 64'."
+    },
+    {
+      "claim": "The budget '(int)(size * STEPS_PER_BYTE) + 100000' overflows int above 357,897 bytes while MAX_SOURCE is 524,288, tripping compiler_fixture.c:528's REQUIRE(budget > 0)",
+      "type": "factual",
+      "verified": true,
+      "evidence": "source_parser_chibi.c:23-24 sets MAX_SOURCE = 512 * 1024 and STEPS_PER_BYTE = 6000, and line 85 has the expression. (2^31 − 1 − 100000) / 6000 = 357,897. compiler_fixture.c:528 is 'REQUIRE(backend >= 0 && backend < 2 && budget > 0);'."
+    },
+    {
+      "claim": "A nested call argument went from 7 frames to 3",
+      "type": "factual",
+      "verified": true,
+      "evidence": "From the diff, the old chain was ParseUnary → ParsePostfix → ParseArguments → ParseArgument → ParseIndexValue → ParseExpression → ParseBinary (7) and the new one is ParseUnary → ParseArguments → ParseBinary (3)."
+    },
+    {
+      "claim": "Differ builds every accepted file twice per backend (Diagnose at line 10, Parse at line 21, each calling Build)",
+      "type": "factual",
+      "verified": true,
+      "evidence": "SourceParserDiff.chibi:10 'problems := parser.Diagnose(text);' and :21 'tree := parser.Parse(text);'. Parser.chibi:17 and :29 each call 'Build(text)'."
+    },
+    {
+      "claim": "Corpus peak depth ≈78 frames before and ≈51 after",
+      "type": "factual",
+      "verified": false,
+      "evidence": "Not verifiable without running the fixture. The review labels it a model estimate and lists measuring it under 'What I would measure'."
+    }
+  ],
+  "timing": {
+    "total_tokens": 239160,
+    "duration_ms": 1104050,
+    "total_duration_seconds": 1104.1,
+    "executor_duration_seconds": 1104.1
+  },
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "assertion": "The review identifies that the change reshapes the parser to fit the VM's call-depth limit and treats it as an architecture issue, with a number (the limit, a depth count or the remaining headroom).",
+        "reason": "Quoting the limit (64) satisfies this, and the commit's own context makes it easy to find, so both configurations pass. Ask for the measured or estimated headroom or the per-level frame cost to make it discriminate."
+      },
+      {
+        "assertion": "The review proposes a concrete alternative or target shape for that workaround (for example raising the limit, a different iteration structure, or restoring the removed procedures after a limit change).",
+        "reason": "Both runs pass. 'Raise the limit and restore the procedures' is the obvious answer once the limit is identified, so this adds little beyond the previous assertion."
+      },
+      {
+        "assertion": "The review does not recommend splitting functions for length or adding defensive checks.",
+        "reason": "Both runs recommend 'if (c.failed) { return -1; }' at the top of Expect, a work-skipping early-out that a grader could read as a defensive check. The baseline fails here only because it cites the small-functions rule. Define 'defensive check' (a guard against an invalid state that should be an assert) so the outcome doesn't depend on reading that guard."
+      },
+      {
+        "reason": "No assertion covers either of the two configuration-unique correctness findings. Only the with-skill run found the int overflow in 'int budget = (int)(size * STEPS_PER_BYTE) + 100000' (source_parser_chibi.c:85, overflows above 357,897 bytes while MAX_SOURCE is 524,288). Only the baseline found that language-source-parser-chibi and language-source-tokenizer-chibi are in no tools/test_policy.py group. Add assertions for both."
+      },
+      {
+        "reason": "Neither the pre-existing Differ double Build (SourceParserDiff.chibi:10,21) nor the commit silently fixing a red parent is asserted. Both runs noticed the red parent, so that one wouldn't discriminate, but the double Build is a with-skill-only perf finding."
+      }
+    ],
+    "overall": "The quantification (A3, A5) and ordering (A4) assertions discriminate well. A1 and A2 pass for both and mostly re-test the same insight. A6 hinges on an interpretation of 'defensive checks' and 'for length' that should be made explicit."
+  }
+}

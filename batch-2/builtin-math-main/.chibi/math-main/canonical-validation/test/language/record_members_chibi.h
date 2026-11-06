@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_RECORD_MEMBERS_CHIBI_H
+#define CHIBI_TEST_RECORD_MEMBERS_CHIBI_H
+void test_language_record_members_chibi();
+#endif

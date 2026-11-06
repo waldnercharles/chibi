@@ -1,0 +1,7 @@
+package facts
+Failure :: struct { code: int; }
+Clear :: (p: ^(Failure?)) -> bool { p^ = nil; return true; }
+Use :: () -> int { e: Failure? = {code: 3}; p := &e; if Clear(p) && e { return e.code; } return 17; }
+Before :: () -> int { e: Failure? = {code: 3}; p := &e; Clear(p); if e { return e.code; } return 17; }
+Again :: () -> int { e: Failure? = {code: 3}; p := &e; if e { Clear(p); if e { return e.code; } } return 17; }
+Direct :: () -> int { e: Failure? = {code: 3}; Clear(&e); if e { return e.code; } return 17; }

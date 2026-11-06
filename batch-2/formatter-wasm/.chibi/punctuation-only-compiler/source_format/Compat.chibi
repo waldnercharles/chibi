@@ -1,0 +1,29 @@
+package source_format
+import strings "core:strings"
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+pub Result :: union { Formatted(text: string, notes: string) | Rejected(message: string) }
+KindOf :: (rows: diag.Node[], node: int) -> int { if (node < 0) { return tk.Invalid; } return rows[node].kind; }
+ParentKind :: (rows: diag.Node[], node: int) -> int { if (node < 0) { return tk.Invalid; } return KindOf(rows, rows[node].parent); }
+ChildByField :: (rows: diag.Node[], fields: int[], parent: int, field: int) -> int {
+    if (parent < 0) { return -1; }
+    child := rows[parent].first_child;
+    while (child >= 0) { if (fields[child] == field) { return child; } child = rows[child].next_sibling; }
+    return -1;
+}
+LineEnders :: () -> bool[] {
+    enders := resize([false], diag.KindCount);
+    names := diag.KindNames();
+    index: int = 0;
+    while (index < length(names)) {
+        name := names[index];
+        enders[diag.Comment + index] = strings.HasSuffix(name, "_declaration") || strings.HasSuffix(name, "_statement");
+        index += 1;
+    }
+    enders[diag.Assignment] = true;
+    enders[diag.Handler] = true;
+    enders[diag.ComponentField] = true;
+    enders[diag.RecordField] = true;
+    enders[diag.ForeignFunction] = true;
+    return enders;
+}

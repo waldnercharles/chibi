@@ -1,0 +1,124 @@
+package native_link
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// This component is linked once into the embedding executable. Reloadable
+// images borrow its initialized grants and cannot define another authority.
+pub ClockHostRuntime :: (triple: string) -> string {
+    if (TargetOf(triple) < 0 && triple != abi.WebAssembly32().triple) { return ""; }
+    bits := 64;
+    if (triple == abi.WebAssembly32().triple) { bits = 32; }
+    text := Join([
+        "; Exactly one embedding-host runtime defines the domain authority. Images only\n",
+        "; borrow grants; they never define this counter or its initializer.\n",
+        "@chibi_clock_next_domain = internal global i64 1, align 8\n",
+        "declare void @llvm.trap()\n",
+        "define i@WORD@ @chibi_clock_host_init() {\n",
+        "  ret i@WORD@ ptrtoint (ptr @chibi_clock_grant_init to i@WORD@)\n",
+        "}\n",
+        "define i32 @chibi_clock_grant_init(ptr %grant, ptr %read, ptr %state) {\n",
+        "entry:\n",
+        "  %present = icmp ne ptr %grant, null\n",
+        "  br i1 %present, label %allocate, label %trap\n",
+        "allocate:\n",
+        "  %domain = atomicrmw add ptr @chibi_clock_next_domain, i64 1 monotonic\n",
+        "  %nonzero = icmp ne i64 %domain, 0\n",
+        "  %room = icmp ne i64 %domain, -1\n",
+        "  %valid = and i1 %nonzero, %room\n",
+        "  br i1 %valid, label %initialize, label %trap\n",
+        "initialize:\n",
+        "  %platform = icmp eq ptr %read, null\n",
+        "  %provider = select i1 %platform, ptr @chibi_clock_platform_sample, ptr %read\n",
+        "  %read.at = getelementptr @GRANT@, ptr %grant, i32 0, i32 1\n",
+        "  %state.at = getelementptr @GRANT@, ptr %grant, i32 0, i32 2\n",
+        "  store i64 %domain, ptr %grant\n",
+        "  store ptr %provider, ptr %read.at\n",
+        "  store ptr %state, ptr %state.at\n",
+        "  ret i32 0\n",
+        "trap:\n",
+        "  call void @llvm.trap()\n",
+        "  unreachable\n",
+        "}\n",
+    ]);
+    platform := ClockUnavailable();
+    if (TargetOf(triple) == LinuxX64) { platform = ClockPosix(1, "__errno_location"); }
+    else if (TargetOf(triple) == MacOSArm64) { platform = ClockPosix(8, "__error"); }
+    text = strings.ReplaceAll(text, "@WORD@", format_text("{}", bits));
+    text = strings.ReplaceAll(text, "@GRANT@", abi.ClockGrantType());
+    return Join([text, platform]);
+}
+ClockPosix :: (clock: int, error: string) -> string {
+    text := Join([
+        "declare i32 @clock_gettime(i32, ptr)\n",
+        "declare ptr @@ERRNO@()\n",
+        "define internal i32 @chibi_clock_platform_sample(ptr %state, ptr %nanoseconds, ptr %error) {\n",
+        "entry:\n",
+        "  store i64 0, ptr %nanoseconds\n",
+        "  store i32 0, ptr %error\n",
+        "  %sample = alloca { i64, i64 }, align 8\n",
+        "  %status = call i32 @clock_gettime(i32 @CLOCK@, ptr %sample)\n",
+        "  %ok = icmp eq i32 %status, 0\n",
+        "  br i1 %ok, label %validate, label %failed\n",
+        "failed:\n",
+        "  %errno.at = call ptr @@ERRNO@()\n",
+        "  %errno = load i32, ptr %errno.at\n",
+        "  store i32 %errno, ptr %error\n",
+        "  ret i32 2\n",
+        "validate:\n",
+        "  %seconds = load i64, ptr %sample\n",
+        "  %fraction.at = getelementptr { i64, i64 }, ptr %sample, i32 0, i32 1\n",
+        "  %fraction = load i64, ptr %fraction.at\n",
+        "  %positive = icmp sge i64 %seconds, 0\n",
+        "  %proper = icmp ult i64 %fraction, 1000000000\n",
+        "  %valid = and i1 %positive, %proper\n",
+        "  br i1 %valid, label %bound, label %range\n",
+        "bound:\n",
+        "  %room = sub i64 9223372036854775807, %fraction\n",
+        "  %maximum = udiv i64 %room, 1000000000\n",
+        "  %fits = icmp ule i64 %seconds, %maximum\n",
+        "  br i1 %fits, label %publish, label %range\n",
+        "range:\n",
+        "  store i32 34, ptr %error\n",
+        "  ret i32 2\n",
+        "publish:\n",
+        "  %whole = mul i64 %seconds, 1000000000\n",
+        "  %time = add i64 %whole, %fraction\n",
+        "  store i64 %time, ptr %nanoseconds\n",
+        "  ret i32 0\n",
+        "}\n",
+    ]);
+    text = strings.ReplaceAll(text, "@CLOCK@", format_text("{}", clock));
+    return strings.ReplaceAll(text, "@ERRNO@", error);
+}
+ClockUnavailable :: () -> string {
+    return Join([
+        "define internal i32 @chibi_clock_platform_sample(ptr %state, ptr %nanoseconds, ptr %error) {\n",
+        "  store i64 0, ptr %nanoseconds\n",
+        "  store i32 0, ptr %error\n",
+        "  ret i32 1\n",
+        "}\n",
+    ]);
+}
+// Only Darwin stubs need the host component's explicit OS symbol list.
+pub ClockHostImports :: (triple: string) -> Import {
+    symbols: string[] = [];
+    if (TargetOf(triple) == MacOSArm64) { symbols = ["clock_gettime", "__error"]; }
+    return {name: "System", symbols: symbols};
+}
+// A clock-only standalone program keeps the managed-owner position empty;
+// managed starts already supplied that position before this transform.
+pub ClockProgramContext :: (module: string) -> string {
+    result := module;
+    managed := strings.Concatenate(["@chibi_context = global ", abi.ManagedContextType(), " "]);
+    if (strings.Contains(result, managed)) {
+        result = strings.ReplaceAll(result, managed,
+            strings.Concatenate(["@chibi_context = global ", abi.ClockContextType(), " "]));
+        return strings.ReplaceAll(result, ", ptr @chibi_managed_owner }", ", ptr @chibi_managed_owner, ptr null }");
+    }
+    prefix := strings.Concatenate(["@chibi_context = global ", abi.ContextType(), " "]);
+    assert(strings.Contains(result, prefix));
+    result = strings.ReplaceAll(result, prefix,
+        strings.Concatenate(["@chibi_context = global ", abi.ClockContextType(), " "]));
+    return strings.ReplaceAll(result, ", ptr @chibi_release }", ", ptr @chibi_release, ptr null, ptr null }");
+}

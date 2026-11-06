@@ -1,0 +1,43 @@
+Weapon :: behavior {
+    macro AdvanceElapsed(elapsed: ^float, dt: double) {
+        elapsed^ = float(double(elapsed^) + dt)
+    }
+    elapsed: float = 0.125
+    // The step the next advance adds.
+    step: double = 0
+    action elapsed_dt = AdvanceElapsed(&elapsed, step)
+    on Tick :: (dt: float s) {
+        step = dt
+        if self.Aim.Manual {
+            elapsed_dt()
+        } else {
+            if find_nearest_entity(self.Transform, 2000.0, 2, self).Found {
+                self.Aim.direction = transform_to_cf(direction_to(self.Transform, transform_to_cf(find_nearest_entity(self.Transform, 2000.0, 2, self).Position)))
+                elapsed_dt()
+            } else {
+                elapsed_dt()
+            }
+        }
+    }
+    after elapsed_dt {
+        if self.Aim.Firing {
+            while elapsed >= self.Weapon.Cooldown {
+                await WeaponActions.Fire_Projectile(position_offset(self.Transform, transform_visual_offset({
+                    x: 16.0,
+                    y: 0.0
+                }, 0.0, self.Orientation.Radians, {
+                    pitch: 0.0,
+                    yaw: 0.0,
+                    roll: 0.0,
+                    scale: 1.0
+                }).Offset), self.Aim.Direction, self.Weapon.Damage, Projectile, self)
+                elapsed -= double(self.Weapon.Cooldown)
+            }
+        } else {
+            elapsed = min(elapsed, double(self.Weapon.Cooldown))
+        }
+    }
+    position_offset :: (position: vec2 = null, offset: vec2 = null) -> (Result: vec2 = null) {
+        return position + offset
+    }
+}

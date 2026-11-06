@@ -1,0 +1,129 @@
+{
+  "head": "9acfa17d029dcb0fbeb744f9e60c0e3d6bcf6f76",
+  "merge_head": "79743c5675e5a18eeea14193d729cc6e45bdf926",
+  "source_sha256": {
+    "src/authoring/source_package_files.c": "ce5b602d5269f69f59bb79e048a2dc9bc0253e201e59814d63740d2b115c85f4",
+    "src/authoring/source_package_paths.c": "e1ade02761cd30cbc42025ced4a9691da9ba266bbde36e4f93f25d2064347c97",
+    "src/authoring/source_package_routes.c": "2264042b92515183b9a6f3227c1ff651a62b87356c47d3dffbe4d1b5575a80d8",
+    "src/host/chibi_main.c": "5237cab300713a37922fcded4f9f74fe17d98131712930696394edbf07f376fc",
+    "src/host/compile_main.c": "6ecbb81134be1ae489903ea9e5e330e110175fe942e8b37ec54a0de7fa24a876",
+    "src/host/application.c": "5577c4b4768891b2c8561ca2447cc5a189a4d7c47359e99b339ca54ab837368c",
+    "src/host/application_io.c": "b8fbea55d071755f5120b6e86dab79a29cbc9e3110897faeff3b33a9a2449b66",
+    "src/host/application_tools.c": "4010949bf4d1ed9e4643f2cbec5f719367b4b3119830dfb2e759a58d9f1d9b29",
+    "src/authoring/program.c": "872bb7f4ed162a5f5105f76321d058417aa86e41f8ff68709fe93257a6a4c585",
+    "src/authoring/program_service.c": "8d50ed5a14f75bb74027a7bb9bd36628ce98cfec0e035a22c49608bf8b377915",
+    "src/execution/runner.c": "3861c1d4216d7083ecb294f0ba63dd0fdd3511c50cc8c17588dc253b8c985b88",
+    "src/host/process.c": "9be7a7314fd9c44061ae144f48da5cd1cac5a3eacabd8b50d6863986f8586c75",
+    "src/host/export.c": "b181f5b95b2c3c8ec9255d970983451b0601398b05d39189c9f1bae948e3b0c9",
+    "test/language/package_files.c": "cc31b10f504cce0996bc45664f012327fd6dc0dca282cceaae32da3b28a20da7",
+    "src/authoring/source_package_files.h": "bf571a43883bd2654302393388f294706d5e2b19932bacf3a5efa23647c195f2",
+    "src/authoring/source_package_io.h": "047b21fc7d17e4461ab14e6921f53b6d814e7c78b027733938bc2745a1940ac5",
+    "src/authoring/source_package_paths.h": "2968c6ef85ce93dfc3ac8ea00a9ee05f867facd8e022a0ed20e682921b0cf120",
+    "src/host/process.h": "28fd4ec47f0ead3f152f9ad7254a4f8d91cf828262229aabd63910e3e42c655f",
+    "src/host/export.h": "b9c6437d81f7f316301a4d891c24d48a1a924be18f70098ba9ac1fa8dbb895ae",
+    "src/host/application.h": "de050f5aa45dbe7aad4a78de5af0d58529cfd5ed3c7049dcf595d19444c7f4e8",
+    "src/host/application_io.h": "f8d82442c083741b08976254fb76fd41407cef6288cbe7d4a8222afbe110eaae",
+    "src/host/application_tools.h": "fcc6ce272c970af9de8e6831f41e2ca00959f421d057f06b677b2d8ea88c0913",
+    "src/authoring/program.h": "ff437f176ab7bd673b11f8b0d26361e3a02550ed23b175ea0d08b05aba9c46cc",
+    "src/authoring/program_service.h": "074ece01dc3c2d8d2aa7a227dd1ea7e7b0e9bf797f365b1dfc41c2ccc2e027c6",
+    "src/execution/function.h": "efbb430b11f43f87822c2d37b6ce1fcddd78079ebe11dc0b478c181ad9fa887b",
+    "src/execution/runner.h": "58ee9d8f6f066ae95e4556c92880ecf7c42c173d0486fc8b78f0e71a96074726"
+  },
+  "staged_headers_sha256": {
+    ".chibi/main-runner-reload/native/sdk/private/build-host/authoring/source_package_io.h": "047b21fc7d17e4461ab14e6921f53b6d814e7c78b027733938bc2745a1940ac5",
+    ".chibi/main-runner-reload/native/sdk/private/build-host/host/process.h": "28fd4ec47f0ead3f152f9ad7254a4f8d91cf828262229aabd63910e3e42c655f",
+    ".chibi/main-runner-reload/native/sdk/private/execution/execution/function.h": "efbb430b11f43f87822c2d37b6ce1fcddd78079ebe11dc0b478c181ad9fa887b",
+    ".chibi/main-runner-reload/native/sdk/private/execution/execution/runner.h": "58ee9d8f6f066ae95e4556c92880ecf7c42c173d0486fc8b78f0e71a96074726",
+    ".chibi/main-runner-reload/native/sdk/private/launcher/host/application.h": "de050f5aa45dbe7aad4a78de5af0d58529cfd5ed3c7049dcf595d19444c7f4e8",
+    ".chibi/main-runner-reload/native/sdk/private/launcher/host/application_io.h": "f8d82442c083741b08976254fb76fd41407cef6288cbe7d4a8222afbe110eaae",
+    ".chibi/main-runner-reload/native/sdk/private/launcher/host/application_tools.h": "fcc6ce272c970af9de8e6831f41e2ca00959f421d057f06b677b2d8ea88c0913",
+    ".chibi/main-runner-reload/native/sdk/private/launcher/host/export.h": "b9c6437d81f7f316301a4d891c24d48a1a924be18f70098ba9ac1fa8dbb895ae",
+    ".chibi/main-runner-reload/native/sdk/private/launcher/host/process.h": "28fd4ec47f0ead3f152f9ad7254a4f8d91cf828262229aabd63910e3e42c655f",
+    ".chibi/main-runner-reload/native/sdk/private/source_catalog/authoring/source_package_paths.h": "2968c6ef85ce93dfc3ac8ea00a9ee05f867facd8e022a0ed20e682921b0cf120",
+    ".chibi/main-runner-reload/native/sdk/public/execution_contract/execution/function.h": "efbb430b11f43f87822c2d37b6ce1fcddd78079ebe11dc0b478c181ad9fa887b",
+    ".chibi/main-runner-reload/native/sdk/public/fields/runtime/fields/program.h": "edf4ce25a5c53739a8d794ff2354c8b9e6339f5128880cc2917ca4fefd55e382",
+    ".chibi/main-runner-reload/native/sdk/public/program/authoring/program.h": "ff437f176ab7bd673b11f8b0d26361e3a02550ed23b175ea0d08b05aba9c46cc",
+    ".chibi/main-runner-reload/native/sdk/public/program/authoring/program_service.h": "074ece01dc3c2d8d2aa7a227dd1ea7e7b0e9bf797f365b1dfc41c2ccc2e027c6",
+    ".chibi/main-runner-reload/native/sdk/public/shader_runtime/runtime/shaders/program.h": "10a9900a9c66b57376237628b32be04e01af6617b49d74b29113d5799df6fc0a",
+    ".chibi/main-runner-reload/native/sdk/public/source_catalog/authoring/source_package_files.h": "bf571a43883bd2654302393388f294706d5e2b19932bacf3a5efa23647c195f2",
+    ".chibi/main-runner-reload/native/sdk/public/source_catalog/authoring/source_package_io.h": "047b21fc7d17e4461ab14e6921f53b6d814e7c78b027733938bc2745a1940ac5"
+  },
+  "sources_unchanged_during_checks": true,
+  "staged_headers_unchanged_during_checks": true,
+  "checks": [
+    {
+      "source": "src/authoring/source_package_files.c",
+      "returncode": 0,
+      "wall_seconds": 1.021
+    },
+    {
+      "source": "src/authoring/source_package_paths.c",
+      "returncode": 0,
+      "wall_seconds": 0.04
+    },
+    {
+      "source": "src/authoring/source_package_routes.c",
+      "returncode": 0,
+      "wall_seconds": 0.05
+    },
+    {
+      "source": "src/host/chibi_main.c",
+      "returncode": 0,
+      "wall_seconds": 0.054
+    },
+    {
+      "source": "src/host/compile_main.c",
+      "returncode": 0,
+      "wall_seconds": 0.09
+    },
+    {
+      "source": "src/host/application.c",
+      "returncode": 0,
+      "wall_seconds": 0.053
+    },
+    {
+      "source": "src/host/application_io.c",
+      "returncode": 0,
+      "wall_seconds": 0.454
+    },
+    {
+      "source": "src/host/application_tools.c",
+      "returncode": 0,
+      "wall_seconds": 0.051
+    },
+    {
+      "source": "src/authoring/program.c",
+      "returncode": 0,
+      "wall_seconds": 0.038
+    },
+    {
+      "source": "src/authoring/program_service.c",
+      "returncode": 0,
+      "wall_seconds": 0.041
+    },
+    {
+      "source": "src/execution/runner.c",
+      "returncode": 0,
+      "wall_seconds": 0.04
+    },
+    {
+      "source": "src/host/process.c",
+      "returncode": 0,
+      "wall_seconds": 0.387
+    },
+    {
+      "source": "src/host/export.c",
+      "returncode": 0,
+      "wall_seconds": 0.442
+    },
+    {
+      "source": "test/language/package_files.c",
+      "returncode": 0,
+      "wall_seconds": 0.475
+    }
+  ],
+  "wall_seconds": 3.423,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/windows-source-host-syntax-ordinary-cli-final-native14.log",
+  "windows_execution": "unrun; no Windows runtime",
+  "warning_exclusions": "GCC multichar canaries and Clang annotate attributes only"
+}

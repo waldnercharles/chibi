@@ -1,0 +1,12 @@
+[
+  {
+    "file": "src/authoring/program.c",
+    "returncode": 0,
+    "wall_seconds": 0.076
+  },
+  {
+    "file": "src/authoring/program_service.c",
+    "returncode": 0,
+    "wall_seconds": 0.079
+  }
+]

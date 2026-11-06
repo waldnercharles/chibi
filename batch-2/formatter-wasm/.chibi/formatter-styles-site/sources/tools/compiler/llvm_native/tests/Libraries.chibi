@@ -1,0 +1,58 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+Library :: (target: abi.Target, name: string, names: string[], ids: i64[]) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    texts: string[] = [];
+    fields: string[] = [];
+    return native.EmitLibrary(target, name, names, ids, [Function(6, 0, 0, 4, 0, 7, 0, 3), Function(6, 3, 4, 1, 7, 4, 3, 0)],
+                              [6, 1, 6], [6, 1, 6, 6, 6], empty, Calls(), [0, 1, 2], records, empty, texts, 1, fields);
+}
+Malformed :: () -> string { return "native library needs an identifier and a name and ID for each function"; }
+RepeatedName :: () -> string { return "native library names each function once"; }
+// A library exports each function through a wrapper and a manifest of their
+// names, IDs and word types.
+@test
+LibraryExportsWordsAndManifest :: () {
+    ids: i64[] = [11, -5];
+    text := Emitted(Library(abi.LinuxX64(), "Lib", ["Main", "Pick"], ids));
+    // The entry is no exported symbol; a function is reached through the manifest or its host wrapper.
+    assert(!strings.Contains(text, "define i32 @chibi_scalar"));
+    assert(strings.Contains(text, "define internal i32 @chibi_scalar.0() #0 {"));
+    assert(strings.Contains(text, "define internal void @chibi_scalar.export.1(ptr %ctx, ptr %in, ptr %out) #0 {"));
+    assert(strings.Contains(text, "@chibi_scalar.export.types.1 = private unnamed_addr constant [4 x i8] [i8 1, i8 2, i8 1, i8 1]"));
+    assert(strings.Contains(text, "@chibi_scalar.export.name.1 = private unnamed_addr constant [5 x i8] c\"Pick\\00\""));
+    assert(strings.Contains(text, "%chibi.export { ptr @chibi_scalar.export.name.1, i64 -5, ptr @chibi_scalar.export.types.1, i32 3, i32 1, ptr @chibi_scalar.export.1 }"));
+    assert(strings.Contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 5, i32 2, ptr @chibi_scalar.exports }"));
+}
+@test
+LibraryNeedsAnIdentifierAndOneNameAndIdPerFunction :: () {
+    ids: i64[] = [11, -5];
+    Rejects(Library(abi.LinuxX64(), "1Lib", ["Main", "Pick"], ids), Malformed());
+    Rejects(Library(abi.LinuxX64(), "", ["Main", "Pick"], ids), Malformed());
+    Rejects(Library(abi.LinuxX64(), "Lib", ["Main"], ids), Malformed());
+}
+@test
+LibraryNamesEachFunctionOnce :: () {
+    ids: i64[] = [11, -5];
+    shared: i64[] = [11, 11];
+    Rejects(Library(abi.LinuxX64(), "Lib", ["Main", "Main"], ids), RepeatedName());
+    Rejects(Library(abi.LinuxX64(), "Lib", ["Main", "Pick"], shared), RepeatedName());
+}
+@test
+LibrariesAcceptNativeTargets :: () {
+    ids: i64[] = [11, -5];
+    text := Emitted(Library(abi.MacOSArm64(), "Lib", ["Main", "Pick"], ids));
+    assert(strings.Contains(text, "target triple = \"arm64-apple-macosx11.0.0\""));
+    assert(strings.Contains(text, "@chibi_natives_Lib = constant %chibi.manifest { i32 5, i32 2,"));
+    windows := Emitted(Library(abi.WindowsX64(), "Lib", ["Main", "Pick"], ids));
+    assert(strings.Contains(windows, "!llvm.linker.options = !{"));
+    assert(strings.Contains(windows, "/export:chibi_natives_Lib,data"));
+    assert(strings.Contains(windows, "/export:chibi_host_call_Main"));
+    Rejects(Library(abi.WebAssembly32(), "Lib", ["Main", "Pick"], ids),
+            "native libraries require Linux x86-64, macOS arm64 or Windows x86-64");
+}

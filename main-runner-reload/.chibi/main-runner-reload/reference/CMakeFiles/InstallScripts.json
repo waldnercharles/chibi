@@ -1,0 +1,12 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference/sdk/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference/sdk/language/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference/tools/chibi_ctl/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference/test/language/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/reference/test/tools/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

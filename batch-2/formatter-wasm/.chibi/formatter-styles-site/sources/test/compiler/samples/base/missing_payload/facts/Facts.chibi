@@ -1,0 +1,5 @@
+package facts
+U :: union { A(x: int) }
+One :: () -> U { return U.A; }
+
+// error: 3:25: variant 'A' needs its payload

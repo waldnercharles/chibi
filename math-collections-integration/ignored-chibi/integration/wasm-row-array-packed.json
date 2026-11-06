@@ -1,0 +1,15 @@
+{
+  "head": "5672369ffb48b8504020caa8f8d760d88f0d935b",
+  "command": [
+    "python3",
+    "tools/test_policy.py",
+    "native",
+    "node",
+    "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+    "--row-array"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 1.2852357500232756,
+  "log": ".chibi/integration/wasm-row-array-packed.log",
+  "log_sha256": "0727935445d74602e28b41405750a4cce75a46a12f48d30819008fe5fba4f34d"
+}

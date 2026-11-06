@@ -1,0 +1,55 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+TrackModule :: (track: native.Instruction, local: int, late: bool) -> native.Result {
+    array := native.ArrayType + native.PointerType;
+    slots := [abi.BoolStorage, abi.IntStorage, array];
+    code := [Code(native.Constant, array, 2, 0, 0, 0, 0), track,
+        Code(native.ManagedPending, abi.BoolStorage, 0, 0, 0, 0, 0), Code(native.ManagedPoll, 0, 0, 0, 0, 0, 0),
+        Code(native.Constant, abi.IntStorage, 1, 0, 0, 0, 0),
+        Code(native.Publish, abi.IntStorage, 0, 1, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    if (late) { code[0] = track; code[1] = Code(native.Constant, array, 2, 0, 0, 0, 0); }
+    shape := Function(abi.IntStorage, 0, 0, length(slots), 0, length(code), 0, 0);
+    shape.locals = 1;
+    source: native.Source = {file: "", directory: ""};
+    return native.EmitProgramTyped(abi.MacOSArm64(), [shape], [], slots, [local], code, [], [], [], [], [], source, [], [], []);
+}
+@test
+DeferredTrackingValidatesOwnerLocationsAndModes :: () {
+    array := native.ArrayType + native.PointerType;
+    local := Code(native.ManagedTrack, array, 0, 0, 0, native.ManagedTrackLocal, 0);
+    Emitted(TrackModule(local, array, false));
+    local.type = native.RefType + array;
+    Emitted(TrackModule(local, native.RefType + array, false));
+    slot := Code(native.ManagedTrack, array, 0, 2, 0, native.ManagedTrackSlot, 0);
+    Emitted(TrackModule(slot, array, false));
+    error := "native deferred collection differs from its owning roots";
+    for wrong in [int(-2147483647) - 1, -1, 1, 3] {
+        bad := slot; bad.left = wrong;
+        Rejects(TrackModule(bad, array, false), error);
+    }
+    for wrong in [int(-1), 4, 2147483647] {
+        bad := slot; bad.target = wrong;
+        Rejects(TrackModule(bad, array, false), error);
+    }
+    bad := slot; bad.right = 1;
+    Rejects(TrackModule(bad, array, false), error);
+    bad = slot; bad.literal = 1;
+    Rejects(TrackModule(bad, array, false), error);
+    Rejects(TrackModule(local, abi.IntStorage, false), error);
+    Rejects(TrackModule(slot, array, true), "native collector root is not defined on every path");
+    slot.target = native.ManagedClearSlot;
+    Emitted(TrackModule(slot, array, true));
+}
+@test
+DeferredPollRejectsStrayRootMetadata :: () {
+    array := native.ArrayType + native.PointerType;
+    poll := Code(native.ManagedPoll, 0, 0, 0, 0, 0, 0);
+    Emitted(TrackModule(poll, array, false));
+    poll.right = 1;
+    Rejects(TrackModule(poll, array, false), "native deferred collection differs from its owning roots");
+    poll.right = 0; poll.target = 2147483647;
+    Rejects(TrackModule(poll, array, false), "native deferred collection differs from its owning roots");
+}

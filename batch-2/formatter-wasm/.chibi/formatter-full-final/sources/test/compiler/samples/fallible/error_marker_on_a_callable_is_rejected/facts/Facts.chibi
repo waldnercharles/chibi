@@ -1,0 +1,4 @@
+package facts
+@error Bad :: () {}
+
+// error: 2:1: Unknown attribute '@error'

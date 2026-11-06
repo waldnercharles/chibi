@@ -1,0 +1,42 @@
+            const authoring_package *reference = compiler_fixture_package(&oracle, backend, "project:facts");
+            REQUIRE(reference);
+            for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+                execution_module_function_info
+                    actual = function(module, cases[i].name);
+                execution_module_function_info
+                    original = function(reference->module, cases[i].name);
+                REQUIRE(actual.body && original.body);
+                const script_function *source_function = NULL;
+                for (int f = 0; f < reference->analysis->function_count; f++) {
+                    const script_function *candidate = &reference->analysis->functions[f];
+                    if (!strcmp(
+                            reference->analysis->symbols[candidate->symbol].name,
+                            cases[i].name
+                        )) {
+                        source_function = candidate;
+                    }
+                }
+                REQUIRE(source_function);
+                bool parallel = source_function->pure && !actual.effects &&
+                                behavior_function_hosts_pure(actual.body);
+                if (actual.effects != cases[i].effects ||
+                    original.effects != cases[i].effects ||
+                    parallel != cases[i].parallel) {
+                    fprintf(
+                        stderr,
+                        "argument-effects %s compiler=%d target=%d source=%u "
+                        "pure=%d stage-one=%u expected=%u parallel=%d "
+                        "expected_parallel=%d\n",
+                        cases[i].name,
+                        b,
+                        backend,
+                        original.effects,
+                        source_function->pure,
+                        actual.effects,
+                        cases[i].effects,
+                        parallel,
+                        cases[i].parallel
+                    );
+                    correct = false;
+                }
+            }

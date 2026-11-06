@@ -1,0 +1,19 @@
+package facts
+
+// inferred arrays
+@test
+Calls :: () {
+    a1_0: int = 3;
+    r1: int = Sizes(a1_0);
+    e1: int = 73;
+    assert(r1 == e1, "Sizes call 1");
+    r2: int = Words();
+    e2: int = 3;
+    assert(r2 == e2, "Words call 2");
+    r3: int = Points();
+    e3: int = 4;
+    assert(r3 == e3, "Points call 3");
+    r4: u64 = Wide();
+    e4: u64 = 257;
+    assert(r4 == e4, "Wide call 4");
+}

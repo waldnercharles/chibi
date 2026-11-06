@@ -1,0 +1,24 @@
+{
+  "name": "native-calls",
+  "command": [
+    "python3",
+    "tools/test_policy.py",
+    "native",
+    "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-focused-snapshot/.chibi/integration/native-math-focused-language/test_language",
+    "--native-calls"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-focused-snapshot",
+  "head": "6990373667fc211faf828035ab9d4bb051f085bd",
+  "snapshot_revision": "699037366-dirty",
+  "started_unix": 1793208657.0763452,
+  "environment": {},
+  "wall_seconds": 0.5095556250307709,
+  "exit_code": 0,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-focused-evidence/native-calls.log",
+  "log_sha256": "6101582d57be95fc9742a1860be8c14353ba7fcb47b0a1051d0adedb0c21c38c",
+  "summaries": [
+    "Summary: Passed: \u001b[1;32m7\u001b[0m Failed: \u001b[1;31m0\u001b[0m Total: 7 Suites: 1 Asserts: 758",
+    "Summary: Passed: \u001b[1;32m7\u001b[0m Failed: \u001b[1;31m0\u001b[0m Total: 7 Suites: 1 Asserts: 758",
+    "Test command wall time: 0.434s; includes in-test fixture setup; external configuration/build excluded."
+  ]
+}

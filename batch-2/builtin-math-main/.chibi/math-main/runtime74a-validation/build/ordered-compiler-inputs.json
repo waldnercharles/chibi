@@ -1,0 +1,152 @@
+[
+  {
+    "path": "package_compiler/Compile.chibi",
+    "git_blob": "fa87869372c12830c56ad5c97a06ad0054fb393d",
+    "sha256": "360b53e36073e5355e817652d559d429a5414fe8f698965f1967f203fbdecf0d"
+  },
+  {
+    "path": "package_compiler/Body.chibi",
+    "git_blob": "f916cfdb5d999ca90906da454d1f7da781a694e6",
+    "sha256": "5a7f9dc60a56264fc55a98baa63c864150e80e5ce35055da726453a2fa405614"
+  },
+  {
+    "path": "package_compiler/Steps.chibi",
+    "git_blob": "f2ec4e4a38945e6d9502ce8ae45c6ca03077e5d6",
+    "sha256": "7f46d8000590d367884ba8bbf8162fd2fb099cab16cf3ceed5491a32da9d59f0"
+  },
+  {
+    "path": "package_compiler/Maps.chibi",
+    "git_blob": "92ab1938351978d1b209764612d96fe18026937d",
+    "sha256": "351d13270cdfffcda31f35026681b33933e9fde05babb221fc963976061add00"
+  },
+  {
+    "path": "package_compiler/References.chibi",
+    "git_blob": "54da40ed92f41c6b4f6221c93aa1a70b97bf05ca",
+    "sha256": "d73825ac0b16dd082005650699e2bd6a35987592103a553f76fd0b5783414852"
+  },
+  {
+    "path": "package_compiler/Pointers.chibi",
+    "git_blob": "9fe0c9f367b8ad0fc763abe9897d097d95668519",
+    "sha256": "b33a3530e4c4d3cc955d8e5332e4a0946c2b6aa3beeb7018d17e0f974fa34b48"
+  },
+  {
+    "path": "package_compiler/Tasks.chibi",
+    "git_blob": "4c77a7c57877ff37e701841d2fdf44925b6b3b2d",
+    "sha256": "43c5ec60e6a9d87490dabe19a2ce379cc0a57c40c2d88d9ffeebaa60c0700970"
+  },
+  {
+    "path": "package_compiler/TaskResults.chibi",
+    "git_blob": "4007b6205618375dd376dc650d85b7202cae936b",
+    "sha256": "dfb8db278474f39ccec2c5066ae13137d885eca76c430b32dcfe0cc3b86bfef1"
+  },
+  {
+    "path": "package_compiler/Tree.chibi",
+    "git_blob": "b18db11533957689a8226fb336f64059830f3b7f",
+    "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a"
+  },
+  {
+    "path": "package_compiler/Number.chibi",
+    "git_blob": "c45da2614d057df87e14413938c27580087268e5",
+    "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2"
+  },
+  {
+    "path": "package_compiler/Optional.chibi",
+    "git_blob": "3f67d3a7df7a96c62b0b09642b36d767c53d0aee",
+    "sha256": "7314b48d92d2daa35348c30ed467b8976189cc83ca36ba31c408678c2604f3a0"
+  },
+  {
+    "path": "package_compiler/Sequences.chibi",
+    "git_blob": "491bd9f8086e58121f50e9f0d3e67fc586ebf323",
+    "sha256": "d963c2f14a2350de551c17a71e758bccbab188b6d4b8ea1a929dedf157cafb97"
+  },
+  {
+    "path": "package_compiler/Queries.chibi",
+    "git_blob": "ad57933ba3533931909ad4dc979c4a49f3d58984",
+    "sha256": "772064ffa7540a34d1beb7070da58d208b5d51e6b5111e9bd23e6fb7648c1b28"
+  },
+  {
+    "path": "package_compiler/QueryLoops.chibi",
+    "git_blob": "8a249c7a4d35af3a4c02b8335efb935a9f802732",
+    "sha256": "6d731bf9a6a97533119dc83c186119f4ff9070a681bb5be890e9d432198be588"
+  },
+  {
+    "path": "package_compiler/Behavior.chibi",
+    "git_blob": "ea0530b707de3b4ed2ef8d4e81e3595089da85ff",
+    "sha256": "18ee4b37aaf54288c4be665fecf1fff2bb95e4153dcad0821e82a21e91e30083"
+  },
+  {
+    "path": "package_compiler/Scalar.chibi",
+    "git_blob": "88506a1264702e72d7c1f783691f1fa7a69ec1d4",
+    "sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b"
+  },
+  {
+    "path": "package_compiler/Math.chibi",
+    "git_blob": "e06c7aa9046dca295968cf4d22b60702b27bd194",
+    "sha256": "7fa30b00f73316cef388177d0d8120419cd9648f5cb1e48c9ef05411eaf6d691"
+  },
+  {
+    "path": "syntax_diagnostics/Diagnostics.chibi",
+    "git_blob": "899aed0d4afe09870ae66eff3dc543462fb40f74",
+    "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
+  },
+  {
+    "path": "/sdk/core/strings/Strings.chibi",
+    "git_blob": "b89a442ec96e567246a0f153e0e0597f76eb5ad2",
+    "sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df"
+  },
+  {
+    "path": "source_snapshot/Snapshot.chibi",
+    "git_blob": "30c049b00bb87e822ea63253a4a59314e16f78a6",
+    "sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622"
+  },
+  {
+    "path": "compiler_syntax/Syntax.chibi",
+    "git_blob": "a0ec4a83aea3bbe6c6e5be57de13acd3d5b7a671",
+    "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4"
+  },
+  {
+    "path": "package_routes/Routes.chibi",
+    "git_blob": "67b0b9cbb607b6dde553c0506aabfbd6be9f04c8",
+    "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228"
+  },
+  {
+    "path": "package_syntax/Extract.chibi",
+    "git_blob": "e52d75aac3395b3e61c540950d9384d628abb0cc",
+    "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146"
+  },
+  {
+    "path": "package_graph/Graph.chibi",
+    "git_blob": "073e591c8f7e3aed3d4ec2c78e2df23c534cd989",
+    "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da"
+  },
+  {
+    "path": "package_paths/Paths.chibi",
+    "git_blob": "eef7e766fdbc2ab750b9756fe43c9f4988ff2612",
+    "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30"
+  },
+  {
+    "path": "lexical_binding/Binding.chibi",
+    "git_blob": "084f2295fc575807198bf0a180643f2e340b84bd",
+    "sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1"
+  },
+  {
+    "path": "prepared_writer/Writer.chibi",
+    "git_blob": "5fd5352fcbd61481faece39275ed1fb65b9198b4",
+    "sha256": "2dcc3d41a4feb3e95855d9de860eaf36b1347ae96bdab0d7bd3280720a838081"
+  },
+  {
+    "path": "math_types/Types.chibi",
+    "git_blob": "f47672f39b2215e14f29933bd6aaed0193963894",
+    "sha256": "db0a52e91c89b97fa91d121d745c3b5607ecee7f76cf4cb6cda8d4173b592e68"
+  },
+  {
+    "path": "math_types/Functions.chibi",
+    "git_blob": "8a42d1b05c57bbfbbaad41331263331a2964af95",
+    "sha256": "745e16490fa4c2fed8980a347a65a5a2debcac0699b8b3aad31bcccf54865d64"
+  },
+  {
+    "path": "scalar_facts/Facts.chibi",
+    "git_blob": "ba1df7721a2970f8c7d3f88f05f937cb54529eba",
+    "sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50"
+  }
+]

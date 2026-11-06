@@ -1,0 +1,82 @@
+package native_schema_tests
+
+import schema "project:native_schema"
+
+Hashes :: (nodes: schema.Node[], edges: int[]) -> u64[] {
+    switch schema.Fingerprints(nodes, edges) {
+        case .Ready(values): return values;
+        case .Rejected(message): assert(false, "valid schema graph must prepare"); return [];
+    }
+}
+Chain :: () -> schema.Node[] {
+    return [{key: 11, body: 101, first: 0, count: 1, supported: true},
+            {key: 22, body: 202, first: 1, count: 1, supported: true},
+            {key: 33, body: 303, first: 2, count: 0, supported: true}];
+}
+@test
+ReindexingAndUnrelatedTypesKeepSchemas :: () {
+    original := Hashes(Chain(), [1, 2]);
+    reordered: schema.Node[] = [{key: 33, body: 303, first: 0, count: 0, supported: true},
+                               {key: 11, body: 101, first: 0, count: 1, supported: true},
+                               {key: 22, body: 202, first: 1, count: 1, supported: true}];
+    moved := Hashes(reordered, [2, 0]);
+    assert(original[0] == moved[1] && original[1] == moved[2] && original[2] == moved[0]);
+    nodes := Chain();
+    nodes.append({key: 7, body: 404, first: 2, count: 0, supported: true});
+    extended := Hashes(nodes, [1, 2]);
+    assert(original[0] == extended[0] && original[1] == extended[1] && original[2] == extended[2]);
+    assert(nodes[0].first == 0 && nodes[1].key == 22, "preparation does not change input nodes");
+}
+@test
+NestedDriftAndUnsupportedChildrenReachTheirParents :: () {
+    original := Hashes(Chain(), [1, 2]);
+    nodes := Chain();
+    nodes[2].body = 304;
+    changed := Hashes(nodes, [1, 2]);
+    assert(original[0] != changed[0] && original[1] != changed[1] && original[2] != changed[2]);
+    nodes[2].supported = false;
+    unsupported := Hashes(nodes, [1, 2]);
+    assert(unsupported[0] == 0 && unsupported[1] == 0 && unsupported[2] == 0);
+}
+@test
+RecursiveSharingIsFiniteAndStable :: () {
+    nodes: schema.Node[] = [{key: 11, body: 101, first: 0, count: 1, supported: true},
+                           {key: 22, body: 202, first: 1, count: 1, supported: true},
+                           {key: 33, body: 303, first: 2, count: 2, supported: true}];
+    original := Hashes(nodes, [1, 0, 0, 1]);
+    reordered: schema.Node[] = [{key: 33, body: 303, first: 0, count: 2, supported: true},
+                               {key: 22, body: 202, first: 2, count: 1, supported: true},
+                               {key: 11, body: 101, first: 3, count: 1, supported: true}];
+    reindexed := Hashes(reordered, [2, 1, 2, 1]);
+    assert(original[0] == reindexed[2] && original[1] == reindexed[1] && original[2] == reindexed[0]);
+    assert(original[0] != original[1], "the root semantic identity remains part of a cyclic schema");
+    nodes[0].body = 102;
+    drift := Hashes(nodes, [1, 0, 0, 1]);
+    assert(original[0] != drift[0] && original[1] != drift[1] && original[2] != drift[2]);
+}
+@test
+MalformedGraphTablesAreRejected :: () {
+    for (invalid in 0..<5) {
+        nodes := Chain();
+        edges: int[] = [1, 2];
+        if (invalid == 0) { nodes[0].first = 1; }
+        if (invalid == 1) { nodes[1].count = -1; }
+        if (invalid == 2) { edges[1] = 3; }
+        if (invalid == 3) { nodes[1].key = nodes[0].key; }
+        if (invalid == 4) { nodes[0].key = 0; }
+        switch schema.Fingerprints(nodes, edges) {
+            case .Ready(values): assert(false, "malformed schema must reject");
+            case .Rejected(message): assert(text_byte_length(message) > 0);
+        }
+    }
+    empty := Hashes([], []);
+    assert(length(empty) == 0);
+    many: schema.Node[] = [];
+    for (index in 0..<schema.NodeLimit + 1) {
+        many.append({key: u64(index + 1), body: 0, first: 0, count: 0, supported: true});
+    }
+    switch schema.Fingerprints(many, []) {
+        case .Ready(values): assert(false, "oversized schema must reject before allocating its closure");
+        case .Rejected(message): assert(message == "native schema has too many type nodes");
+    }
+}

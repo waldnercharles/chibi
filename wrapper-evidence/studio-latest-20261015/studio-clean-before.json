@@ -1,0 +1,6 @@
+{
+  "all_ui_sources_match_checkout": true,
+  "project_manifest": "version 23\nname \"Studio\"\ncontent \"content\"\nstart_scene \"scenes/Studio.kdl\"\nui \"StudioShell\"\n",
+  "source_files": 11,
+  "outliner_sha256": "662153302b4add30584c36e47151b72dc2c3d147844842ab49d1adc1f774b4b2"
+}

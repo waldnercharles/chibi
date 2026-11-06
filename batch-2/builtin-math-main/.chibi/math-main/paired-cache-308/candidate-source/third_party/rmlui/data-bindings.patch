@@ -1,0 +1,70 @@
+diff --git a/Source/Core/DataViewDefault.cpp b/Source/Core/DataViewDefault.cpp
+index e54fb41a..b8a29e68 100644
+--- a/Source/Core/DataViewDefault.cpp
++++ b/Source/Core/DataViewDefault.cpp
+@@ -1,4 +1,5 @@
+ #include "DataViewDefault.h"
++#include "../../Include/RmlUi/Core/Context.h"
+ #include "../../Include/RmlUi/Core/Core.h"
+ #include "../../Include/RmlUi/Core/DataVariable.h"
+ #include "../../Include/RmlUi/Core/Element.h"
+@@ -113,6 +114,27 @@ bool DataViewAttributeIf::Update(DataModel& model)
+ 
+ DataViewValue::DataViewValue(Element* element) : DataViewAttribute(element, "value", SortOffset_DataValue) {}
+ 
++bool DataViewValue::Update(DataModel& model)
++{
++	Variant variant;
++	Element* element = GetElement();
++	DataExpressionInterface expr_interface(&model, element);
++	if (!element || !GetExpression().Run(expr_interface, variant))
++		return false;
++
++	// As Vue's v-model does, leave the text of an input being edited alone until the value it shows changes.
++	const String value = variant.Get<String>();
++	const bool unchanged = shown && value == previous;
++	previous = value;
++	shown = true;
++	Context* context = element->GetContext();
++	if ((unchanged && context && context->GetFocusElement() == element) || element->GetAttribute<String>("value", "") == value)
++		return false;
++
++	element->SetAttribute("value", value);
++	return true;
++}
++
+ DataViewChecked::DataViewChecked(Element* element) : DataViewCommon(element, String(), SortOffset_DataChecked) {}
+ 
+ bool DataViewChecked::Update(DataModel& model)
+@@ -165,6 +187,13 @@ bool DataViewStyle::Update(DataModel& model)
+ 	{
+ 		const String value = variant.Get<String>();
+ 		const Property* p = element->GetLocalProperty(property_name);
++		// As Vue does for an undefined style value, an empty one leaves the property unset.
++		if (value.empty())
++		{
++			if (p)
++				element->RemoveProperty(property_name);
++			return p != nullptr;
++		}
+ 		if (!p || p->Get<String>() != value)
+ 		{
+ 			element->SetProperty(property_name, value);
+diff --git a/Source/Core/DataViewDefault.h b/Source/Core/DataViewDefault.h
+index 1dcefacd..f3ccd62e 100644
+--- a/Source/Core/DataViewDefault.h
++++ b/Source/Core/DataViewDefault.h
+@@ -48,6 +48,13 @@ public:
+ class DataViewValue final : public DataViewAttribute {
+ public:
+ 	DataViewValue(Element* element);
++
++	bool Update(DataModel& model) override;
++
++private:
++	// The value last shown, so a focused input keeps its text until the value changes.
++	String previous;
++	bool shown = false;
+ };
+ 
+ class DataViewChecked final : public DataViewCommon {

@@ -1,0 +1,7 @@
+package hello
+
+Main :: () {
+    count: retain int = 0
+    count += 1
+    print_string(format_text("Run {}", count))
+}

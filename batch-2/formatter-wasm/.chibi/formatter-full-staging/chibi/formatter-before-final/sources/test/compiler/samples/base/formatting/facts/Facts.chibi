@@ -1,0 +1,4 @@
+package facts
+Label :: (n: int, name: string) -> string { return format_text("{}:{}", n, name); }
+Plain :: () -> string { return format_text("plain"); }
+Mixed :: (flag: bool) -> string { big: u64 = 0xFFFFFFFFFFFFFFFF; small: i64 = -3; return format_text("{} {} {}", flag, big, small); }

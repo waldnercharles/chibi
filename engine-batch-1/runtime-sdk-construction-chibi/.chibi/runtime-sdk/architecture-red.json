@@ -1,0 +1,29 @@
+{
+  "command": [
+    "/Users/cwaldner/Personal/chibi/.worktrees/cmake-retirement/chibi/build-sdk-reflect/host/chibi-build-host",
+    "--root",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi",
+    "--source",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/.chibi/runtime-sdk/VerifyArchitectureRed.chibi",
+    "--core",
+    "packages/core",
+    "--compiler",
+    "tools/compiler",
+    "--compiler-core",
+    "packages/core",
+    "--collection",
+    "graph=tools/graph",
+    "--entry",
+    "VerifyRuntimeSDK",
+    "--timeout-ms",
+    "30000",
+    "--",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/.chibi/runtime-sdk/architecture-red"
+  ],
+  "status": 1,
+  "elapsed_seconds": 12.974,
+  "production_source_sha256": "54158f48fc0ccb0aa562628ae01d52166129aa2d9ffdda046f26757a3204a044",
+  "variant": "preserved before-provenance candidate54158, exact runtime option behavior before architecture guard",
+  "fixture_sha256": "f04318bbdfb9cbab9c6ddd30a11266e7dd9023a9145217cb46bf1558ae827a87",
+  "log": "architecture-red.log"
+}

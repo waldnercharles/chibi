@@ -1,0 +1,13 @@
+package mixed_record_review
+Choice :: union { Message(text: string) | Values(items: int[]) }
+Main :: () -> int {
+    text := text_from_bytes([u8(65), 0, 66]);
+    choice := Choice.Message(text);
+    copy := choice;
+    choice = Choice.Values([1, 2]);
+    switch copy {
+        case .Message(value): assert(text_byte_at(value, 2) == 66);
+        case .Values(items): assert(false);
+    }
+    return 0;
+}

@@ -1,0 +1,8 @@
+package facts
+@error Failure :: struct { code: int; }
+Fail :: () -> Failure? { return {code: 3}; }
+Use :: (flag: bool) -> int { a := Fail(); b := a; p := &a; if flag { b = nil; p = &a; } else { a = nil; p = &b; } if p^ {} return 8; }
+Mirrored :: (flag: bool) -> int { a := Fail(); b := a; p := &a; if flag { a = nil; p = &b; } else { b = nil; p = &a; } if p^ {} return 8; }
+Unrelated :: (flag: bool) -> int { a := Fail(); b := a; p := &a; if flag { b = nil; p = &a; } else { a = nil; p = &b; } count := 0; count = 1; if p^ {} return 9; }
+Survivor :: (flag: bool) -> int { a := Fail(); b := a; c := a; p := &a; if flag { b = nil; p = &a; } else { a = nil; p = &b; } a = nil; if c {} return 10; }
+Rebound :: (flag: bool) -> int { a := Fail(); b := a; c := a; p := &a; if flag { b = nil; p = &a; } else { a = nil; p = &b; } a = nil; p = &c; if p^ {} return 11; }

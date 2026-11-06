@@ -1,0 +1,9 @@
+package facts
+
+// constants run authored functions at compile time
+@test
+Calls :: () {
+    r1: int = Main();
+    e1: int = 135;
+    assert(r1 == e1, "Main call 1");
+}

@@ -1,0 +1,45 @@
+package map_records
+
+Point :: struct { x: int; y: int; }
+Tagged :: struct { point: Point; visible: bool; }
+Make :: () -> [string: Point] {
+    made: [string: Point] = ["Ada": {x: 3, y: 4}, "Bea": {x: 5, y: 6}];
+    return made;
+}
+Take :: (values: [string: Point]) -> Point {
+    for (key, value in values) { return value; }
+    return {x: 0, y: 0};
+}
+Reset :: (values: ^([string: Point])) {
+    values^ = ["new": {x: 8, y: 9}];
+}
+Main :: () -> int {
+    points := Make();
+    assert(points["Ada"].y == 4 && points["Bea"].x == 5);
+    changed := points["Ada"];
+    changed.x = 30;
+    assert(points["Ada"].x == 3);
+    points["Cid"] = changed;
+    changed.y = 40;
+    assert(points["Cid"].y == 4);
+    alias := points;
+    points["Ada"] = {x: 7, y: 8};
+    delete points["Bea"];
+    assert(alias["Ada"].x == 3 && alias["Bea"].y == 6);
+    assert(Take(Make()).y == 4);
+    total: int = 0;
+    for (key, value in Make()) { total += value.x + value.y; }
+    assert(total == 18);
+    total = 0;
+    for (value in alias) { total += value.x; }
+    assert(total == 38);
+    nested: [int: Tagged] = [1: {point: {x: 2, y: 3}, visible: true}];
+    assert(nested[1].point.y == 3 && nested[1].visible);
+    grown: [int: Point] = [:];
+    for (i in 0..<128) { grown[i] = {x: i, y: i * 2}; }
+    for (i in 0..<64) { delete grown[i]; }
+    for (key, value in grown) { assert(value.x == key && value.y == key * 2); }
+    Reset(&points);
+    assert(points["new"].x == 8 && alias["Ada"].x == 3);
+    return 0;
+}

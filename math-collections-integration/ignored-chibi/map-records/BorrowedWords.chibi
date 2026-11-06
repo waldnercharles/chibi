@@ -1,0 +1,13 @@
+package borrowed_word_map_key
+Text :: (i: int) -> string { return text_from_bytes([u8(65), 0, u8(i)]); }
+Change :: (words: ^(string[])) -> string { words^[0] = Text(24); return Text(25); }
+Keys :: (words: ^(string[])) -> [string: int] {
+    values: [string: int] = [words^[0]: 1, Change(words): 2];
+    return values;
+}
+Main :: () -> int {
+    words := [Text(23)];
+    values := Keys(&words);
+    assert(values.has(Text(23)));
+    return 0;
+}

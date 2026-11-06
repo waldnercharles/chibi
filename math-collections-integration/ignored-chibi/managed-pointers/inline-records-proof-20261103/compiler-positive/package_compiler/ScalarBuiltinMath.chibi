@@ -1,0 +1,434 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+import strings "core:strings"
+import math "project:math_types"
+
+// Negative call ordinals exist only during collection. Before facts leave this
+// package, ScalarBuiltinKernels replaces each with a checked ordinary function.
+BuiltinConstruct: int : -1;
+BuiltinBinary: int : -2;
+BuiltinNegate: int : -3;
+BuiltinMember: int : -4;
+BuiltinFunction: int : -5;
+BuiltinUpdate: int : -6;
+
+ScalarBuiltinShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                       types: TypeDecl[], members: TypeMember[], package: int, node: int) -> ValueType {
+    value := Unparenthesized(forest, node);
+    shape := MathPlaceType(forest, text, types, members, callables, [], [], names, package, value);
+    if (shape.storage != 0) { return shape; }
+    if (Is(forest, value, syntax.CallExpression) &&
+        CalledFunction(forest, text, callables, [], names, package, value) < 0) {
+        callee := Field(forest, value, syntax.FieldFunction);
+        name := Text(forest, text, callee);
+        if (Is(forest, callee, syntax.Identifier) && MathFunctionName(name)) {
+            kinds: int[] = [];
+            for (argument in Members(forest, Field(forest, value, syntax.FieldArguments))) {
+                supplied := ScalarBuiltinShape(forest, text, callables, names, types, members, package, argument);
+                if (supplied.storage == 0) { supplied.storage = FloatStorage; }
+                kinds.append(MathStaticKind(types, supplied));
+            }
+            switch math.Function(name, kinds) {
+                case .Rejected(message): return shape;
+                case .Accepted(kind): return MathStaticType(types, kind);
+            }
+        }
+    }
+    return shape;
+}
+
+ScalarBuiltinCall :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                      package: int, node: int) -> int {
+    if (!Is(forest, node, syntax.CallExpression)) { return 0; }
+    callee := Field(forest, node, syntax.FieldFunction);
+    if (!Is(forest, callee, syntax.Identifier)) { return 0; }
+    name := Text(forest, text, callee);
+    if (MathName(name) == 0 && !MathFunctionName(name)) { return 0; }
+    if (CalledFunction(forest, text, callables, [], names, package, node) >= 0) { return 0; }
+    if (MathName(name) != 0) { return BuiltinConstruct; }
+    if (MathFunctionName(name)) { return BuiltinFunction; }
+    return 0;
+}
+
+// A helper call captures each value in source order through the existing
+// record-by-value call ABI. Its body reuses Math.chibi's elementary lowering.
+ScalarBuiltinOperands :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                          callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                          constants: ConstDecl[], node: int, operation: int, rows: facts.Row[]) -> ScalarOperands {
+    arguments: int[] = [];
+    name := "";
+    literal: int = 0;
+    if (operation == BuiltinConstruct || operation == BuiltinFunction) {
+        arguments = Members(forest, Field(forest, node, syntax.FieldArguments));
+        name = Text(forest, text, Field(forest, node, syntax.FieldFunction));
+    } else if (operation == BuiltinBinary) {
+        arguments = [Field(forest, node, syntax.FieldLeft), Field(forest, node, syntax.FieldRight)];
+        literal = Operator(forest, node);
+    } else if (operation == BuiltinNegate) {
+        arguments = [Field(forest, node, syntax.FieldOperand)];
+        literal = Operator(forest, node);
+    } else {
+        assert(operation == BuiltinMember);
+        arguments = [Field(forest, node, syntax.FieldObject)];
+        name = Text(forest, text, Field(forest, node, syntax.FieldMember));
+    }
+    output := rows;
+    for (argument in arguments) {
+        shape := ScalarBuiltinShape(forest, text, callables, names, types, members, callable.package, argument);
+        if (shape.storage == StructStorage && MathKind(types, shape.record) != 0) {
+            switch ScalarRecordValue(forest, text, callables, params, callable, names, types, members, constants,
+                                     argument, shape.record, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+        } else {
+            switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                                 argument, argument, FloatStorage, FloatStorage, facts.Clamp, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+        }
+    }
+    shape := ScalarBuiltinShape(forest, text, callables, names, types, members, callable.package, node);
+    type := ScalarValueType(types, shape.storage, shape.container, shape.record);
+    call := ScalarAt(forest, node, facts.CallRow, type, operation, length(arguments), name);
+    call.literal = i64(literal);
+    output.append(call);
+    return ScalarOperands.Built(output);
+}
+
+ScalarBuiltinStep :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                      call: facts.Row, arguments: Value[], ops: Ops, target: Target) -> Step {
+    at: Bases = {pc: 0, slot: length(arguments), local: 0, cell: 0, host: 0, call: 0};
+    node := forest[0];
+    node.start = call.start; node.end = call.end; node.row = call.line - 1; node.column = call.column - 1;
+    if (call.value == BuiltinConstruct) {
+        return MathConstructStep(forest, text, 0, types, members, [], [], 0, arguments,
+                                  MathRecord(types, MathName(call.name)), length(arguments), ops, target, at, node);
+    }
+    if (call.value == BuiltinBinary) {
+        return MathBinaryStep(forest, text, 0, types, members, [], [], 0, arguments[0], arguments[1],
+                               int(call.literal), 2, ops, target, at, node);
+    }
+    if (call.value == BuiltinNegate) {
+        return MathNegateStep(0, types, members, arguments[0], int(call.literal), ops, target, at, node);
+    }
+    if (call.value == BuiltinMember) {
+        return MathMemberStep(forest, 0, types, members, arguments[0], call.name, ops, target, at, node);
+    }
+    if (call.value == BuiltinUpdate) {
+        switch MathSelection(MathKind(types, arguments[0].record), call.name, true) {
+            case .Rejected(message): return MathFailure(0, node, message);
+            case .Accepted(desired, selection):
+                return MathReplacementStep(forest, 0, types, members, arguments[1], arguments[0], desired,
+                                            selection, 2, ops, target, at, node);
+        }
+    }
+    assert(call.value == BuiltinFunction);
+    return MathFunctionStep(forest, text, 0, types, members, [], [], 0, call.name, arguments,
+                             length(arguments), ops, target, at, node);
+}
+
+ScalarBuiltinRead :: (forest: snapshot.SnapshotNode[], node: int, types: int[], locals: int[], slot: int) -> facts.Row {
+    assert(slot >= 0 && slot < length(types) && locals[slot] >= 0);
+    return ScalarAt(forest, node, facts.ReadRow, types[slot], locals[slot], 0, "");
+}
+
+ScalarBuiltinComparison :: (op: int, ops: Ops) -> int {
+    if (op == ops.lt) { return facts.Less; }
+    if (op == ops.le) { return facts.LessEqual; }
+    if (op == ops.gt) { return facts.Greater; }
+    if (op == ops.ge) { return facts.GreaterEqual; }
+    if (op == ops.eq) { return facts.Equal; }
+    if (op == ops.ne) { return facts.NotEqual; }
+    return 0;
+}
+
+ScalarBuiltinLibrary :: (op: int, ops: Ops) -> string {
+    if (op == ops.math_floor) { return "floor"; }
+    if (op == ops.math_ceil) { return "ceil"; }
+    if (op == ops.math_round) { return "round"; }
+    if (op == ops.math_sqrt) { return "sqrt"; }
+    if (op == ops.math_exp) { return "exp"; }
+    if (op == ops.math_log) { return "log"; }
+    if (op == ops.math_pow) { return "pow"; }
+    if (op == ops.math_tan) { return "tan"; }
+    if (op == ops.math_asin) { return "asin"; }
+    if (op == ops.math_acos) { return "acos"; }
+    if (op == ops.math_atan) { return "atan"; }
+    if (op == ops.math_atan2) { return "atan2"; }
+    return "";
+}
+
+// The projection accepts only scalar SSA instructions and the typed cells of
+// MathBuild. Cell addresses and schemas never become native pointers or facts.
+ScalarBuiltinCode :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], members: TypeMember[],
+                      call: facts.Row, arguments: Value[], parameter_types: int[], step: Step, ops: Ops,
+                      target: Target, name: string) -> ScalarOperands {
+    switch step {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, result, retained, marks):
+            assert(length(locals) == 0 && length(calls) == 0 && length(bound) == 0 && length(next) == 0);
+            node: int = 0;
+            rows := [ScalarAt(forest, node, facts.FunctionRow, call.type, 0, length(arguments), name)];
+            slot_types := parameter_types;
+            slot_locals: int[] = [];
+            for (type, index in parameter_types) {
+                rows.append(ScalarAt(forest, node, facts.ParameterRow, type, index, 0, ""));
+                slot_locals.append(index);
+            }
+            for (slot in slots) { slot_types.append(ScalarTypeOf(slot.storage)); slot_locals.append(-1); }
+            addresses: int[] = [];
+            cell_values: int[] = [];
+            for (slot in slot_types) { addresses.append(-1); }
+            for (cell in cells) { cell_values.append(-1); }
+            variables := length(arguments);
+            for (instruction in code) {
+                op := instruction.op;
+                if (op == ops.host_slot) { addresses[instruction.output] = instruction.left; continue; }
+                if (op == ops.write) {
+                    cell := addresses[instruction.right];
+                    assert(cell >= 0 && cell < length(cells));
+                    if (instruction.offset == target.payload_offset) { cell_values[cell] = slot_locals[instruction.left]; }
+                    else { assert(instruction.offset == target.schema_offset); }
+                    continue;
+                }
+                if (op == ops.host_call) {
+                    host := hosts[instruction.target];
+                    assert(host.intrinsic == ConstructIntrinsic && host.result_count == 1);
+                    record := cells[host.first].record;
+                    type := ScalarRecordType(types, record);
+                    expression := [ScalarAt(forest, node, facts.ZeroRow, type, 0, 0, "")];
+                    for (field in 0..<types[record].count) {
+                        value := cell_values[host.first + 2 + field * 2];
+                        assert(value >= 0);
+                        expression.append(ScalarAt(forest, node, facts.ReadRow, facts.FloatType, value, 0, ""));
+                        expression.append(ScalarAt(forest, node, facts.UpdateRow, type, field, 2, ""));
+                    }
+                    rows.append(ScalarAt(forest, node, facts.LocalRow, type, variables, length(expression), ""));
+                    rows.extend(expression);
+                    cell_values[host.result_first] = variables;
+                    variables += 1;
+                    continue;
+                }
+                output := instruction.output;
+                type := slot_types[output];
+                expression: facts.Row[] = [];
+                if (op == ops.math_sin || op == ops.math_cos) {
+                    slot_locals[output] = ScalarBuiltinTrig(forest, &rows, &variables,
+                        slot_locals[instruction.left], slot_types[instruction.left], type, op == ops.math_cos);
+                    continue;
+                }
+                if (op == ops.select || op == ops.math_min || op == ops.math_max) {
+                    condition := [ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.left)];
+                    yes := ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.right);
+                    no := yes;
+                    if (op == ops.select) {
+                        no = ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.target);
+                    } else {
+                        comparison := facts.Less;
+                        if (op == ops.math_max) { comparison = facts.Greater; }
+                        yes = condition[0];
+                        condition.extend([no, ScalarAt(forest, node, facts.CompareRow, facts.BoolType, comparison, 2, "")]);
+                    }
+                    expression = condition;
+                    expression.extend([yes, no, ScalarAt(forest, node, facts.SelectRow, type, 0, 3, "")]);
+                    rows.append(ScalarAt(forest, node, facts.LocalRow, type, variables, length(expression), ""));
+                    rows.extend(expression);
+                    slot_locals[output] = variables;
+                    variables += 1;
+                    continue;
+                }
+                if (op == ops.load) {
+                    cell := addresses[instruction.left];
+                    if (cell >= 0) {
+                        if (instruction.offset == target.schema_offset) { continue; }
+                        assert(instruction.offset == target.payload_offset && cell_values[cell] >= 0);
+                        slot_locals[output] = cell_values[cell];
+                        slot_types[output] = ScalarValueType(types, cells[cell].storage, cells[cell].container, cells[cell].record);
+                        continue;
+                    }
+                    assert(instruction.type == FloatStorage && instruction.offset % 4 == 0);
+                    expression.append(ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.left));
+                    expression.append(ScalarAt(forest, node, facts.FieldRow, facts.FloatType, instruction.offset / 4, 1, ""));
+                } else if (op == ops.constant) {
+                    literal := ScalarAt(forest, node, facts.LiteralRow, type, 0, 0, "");
+                    literal.literal = i64(wrap: instruction.payload);
+                    expression.append(literal);
+                } else if (op == ops.convert || op == ops.cast) {
+                    expression.append(ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.left));
+                    expression.append(ScalarAt(forest, node, facts.ConvertRow, type, facts.Clamp, 1, ""));
+                } else if (op == ops.math_abs) {
+                    expression.append(ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.left));
+                    expression.append(ScalarAt(forest, node, facts.UnaryRow, type, facts.FloatAbsolute, 1, ""));
+                } else if (op == ops.neg) {
+                    expression.append(ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.left));
+                    expression.append(ScalarAt(forest, node, facts.UnaryRow, type, facts.Negate, 1, ""));
+                } else {
+                    arithmetic: int = 0;
+                    if (op == ops.add) { arithmetic = facts.Add; }
+                    if (op == ops.sub) { arithmetic = facts.Subtract; }
+                    if (op == ops.mul) { arithmetic = facts.Multiply; }
+                    if (op == ops.div) { arithmetic = facts.Divide; }
+                    comparison := ScalarBuiltinComparison(op, ops);
+                    symbol := ScalarBuiltinLibrary(op, ops);
+                    if (arithmetic == 0 && comparison == 0 && symbol == "") {
+                        return ScalarOperands.Failed(ScalarStart(format_text("native math projection does not support instruction {}", op)));
+                    }
+                    expression.append(ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.left));
+                    if (symbol != "") {
+                        count: int = 1;
+                        if (op == ops.math_pow || op == ops.math_atan2) {
+                            expression.append(ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.right));
+                            count = 2;
+                        }
+                        if (type == facts.FloatType) { symbol = strings.Concatenate([symbol, "f"]); }
+                        external := ScalarAt(forest, node, facts.ForeignRow, type, 0, count, symbol);
+                        external.text = "system:m";
+                        expression.append(external);
+                    } else {
+                        expression.append(ScalarBuiltinRead(forest, node, slot_types, slot_locals, instruction.right));
+                        if (comparison != 0) {
+                            expression.append(ScalarAt(forest, node, facts.CompareRow, facts.BoolType, comparison, 2, ""));
+                        } else {
+                            expression.append(ScalarAt(forest, node, facts.ArithmeticRow, type, arithmetic, 2, ""));
+                        }
+                    }
+                }
+                rows.append(ScalarAt(forest, node, facts.LocalRow, type, variables, length(expression), ""));
+                rows.extend(expression);
+                slot_locals[output] = variables;
+                variables += 1;
+            }
+            assert(result.slot >= 0 && slot_locals[result.slot] >= 0);
+            rows.append(ScalarAt(forest, node, facts.ReturnRow, 0, 0, 1, ""));
+            rows.append(ScalarAt(forest, node, facts.ReadRow, call.type, slot_locals[result.slot], 0, ""));
+            // Synthetic SSA locals share the call's first byte, the existing
+            // one-byte local range contract. No authored control flow is made.
+            for (row, index in rows) {
+                located := row;
+                located.start = call.start; located.end = call.start + 1;
+                located.line = call.line; located.column = call.column;
+                if (row.kind == facts.ParameterRow || row.kind == facts.LocalRow) {
+                    located.name = format_text("builtin_{}", row.value);
+                }
+                rows[index] = located;
+            }
+            return ScalarOperands.Built(rows);
+    }
+}
+
+ScalarBuiltinKernels :: (forest: snapshot.SnapshotNode[], text: string, types: TypeDecl[], members: TypeMember[],
+                         input: facts.Row[], functions: int, ops: Ops, target: Target,
+                         summary: ^ScalarEffectSummary) -> ScalarOperands {
+    wanted := false;
+    for (row in input) {
+        if (row.kind == facts.CallRow && row.value < 0) { wanted = true; break; }
+    }
+    if (!wanted) { return ScalarOperands.Built(input); }
+    rows := input;
+    kernels: facts.Row[] = [];
+    ordinals: [string: int] = [:];
+    records: int[] = [];
+    for (declared, index in types) { if (ScalarDeclares(types, declared)) { records.append(index); } }
+    next := functions;
+    // Read each postfix operand once. Walking backward through each call's
+    // argument trees would revisit a nested expression once per ancestor.
+    stack: int[] = [];
+    top: int = 0;
+    remaining: int = 0;
+    for (call, index in input) {
+        if (remaining == 0) {
+            top = 0;
+            if (call.kind == facts.LocalRow || call.kind == facts.AssignRow || call.kind == facts.ReturnRow ||
+                call.kind == facts.IfRow || call.kind == facts.WhileRow || call.kind == facts.ForRow ||
+                call.kind == facts.SwitchRow || call.kind == facts.CaseRow || call.kind == facts.AssertRow) {
+                remaining = call.count;
+            }
+            continue;
+        }
+        if (call.kind == facts.OperandSwapRow) {
+            left := top - 1 - call.value;
+            right := top - 1 - call.count;
+            assert(left >= 0 && right >= 0 && left < top && right < top);
+            type := stack[left];
+            stack[left] = stack[right];
+            stack[right] = type;
+            remaining -= 1;
+            continue;
+        }
+        if (call.kind == facts.LogicalRow) {
+            // Its count spans the lazy RHS, whose final value replaces the
+            // consumed left operand. It is not an operand arity.
+            assert(top > 0);
+            top -= 1;
+            remaining -= 1;
+            continue;
+        }
+        if (call.kind == facts.OperandBindRow) {
+            assert(top > 0);
+            top -= 1;
+            remaining -= 1;
+            continue;
+        }
+        arity := call.count;
+        // A managed address carries its record type in count, not operands.
+        if (call.kind == facts.ManagedAddressRow) { arity = 0; }
+        base := top - arity;
+        assert(base >= 0);
+        parameter_types: int[] = [];
+        if (call.kind == facts.CallRow && call.value < 0) {
+            for (argument in base..<top) { parameter_types.append(stack[argument]); }
+        }
+        type := call.type;
+        if (call.kind == facts.ManagedFieldRow) { type = facts.PointerType; }
+        if (base == length(stack)) { stack.append(type); }
+        else { stack[base] = type; }
+        top = base + 1;
+        remaining -= 1;
+        if (call.kind != facts.CallRow || call.value >= 0) { continue; }
+        // A constructor takes at most sixteen f32 components. Other math
+        // signatures take at most three values, so each key stays bounded.
+        key := format_text("{}:{}:{}:{}", call.value, call.name, call.literal, call.type);
+        for (type in parameter_types) { key = format_text("{}:{}", key, type); }
+        if (key in ordinals) {
+            resolved := rows[index];
+            resolved.value = ordinals[key]; resolved.name = format_text("math kernel {}", resolved.value); resolved.literal = 0;
+            rows[index] = resolved;
+            continue;
+        }
+        arguments: Value[] = [];
+        for (type, ordinal in parameter_types) {
+            storage := FloatStorage;
+            record: int = -1;
+            if (type >= facts.RecordType) {
+                storage = StructStorage;
+                record = records[type - facts.RecordType];
+                assert(record >= 0 && MathKind(types, record) != 0);
+            }
+            arguments.append(Typed(ordinal, storage, 0, record));
+        }
+        name := format_text("math kernel {}", next);
+        step := ScalarBuiltinStep(forest, text, types, members, call, arguments, ops, target);
+        switch ScalarBuiltinCode(forest, types, members, call, arguments, parameter_types, step, ops, target, name) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): kernels.extend(built);
+        }
+        resolved := rows[index];
+        resolved.value = next; resolved.name = name; resolved.literal = 0;
+        rows[index] = resolved;
+        ordinals[key] = next;
+        if (summary.wanted) {
+            // Kernels have only numeric instructions, pure libm calls and
+            // plain f32 records. Keep metadata in the FunctionRow order.
+            summary.direct.append(0);
+            summary.waiting.append(false);
+        }
+        next += 1;
+    }
+    rows.extend(kernels);
+    return ScalarOperands.Built(rows);
+}

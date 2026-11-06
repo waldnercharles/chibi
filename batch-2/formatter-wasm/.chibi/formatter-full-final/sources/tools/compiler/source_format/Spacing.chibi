@@ -1,0 +1,205 @@
+package source_format
+
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+
+// Horizontal policies use zero for inheritance, then none, one or two spaces.
+// Preserve keeps the original horizontal gap count on an authored line. The
+// layout pass still owns indentation, comments and alignment padding.
+SpacingCount :: (mode: int, rows: diag.Node[], previous: Token, current: Token) -> int {
+    if (mode == 0) { return -1; }
+    if (mode == 4) {
+        if (rows[previous.node].row != rows[current.node].row) { return -1; }
+        return current.start - previous.end;
+    }
+    return mode - 1;
+}
+
+SpacingWord :: (kind: int) -> bool {
+    return kind == diag.Identifier || kind == tk.Ident || kind == tk.Integer || kind == tk.Float ||
+           kind == diag.Fn || kind == diag.When || kind == diag.View || kind == diag.Self ||
+           kind == diag.Min || kind == diag.Max || (kind >= tk.Package && kind <= tk.Emit);
+}
+
+// These are the tokenizer's multi-character spellings. Compact styles cannot
+// turn two original tokens into one operator, a range or a comment opener.
+SpacingRequiresGap :: (left: int, right: int) -> bool {
+    if (SpacingWord(left) && SpacingWord(right)) { return true; }
+    if (right == tk.Eq) {
+        return left == tk.Eq || left == tk.Not || left == tk.Lt || left == tk.Gt ||
+               left == tk.Colon || left == tk.Add || left == tk.Sub || left == tk.Mul ||
+               left == tk.Quo || left == tk.Mod || left == tk.And || left == tk.Or || left == tk.Xor;
+    }
+    return (left == tk.Lt && right == tk.Lt) || (left == tk.Gt && right == tk.Gt) ||
+           (left == tk.And && right == tk.And) || (left == tk.Or && right == tk.Or) ||
+           (left == tk.Colon && right == tk.Colon) || (left == tk.Question && right == tk.Question) ||
+           ((left == tk.Sub || left == tk.Eq) && right == tk.Gt) ||
+           (left == tk.Period && (right == tk.Period || right == tk.Ellipsis || right == tk.HalfOpenRange)) ||
+           ((left == tk.Ellipsis || left == tk.HalfOpenRange) && right == tk.Period) ||
+           (left == tk.Quo && (right == tk.Quo || right == tk.Mul)) ||
+           (left == tk.Mul && right == tk.Quo);
+}
+
+SpacingControlParen :: (rows: diag.Node[], node: int) -> bool {
+    owner := ParentOf(rows, node);
+    kind := KindOf(rows, owner);
+    if (kind == diag.ForStatement) { return true; }
+    if (kind != diag.ParenthesizedExpression) { return false; }
+    outer := ParentKind(rows, owner);
+    return outer == diag.IfStatement || outer == diag.WhileStatement || outer == diag.SwitchStatement ||
+           outer == diag.WhenDeclaration;
+}
+
+SpacingParen :: (rows: diag.Node[], node: int, options: Options) -> int {
+    owner := ParentKind(rows, node);
+    if (SpacingControlParen(rows, node)) { return options.space_inside_control_parens; }
+    if (owner == diag.ParameterList) { return options.space_inside_parameter_parens; }
+    if (owner == diag.ArgumentList || owner == diag.PatternBindings || owner == diag.PrototypeBases) {
+        return options.space_inside_call_parens;
+    }
+    if (owner == diag.ParenthesizedExpression || owner == diag.ParenthesizedType) {
+        return options.space_inside_grouping_parens;
+    }
+    return 0;
+}
+
+SpacingBracket :: (rows: diag.Node[], node: int, options: Options) -> int {
+    owner := ParentKind(rows, node);
+    if (owner == diag.ArrayExpression || owner == diag.MapExpression) { return options.space_inside_array_brackets; }
+    if (owner == diag.IndexExpression) { return options.space_inside_index_brackets; }
+    if (owner == diag.Type || owner == diag.MapType) { return options.space_inside_type_brackets; }
+    return 0;
+}
+
+SpacingInterior :: (rows: diag.Node[], previous: Token, current: Token, options: Options) -> int {
+    left := KindOf(rows, previous.node);
+    right := KindOf(rows, current.node);
+    if (left == tk.OpenParen && right == tk.CloseParen && ParentOf(rows, previous.node) == ParentOf(rows, current.node)) {
+        return options.space_inside_empty_parens;
+    }
+    if (left == tk.OpenBracket && right == tk.CloseBracket && ParentOf(rows, previous.node) == ParentOf(rows, current.node)) {
+        if (options.space_inside_empty_brackets == 0 && ParentKind(rows, previous.node) == diag.Type) {
+            return options.space_inside_type_brackets;
+        }
+        return options.space_inside_empty_brackets;
+    }
+    if (left == tk.OpenBrace && right == tk.CloseBrace && ParentOf(rows, previous.node) == ParentOf(rows, current.node) && previous.brace) {
+        return options.space_inside_empty_record_braces;
+    }
+    if (left == tk.OpenParen) { return SpacingParen(rows, previous.node, options); }
+    if (right == tk.CloseParen) { return SpacingParen(rows, current.node, options); }
+    if (left == tk.OpenBracket) { return SpacingBracket(rows, previous.node, options); }
+    if (right == tk.CloseBracket) { return SpacingBracket(rows, current.node, options); }
+    if ((left == tk.OpenBrace && previous.brace) || (right == tk.CloseBrace && current.brace)) {
+        return options.space_inside_record_braces;
+    }
+    return 0;
+}
+
+SpacingColon :: (rows: diag.Node[], node: int, before: bool, options: Options) -> int {
+    owner := ParentKind(rows, node);
+    if (owner == diag.ConstantDeclaration && IsConstantColon(rows, node)) {
+        return options.space_around_declaration_separator;
+    }
+    if (owner == diag.StructField || owner == diag.MapEntry) {
+        if (before) { return options.space_before_field_colon; }
+        return options.space_after_field_colon;
+    }
+    if (owner == diag.NamedArgument || owner == diag.TypedArgument) {
+        if (before) { return options.space_before_named_argument_colon; }
+        return options.space_after_named_argument_colon;
+    }
+    if (owner == diag.SwitchArm || owner == diag.LabelStatement) {
+        if (before) { return options.space_before_case_colon; }
+        return options.space_after_case_colon;
+    }
+    if (owner == diag.Parameter || owner == diag.LocalDeclaration || owner == diag.ConstantDeclaration ||
+        owner == diag.RecordField || owner == diag.ComponentField || owner == diag.MapType) {
+        if (before) { return options.space_before_type_colon; }
+        return options.space_after_type_colon;
+    }
+    return 0;
+}
+
+SpacingUnary :: (rows: diag.Node[], node: int) -> bool {
+    owner := ParentKind(rows, node);
+    kind := KindOf(rows, node);
+    return (owner == diag.UnaryExpression && (kind == tk.Not || kind == tk.NotKeyword || kind == tk.Add || kind == tk.Sub || kind == tk.Complement)) ||
+           (kind == tk.And && (owner == diag.AddressExpression || owner == diag.ForStatement)) ||
+           (kind == tk.Xor && owner == diag.PointerType);
+}
+
+SpacingPostfix :: (rows: diag.Node[], node: int) -> bool {
+    owner := ParentKind(rows, node);
+    kind := KindOf(rows, node);
+    return (kind == tk.Question && owner == diag.Type) ||
+           (kind == tk.OpenBracket && owner == diag.IndexExpression);
+}
+
+SpacingOperator :: (rows: diag.Node[], node: int, options: Options) -> int {
+    owner := ParentKind(rows, node);
+    kind := KindOf(rows, node);
+    if (owner == diag.Assignment || owner == diag.LocalDeclaration || owner == diag.TypedArgument) {
+        if (AssignOperator(kind)) { return options.space_assignment; }
+    }
+    if (kind == tk.Ellipsis || kind == tk.HalfOpenRange) { return options.space_range; }
+    if (owner == diag.NotIn || owner == diag.IsExpression) {
+        if (kind == tk.NotKeyword || kind == tk.In || kind == tk.Is) { return options.space_comparison; }
+    }
+    if (owner != diag.BinaryExpression && !(owner == diag.UnionType && kind == tk.Or)) { return 0; }
+    if (kind == tk.Mul || kind == tk.Quo || kind == tk.Mod) {
+        if (options.space_multiplicative != 0) { return options.space_multiplicative; }
+        if (options.operator_spacing == 1) { return 1; }
+        if (options.operator_spacing == 2) { return 4; }
+        return 0;
+    }
+    mode := 0;
+    if (kind == tk.Add || kind == tk.Sub) { mode = options.space_additive; }
+    else if (kind == tk.CmpEq || kind == tk.NotEq || kind == tk.Lt || kind == tk.Gt || kind == tk.LtEq || kind == tk.GtEq || kind == tk.As || kind == tk.In) {
+        mode = options.space_comparison;
+    } else if (kind == tk.CmpAnd || kind == tk.CmpOr || kind == tk.AndKeyword || kind == tk.OrKeyword || kind == tk.Coalesce) {
+        mode = options.space_logical;
+    } else if (kind == tk.And || kind == tk.Or || kind == tk.Xor || kind == tk.Shl || kind == tk.Shr) {
+        mode = options.space_bitwise;
+    } else { return 0; }
+    if (mode == 0 && options.operator_spacing == 2) { return 4; }
+    return mode;
+}
+
+// Constant work per gap: kinds, immediate parents and at most one grandparent.
+// No strings or tables are built here; the token layout loop calls this once.
+// -1 means the existing layout owns the gap. Explicit policies override it,
+// subject to separators needed to preserve the original lexical token stream.
+StyleSpaces :: (rows: diag.Node[], previous: Token, current: Token, options: Options) -> int {
+    right := KindOf(rows, current.node);
+    right_owner := ParentKind(rows, current.node);
+    // These postfix forms are selected by source adjacency in the parser.
+    // A style cannot detach them and turn dereference into xor, unwrap into a
+    // separate negation, or optional member access into unrelated tokens.
+    if ((right == tk.Xor && right_owner == diag.DereferenceExpression) ||
+        (right == tk.Not && right_owner == diag.ForceUnwrapExpression) ||
+        (right == tk.Question && right_owner == diag.OptionalMemberExpression)) { return 0; }
+    mode := SpacingInterior(rows, previous, current, options);
+    left := KindOf(rows, previous.node);
+    if (mode == 0 && right == tk.Comma) { mode = options.space_before_comma; }
+    if (mode == 0 && left == tk.Comma) { mode = options.space_after_comma; }
+    if (mode == 0 && right == tk.Colon) { mode = SpacingColon(rows, current.node, true, options); }
+    if (mode == 0 && left == tk.Colon) { mode = SpacingColon(rows, previous.node, false, options); }
+    if (mode == 0 && (left == tk.ArrowRight || left == tk.FatArrow || right == tk.ArrowRight || right == tk.FatArrow)) {
+        mode = options.space_around_arrows;
+    }
+    if (mode == 0 && right == tk.OpenParen) {
+        if (SpacingControlParen(rows, current.node)) { mode = options.space_before_control_parens; }
+        else if (ParentKind(rows, current.node) == diag.ParameterList) { mode = options.space_before_declaration_parens; }
+        else if (ParentKind(rows, current.node) == diag.ArgumentList) { mode = options.space_before_call_parens; }
+    }
+    if (mode == 0 && SpacingUnary(rows, previous.node)) { mode = options.space_after_unary; }
+    if (mode == 0 && SpacingPostfix(rows, current.node)) { mode = options.space_before_postfix; }
+    if (mode == 0 && (left == tk.ColonColon || right == tk.ColonColon)) { mode = options.space_around_declaration_separator; }
+    if (mode == 0) { mode = SpacingOperator(rows, previous.node, options); }
+    if (mode == 0) { mode = SpacingOperator(rows, current.node, options); }
+    count := SpacingCount(mode, rows, previous, current);
+    if (count == 0 && right == tk.Xor && right_owner == diag.BinaryExpression) { return 1; }
+    if (count == 0 && SpacingRequiresGap(left, right)) { return 1; }
+    return count;
+}

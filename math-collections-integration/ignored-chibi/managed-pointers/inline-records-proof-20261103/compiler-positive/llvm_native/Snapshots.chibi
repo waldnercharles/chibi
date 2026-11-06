@@ -1,0 +1,205 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Shape indices belong to one image. A migration compares labels and follows
+// edges while mapping old/new indices; no local ordinal is a persistent ID.
+pub SnapshotShapeNode :: struct {
+    kind: int;
+    type: int;
+    extra: int;
+    first: int;
+    count: int;
+}
+pub SnapshotShapeEdge :: struct { name: string; target: int; }
+pub SnapshotShapes :: struct {
+    nodes: SnapshotShapeNode[];
+    edges: SnapshotShapeEdge[];
+    // One node index per retained state, or -1 for the existing scalar,
+    // standalone string and primitive-array contracts.
+    roots: int[];
+}
+pub SnapshotScalar: int : 0;
+pub SnapshotArray: int : 1;
+pub SnapshotRecord: int : 2;
+pub SnapshotUnion: int : 3;
+pub SnapshotVariant: int : 4;
+
+SnapshotSpan :: (first: int, count: int, size: int) -> bool {
+    return first >= 0 && count >= 0 && first <= size && count <= size - first;
+}
+// This graph describes the already validated native layout. Variant nodes
+// group the flattened union payload fields without adding runtime storage.
+pub SnapshotShapesValid :: (records: Record[], fields: int[], labels: string[], states: Instruction[],
+                            shapes: SnapshotShapes) -> string {
+    if (!RecordLayout(records, fields)) { return "snapshot shapes require a validated value layout"; }
+    if (length(shapes.roots) != length(states)) { return "snapshot roots differ from retained state"; }
+    if (length(labels) != length(fields)) { return "snapshot labels differ from the value layout"; }
+    layout := ValueLayouts(records, fields);
+    for (edge in shapes.edges) {
+        if (!Index(edge.target, length(shapes.nodes))) { return "snapshot edge has no target node"; }
+    }
+    // Each edge belongs to exactly one node. Besides defining the graph's
+    // storage, this bounds validation of shared variants to O(nodes + edges).
+    first_edge := 0;
+    for (node in shapes.nodes) {
+        if (!SnapshotSpan(node.first, node.count, length(shapes.edges))) { return "snapshot node has no edge span"; }
+        if (node.count == 0) { continue; }
+        if (node.first != first_edge) { return "snapshot edges differ from node spans"; }
+        first_edge += node.count;
+    }
+    if (first_edge != length(shapes.edges)) { return "snapshot edges differ from node spans"; }
+    aggregate_types := resize([false], MapType);
+    for (node in shapes.nodes) {
+        if (node.kind == SnapshotScalar) {
+            if (node.first != 0 || node.count != 0 ||
+                (abi.ScalarType(node.type) == "" && node.type != abi.TextStorage) ||
+                (node.extra != abi.ValueTag(node.type) &&
+                 (node.extra != RetainedCharTag || node.type != abi.IntStorage))) {
+                return "snapshot scalar differs from its storage";
+            }
+            continue;
+        }
+        if (node.extra != 0) { return "snapshot aggregate has scalar metadata"; }
+        if (node.kind == SnapshotVariant) {
+            if (node.type != 0) { return "snapshot variants have no independent storage"; }
+            for (at in node.first..<node.first + node.count) {
+                child := shapes.nodes[shapes.edges[at].target];
+                if (child.kind == SnapshotVariant || shapes.edges[at].name == "") {
+                    return "snapshot variant fields need names and value types";
+                }
+            }
+            continue;
+        }
+        if (node.kind == SnapshotArray) {
+            element := ElementType(records, node.type);
+            if (element == 0 || !ValueValid(layout, element) || node.count != 1 ||
+                shapes.edges[node.first].name != "" ||
+                shapes.nodes[shapes.edges[node.first].target].type != element) {
+                return "snapshot array differs from its element type";
+            }
+            if (aggregate_types[node.type]) { return "snapshot aggregate type has more than one shape"; }
+            aggregate_types[node.type] = true;
+            continue;
+        }
+        if (node.kind != SnapshotRecord && node.kind != SnapshotUnion) {
+            return "snapshot node has an unknown kind";
+        }
+        if (node.type < RecordType || node.type >= ArrayType ||
+            !Index(node.type - RecordType, length(records)) || !ValueValid(layout, node.type)) {
+            return "snapshot record has no supported value layout";
+        }
+        if (aggregate_types[node.type]) { return "snapshot aggregate type has more than one shape"; }
+        aggregate_types[node.type] = true;
+        record := records[node.type - RecordType];
+        if (node.kind == SnapshotRecord) {
+            if (node.count != record.count) { return "snapshot fields differ from their record"; }
+            for (field in 0..<node.count) {
+                edge := shapes.edges[node.first + field];
+                child := shapes.nodes[edge.target];
+                if (edge.name == "" || child.kind == SnapshotVariant || child.type != fields[record.first + field] ||
+                    edge.name != labels[record.first + field]) {
+                    return "snapshot fields differ from their record";
+                }
+            }
+        } else {
+            if (node.count == 0 || fields[record.first] != abi.IntStorage) {
+                return "snapshot union has no tag or variants";
+            }
+            field := record.first + 1;
+            for (at in node.first..<node.first + node.count) {
+                edge := shapes.edges[at];
+                variant := shapes.nodes[edge.target];
+                if (edge.name == "" || variant.kind != SnapshotVariant) {
+                    return "snapshot union has an invalid variant";
+                }
+                if (!SnapshotSpan(variant.first, variant.count, length(shapes.edges)) ||
+                    variant.count > record.first + record.count - field) {
+                    return "snapshot union payload differs from its storage";
+                }
+                for (part in variant.first..<variant.first + variant.count) {
+                    payload := shapes.edges[part];
+                    child := shapes.nodes[payload.target];
+                    if (child.kind == SnapshotVariant || child.type != fields[field] || payload.name != labels[field]) {
+                        return "snapshot union payload differs from its storage";
+                    }
+                    field += 1;
+                }
+            }
+            if (field != record.first + record.count) { return "snapshot union payload differs from its storage"; }
+        }
+    }
+    for (root, index in shapes.roots) {
+        if (root == -1) {
+            type := states[index].type;
+            if (abi.ScalarType(type) == "" && type != abi.TextStorage && !StateArray(type)) {
+                return "snapshot root is required for its retained value";
+            }
+            continue;
+        }
+        if (!Index(root, length(shapes.nodes)) || shapes.nodes[root].kind == SnapshotVariant ||
+            shapes.nodes[root].type != states[index].type) {
+            return "snapshot root differs from its retained value";
+        }
+        node := shapes.nodes[root];
+        initial := states[index];
+        if (node.kind == SnapshotScalar && node.extra == RetainedCharTag && initial.left == 0 &&
+            (initial.literal < 0 || initial.literal > 1114111 ||
+             (initial.literal >= 55296 && initial.literal <= 57343))) {
+            return "snapshot character initial value is not a Unicode scalar";
+        }
+    }
+    return "";
+}
+
+// The complete graph is emitted once per image. Roots carry only a node index;
+// native type ordinals never appear in this migration ABI. Edge order pins the
+// opaque layout, including union variant order and flattened payload storage.
+SnapshotTables :: (shapes: SnapshotShapes) -> string {
+    if (length(shapes.nodes) == 0) { return ""; }
+    nodes: string[] = [];
+    for (node in shapes.nodes) {
+        nodes.append(format_text("%chibi.snapshot.node {{ i32 {}, i32 {}, i32 {}, i32 {} }", node.kind, node.extra, node.first, node.count));
+    }
+    out := [format_text("\n@chibi_snapshot.nodes = private constant [{} x %chibi.snapshot.node] [{}]\n", length(nodes), strings.Join(nodes, ", "))];
+    edges: string[] = [];
+    for (edge, index in shapes.edges) {
+        label := "null";
+        if (edge.name != "") {
+            label = format_text("@chibi_snapshot.label.{}", index);
+            out.append(format_text("{} = private unnamed_addr constant [{} x i8] c\"{}\"\n", label, strings.ByteLength(edge.name), Escaped(edge.name)));
+        }
+        edges.append(format_text("%chibi.snapshot.edge {{ ptr {}, i32 {}, i32 {} }", label, strings.ByteLength(edge.name), edge.target));
+    }
+    out.append(format_text("@chibi_snapshot.edges = private constant [{} x %chibi.snapshot.edge] [{}]\n", length(edges), strings.Join(edges, ", ")));
+    for (root, index in shapes.roots) {
+        if (root < 0) { continue; }
+        out.append(format_text("@chibi_snapshot.shape.{} = private constant %chibi.snapshot.shape {{ i32 2, i32 {}, i32 {}, i32 {}, ptr @chibi_snapshot.nodes, ptr @chibi_snapshot.edges }\n",
+                               index, root, length(nodes), length(edges)));
+    }
+    return strings.Join(out, "");
+}
+
+// This backend fragment uses the module's existing record types, typed array
+// allocation/drop helpers and scalar copy/retain/free runtime. Sources remain
+// mapped, destinations remain owned, and work is drained inside one transaction.
+// No managed-pointer heap, foreign resource or task handle crosses this ABI.
+// Guarded fragments require an owned context and managed callback adapters;
+// raw five-pointer consumers keep the default false.
+pub EmitSnapshotRuntime :: (records: Record[], fields: int[], labels: string[], states: Instruction[],
+                            shapes: SnapshotShapes, guarded: bool = false) -> Result {
+    error := SnapshotShapesValid(records, fields, labels, states, shapes);
+    if (error != "") { return Result.Rejected(-1, error); }
+    return Result.Emitted(strings.Concatenate([SnapshotMemoRuntime(guarded), SnapshotQueueRuntime(guarded), SnapshotSchemaRuntime(),
+        SnapshotValuesModule(records, fields, shapes, states, guarded), SnapshotTransactionRuntime(guarded), SnapshotTables(shapes)]));
+}
+
+SnapshotViews :: (roots: int[]) -> string {
+    out: string[] = [];
+    for (root, index in roots) {
+        if (root < 0) { continue; }
+        out.append(format_text("@chibi_snapshot.view.{} = private constant %chibi.snapshot.view {{ ptr @{}, ptr @chibi_snapshot.shape.{} }\n", index, StateSymbol(index), index));
+    }
+    return strings.Join(out, "");
+}

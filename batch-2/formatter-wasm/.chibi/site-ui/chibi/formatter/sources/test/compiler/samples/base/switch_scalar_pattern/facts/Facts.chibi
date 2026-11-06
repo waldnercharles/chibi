@@ -1,0 +1,5 @@
+package facts
+U :: union { A | B }
+One :: (n: int) -> int { switch n { case .A: return 1; } return 0; }
+
+// error: 3:42: an integer switch's arms need values

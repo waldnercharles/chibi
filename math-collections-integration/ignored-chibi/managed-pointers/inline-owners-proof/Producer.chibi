@@ -1,0 +1,1683 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import abi "project:native_abi"
+import cases "fixtures:cases"
+import snapshot "project:source_snapshot"
+import routes "project:package_routes"
+import strings "core:strings"
+import os "core:os"
+
+KindField: int : 0;
+TypeField: int : 1;
+ValueField: int : 2;
+CountField: int : 3;
+LiteralField: int : 4;
+StartField: int : 5;
+EndField: int : 6;
+LineField: int : 7;
+ColumnField: int : 8;
+NameField: int : 9;
+TextField: int : 10;
+
+Edit :: struct { row: int; field: int; value: i64; from: int; text: string; }
+Changed :: (row: int, field: int, value: i64) -> Edit {
+    return {row: row, field: field, value: value, from: -1, text: ""};
+}
+Copied :: (row: int, field: int, from: int) -> Edit {
+    return {row: row, field: field, value: 0, from: from, text: ""};
+}
+Named :: (row: int, field: int, text: string) -> Edit {
+    return {row: row, field: field, value: 0, from: -1, text: text};
+}
+NumberField :: (row: facts.Row, field: int) -> i64 {
+    switch field {
+        case KindField: return i64(row.kind);
+        case TypeField: return i64(row.type);
+        case ValueField: return i64(row.value);
+        case CountField: return i64(row.count);
+        case LiteralField: return row.literal;
+        case StartField: return i64(row.start);
+        case EndField: return i64(row.end);
+        case LineField: return i64(row.line);
+        case ColumnField: return i64(row.column);
+    }
+    assert(false, "unknown numeric row field");
+    return 0;
+}
+ChangedRows :: (rows: facts.Row[], edits: Edit[]) -> facts.Row[] {
+    output := rows;
+    for edit in edits {
+        row := output[edit.row];
+        value := edit.value;
+        text := edit.text;
+        if edit.from >= 0 {
+            from := output[edit.from];
+            if edit.field == NameField { text = from.name; }
+            else if edit.field == TextField { text = from.text; }
+            else { value = NumberField(from, edit.field); }
+        }
+        switch edit.field {
+            case KindField: row.kind = int(value);
+            case TypeField: row.type = int(value);
+            case ValueField: row.value = int(value);
+            case CountField: row.count = int(value);
+            case LiteralField: row.literal = value;
+            case StartField: row.start = int(value);
+            case EndField: row.end = int(value);
+            case LineField: row.line = int(value);
+            case ColumnField: row.column = int(value);
+            case NameField: row.name = text;
+            case TextField: row.text = text;
+            case: assert(false, "unknown row field");
+        }
+        output[edit.row] = row;
+    }
+    return output;
+}
+ValidateRows :: (rows: facts.Row[], expected: string) {
+    actual := scalar.Validate(rows);
+    if actual != expected {
+        os.Print(format_text("Validate: expected '{}', received '{}'", expected, actual));
+        os.Print(rows[0].text);
+    }
+    assert(actual == expected, "real producer validation diagnostic");
+    bytes := scalar.EmitBytesFor(abi.LinuxX64(), rows);
+    assert((length(bytes) != 0) == (expected == ""), "malformed rows emit no LLVM");
+}
+RejectChanged :: (rows: facts.Row[], edits: Edit[], expected: string) {
+    changed := ChangedRows(rows, edits);
+    ValidateRows(changed, expected);
+}
+ExpectKinds :: (rows: facts.Row[], kinds: int[]) {
+    assert(length(rows) == length(kinds), "producer row count");
+    for index in 0..<length(kinds) {
+        assert(rows[index].kind == kinds[index], "producer row kinds");
+    }
+}
+Produced :: (source: string) -> facts.Row[] {
+    // The rows must retain their source after the collector and this temporary
+    // heap string leave scope, while later calls create different projections.
+    owned := strings.Concatenate([source, ""]);
+    return compiler.CollectScalar("/project", "Scalar.chibi", owned, TargetFacts(), Names(), Natives(), Ports(), Identities());
+}
+IR :: (rows: facts.Row[]) -> string {
+    switch scalar.EmitFor(abi.LinuxX64(), rows) {
+        case .Emitted(text): return text;
+        case .Invalid(message): os.Print(message);
+        case .Rejected(rejected): os.Print(rejected[length(rejected) - 1].text);
+    }
+    assert(false, "valid producer rows emit LLVM");
+    return "";
+}
+
+BasicFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Pick(7, true); }\nPick :: (x: int, b: bool) -> int { return x; }\n"; }
+GenericFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return int(Named(0.25) * 100) + int(Inline(0.5) * 100); }\nNamed :: (sample: number) -> number { return Remap(sample, Gain); }\nInline :: (sample: number) -> number { return Remap(sample, (value: number) => value * 3); }\nRemap :: (sample: $T, transform: fn(value: T) -> T) -> T { return transform(value: sample); }\nGain :: (input: number) -> number { return input * 2; }\n"; }
+GenericIntegerFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Named(25) + Inline(50); }\nNamed :: (sample: int) -> int { return Remap(sample, Gain); }\nInline :: (sample: int) -> int { return Remap(sample, (value: int) => value * 3); }\nRemap :: (sample: $T, transform: fn(value: T) -> T) -> T { return transform(value: sample); }\nGain :: (input: int) -> int { return input * 2; }\n"; }
+
+Main :: () -> int {
+    BoundedDeclarationConstructors();
+    InferredGenericAddressCompiles();
+    InlineGcRecordsKeepStructuralIdentity();
+    basic := Produced(BasicFixtureSource());
+    specialized := Produced(GenericFixtureSource());
+    specialized_integer := Produced(GenericIntegerFixtureSource());
+    guards := GuardsRows();
+    arithmetic := ArithmeticRows();
+    widths := WidthsRows();
+    control := ControlRows();
+    loops := LoopsRows();
+    switches := SwitchesRows();
+    records := RecordsRows();
+    unions := UnionsRows();
+    string_rows := StringsRows();
+    text := TextRows();
+    formats := FormatsRows();
+    assertions := AssertsRows();
+    GenericShape(specialized);
+    ValidateRows(specialized, "");
+    GenericShape(specialized_integer);
+    ValidateRows(specialized_integer, "");
+    assert(cases.Value(specialized_integer) == 200);
+    WidthShape(widths);
+    LoopShape(loops);
+    SwitchShape(switches);
+    RecordShape(records);
+    UnionShape(unions);
+    StringShape(string_rows);
+    TextShape(text);
+    FormatShape(formats);
+    AssertShape(assertions);
+    assert(guards[0].text == GuardsFixtureSource() && arithmetic[0].text == ArithmeticFixtureSource());
+    assert(length(basic) == 12 && basic[0].name == "Scalar.chibi" && basic[0].text == BasicFixtureSource());
+    assert(basic[1].name == "project:Scalar.chibi" && basic[2].name == "Main");
+    assert(basic[6].name == "Pick" && basic[6].value == 1 && basic[6].count == 2 && basic[7].name == "Pick");
+    base_ir := IR(basic);
+    assert(strings.Contains(base_ir, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1)"));
+    assert(strings.Contains(base_ir, "call i32 @chibi_scalar.1(i32 %c3_0, i1 %c3_1)"));
+    ImportedPackages();
+    CollectionPackages();
+    ScopedPackages();
+    ScopedParameterModes();
+    LocatedPackages();
+    SourceBoundaries();
+    LibraryContracts();
+    RetainedLibraryRows();
+    CollectionProjection();
+    TextArgumentsProjection();
+    CallArgumentsProjection();
+    ForeignVoidProjection();
+    ArrayEditsProjection();
+    ArrayResizeProjection();
+    ArrayPlacesProjection();
+    ForeignPlacesProjection();
+    InlineArrayPlacesProjection();
+    MapForeignPlacesProjection();
+    NestedMapsProjection();
+    NestedMapPlacesProjection();
+    DeepMapPlacesProjection();
+    DeepMapPlacesGrowth();
+    MapArrayPlacesProjection();
+    RecordElementPlacesProjection();
+    IndexedForeignLoansProjection();
+    IndexedFieldReplacementProjection();
+    SynchronousProjection();
+    Corpus();
+    os.Print("PASS real producer rows, 169 malformed variants, packages and library contracts");
+    return 0;
+}
+
+TargetFacts :: () -> compiler.Target {
+    return {pointer_storage: 9, pointer_size: 8, value_size: 48, payload_offset: 8, arguments_offset: 168, results_offset: 208, delta_seconds_offset: 344, error_status_offset: 496, type_offset: 0, container_offset: 16, name_offset: 24, record_offset: 32, schema_offset: 40, count_offset: 24, items_offset: 32, data_offset: 40, stride_offset: 48, map_count_offset: 96, data_failure: 4, argument_failure: 7, assert_failure: 3};
+}
+Names :: () -> string[] {
+    return ["CONSTANT", "VARIABLE", "DELTA", "ARGUMENT", "LOCAL", "PRESENT", "TYPE_NAME", "OWNER", "WORLD", "CONTEXT", "STORAGE_NAME", "ARRAY", "QUERY_VARIABLE", "QUERY", "HOST_SLOT", "HOST_SERVICE", "COMMAND_SERVICE", "COMMAND_RESULT", "OWN_NAME", "COPY_STRING", "COPY_ARRAY", "INTERN_STRING", "STRING_EQUAL", "STATE_SELECT", "RANDOM", "ADD", "SUB", "MUL", "DIV", "MOD", "NEG", "ABS", "MIN", "MAX", "CONVERT", "CAST", "FLAGS", "LT", "LE", "GT", "GE", "EQ", "NE", "SELECT", "BIT_AND", "BIT_OR", "BIT_XOR", "BIT_NOT", "SHL", "SHR", "SIN", "COS", "TAN", "ASIN", "ACOS", "ATAN", "EXP", "LOG", "LOG10", "FRACT", "SIGN", "SQRT", "FLOOR", "CEIL", "ROUND", "POW", "ATAN2", "MOD_F32", "MOD_F64", "HYPOT", "FMA", "RANDOM_RANGE", "ENTITY", "COMPONENT", "COMPONENT_READ", "COLUMN", "COLUMN_TRY", "ROW", "INDEX", "LOAD", "READ", "RETRIGGER", "STORE", "STORE_VALUE", "RESULT", "SAVE", "RESULT_PRESENT", "RESULT_TYPE_NAME", "RESULT_ARRAY", "STORE_HEADER", "STORE_TYPE_NAME", "REQUIRE", "ASSERT", "WRITE", "COMPONENT_WRITE", "COMMAND_ARGUMENT", "COMMAND_OUTPUT", "COMMAND", "COMMAND_BEGIN", "HOST_CALL", "INVOKE", "SUSPEND", "DELAY", "POINT", "WATCH_BEGIN", "WATCH_RESET", "WATCH_VALUE", "WATCH_PRESENT", "WATCH_END", "TRACE", "CHECK", "CALL_CHECK", "ENTER", "LEAVE", "FAIL", "JUMP", "BRANCH", "RETURN", "SOURCE_POINT", "SOURCE_WATCH", "END"];
+}
+Natives :: () -> compiler.Native[] {
+    natives: compiler.Native[] = [
+        {name: "format_text", first: 0, parameters: 2, results: 1, variadic: true, effects: 0},
+        {name: "text_equal", first: 3, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "text_byte_length", first: 6, parameters: 1, results: 1, variadic: false, effects: 0},
+        {name: "text_byte_at", first: 8, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "text_slice", first: 11, parameters: 3, results: 1, variadic: false, effects: 0},
+        {name: "text_bytes", first: 15, parameters: 1, results: 1, variadic: false, effects: 0},
+        {name: "text_from_bytes", first: 17, parameters: 1, results: 1, variadic: false, effects: 0},
+        {name: "make_array", first: 19, parameters: 1, results: 1, variadic: true, effects: 0},
+        {name: "get", first: 21, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "length", first: 24, parameters: 1, results: 1, variadic: false, effects: 0},
+        {name: "last_index", first: 26, parameters: 1, results: 1, variadic: false, effects: 0},
+        {name: "is_empty", first: 28, parameters: 1, results: 1, variadic: false, effects: 0},
+        {name: "is_not_empty", first: 30, parameters: 1, results: 1, variadic: false, effects: 0},
+        {name: "is_valid_index", first: 32, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "contains", first: 35, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "find", first: 38, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "identical", first: 41, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "append", first: 44, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "add_unique", first: 47, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "extend", first: 50, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "set_array_elem", first: 53, parameters: 3, results: 1, variadic: false, effects: 0},
+        {name: "insert", first: 57, parameters: 3, results: 1, variadic: false, effects: 0},
+        {name: "remove_index", first: 61, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "remove_item", first: 64, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "clear", first: 67, parameters: 1, results: 1, variadic: false, effects: 0},
+        {name: "reverse", first: 69, parameters: 1, results: 1, variadic: false, effects: 0},
+        {name: "swap", first: 71, parameters: 3, results: 1, variadic: false, effects: 0},
+        {name: "resize", first: 75, parameters: 2, results: 1, variadic: false, effects: 0},
+        {name: "slice", first: 78, parameters: 3, results: 1, variadic: false, effects: 0}];
+    natives.append(compiler.ClockNative(82));
+    return natives;
+}
+Ports :: () -> compiler.Port[] {
+    ports: compiler.Port[] = [
+        {name: "Format", storage: 13, container: 0, c_string: false},
+        {name: "Arg0", storage: -2, container: 0, c_string: false},
+        {name: "Result", storage: 13, container: 0, c_string: false},
+        {name: "A", storage: 13, container: 0, c_string: false},
+        {name: "B", storage: 13, container: 0, c_string: false},
+        {name: "Result", storage: 1, container: 0, c_string: false},
+        {name: "Value", storage: 13, container: 0, c_string: false},
+        {name: "Result", storage: 6, container: 0, c_string: false},
+        {name: "Value", storage: 13, container: 0, c_string: false},
+        {name: "Index", storage: 6, container: 0, c_string: false},
+        {name: "Result", storage: 6, container: 0, c_string: false},
+        {name: "Value", storage: 13, container: 0, c_string: false},
+        {name: "Start", storage: 6, container: 0, c_string: false},
+        {name: "Count", storage: 6, container: 0, c_string: false},
+        {name: "Result", storage: 13, container: 0, c_string: false},
+        {name: "Value", storage: 13, container: 0, c_string: false},
+        {name: "Result", storage: 6, container: 1, c_string: false},
+        {name: "Value", storage: 3, container: 1, c_string: false},
+        {name: "Result", storage: 13, container: 0, c_string: false},
+        {name: "Item", storage: 0, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Index", storage: 6, container: 0, c_string: false},
+        {name: "Item", storage: 0, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Return Value", storage: 6, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Return Value", storage: 6, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Return Value", storage: 1, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Return Value", storage: 1, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Index", storage: 6, container: 0, c_string: false},
+        {name: "Return Value", storage: 1, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Item", storage: 0, container: 0, c_string: false},
+        {name: "Return Value", storage: 1, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Item", storage: 0, container: 0, c_string: false},
+        {name: "Return Value", storage: 6, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Other Array", storage: 0, container: 1, c_string: false},
+        {name: "Return Value", storage: 1, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Item", storage: 0, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Item", storage: 0, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Other Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Index", storage: 6, container: 0, c_string: false},
+        {name: "Item", storage: 0, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Index", storage: 6, container: 0, c_string: false},
+        {name: "Item", storage: 0, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Index", storage: 6, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Item", storage: 0, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Index", storage: 6, container: 0, c_string: false},
+        {name: "Other Index", storage: 6, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Index", storage: 6, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false},
+        {name: "Start", storage: 6, container: 0, c_string: false},
+        {name: "Count", storage: 6, container: 0, c_string: false},
+        {name: "Array", storage: 0, container: 1, c_string: false}];
+    ports.extend(compiler.ClockPorts());
+    return ports;
+}
+Identities :: () -> u64[] {
+    identities: u64[] = [11766263161483317927, 2488592934114488867, 2253635698253073560, 11057670614599135794, 9751228472515978090, 16063057558298538155, 17242165570387488779, 12343909921556459566, 17083074289450012770, 11058014659850463058, 1683859838082548203, 16323488948382029418, 15680545488861091003, 14978592308995963343, 9113434692769582988, 8037792630547010653, 13611205187560399313, 10638780766524331685, 10031281214538873543, 1735822044663649134, 15392606041591830683, 11066679205679020166, 10131322737650309994, 15414655797093623996, 16727144441193224855, 18228655335702815964, 11519237158948198813, 12683951222676053239, 3978275859795887710, 11207095763882145786, 18085313995829699436, 9831978027814488209, 10923784612712179670, 11995748752281115979, 894073180469776815, 12020582806594392361, 8687968834157511617, 5202673955853050573, 10791124252785537111, 6355047652462506736, 4384905729313988471, 1689742810370084998, 8746412179663267998, 9532592444179578723, 17840489223285925927, 3344540524658882812, 11088276214961122186, 12439002207807125795, 4051959292006589208, 14769181098350522785, 11477201415349259395, 9106826123795849081, 13246221053306855936, 2849139430666010867, 14634955569547237247, 1163729563572031444, 9047479961286963383, 99454087654202719];
+    identities.extend([compiler.ClockNativeID, compiler.ClockNativeABI]);
+    return identities;
+}
+
+
+// Named producer row positions for the exact fixture shapes.
+GuardCallee: int : 7;
+GuardRow: int : 10;
+GuardCondition: int : 11;
+GuardCompare: int : 13;
+GuardArm: int : 14;
+GuardArmRead: int : 15;
+GuardEnd: int : 17;
+GuardFinal: int : 18;
+GuardIdRead: int : 23;
+ControlX: int : 10;
+ControlXValue: int : 11;
+ControlIf: int : 12;
+ControlLogical: int : 16;
+ControlNot: int : 20;
+ControlY: int : 21;
+ControlAssign: int : 23;
+ControlElse: int : 27;
+ControlElseRead: int : 29;
+ControlEnd: int : 30;
+ControlFinal: int : 31;
+ControlFinalRead: int : 32;
+LoopFor: int : 10;
+LoopFirst: int : 11;
+LoopLast: int : 12;
+LoopGuard: int : 13;
+LoopBreak: int : 17;
+LoopAdd: int : 19;
+LoopForEnd: int : 23;
+LoopWhile: int : 24;
+LoopTrue: int : 25;
+LoopCountRead: int : 34;
+LoopContinue: int : 41;
+LoopWhileEnd: int : 43;
+SwitchFunction: int : 6;
+SwitchRow: int : 8;
+SwitchValue: int : 9;
+SwitchFirst: int : 10;
+SwitchFirstValue: int : 11;
+SwitchFirstReturn: int : 12;
+SwitchDefault: int : 14;
+SwitchLast: int : 19;
+SwitchLastReturn: int : 21;
+SwitchLastValue: int : 22;
+SwitchEnd: int : 23;
+RecordDeclaration: int : 2;
+RecordX: int : 3;
+RecordY: int : 4;
+RecordLocal: int : 6;
+RecordAssign: int : 9;
+RecordCompoundField: int : 12;
+RecordCompoundUpdate: int : 15;
+RecordRead: int : 17;
+RecordField: int : 18;
+RecordMake: int : 19;
+RecordZero: int : 22;
+RecordYUpdate: int : 24;
+UnionDeclaration: int : 2;
+UnionDot: int : 3;
+UnionBox: int : 4;
+UnionW: int : 5;
+UnionH: int : 6;
+UnionMain: int : 7;
+UnionLocal: int : 8;
+UnionIsTag: int : 13;
+UnionIsVariant: int : 14;
+UnionDotReturn: int : 17;
+UnionSwitch: int : 19;
+UnionSwitchTag: int : 21;
+UnionDotArm: int : 22;
+UnionDotVariant: int : 23;
+UnionBoxArm: int : 26;
+UnionWLocal: int : 27;
+UnionWPayload: int : 29;
+UnionHLocal: int : 30;
+UnionHPayload: int : 32;
+UnionMake: int : 41;
+StringLocal: int : 3;
+StringArgument: int : 4;
+StringRead: int : 7;
+StringLiteral: int : 8;
+StringCompare: int : 9;
+StringZero: int : 11;
+StringName: int : 15;
+StringParameter: int : 16;
+StringParameterRead: int : 18;
+TextSource: int : 4;
+TextStart: int : 5;
+TextSlice: int : 7;
+TextLength: int : 10;
+TextIndex: int : 12;
+TextByte: int : 13;
+FormatFormat: int : 4;
+FormatInt: int : 5;
+FormatText: int : 8;
+AssertStatement: int : 5;
+AssertCompare: int : 8;
+ArithmeticSecondRead: int : 12;
+ArithmeticAdd: int : 13;
+ArithmeticNegate: int : 14;
+ArithmeticLastRead: int : 15;
+WidthWidened: int : 6;
+WidthRead: int : 10;
+WidthWrapped: int : 11;
+WidthShiftCount: int : 12;
+WidthShift: int : 13;
+
+
+// Real producer fixtures and all 169 malformed variants ported from the C
+// scalar producer tests. Each variant changes the collected rows, never a
+// separately invented representation fixture.
+
+GuardsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Pick(1, 2); }\nPick :: (a: int, b: int) -> int {\n    if (a < b) { return Id(a); }\n    return b;\n}\nId :: (x: int) -> int { return x; }\n"; }
+GuardsRows :: () -> facts.Row[] {
+    rows := Produced(GuardsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.LiteralRow, facts.CallRow, facts.FunctionRow, facts.ParameterRow, facts.ParameterRow, facts.IfRow, facts.ReadRow, facts.ReadRow, facts.CompareRow, facts.ReturnRow, facts.ReadRow, facts.CallRow, facts.EndRow, facts.ReturnRow, facts.ReadRow, facts.FunctionRow, facts.ParameterRow, facts.ReturnRow, facts.ReadRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(10, CountField, 0)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(18, KindField, 9)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(17, KindField, 16)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(7, CountField, 2147483647)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(13, ValueField, 0)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(13, ValueField, 7)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(13, CountField, 1)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(13, TypeField, 1)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(12, KindField, 6), Changed(12, TypeField, 2), Changed(12, ValueField, 0), Changed(12, LiteralField, 1)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(11, KindField, 6), Changed(11, TypeField, 2), Changed(12, KindField, 6), Changed(12, TypeField, 2), Changed(12, ValueField, 0)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(13, KindField, 7), Changed(13, TypeField, 1), Changed(13, CountField, 0)], "scalar condition is not one bool");
+    RejectChanged(rows, [Changed(10, TypeField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(14, EndField, 18)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(11, StartField, 15), Copied(11, EndField, 15), Copied(11, LineField, 15), Copied(11, ColumnField, 15)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(18, StartField, 10), Copied(18, LineField, 10), Copied(18, ColumnField, 10)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(17, EndField, 18)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(15, ValueField, 2)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(18, KindField, 15), Changed(18, TypeField, 1), Changed(18, ValueField, 1)], "scalar function can end without returning");
+    RejectChanged(rows, [Changed(23, KindField, 8), Changed(23, ValueField, 0), Named(23, NameField, "Other")], "scalar call differs from its callee's signature");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+ArithmeticFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Calc(3, 4); }\nCalc :: (a: int, b: int) -> int { return -(a + b) * ~b; }\n"; }
+ArithmeticRows :: () -> facts.Row[] {
+    rows := Produced(ArithmeticFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.LiteralRow, facts.CallRow, facts.FunctionRow, facts.ParameterRow, facts.ParameterRow, facts.ReturnRow, facts.ReadRow, facts.ReadRow, facts.ArithmeticRow, facts.UnaryRow, facts.ReadRow, facts.UnaryRow, facts.ArithmeticRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(13, ValueField, 0)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(13, ValueField, 11)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(13, CountField, 1)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(13, TypeField, 2)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(14, ValueField, 0)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(14, ValueField, 3)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(14, CountField, 2)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(12, KindField, 6), Changed(12, TypeField, 2), Changed(12, ValueField, 0), Changed(12, LiteralField, 1)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(15, KindField, 6), Changed(15, TypeField, 2), Changed(15, ValueField, 0)], "scalar arithmetic differs from its number operands");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+WidthsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return int(Low(298)); }\nLow :: (x: int) -> u8 { return u8(wrap: x) << 1; }\n"; }
+WidthsRows :: () -> facts.Row[] {
+    rows := Produced(WidthsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.CallRow, facts.ConvertRow, facts.FunctionRow, facts.ParameterRow, facts.ReturnRow, facts.ReadRow, facts.ConvertRow, facts.LiteralRow, facts.ArithmeticRow]);
+    ValidateRows(rows, "");
+    // Mode 2 is now CheckedChar; the old C fixture predates that admission.
+    RejectChanged(rows, [Changed(6, ValueField, 3)], "scalar conversion is not one the runtime implements");
+    RejectChanged(rows, [Changed(6, CountField, 2)], "scalar conversion is not one the runtime implements");
+    RejectChanged(rows, [Changed(11, TypeField, 2)], "scalar conversion is not one the runtime implements");
+    RejectChanged(rows, [Changed(10, KindField, 6), Changed(10, TypeField, 2), Changed(10, ValueField, 0)], "scalar conversion is not one the runtime implements");
+    RejectChanged(rows, [Changed(12, LiteralField, 256)], "noncanonical scalar literal");
+    RejectChanged(rows, [Changed(12, LiteralField, -1)], "noncanonical scalar literal");
+    RejectChanged(rows, [Changed(10, LiteralField, 1)], "invalid scalar operand row");
+    RejectChanged(rows, [Changed(12, TypeField, 1)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(13, ValueField, 11)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(6, TypeField, 4)], "scalar return differs from its function's result");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+ControlFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Pick(1, 2); }\nPick :: (a: int, b: int) -> int {\n    x := a;\n    if (a < b && !(b < 0)) {\n        y := b;\n        x += y;\n    } else {\n        return b;\n    }\n    return x;\n}\n"; }
+ControlRows :: () -> facts.Row[] {
+    rows := Produced(ControlFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.LiteralRow, facts.CallRow, facts.FunctionRow, facts.ParameterRow, facts.ParameterRow, facts.LocalRow, facts.ReadRow, facts.IfRow, facts.ReadRow, facts.ReadRow, facts.CompareRow, facts.LogicalRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.UnaryRow, facts.LocalRow, facts.ReadRow, facts.AssignRow, facts.ReadRow, facts.ReadRow, facts.ArithmeticRow, facts.ElseRow, facts.ReturnRow, facts.ReadRow, facts.EndRow, facts.ReturnRow, facts.ReadRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(16, CountField, 0)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(16, CountField, 5)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(16, CountField, 1)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(16, CountField, 2147483647)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(16, ValueField, i64(facts.LogicalCoalesce + 1))], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(16, TypeField, 1)], "scalar logic differs from its bool operands");
+    RejectChanged(rows, [Changed(20, TypeField, 1)], "scalar arithmetic differs from its number operands");
+    RejectChanged(rows, [Changed(11, ValueField, 2)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(32, ValueField, 3)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(29, ValueField, 3)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(10, ValueField, 3)], "invalid scalar local row");
+    RejectChanged(rows, [Named(10, NameField, "")], "invalid scalar local row");
+    RejectChanged(rows, [Changed(10, TypeField, 0)], "invalid scalar local row");
+    RejectChanged(rows, [Changed(23, ValueField, 5)], "scalar assignment differs from its variable");
+    RejectChanged(rows, [Changed(23, TypeField, 2)], "scalar assignment differs from its variable");
+    RejectChanged(rows, [Changed(30, KindField, 16)], "invalid scalar module layout");
+    RejectChanged(rows, [Copied(27, EndField, 31)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(30, StartField, 27), Copied(30, LineField, 27), Copied(30, ColumnField, 27)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(31, KindField, 15), Changed(31, TypeField, 1), Changed(31, ValueField, 2)], "scalar function can end without returning");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+LoopsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Sum(3); }\nSum :: (n: int) -> int {\n    total := 0;\n    for (i in 0..<n) {\n        if (i == 1) { break; }\n        total += i;\n    }\n    while (true) {\n        if (total > 1) { return total; }\n        total += 1;\n        if (total < 0) { continue; }\n    }\n}\n"; }
+LoopsRows :: () -> facts.Row[] {
+    rows := Produced(LoopsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.CallRow, facts.FunctionRow, facts.ParameterRow, facts.LocalRow, facts.LiteralRow, facts.ForRow, facts.LiteralRow, facts.ReadRow, facts.IfRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.BreakRow, facts.EndRow, facts.AssignRow, facts.ReadRow, facts.ReadRow, facts.ArithmeticRow, facts.EndRow, facts.WhileRow, facts.LiteralRow, facts.IfRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.ReturnRow, facts.ReadRow, facts.EndRow, facts.AssignRow, facts.ReadRow, facts.LiteralRow, facts.ArithmeticRow, facts.IfRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.ContinueRow, facts.EndRow, facts.EndRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(41, KindField, 21)], "scalar function can end without returning");
+    RejectChanged(rows, [Changed(25, LiteralField, 0)], "scalar function can end without returning");
+    RejectChanged(rows, [Changed(24, KindField, 9)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(17, CountField, 1)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(17, TypeField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(41, ValueField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(25, TypeField, 1)], "scalar condition is not one bool");
+    RejectChanged(rows, [Changed(11, TypeField, 2)], "scalar range differs from its int bounds");
+    RejectChanged(rows, [Changed(10, ValueField, 5)], "invalid scalar local row");
+    RejectChanged(rows, [Changed(10, TypeField, 2)], "invalid scalar local row");
+    RejectChanged(rows, [Changed(10, LiteralField, 8)], "invalid scalar local row");
+    RejectChanged(rows, [Named(10, NameField, "")], "invalid scalar local row");
+    RejectChanged(rows, [Changed(19, ValueField, 2)], "scalar assignment differs from its variable");
+    RejectChanged(rows, [Changed(12, ValueField, 2)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(34, ValueField, 2)], "scalar read differs from its variable");
+    RejectChanged(rows, [Copied(23, EndField, 43)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(13, StartField, 12), Copied(13, LineField, 12), Copied(13, ColumnField, 12)], "invalid scalar statement row");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+SwitchesFixtureSource :: () -> string { return "package scalar\nMain :: () -> int { return Pick(2); }\nPick :: (x: int) -> int {\n    switch x {\n        case 1: return 10;\n        case: y := x; return y;\n        case 2: return 20;\n    }\n}\n"; }
+SwitchesRows :: () -> facts.Row[] {
+    rows := Produced(SwitchesFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.ReturnRow, facts.LiteralRow, facts.CallRow, facts.FunctionRow, facts.ParameterRow, facts.SwitchRow, facts.ReadRow, facts.CaseRow, facts.LiteralRow, facts.ReturnRow, facts.LiteralRow, facts.CaseRow, facts.LocalRow, facts.ReadRow, facts.ReturnRow, facts.ReadRow, facts.CaseRow, facts.LiteralRow, facts.ReturnRow, facts.LiteralRow, facts.EndRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(10, KindField, 5)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(8, KindField, 9)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(10, CountField, 0), Changed(11, KindField, 24), Changed(11, LiteralField, 0)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(8, TypeField, 2)], "scalar switch value is not one integer");
+    RejectChanged(rows, [Changed(8, TypeField, 10)], "scalar switch value is not one integer");
+    RejectChanged(rows, [Changed(8, TypeField, 8)], "scalar switch value is not one integer");
+    RejectChanged(rows, [Changed(10, TypeField, 4)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(11, TypeField, 2)], "scalar case value differs from its switch value");
+    RejectChanged(rows, [Changed(19, ValueField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Named(19, NameField, "x")], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(19, EndField, 6)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(12, StartField, 11), Copied(12, LineField, 11), Copied(12, ColumnField, 11)], "invalid scalar statement row");
+    RejectChanged(rows, [Copied(23, EndField, 6)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(22, KindField, 7), Changed(22, ValueField, 1), Changed(22, LiteralField, 0)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(21, KindField, 15), Changed(21, TypeField, 1), Changed(21, ValueField, 0)], "scalar function can end without returning");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+RecordsFixtureSource :: () -> string { return "package scalar\nPoint :: struct { x: int; y: number; }\nMain :: () -> int { p := Make(3); p.x += 1; return p.x; }\nMake :: (x: int) -> Point { return {y: 0.5, x: x}; }\n"; }
+RecordsRows :: () -> facts.Row[] {
+    rows := Produced(RecordsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.RecordRow, facts.MemberRow, facts.MemberRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.CallRow, facts.AssignRow, facts.ReadRow, facts.ReadRow, facts.FieldRow, facts.LiteralRow, facts.ArithmeticRow, facts.UpdateRow, facts.ReturnRow, facts.ReadRow, facts.FieldRow, facts.FunctionRow, facts.ParameterRow, facts.ReturnRow, facts.ZeroRow, facts.LiteralRow, facts.UpdateRow, facts.ReadRow, facts.UpdateRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(2, CountField, 3)], "invalid scalar record member row");
+    RejectChanged(rows, [Changed(2, CountField, 2147483647)], "invalid scalar record row");
+    RejectChanged(rows, [Named(2, NameField, "")], "invalid scalar record row");
+    RejectChanged(rows, [Changed(2, TypeField, 1)], "invalid scalar record row");
+    RejectChanged(rows, [Changed(2, ValueField, -1)], "invalid scalar record row");
+    RejectChanged(rows, [Changed(2, ValueField, i64(facts.ZeroArrayGrowth + 1))], "invalid scalar record row");
+    RejectChanged(rows, [Changed(4, TypeField, 32)], "invalid scalar record row");
+    RejectChanged(rows, [Changed(4, TypeField, 12)], "scalar field write differs from its record");
+    RejectChanged(rows, [Changed(3, ValueField, 1)], "invalid scalar record member row");
+    RejectChanged(rows, [Named(4, NameField, "x")], "invalid scalar record member row");
+    RejectChanged(rows, [Copied(4, EndField, 19)], "invalid scalar record member row");
+    RejectChanged(rows, [Changed(19, TypeField, 33)], "scalar call differs from its callee's signature");
+    RejectChanged(rows, [Changed(6, TypeField, 1)], "scalar value differs from its variable");
+    RejectChanged(rows, [Changed(9, TypeField, 1)], "scalar assignment differs from its variable");
+    RejectChanged(rows, [Changed(17, TypeField, 1)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(22, TypeField, 1)], "scalar record zero names no record");
+    RejectChanged(rows, [Changed(18, ValueField, 1)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(18, ValueField, 2)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(18, TypeField, 10)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(18, CountField, 2)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(12, ValueField, -1)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(24, ValueField, 0)], "scalar field write differs from its record");
+    RejectChanged(rows, [Changed(15, ValueField, 1)], "scalar field write differs from its record");
+    RejectChanged(rows, [Changed(15, TypeField, 1)], "scalar field write differs from its record");
+    RejectChanged(rows, [Changed(15, CountField, 1)], "scalar field write differs from its record");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+UnionsFixtureSource :: () -> string { return "package scalar\nShape :: union { Dot | Box(w: int, h: number) }\nMain :: () -> int {\n    s := Make(3);\n    if (s is .Dot) { return 0; }\n    switch s { case .Dot: return 1; case .Box(w, h): return w; }\n}\nMake :: (w: int) -> Shape { return Shape.Box(w, 0.5); }\n"; }
+UnionsRows :: () -> facts.Row[] {
+    rows := Produced(UnionsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.UnionRow, facts.VariantRow, facts.VariantRow, facts.MemberRow, facts.MemberRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.CallRow, facts.IfRow, facts.ReadRow, facts.TagRow, facts.LiteralRow, facts.CompareRow, facts.ReturnRow, facts.LiteralRow, facts.EndRow, facts.SwitchRow, facts.ReadRow, facts.TagRow, facts.CaseRow, facts.LiteralRow, facts.ReturnRow, facts.LiteralRow, facts.CaseRow, facts.LocalRow, facts.ReadRow, facts.PayloadRow, facts.LocalRow, facts.ReadRow, facts.PayloadRow, facts.ReturnRow, facts.ReadRow, facts.EndRow, facts.FunctionRow, facts.ParameterRow, facts.ReturnRow, facts.ReadRow, facts.LiteralRow, facts.MakeRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(2, CountField, 3)], "invalid scalar union row");
+    RejectChanged(rows, [Named(2, NameField, "")], "invalid scalar union row");
+    RejectChanged(rows, [Changed(2, TypeField, 1)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(2, ValueField, 1)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(4, ValueField, 0)], "invalid scalar union variant row");
+    RejectChanged(rows, [Named(4, NameField, "Dot")], "invalid scalar union variant row");
+    RejectChanged(rows, [Copied(4, EndField, 7)], "invalid scalar union variant row");
+    RejectChanged(rows, [Changed(4, CountField, 1)], "invalid scalar module layout");
+    RejectChanged(rows, [Changed(3, CountField, 2147483647)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(4, CountField, 2147483647)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(2, CountField, 2147483647)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(6, ValueField, 0)], "invalid scalar union member row");
+    RejectChanged(rows, [Changed(6, TypeField, 32)], "invalid scalar union row");
+    RejectChanged(rows, [Changed(6, TypeField, 12)], "scalar payload read differs from its union");
+    RejectChanged(rows, [Named(6, NameField, "w")], "invalid scalar union member row");
+    RejectChanged(rows, [Copied(6, EndField, 7)], "invalid scalar union member row");
+    RejectChanged(rows, [Changed(41, ValueField, 0)], "scalar variant differs from its union");
+    RejectChanged(rows, [Changed(41, CountField, 1)], "scalar variant differs from its union");
+    RejectChanged(rows, [Changed(41, TypeField, 1)], "scalar variant differs from its union");
+    RejectChanged(rows, [Changed(13, TypeField, 2)], "scalar tag reads no union");
+    RejectChanged(rows, [Changed(13, CountField, 2)], "scalar tag reads no union");
+    RejectChanged(rows, [Changed(13, ValueField, 1)], "scalar tag reads no union");
+    RejectChanged(rows, [Changed(32, ValueField, 0)], "scalar payload read differs from its union");
+    RejectChanged(rows, [Changed(32, ValueField, 2)], "scalar payload read differs from its union");
+    RejectChanged(rows, [Changed(29, TypeField, 10)], "scalar payload read differs from its union");
+    RejectChanged(rows, [Changed(17, KindField, 27), Changed(17, TypeField, 32)], "scalar record zero names no record");
+    RejectChanged(rows, [Changed(13, KindField, 29)], "scalar field read differs from its record");
+    RejectChanged(rows, [Changed(14, TypeField, 2), Changed(14, LiteralField, 0)], "scalar comparison differs from its operands");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+StringsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int {\n    s := Name(\"one\");\n    if (s != \"one\") { return 0; }\n    return 1;\n}\nName :: (n: string) -> string { return n; }\n"; }
+StringsRows :: () -> facts.Row[] {
+    rows := Produced(StringsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.CallRow, facts.IfRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.ReturnRow, facts.LiteralRow, facts.EndRow, facts.ReturnRow, facts.LiteralRow, facts.FunctionRow, facts.ParameterRow, facts.ReturnRow, facts.ReadRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Named(11, TextField, "x")], "invalid scalar operand row");
+    RejectChanged(rows, [Named(7, TextField, "one")], "invalid scalar operand row");
+    RejectChanged(rows, [Changed(8, LiteralField, 1)], "noncanonical scalar literal");
+    RejectChanged(rows, [Changed(9, ValueField, 1)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(9, ValueField, 4)], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(8, TypeField, 1), Named(8, TextField, "")], "scalar comparison differs from its operands");
+    RejectChanged(rows, [Changed(3, TypeField, 1)], "scalar value differs from its variable");
+    RejectChanged(rows, [Changed(18, TypeField, 2)], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(16, TypeField, 1)], "scalar call argument differs from its parameter");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+TextFixtureSource :: () -> string { return "package scalar\nMain :: () -> int {\n    s := text_slice(\"abcd\", 1, 2);\n    return text_byte_length(s) + text_byte_at(s, 0);\n}\n"; }
+TextRows :: () -> facts.Row[] {
+    rows := Produced(TextFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.LiteralRow, facts.LiteralRow, facts.TextRow, facts.ReturnRow, facts.ReadRow, facts.TextRow, facts.ReadRow, facts.LiteralRow, facts.TextRow, facts.ArithmeticRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(7, ValueField, 0)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(7, ValueField, 5)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(7, CountField, 2)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(7, TypeField, 1)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(10, TypeField, 12)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Named(10, NameField, "x")], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(13, ValueField, 1)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(13, ValueField, 3), Changed(13, CountField, 3)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(5, TypeField, 2)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(12, TypeField, 8)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(4, TypeField, 1), Named(4, TextField, "")], "scalar text read differs from its operands");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+FormatsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int {\n    s := format_text(\"{}{}{}\", i64(7), true, \"x\");\n    return text_byte_length(s);\n}\n"; }
+FormatsRows :: () -> facts.Row[] {
+    rows := Produced(FormatsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.LiteralRow, facts.LiteralRow, facts.LiteralRow, facts.TextRow, facts.ReturnRow, facts.ReadRow, facts.TextRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(8, CountField, 5)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(8, CountField, 0)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(8, TypeField, 1)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(4, TypeField, 1), Named(4, TextField, "")], "scalar text read differs from its operands");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+AssertsFixtureSource :: () -> string { return "package scalar\nMain :: () -> int {\n    x: int = 1;\n    assert(x < 2, \"x is small\");\n    return x;\n}\n"; }
+AssertsRows :: () -> facts.Row[] {
+    rows := Produced(AssertsFixtureSource());
+    ExpectKinds(rows, [facts.SourceRow, facts.DocumentRow, facts.FunctionRow, facts.LocalRow, facts.LiteralRow, facts.AssertRow, facts.ReadRow, facts.LiteralRow, facts.CompareRow, facts.ReturnRow, facts.ReadRow]);
+    ValidateRows(rows, "");
+    RejectChanged(rows, [Changed(5, TypeField, 2)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(5, ValueField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Named(5, NameField, "x")], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(5, LiteralField, 1)], "invalid scalar statement row");
+    RejectChanged(rows, [Changed(8, KindField, 11), Changed(8, TypeField, 1)], "scalar condition is not one bool");
+    ValidateRows(rows, "");
+    return rows;
+}
+
+
+TypedRows :: (rows: facts.Row[], indices: int[], type: int) {
+    for index in indices { assert(rows[index].type == type, "producer operand storage"); }
+}
+WidthShape :: (rows: facts.Row[]) {
+    indices: int[] = [4, 5, WidthWidened, WidthRead, WidthWrapped, WidthShiftCount, WidthShift];
+    types: int[] = [facts.IntType, facts.ByteType, facts.IntType, facts.IntType, facts.ByteType, facts.ByteType, facts.ByteType];
+    values: int[] = [0, 1, 0, 0, 1, 0, 9];
+    literals: i64[] = [298, 0, 0, 0, 0, 1, 0];
+    for index in 0..<length(indices) {
+        row := rows[indices[index]];
+        assert(row.type == types[index] && row.value == values[index] && row.literal == literals[index]);
+    }
+}
+LoopShape :: (rows: facts.Row[]) {
+    row := rows[LoopFor];
+    assert(row.type == facts.IntType && row.value == 2 && row.count == 2 && row.literal == i64(facts.RangeExclusive));
+    assert(row.name == "i" && rows[LoopTrue].literal == 1);
+}
+SwitchShape :: (rows: facts.Row[]) {
+    indices: int[] = [SwitchRow, SwitchFirst, SwitchDefault, SwitchLast];
+    counts: int[] = [1, 1, 0, 1];
+    for index in 0..<length(indices) {
+        row := rows[indices[index]];
+        assert(row.type == facts.IntType && row.count == counts[index]);
+    }
+    assert(rows[SwitchLastValue].literal == 20);
+}
+RecordShape :: (rows: facts.Row[]) {
+    assert(rows[RecordDeclaration].name == "Point" && rows[RecordDeclaration].count == 2);
+    assert(rows[RecordX].name == "x" && rows[RecordX].type == facts.IntType);
+    assert(rows[RecordY].name == "y" && rows[RecordY].type == facts.FloatType && rows[RecordY].value == 1);
+    TypedRows(rows, [RecordLocal, RecordAssign, RecordRead, RecordMake, RecordZero, RecordYUpdate], facts.RecordType);
+    assert(rows[RecordYUpdate].value == 1 && rows[RecordYUpdate + 2].value == 0);
+    assert(rows[RecordYUpdate - 1].type == facts.FloatType && rows[RecordField].type == facts.IntType);
+}
+UnionShape :: (rows: facts.Row[]) {
+    assert(rows[UnionDeclaration].name == "Shape" && rows[UnionDeclaration].count == 2);
+    assert(rows[UnionDot].name == "Dot" && rows[UnionDot].count == 0);
+    assert(rows[UnionBox].name == "Box" && rows[UnionBox].value == 1 && rows[UnionBox].count == 2);
+    assert(rows[UnionW].name == "w" && rows[UnionW].type == facts.IntType);
+    assert(rows[UnionH].name == "h" && rows[UnionH].type == facts.FloatType && rows[UnionH].value == 1);
+    TypedRows(rows, [UnionLocal, UnionLocal + 2, UnionIsTag - 1, UnionMake], facts.RecordType);
+    assert(rows[UnionMake].value == 1 && rows[UnionMake].count == 2);
+    TypedRows(rows, [UnionIsTag, UnionIsVariant, UnionSwitch, UnionSwitchTag, UnionDotArm, UnionDotVariant,
+                     UnionBoxArm, UnionWLocal], facts.IntType);
+    assert(rows[UnionIsVariant].literal == 0 && rows[UnionDotArm].count == 1 && rows[UnionBoxArm].count == 0);
+    assert(rows[UnionWLocal].name == "w" && rows[UnionHLocal].name == "h");
+    assert(rows[UnionHLocal].type == facts.FloatType && rows[UnionHLocal].value == 2);
+    assert(rows[UnionWPayload].value == 0 && rows[UnionHPayload].value == 1);
+}
+StringShape :: (rows: facts.Row[]) {
+    TypedRows(rows, [StringLocal, StringArgument, StringRead, StringLiteral, StringName,
+                     StringParameter, StringParameterRead], facts.StringType);
+    for index in [StringArgument, StringLiteral] {
+        assert(rows[index].text == "one" && rows[index].literal == 0);
+    }
+    assert(rows[StringCompare].type == facts.BoolType);
+    text := IR(rows);
+    assert(strings.Contains(text, "@chibi_scalar.text.0 = private unnamed_addr constant [4 x i8] c\"one\\00\""));
+    assert(!strings.Contains(text, "@chibi_scalar.text.1"), "equal literals share their emitted bytes");
+    long := ChangedRows(rows, [Named(StringLiteral, TextField, strings.Repeat("a", 40000))]);
+    ValidateRows(long, "");
+}
+TextShape :: (rows: facts.Row[]) {
+    indices: int[] = [TextSlice, TextLength, TextByte];
+    operations: int[] = [facts.TextSlice, facts.TextLength, facts.TextByte];
+    counts: int[] = [3, 1, 2];
+    types: int[] = [facts.StringType, facts.IntType, facts.IntType];
+    for index in 0..<length(indices) {
+        row := rows[indices[index]];
+        assert(row.value == operations[index] && row.count == counts[index] && row.type == types[index]);
+    }
+    assert(rows[TextSource].text == "abcd");
+}
+FormatShape :: (rows: facts.Row[]) {
+    row := rows[FormatText];
+    assert(row.value == facts.TextFormat && row.count == 4 && row.type == facts.StringType);
+    assert(rows[FormatInt].type == facts.Int64Type && rows[FormatFormat].text == "{}{}{}");
+}
+AssertShape :: (rows: facts.Row[]) {
+    call := "assert(x < 2, \"x is small\")";
+    start := strings.Index(AssertsFixtureSource(), call);
+    end := start + strings.ByteLength(call);
+    row := rows[AssertStatement];
+    assert(row.count == 3 && row.type == 0 && row.start == start && row.end == end && row.line == 4 && row.column == 5);
+    text := IR(rows);
+    expected := format_text("@chibi_scalar.failure.0.7 = private unnamed_addr constant { i64, i32, i32 } { i64 0, i32 {}, i32 {} }\n", start, end);
+    assert(strings.Contains(text, expected));
+    assert(strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx) #0 {\n"));
+    assert(strings.Contains(text, "  br i1 %a6, label %p8, label %p7\n"));
+    assert(strings.Contains(text, "p7:\n  %fail7.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 1\n  store ptr @chibi_scalar.failure.0.7, ptr %fail7.at\n  br label %failed\n"));
+    assert(strings.Contains(text, "failed:\n  ret i32 0\n"));
+}
+GenericShape :: (rows: facts.Row[]) {
+    assert(length(rows) > 2 && rows[2].kind == facts.FunctionRow);
+    functions: facts.Row[] = [];
+    for row in rows {
+        if row.kind == facts.FunctionRow {
+            assert(row.literal == 0 && row.count <= 1);
+            functions.append(row);
+        }
+    }
+    assert(length(functions) == 7);
+    calls := 0;
+    for row in rows {
+        if row.kind == facts.CallRow {
+            assert(row.value >= 0 && row.value < length(functions));
+            assert(row.count == functions[row.value].count && row.name == functions[row.value].name);
+            calls += 1;
+        }
+    }
+    assert(calls == 6);
+}
+
+
+PackageRows :: (paths: string[], sources: string[], collections: string[], directories: string[]) -> facts.Row[] {
+    return compiler.CollectScalarPackages("/project", collections, directories, paths, sources, TargetFacts(), Names(),
+                                         Natives(), Ports(), Identities(), 0, 0);
+}
+
+ImportedPackages :: () {
+    paths := ["Main.chibi", "lib/Lib.chibi"];
+    sources := ["package main\nimport lib \"project:lib\"\nMain :: () -> int { return lib.Add(3, lib.Twice(2)) * lib.Limit; }\n", "package lib\npub Limit :: 5;\npub Twice :: (n: int) -> int { return n * 2; }\npub Add :: (a: int, b: int) -> int { return a + b; }\n"];
+    rows := PackageRows(paths, sources, [], []);
+    assert(length(rows) > 2 && rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    assert(rows[2].name == "Main");
+    text := IR(rows);
+    assert(strings.Contains(text, "define internal i32 @chibi_scalar.1("));
+    assert(strings.Contains(text, "define internal i32 @chibi_scalar.2("));
+    assert(strings.Contains(text, "call i32 @chibi_scalar."));
+}
+
+CollectionPackages :: () {
+    paths := ["Main.chibi", "/sdk/core/strings/Strings.chibi"];
+    sources := ["package main\nimport strings \"core:strings\"\nMain :: () -> int { return strings.ByteLength(\"hello\"); }\n", "package strings\npub ByteLength :: (value: string) -> int { return text_byte_length(value); }\n"];
+    rows := PackageRows(paths, sources, ["core"], ["/sdk/core"]);
+    assert(length(rows) > 2 && rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    assert(strings.Contains(IR(rows), "define internal i32 @chibi_scalar.1("));
+}
+
+LocatedPackages :: () {
+    paths := ["Main.chibi", "lib/Lib.chibi"];
+    sources := ["package main\nimport lib \"project:lib\"\nMain :: () -> int { return lib.Add(1, 2); }\n", "package lib\npub Add :: (a: int, b: int) -> int { return a + b; }\npub Table :: struct { m: [int: int]; }\n"];
+    rows := PackageRows(paths, sources, [], []);
+    assert(length(rows) == 2 && rows[1].kind == facts.RejectionRow);
+    joined := rows[0].text;
+    rejected := rows[1];
+    assert(rejected.start > strings.ByteLength(sources[0]) && rejected.end <= strings.ByteLength(joined));
+    assert(strings.Slice(joined, rejected.start, rejected.end - rejected.start) == "m: [int: int];");
+}
+
+ScopedPackages :: () {
+    paths := ["Main.chibi", "lib/Z.chibi", "lib/A.chibi"];
+    sources := ["package main\nimport lib \"project:lib\"\nMain :: () -> int { x: lib.Cursor = {pos: 1}; return lib.Relay(&x); }\n", "package lib\npub Cursor :: struct { pos: int; }\npub Relay :: (c: ^Cursor) -> int { return Step(c); }\n", "package lib\nStep :: (c: ^Cursor) -> int { c.pos += 1; return c.pos; }\n"];
+    rows := PackageRows(paths, sources, [], []);
+    assert(length(rows) > 2 && rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+}
+
+ScopedParameterModes :: () {
+    source := "package aliases\nCounter :: struct { count: int; }\nMain :: () -> int { counter: Counter = {count: 1}; return Change(&counter, &counter); }\nChange :: (reader: ^Counter, writer: ^Counter) -> int { writer.count += 1; return Read(reader); }\nRead :: (value: ^Counter) -> int { return value.count; }\n";
+    rows := Produced(source);
+    ValidateRows(rows, "");
+    parameters := 0;
+    for row in rows {
+        if row.kind != facts.ParameterRow { continue; }
+        if row.name == "writer" { assert(row.literal == i64(facts.ParameterReference)); }
+        else { assert(row.literal == i64(facts.ParameterReadonlyReference)); }
+        parameters += 1;
+    }
+    assert(parameters == 3, "forwarded readonly and writable parameter classifications");
+}
+
+
+LibraryRows :: (source: string) -> facts.Row[] {
+    return compiler.CollectScalar("/project", "libraries/Tools.chibi", source,
+                                  TargetFacts(), Names(), Natives(), Ports(), Identities());
+}
+LibraryContracts :: () {
+    source := "Tools :: library {\n    Add :: (a: int, b: int) -> int { return a + b; }\n    Name :: () -> string { return \"tools\"; }\n}\n";
+    rows := LibraryRows(source);
+    assert(rows[1].kind == facts.DocumentRow && rows[1].text == "Tools");
+    // Independent literal values from the stable C catalog's FNV-1a IDs.
+    ids: i64[] = [8142356760778695737, -4666415818573129415];
+    functions := 0;
+    for row in rows {
+        if row.kind == facts.FunctionRow {
+            assert(functions < 2 && row.literal == ids[functions]);
+            functions += 1;
+        }
+    }
+    assert(functions == 2);
+    sources := ["Tools :: library {\n    Point :: struct { x: int; }\n}\n",
+                "Tools :: library {\n}\n",
+                "Tools :: library {\n    One :: () -> int { return 1; }\n    One :: () -> int { return 2; }\n}\n"];
+    messages := ["a native library holds only functions without attributes",
+                 "scalar proof requires at least one function", "Duplicate declaration 'One'"];
+    for index in 0..<length(sources) {
+        rejected := LibraryRows(sources[index]);
+        assert(length(rejected) == 2 && rejected[1].kind == facts.RejectionRow);
+        assert(rejected[1].text == messages[index]);
+    }
+}
+RetainedLibraryRows :: () {
+    source := "Tools :: library {\n    Frame :: () -> int {\n        count: retain int = 4;\n        count += 1;\n        return count;\n    }\n}\n";
+    rows := LibraryRows(source);
+    assert(length(rows) > 2 && rows[1].kind == facts.DocumentRow);
+    text := IR(rows);
+    assert(strings.Contains(text, "@chibi_scalar.retained.0 = internal global i32 4\n"));
+    assert(strings.Contains(text, "load i32, ptr @chibi_scalar.retained.0"));
+    assert(strings.Contains(text, "store i32 %a"));
+    assert(strings.Contains(text, "c\"Frame.count\\00\""));
+    assert(strings.Contains(text, "@chibi_retained_Tools = constant { i32, i32, ptr, ptr, ptr, ptr } { i32 1, i32 1, "));
+}
+
+
+SourceBoundaries :: () {
+    patterns := Produced("package scalar\nShape :: union { Dot | Box(w: int) }\nMain :: () -> int { s := Shape.Box(1); if (s is .Box(w)) { return w; } return 0; }\n");
+    ValidateRows(patterns, "");
+    RejectedSource("package scalar\nNamed :: union { Tag(items: [int: int]) }\nMain :: () -> int { return 1; }\n", "native map payloads require union ownership support", "items: [int: int]");
+    RejectedSource("package scalar\nWrapped :: union { Of(p: ^int) }\nMain :: () -> int { return 1; }\n", "native pointer payloads require union tracing support", "p: ^int");
+    summary := Produced("package scalar\nPoint :: struct { x: int; }\nMain :: () -> int { p: Point = {x: 1}; return text_byte_length(format_text(\"{}\", p)); }\n");
+    assert(scalar.Validate(summary) == "");
+    switch scalar.EmitProgramFor(abi.LinuxX64(), summary, "") {
+        case .Emitted(text): assert(text != "");
+        case: assert(false, "record summaries lower with a native program context");
+    }
+    RejectedSource("package scalar\nMain :: () -> int { return text_byte_length(format_text(\"{}\", 7)); }\n", "a number needs an integer type here", "7");
+}
+
+RejectedSource :: (source: string, message: string, excerpt: string) {
+    rows := Produced(source);
+    if (length(rows) != 2 || rows[1].kind != facts.RejectionRow) { os.Print(source); }
+    assert(length(rows) == 2 && rows[1].kind == facts.RejectionRow);
+    rejected := rows[1];
+    if (rejected.text != message) {
+        os.Print(format_text("Expected rejection '{}', received '{}'", message, rejected.text));
+        os.Print(source);
+    }
+    assert(rejected.text == message);
+    assert(strings.Slice(source, rejected.start, rejected.end - rejected.start) == excerpt);
+}
+
+CollectionRows :: (source: string, natives: compiler.Native[], ports: compiler.Port[]) -> facts.Row[] {
+    return compiler.CollectScalar("/project", "Main.chibi", strings.Concatenate(["package collections\n", source]), TargetFacts(), Names(), natives, ports, Identities());
+}
+CollectionProjection :: () {
+    source := "Main::()->int{a:int[][]=make_array([int(1)]);return length(a);}";
+    rows := CollectionRows(source, Natives(), Ports());
+    if (rows[1].kind == facts.RejectionRow) { os.Print(rows[1].text); }
+    assert(rows[1].kind == facts.DocumentRow && scalar.Validate(rows) == "");
+    collections := 0;
+    scalar_leaf := false;
+    for (index in 0..<length(rows)) {
+        if (rows[index].kind == facts.RecordRow) {
+            // Unused optional-array declarations must never become wrappers.
+            assert(strings.HasPrefix(rows[index].name, "__collection_") && rows[index].count == 1);
+            member := rows[index + 1];
+            assert(member.kind == facts.MemberRow && member.type >= facts.ArrayType && member.type < facts.MapType);
+            scalar_leaf = scalar_leaf || member.type == facts.ArrayType + facts.IntType;
+            for (earlier in 0..<index) {
+                if (rows[earlier].kind == facts.RecordRow) { assert(rows[earlier].name != rows[index].name); }
+            }
+            collections += 1;
+        }
+    }
+    assert(collections > 0 && scalar_leaf);
+    natives := Natives();
+    ports := Ports();
+    for (index in 0..<length(natives)) {
+        if (natives[index].name == "make_array") {
+            native := natives[index];
+            native.variadic = false;
+            natives[index] = native;
+            argument := ports[native.first];
+            argument.storage = 11;
+            ports[native.first] = argument;
+            result := ports[native.first + 1];
+            result.storage = 13;
+            result.container = 0;
+            ports[native.first + 1] = result;
+        }
+    }
+    rejected := CollectionRows("Main::()->int{x:=make_array(f64(2));return 0;}", natives, ports);
+    assert(rejected[1].kind == facts.RejectionRow);
+    unused := CollectionRows("Main::()->int{return 0;}", natives, ports);
+    assert(unused[1].kind == facts.DocumentRow && scalar.Validate(unused) == "");
+    shadow := CollectionRows("Main::()->int{return make_array(f64(2));}make_array::(value:f64)->int{return int(value);}", natives, ports);
+    assert(shadow[1].kind == facts.DocumentRow && scalar.Validate(shadow) == "");
+    reversed := Produced("package scalar\nMain::()->int{xs:int[]=[1,2];total:=0;for < value,index in xs{total+=value+index;}return total;}\n");
+    ValidateRows(reversed, "");
+    loops := 0;
+    for (row, index in reversed) {
+        if (row.kind != facts.ForRow) { continue; }
+        assert(row.literal == i64(facts.RangeArray + facts.RangeKeyed + facts.RangeReverse));
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeReverse + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeKeyed + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, LiteralField, i64(facts.RangeArray + facts.RangeKeyed + facts.RangeReverse + facts.RangeExclusive))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, ValueField, i64(row.value + 1))], "invalid scalar local row");
+        RejectChanged(reversed, [Changed(index, TypeField, i64(facts.BoolType))], "scalar range differs from its int bounds");
+        loops += 1;
+    }
+    assert(loops == 1);
+    nested := Produced("package scalar\nMain::()->int{xs:int[][]=[[1]];xs[0].append(2);return xs[0][1];}\n");
+    ValidateRows(nested, "");
+    places := 0;
+    for (row, index in nested) {
+        if (row.kind != facts.ArrayRow || row.literal != i64(facts.NestedArrayPlace)) { continue; }
+        assert(row.value == facts.ArrayPush && row.count == 3);
+        RejectChanged(nested, [Changed(index, CountField, 2)], "scalar array operation differs from its operands");
+        RejectChanged(nested, [Changed(index, TypeField, i64(facts.ArrayType + facts.IntType))], "scalar array operation differs from its operands");
+        RejectChanged(nested, [Changed(index - 2, KindField, i64(facts.LiteralRow)),
+            Changed(index - 2, TypeField, i64(facts.BoolType)), Changed(index - 2, ValueField, 0)],
+            "scalar array operation differs from its operands");
+        places += 1;
+    }
+    assert(places == 1);
+}
+
+TextArgumentsProjection :: () {
+    // These exact migrated sources were rejected before text argument parity.
+    for (source in ["package scalar\nMain :: () -> int { return text_byte_length(Value: \"ab\"); }\n",
+                    "package scalar\nMain :: () -> int { if (text_equal(\"a\", \"b\")) { return 1; } return 0; }\n"]) {
+        rows := Produced(source);
+        assert(rows[1].kind == facts.DocumentRow);
+        ValidateRows(rows, "");
+    }
+    slices := ["Value: \"abcd\", Start: 1, Count: 2", "Value: \"abcd\", Count: 2, Start: 1",
+               "Start: 1, Value: \"abcd\", Count: 2", "Count: 2, Value: \"abcd\", Start: 1",
+               "Start: 1, Count: 2, Value: \"abcd\"", "Count: 2, Start: 1, Value: \"abcd\""];
+    for (arguments, order in slices) {
+        rows := Produced(format_text("package scalar\nMain::()->int{return text_byte_length(text_slice({}));}", arguments));
+        assert(rows[1].kind == facts.DocumentRow);
+        ValidateRows(rows, "");
+        found := false;
+        for (row in rows) {
+            if (row.kind == facts.TextRow && row.value == facts.TextSlice) {
+                assert(row.literal == i64(order));
+                found = true;
+            }
+        }
+        assert(found);
+    }
+    rows := TextRows();
+    RejectChanged(rows, [Changed(7, LiteralField, -1)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(7, LiteralField, 6)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(7, LiteralField, 2)], "scalar text read differs from its operands");
+    RejectChanged(rows, [Changed(13, LiteralField, 2)], "scalar text read differs from its operands");
+    accepted := ChangedRows(rows, [Changed(7, LiteralField, 1)]);
+    ValidateRows(accepted, "");
+    formats := FormatsRows();
+    RejectChanged(formats, [Changed(8, LiteralField, 1)], "scalar text read differs from its operands");
+    natives := Natives();
+    ports := Ports();
+    for (native in natives) {
+        if (native.name == "text_slice") {
+            parameter := ports[native.first + 2];
+            parameter.name = "End";
+            ports[native.first + 2] = parameter;
+        }
+    }
+    rejected := CollectionRows("Main::()->int{s:=text_slice(\"abcd\",1,2);return 0;}", natives, ports);
+    assert(rejected[1].kind == facts.RejectionRow);
+    unused := CollectionRows("Main::()->int{return 0;}", natives, ports);
+    assert(unused[1].kind == facts.DocumentRow && scalar.Validate(unused) == "");
+    shadow := CollectionRows("Main::()->int{return text_slice(1);}text_slice::(n:int)->int{return n;}", natives, ports);
+    assert(shadow[1].kind == facts.DocumentRow && scalar.Validate(shadow) == "");
+}
+
+ForeignVoidProjection :: () {
+    rows := Produced("package scalar\nforeign import libc \"system:c\"\nforeign libc {\nresolve::()->rawptr\nnotify::(value:int)\n}\nMain::()->int{p:fn(value:int)=resolve();p(1);notify(2);return 0;}");
+    ValidateRows(rows, "");
+    direct := -1;
+    indirect := -1;
+    for (row, index in rows) {
+        if (row.kind != facts.ForeignRow) { continue; }
+        if (row.value == abi.ForeignDirectVoid) { direct = index; }
+        if (row.value == abi.ForeignIndirectVoid) { indirect = index; }
+    }
+    assert(direct >= 0 && indirect >= 0);
+    mismatch := "scalar foreign call differs from its operands";
+    RejectChanged(rows, [Changed(direct, TypeField, i64(facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(direct, ValueField, 4)], mismatch);
+    RejectChanged(rows, [Named(direct, NameField, "")], mismatch);
+    RejectChanged(rows, [Named(indirect, NameField, "notify")], mismatch);
+    RejectChanged(rows, [Changed(indirect, CountField, 0)], mismatch);
+    RejectChanged(rows, [Changed(indirect, LiteralField, i64(facts.ForeignReversed))], mismatch);
+}
+
+CallArgumentsProjection :: () {
+    rows := Produced("package scalar\nMain :: () -> int { return Apply(Pick); }\nApply :: (op: fn(first: int, second: bool) -> int) -> int { return op(second: true, first: 7); }\nPick :: (x: int, flag: bool) -> int { if flag { return x; } return 0; }\n");
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    swap := -1;
+    for (row, index in rows) {
+        if row.kind == facts.OperandSwapRow { swap = index; }
+    }
+    assert(swap >= 0, "reordered callback arguments exchange existing values");
+    invalid := "scalar operand exchange differs from its evaluation stack";
+    for edit in [Changed(swap, ValueField, -1), Changed(swap, CountField, 0),
+                 Changed(swap, CountField, 1000), Changed(swap, TypeField, i64(facts.IntType)),
+                 Changed(swap, LiteralField, 1), Changed(swap, StartField, -1),
+                 Named(swap, NameField, "bad"), Named(swap, TextField, "bad")] {
+        RejectChanged(rows, [edit], invalid);
+    }
+    // A lazy RHS cannot exchange its own operand with a preceding call argument.
+    lazy := Produced("package scalar\nMain :: () -> int { return Apply(Pick); }\nApply :: (op: fn(first: int, second: bool) -> int) -> int { return op(first: 7, second: true && false); }\nPick :: (x: int, flag: bool) -> int { if flag { return x; } return 0; }\n");
+    ValidateRows(lazy, "");
+    logical := -1;
+    for (row, index in lazy) {
+        if row.kind == facts.LogicalRow { logical = index; }
+    }
+    assert(logical >= 0);
+    RejectChanged(lazy, [Changed(logical + 1, KindField, i64(facts.OperandSwapRow)),
+                        Changed(logical + 1, TypeField, 0), Changed(logical + 1, CountField, 1)], invalid);
+}
+
+SynchronousProjection :: () {
+    source := "package synchronous\nMain :: () -> int { return Apply(One); }\nApply :: (function: fn() -> int) -> int { return function() + Work(); }\nOne :: () -> int { return 1; }\nWork :: () -> int { text := format_text(\"ready\"); return text_byte_length(text); }\n";
+    rows := Produced(source);
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    natives := Natives();
+    for (native, index in natives) {
+        if (native.name == "format_text") {
+            changed := native;
+            // SCRIPT_EFFECT_SUSPEND, a declared runtime capability. The plain
+            // collector must retain it through typed checking and call closure.
+            changed.effects = 16;
+            natives[index] = changed;
+        }
+    }
+    rejected := compiler.CollectScalar("/project", "Facts.chibi", source, TargetFacts(), Names(), natives, Ports(), Identities());
+    assert(length(rejected) == 2 && rejected[1].kind == facts.RejectionRow);
+    assert(rejected[1].text == "Non-escaping callable parameters require synchronous function bodies");
+    assert(rejected[1].line == 3 && rejected[1].column == 1);
+    unused := compiler.CollectScalar("/project", "Facts.chibi", "package synchronous\nMain :: () -> int { return 0; }\n",
+        TargetFacts(), Names(), natives, Ports(), Identities());
+    assert(unused[1].kind == facts.DocumentRow);
+    ValidateRows(unused, "");
+}
+
+ArrayEditOperation :: (rows: facts.Row[], operator: int) -> int {
+    for (row, index in rows) {
+        if (row.kind == facts.ArrayRow && row.value == operator) { return index; }
+    }
+    assert(false, "array edit fixture contains its operation");
+    return -1;
+}
+ArrayEditsProjection :: () {
+    source := "package arrays\nMain::()->int{other:int[]=[9];values:int[]=[1,2];values.insert(0,3);values.reverse();values.set_array_elem(0,4);fresh:=insert(values,0,int(4));replaced:=set_array_elem(fresh,0,int(6));flipped:=reverse(replaced);return length(flipped);}";
+    rows := Produced(source);
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    inserted := ArrayEditOperation(rows, facts.ArrayInsert);
+    reversed := ArrayEditOperation(rows, facts.ArrayReverse);
+    fresh_insert := ArrayEditOperation(rows, facts.ArrayInserted);
+    fresh_reverse := ArrayEditOperation(rows, facts.ArrayReversed);
+    mutable_set := ArrayEditOperation(rows, facts.ArrayReplace);
+    replaced := ArrayEditOperation(rows, facts.ArrayReplaced);
+    mismatch := "scalar array operation differs from its operands";
+    RejectChanged(rows, [Changed(mutable_set, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(mutable_set, CountField, 4)], mismatch);
+    RejectChanged(rows, [Changed(replaced, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(replaced, CountField, 4)], mismatch);
+    RejectChanged(rows, [Changed(mutable_set - 3, ValueField, 0)], mismatch);
+    RejectChanged(rows, [Changed(mutable_set - 2, TypeField, i64(facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(mutable_set - 1, TypeField, i64(facts.BoolType)), Changed(mutable_set - 1, LiteralField, 0)], mismatch);
+    RejectChanged(rows, [Changed(replaced, ValueField, i64(facts.ArrayReplace))], "scalar array change is not the assignment of its array");
+    RejectChanged(rows, [Changed(inserted, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(inserted, CountField, 4)], mismatch);
+    RejectChanged(rows, [Changed(reversed, CountField, 0)], mismatch);
+    RejectChanged(rows, [Changed(reversed, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(fresh_insert, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(fresh_reverse, CountField, 2)], mismatch);
+    // Both arrays are already visible. A valid reference to the wrong root
+    // must not mutate it under an assignment to the original variable.
+    assert(rows[inserted - 3].kind == facts.RefRow && rows[inserted - 3].value == 1);
+    assert(rows[reversed - 1].kind == facts.RefRow && rows[reversed - 1].value == 1);
+    RejectChanged(rows, [Changed(inserted - 3, ValueField, 0)], mismatch);
+    RejectChanged(rows, [Changed(reversed - 1, ValueField, 0)], mismatch);
+    RejectChanged(rows, [Changed(inserted - 2, TypeField, i64(facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(inserted - 1, TypeField, i64(facts.BoolType)), Changed(inserted - 1, LiteralField, 0)], mismatch);
+    RejectChanged(rows, [Changed(inserted - 3, TypeField, i64(facts.StringType))], "scalar reference differs from its variable");
+    RejectChanged(rows, [Changed(fresh_insert, ValueField, i64(facts.ArrayInsert))], "scalar array change is not the assignment of its array");
+    RejectChanged(rows, [Changed(fresh_reverse, ValueField, i64(facts.ArrayReverse))], "scalar array change is not the assignment of its array");
+    bad_field := ChangedRows(rows, [Changed(inserted, LiteralField, 1)]);
+    row := bad_field[inserted];
+    diagnostic := format_text("{} at {}..{} (parent {}, field 0, operator {}): {}", mismatch,
+        row.start, row.end, row.type, row.value, strings.Slice(source, row.start, row.end - row.start));
+    ValidateRows(bad_field, diagnostic);
+    natives := Natives();
+    ports := Ports();
+    for (native in natives) {
+        if (native.name == "insert") {
+            argument := ports[native.first + 1]; argument.name = "Position"; ports[native.first + 1] = argument;
+        }
+    }
+    rejected := CollectionRows("Main::()->int{a:int[]=[1];b:=insert(a,0,int(2));return length(b);}", natives, ports);
+    assert(rejected[1].kind == facts.RejectionRow);
+    unused := CollectionRows("Main::()->int{return 0;}", natives, ports);
+    assert(unused[1].kind == facts.DocumentRow && scalar.Validate(unused) == "");
+    // Methods are ordinary typed place intrinsics. Their labels are checked
+    // against the supplied catalog, independently of a function capability.
+    method := CollectionRows("Main::()->int{a:int[]=[1];a.insert(Position:0,Item:2);return length(a);}", natives, ports);
+    assert(method[1].kind == facts.DocumentRow && scalar.Validate(method) == "");
+    shadow := CollectionRows("Main::()->int{return insert(2);}insert::(n:int)->int{return n;}", natives, ports);
+    assert(shadow[1].kind == facts.DocumentRow && scalar.Validate(shadow) == "");
+
+    removed := Produced("package removed\nMain::()->int{values:int[]=[1,2,1];other:=remove_item(values,int(1));return length(other);}");
+    assert(removed[1].kind == facts.DocumentRow);
+    ValidateRows(removed, "");
+    without := ArrayEditOperation(removed, facts.ArrayWithoutItem);
+    RejectChanged(removed, [Changed(without, CountField, 1)], mismatch);
+    RejectChanged(removed, [Changed(without, CountField, 3)], mismatch);
+    RejectChanged(removed, [Changed(without - 1, TypeField, i64(facts.BoolType))], mismatch);
+    remove_ports := Ports();
+    for (native in natives) {
+        if (native.name == "remove_item") {
+            argument := remove_ports[native.first + 1]; argument.name = "Different"; remove_ports[native.first + 1] = argument;
+        }
+    }
+    bad_remove := CollectionRows("Main::()->int{a:int[]=[1];b:=remove_item(a,int(1));return length(b);}", natives, remove_ports);
+    assert(bad_remove[1].kind == facts.RejectionRow);
+    unused_remove := CollectionRows("Main::()->int{return 0;}", natives, remove_ports);
+    assert(unused_remove[1].kind == facts.DocumentRow && scalar.Validate(unused_remove) == "");
+    shadow_remove := CollectionRows("Main::()->int{return remove_item(2);}remove_item::(n:int)->int{return n;}", natives, remove_ports);
+    assert(shadow_remove[1].kind == facts.DocumentRow && scalar.Validate(shadow_remove) == "");
+}
+
+ArrayPlacesProjection :: () {
+    rows := Produced("package places\nMain::()->int{values:int[]=[1];values[0]=2;return values[0];}");
+    ValidateRows(rows, "");
+    check := ArrayEditOperation(rows, facts.ArrayPlaceCheck);
+    mismatch := "scalar array operation differs from its operands";
+    RejectChanged(rows, [Changed(check, CountField, 1)], mismatch);
+    RejectChanged(rows, [Changed(check, CountField, 3)], mismatch);
+    RejectChanged(rows, [Changed(check, TypeField, i64(facts.IntType))], mismatch);
+    RejectChanged(rows, [Changed(check - 1, TypeField, i64(facts.BoolType))], "scalar read differs from its variable");
+    RejectChanged(rows, [Changed(check, ValueField, i64(facts.ArrayPlaceCheck + 1))], mismatch);
+}
+
+ForeignPlacesProjection :: () {
+    rows := Produced("package places\nforeign import libc \"system:c\"\nforeign libc {memset::(data:u8[],value:i32,count:u64)->rawptr}\nInner::struct{bytes:u8[];}Box::struct{inner:Inner;}Main::()->int{box:Box={inner:{bytes:[u8(65)]}};written:=memset(box.inner.bytes,9,1);return int(box.inner.bytes[0]);}");
+    ValidateRows(rows, "");
+    first := -1;
+    for (row, index in rows) {
+        if (row.kind == facts.FieldReferenceRow) { first = index; break; }
+    }
+    assert(first >= 0 && rows[first + 1].kind == facts.FieldReferenceRow);
+    mismatch := "scalar field reference differs from its record";
+    RejectChanged(rows, [Changed(first, CountField, 0)], mismatch);
+    RejectChanged(rows, [Changed(first, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(first, ValueField, -1)], mismatch);
+    RejectChanged(rows, [Changed(first, ValueField, 2147483647)], mismatch);
+    RejectChanged(rows, [Changed(first, TypeField, i64(facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(first + 1, TypeField, i64(facts.ArrayType + facts.IntType))], mismatch);
+    RejectChanged(rows, [Changed(first, LiteralField, 1)], "invalid scalar operand row");
+    RejectChanged(rows, [Changed(first, TypeField, 0)], "invalid scalar operand row");
+    // A parameter avoids an earlier initializer write masking this leaf-domain check.
+    domain := Produced("package places\nforeign import libc \"system:c\"\nforeign libc {memset::(data:u8[],value:i32,count:u64)->rawptr}\nInner::struct{bytes:u8[];}Box::struct{inner:Inner;}Main::()->int{return 0;}Touch::(box:Box)->int{written:=memset(box.inner.bytes,9,1);return 0;}");
+    member := -1;
+    leaf := -1;
+    for (row, index in domain) {
+        if (row.kind == facts.MemberRow && row.name == "bytes") { member = index; }
+        if (row.kind == facts.FieldReferenceRow) { leaf = index; }
+    }
+    assert(member >= 0 && leaf >= 0);
+    ValidateRows(domain, "");
+    RejectChanged(domain, [Changed(member, TypeField, i64(facts.ViewType)), Changed(leaf, TypeField, i64(facts.ViewType))], mismatch);
+    retained := Produced("package places\nforeign import libc \"system:c\"\nforeign libc {memset::(data:u8[],value:i32,count:u64)->rawptr}\nBox::struct{bytes:u8[];}Main::()->int{box:retain Box={bytes:[u8(65)]};written:=memset(box.bytes,9,1);return 0;}");
+    assert(retained[1].kind == facts.RejectionRow);
+    assert(retained[1].text == "native foreign record buffer needs a writable inline record array field");
+}
+
+InlineArrayPlacesProjection :: () {
+    rows := Produced("package places\nInner::struct{values:int[];}Root::struct{inner:Inner;}Main::()->int{value:Root={inner:{values:[int(1)]}};other:Root={inner:{values:[int(8)]}};value.inner.values.append(3);value.inner.values[0]+=2;return value.inner.values[0];}");
+    ValidateRows(rows, "");
+    change := -1;
+    for (row, index in rows) {
+        if (row.kind == facts.ArrayRow && row.literal == i64(facts.ArrayReferencePlace) && row.value == facts.ArrayPush) { change = index; }
+    }
+    assert(change >= 4 && rows[change - 4].kind == facts.RefRow && rows[change - 4].value == 0);
+    mismatch := "scalar array operation differs from its operands";
+    RejectChanged(rows, [Changed(change, CountField, 1)], mismatch);
+    RejectChanged(rows, [Changed(change, CountField, 3)], mismatch);
+    RejectChanged(rows, [Changed(change, LiteralField, 0)], mismatch);
+    RejectChanged(rows, [Changed(change - 4, ValueField, 1)], mismatch);
+    RejectChanged(rows, [Changed(change - 1, KindField, i64(facts.LiteralRow)), Changed(change - 1, ValueField, 0)], mismatch);
+}
+
+ArrayResizeProjection :: () {
+    rows := Produced("package resize\nItem::struct{x:int;}\nMain::()->int{items:Item[]=[];items.resize(0);nested:int[][]=[];nested.resize(1);return length(items);}");
+    ValidateRows(rows, "");
+    authored := 0;
+    synthetic := 0;
+    for (row in rows) {
+        if (row.kind != facts.RecordRow) { continue; }
+        if (row.name == "Item") { assert(row.value == 0); authored += 1; }
+        else { assert(row.value == facts.ZeroArrayGrowth); synthetic += 1; }
+    }
+    // The ordinary catalog interns other primitive nested collections too.
+    assert(authored == 1 && synthetic > 0);
+}
+
+MapForeignPlacesProjection :: () {
+    rows := Produced("package places\nforeign import libc \"system:c\"\nforeign libc {memset::(data:u8[],value:i32,count:u64)->rawptr}\nMain::()->int{values:[int:u8[]]=[1:[u8(65)]];written:=memset(values[1],9,1);return 0;}");
+    ValidateRows(rows, "");
+    loan := -1;
+    for (row, index in rows) { if (row.kind == facts.MapRow && row.value == facts.MapArrayLoan) { loan = index; } }
+    assert(loan >= 3 && rows[loan - 3].kind == facts.RefRow);
+    mismatch := "scalar map operation differs from its operands";
+    RejectChanged(rows, [Changed(loan, CountField, 2)], mismatch);
+    RejectChanged(rows, [Changed(loan, CountField, 4)], mismatch);
+    RejectChanged(rows, [Changed(loan, LiteralField, 0)], mismatch);
+    RejectChanged(rows, [Changed(loan, TypeField, i64(facts.ArrayType + facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(loan - 2, KindField, i64(facts.RefRow))], mismatch);
+}
+
+MapArrayPlacesProjection :: () {
+    rows := Produced("package places\nMain::()->int{other:[int:int[]]=[1:[8]];values:[int:int[]]=[1:[1]];values[1][0]+=2;return values[1][0];}");
+    ValidateRows(rows, "");
+    change := -1;
+    assignment := -1;
+    for (row, index in rows) {
+        if (row.kind == facts.MapRow && row.value == facts.MapArraySet) { change = index; }
+    }
+    for (row, index in rows) {
+        if (row.kind == facts.AssignRow && index + row.count == change) { assignment = index; }
+    }
+    assert(change >= 0 && assignment >= 0 && rows[assignment + 1].kind == facts.RefRow);
+    mismatch := "scalar map operation differs from its operands";
+    RejectChanged(rows, [Changed(change, CountField, 3)], mismatch);
+    RejectChanged(rows, [Changed(change, CountField, 5)], mismatch);
+    RejectChanged(rows, [Changed(change, TypeField, i64(facts.BoolType))], mismatch);
+    RejectChanged(rows, [Changed(assignment + 1, ValueField, 0)], "scalar map change is not the assignment of its map");
+    previous := ArrayEditOperation(rows, facts.ArrayPlaceGet);
+    RejectChanged(rows, [Changed(previous, CountField, 1)], "scalar array operation differs from its operands");
+    RejectChanged(rows, [Changed(previous, TypeField, i64(facts.BoolType))], "scalar array operation differs from its operands");
+}
+
+RecordElementPlacesProjection :: () {
+    rows := Produced("package places\nEntry::struct{values:int[];}Main::()->int{other:Entry[]=[{values:[8]}];items:Entry[]=[{values:[1]}];flag:=false;items[0].values[0]=3;return items[0].values[0];}");
+    ValidateRows(rows, "");
+    observed := -1;
+    mutated := -1;
+    for (row, index in rows) {
+        if (row.kind != facts.ArrayElementReferenceRow) { continue; }
+        if (row.literal == i64(facts.ArrayElementObserve)) { observed = index; }
+        else { mutated = index; }
+    }
+    assert(observed >= 0 && mutated >= 0);
+    mismatch := "scalar array element reference differs from its record";
+    for target in [observed,mutated] {
+        RejectChanged(rows,[Changed(target,CountField,1)],mismatch);
+        RejectChanged(rows,[Changed(target,CountField,3)],mismatch);
+        RejectChanged(rows,[Changed(target,ValueField,1)],mismatch);
+        RejectChanged(rows,[Changed(target,TypeField,i64(facts.BoolType))],mismatch);
+        RejectChanged(rows,[Changed(target,LiteralField,-1)],mismatch);
+        RejectChanged(rows,[Changed(target,LiteralField,i64(facts.ArrayElementObserve + 1))],mismatch);
+        RejectChanged(rows,[Changed(target,LiteralField,2147483648)],mismatch);
+    }
+    RejectChanged(rows,[Changed(mutated - 1,TypeField,i64(facts.BoolType)),Changed(mutated - 1,ValueField,2)],mismatch);
+    RejectChanged(rows,[Changed(mutated - 2,ValueField,0)],"scalar array element reference is not its canonical mutation");
+    RejectChanged(rows,[Changed(mutated,LiteralField,i64(facts.ArrayElementObserve))],"scalar array observation is not a captured read");
+    RejectChanged(rows,[Changed(observed,LiteralField,i64(facts.ArrayElementUnique))],"scalar array element reference is not its canonical mutation");
+    RejectChanged(rows,[Changed(observed + 1,KindField,i64(facts.CallRow))],"scalar array observation outlives its captured read");
+    // The read result is not itself a writable container, and the failed
+    // public projections must not alter the original owned facts.
+    ValidateRows(rows, "");
+}
+
+IndexedForeignLoansProjection :: () {
+    rows := Produced("package places\nforeign import libc \"system:c\"\nforeign libc{memset::(data:u8[],value:i32,count:u64)->rawptr}\nInner::struct{bytes:u8[];}Entry::struct{inner:Inner;}Main::()->int{rows:Entry[]=[{inner:{bytes:[u8(1)]}}];written:=memset(rows[0].inner.bytes,9,1);return 0;}");
+    ValidateRows(rows, "");
+    selected := -1;
+    for (row,index in rows) {
+        if (row.kind == facts.ArrayElementReferenceRow && row.literal == i64(facts.ArrayElementLoan)) { selected = index; break; }
+    }
+    assert(selected >= 0 && rows[selected + 1].kind == facts.FieldReferenceRow && rows[selected + 2].kind == facts.FieldReferenceRow);
+    mismatch := "scalar array element reference differs from its record";
+    for count in [int(0),2,4] { RejectChanged(rows,[Changed(selected,CountField,i64(count))],mismatch); }
+    RejectChanged(rows,[Changed(selected,ValueField,1)],mismatch);
+    RejectChanged(rows,[Changed(selected,TypeField,i64(facts.BoolType))],mismatch);
+    RejectChanged(rows,[Changed(selected,LiteralField,i64(facts.ArrayElementLoan + 1))],mismatch);
+    RejectChanged(rows,[Changed(selected + 1,KindField,i64(facts.CallRow))],"scalar indexed buffer path is not consumed by one loan");
+    RejectChanged(rows,[Changed(selected + 3,ValueField,i64(facts.ArrayLength))],"scalar indexed buffer path is not consumed by one loan");
+    RejectChanged(rows,[Changed(selected + 3,CountField,2)],"scalar indexed buffer path is not consumed by one loan");
+    ValidateRows(rows, "");
+}
+
+IndexedFieldReplacementProjection :: () {
+    source := "package places\nInner::struct{values:int[];}Entry::struct{inner:Inner;}Main::()->int{other:Entry[]=[{inner:{values:[8]}}];items:Entry[]=[{inner:{values:[1]}}];incoming:int[]=[2];flag:=false;items[0].inner.values=incoming;return items[0].inner.values[0];}";
+    rows := Produced(source);
+    ValidateRows(rows, "");
+    assigned := ArrayEditOperation(rows, facts.ArrayAssign);
+    selected := -1;
+    for (row,index in rows) { if (row.kind == facts.ArrayElementReferenceRow) { selected = index; break; } }
+    assert(selected >= 2 && assigned > selected);
+    mismatch := "scalar array operation differs from its operands";
+    RejectChanged(rows,[Changed(assigned,CountField,1)],"scalar array element reference is not its canonical mutation");
+    RejectChanged(rows,[Changed(assigned,CountField,3)],"scalar array element reference is not its canonical mutation");
+    RejectChanged(rows,[Changed(assigned,TypeField,i64(facts.BoolType))],mismatch);
+    RejectChanged(rows,[Changed(assigned,ValueField,i64(facts.ArrayAssign + 1))],mismatch);
+    RejectChanged(rows,[Changed(assigned - 1,TypeField,i64(facts.BoolType)),Changed(assigned - 1,ValueField,3)],mismatch);
+    RejectChanged(rows,[Changed(assigned,LiteralField,0)],mismatch);
+    RejectChanged(rows,[Changed(assigned,LiteralField,1)],mismatch);
+    RejectChanged(rows,[Changed(selected - 2,ValueField,0)],"scalar array element reference is not its canonical mutation");
+    RejectChanged(rows,[Changed(assigned - 2,ValueField,1)],"scalar array element reference is not its canonical mutation");
+    // The one-field dispatch must use the same canonical path as deep fields.
+    direct := Produced("package places\nEntry::struct{values:int[];}Main::()->int{items:Entry[]=[{values:[1]}];items[0].values=[int(2)];return 0;}");
+    assert(ArrayEditOperation(direct,facts.ArrayAssign) >= 0);
+    ValidateRows(direct, "");
+    ValidateRows(rows, "");
+}
+
+NestedMapsProjection :: () {
+    rows := Produced("package nested_maps\nMain::()->int{groups:[int:[int:int]]=[:];return groups[1][2];}\n");
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    get := -1;
+    for (row, index in rows) {
+        if (row.kind == facts.MapRow && row.value == facts.MapGetWrapped) { get = index; }
+    }
+    assert(get >= 0);
+    // Sequence typing can intern unused carriers too. Mutate the exact
+    // result record of this get, rather than a different unused declaration.
+    member := NestedMapCarrierField(rows, rows[get].type);
+    assert(member >= 0 && rows[member].type >= facts.MapType);
+    mismatch := "scalar map operation differs from its operands";
+    RejectChanged(rows, [Changed(get, TypeField, i64(facts.IntType))], mismatch);
+    RejectChanged(rows, [Changed(get, CountField, 1)], mismatch);
+    RejectChanged(rows, [Changed(get, ValueField, i64(facts.MapGetOptional))], mismatch);
+    RejectChanged(rows, [Changed(member, TypeField, i64(facts.ArrayType + facts.IntType))], mismatch);
+    // A same-shaped carrier cannot change the outer map's key contract.
+    mapped := int(rows[get].literal);
+    wrong_key := mapped - (mapped - facts.MapType) % 16 + facts.BoolType;
+    RejectChanged(rows, [Changed(get, LiteralField, i64(wrong_key))], mismatch);
+}
+
+NestedMapPlacesProjection :: () {
+    rows := Produced("package nested_maps\nMain::()->int{rows:[int:int][]=[[:]];rows[0][1]=2;delete rows[0][1];groups:[int:[int:int]]=[1:[:]];groups[1][2]=3;delete groups[1][2];return 0;}\n");
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    found := 0;
+    mismatch := "scalar map operation differs from its operands";
+    for (row, index in rows) {
+        if (row.kind != facts.MapRow || row.value < facts.ArrayMapSet || row.value > facts.NestedMapDelete) { continue; }
+        found += 1;
+        RejectChanged(rows, [Changed(index, LiteralField, 1)], mismatch);
+        RejectChanged(rows, [Changed(index, CountField, i64(row.count + 1))], mismatch);
+        RejectChanged(rows, [Changed(index, TypeField, i64(facts.IntType))], mismatch);
+        wrong := facts.ArrayMapSet;
+        if (row.value == facts.ArrayMapSet) { wrong = facts.NestedMapSet; }
+        if (row.value == facts.ArrayMapDelete) { wrong = facts.NestedMapDelete; }
+        RejectChanged(rows, [Changed(index, ValueField, i64(wrong))], mismatch);
+    }
+    assert(found == 4);
+}
+
+DeepMapPlacesProjection :: () {
+    rows := Produced("package deep_maps\nMain::()->int{values:[int:[int:[int:int]]]=[1:[2:[:]]];values[1][2][3]=4;delete values[1][2][3];return 0;}\n");
+    assert(rows[1].kind == facts.DocumentRow);
+    ValidateRows(rows, "");
+    found := 0;
+    mismatch := "scalar map operation differs from its operands";
+    for (row, index in rows) {
+        if (row.kind != facts.MapRow || row.value < facts.ArrayMapSet || row.value > facts.NestedMapDelete) { continue; }
+        found += 1;
+        minimum := 3; if (row.value == facts.NestedMapSet) { minimum = 4; }
+        for (count in [int(-2147483647), 0, minimum - 1, row.count - 1, row.count + 1, 2147483647]) {
+            RejectChanged(rows, [Changed(index, CountField, i64(count))], mismatch);
+        }
+        RejectChanged(rows, [Changed(index, LiteralField, 1)], mismatch);
+        RejectChanged(rows, [Changed(index, TypeField, i64(facts.IntType))], mismatch);
+    }
+    assert(found == 2);
+    // A map's authored one-array-field record is not a map carrier. No source
+    // map read precedes this change, so the malformed path reaches this gate.
+    empty := Produced("package deep_maps\nMain::()->int{values:[int:[int:int]]=[:];values[1][2]=3;return 0;}\n");
+    assert(empty[1].kind == facts.DocumentRow);
+    carrier := -1;
+    for (row in empty) { if (row.kind == facts.MapRow && row.value == facts.NestedMapSet) { carrier = (row.type - facts.MapType) / 16; } }
+    field := NestedMapCarrierField(empty, carrier);
+    assert(field >= 0);
+    RejectChanged(empty, [Changed(field, TypeField, i64(facts.ArrayType + facts.IntType))], mismatch);
+}
+
+DeepMapPlacesGrowth :: () {
+    previous := 0;
+    previous_delta := 0;
+    // These fixed depths stay within one field/type-ID digit width. Each
+    // doubled source path must add twice the work, with a small spelling margin.
+    for (depth in [int(4),8,16,32]) {
+        type := "int";
+        literal := "0";
+        keys := "";
+        for (index in 0..<depth) {
+            type = strings.Concatenate(["[int:", type, "]"]);
+            literal = strings.Concatenate(["[1:", literal, "]"]);
+            keys = strings.Concatenate([keys, "[1]"]);
+        }
+        source := strings.Concatenate(["package deep_growth\nMain::()->int{values:", type, "=", literal,
+            ";values", keys, "+=1;return values", keys, ";}\n"]);
+        rows := Produced(source);
+        assert(rows[1].kind == facts.DocumentRow && scalar.Validate(rows) == "");
+        text := IR(rows);
+        projections := 0;
+        for (line in strings.SplitLines(text)) {
+            if (strings.Contains(line, " = call ptr @chibi_map.") && strings.Contains(line, ".reference(")) { projections += 1; }
+        }
+        assert(projections == depth - 1, "one canonical projection per intermediate owner");
+        bytes := strings.ByteLength(text);
+        delta := bytes - previous;
+        if (previous_delta > 0) { assert(delta * 10 < previous_delta * 23, "emitted helper/code growth is linear in depth"); }
+        os.Print(format_text("deep map depth{}: {} bytes, {} canonical projections", depth, bytes, projections));
+        previous_delta = delta; previous = bytes;
+    }
+}
+
+// Interning can leave unused carrier declarations. Always mutate the exact
+// physical carrier named by the operation under test.
+NestedMapCarrierField :: (rows: facts.Row[], wanted: int) -> int {
+    type := facts.RecordType;
+    for (row, index in rows) {
+        if (row.kind != facts.RecordRow && row.kind != facts.UnionRow) { continue; }
+        if (type == wanted) { return index + 1; }
+        type += 1;
+    }
+    return -1;
+}
+
+
+Corpus :: () {
+    count := cases.Count();
+    for index in 0..<count {
+        rows := Produced(cases.Source(index));
+        checked := cases.Check(rows);
+        if checked != 1 { os.Print(format_text("{}: Check returned {}", cases.CaseName(index), checked)); }
+        assert(checked == 1, "real scalar corpus matches its authored source oracle");
+        assert(scalar.Validate(rows) == "");
+        bytes := scalar.EmitBytesFor(abi.LinuxX64(), rows);
+        if rows[1].kind == facts.RejectionRow {
+            assert(length(bytes) == 0);
+            switch scalar.EmitFor(abi.LinuxX64(), rows) {
+                case .Rejected(rejected): assert(length(rejected) == length(rows) && rejected[1].text == rows[1].text);
+                case: assert(false, "rejected corpus source keeps its projection");
+            }
+        } else {
+            assert(length(bytes) > 0);
+        }
+    }
+    os.Print(format_text("PASS all {} real scalar corpus cases, including deep operands", count));
+}
+
+
+DeclarationInput :: (path: string, text: string) -> snapshot.Input {
+    return {path: path, text: text, has_path: true, has_text: true};
+}
+
+// Declare the same address-taking body in separate imported packages. This
+// checks table growth without compiling the bodies or depending on type kinds.
+DeclarationTypeCount :: (count: int) -> int {
+    names := ["p01", "p02", "p03", "p04"];
+    root := "package app\n";
+    for (index in 0..<count) {
+        root = strings.Concatenate([root, "import ", names[index], " \"../", names[index], "\"\n"]);
+    }
+    root = strings.Concatenate([root, "Main :: () -> int { return 0; }\n"]);
+    inputs := [DeclarationInput("app/Main.chibi", root)];
+    for (index in 0..<count) {
+        source := strings.Concatenate(["package ", names[index], "\npub Touch :: () -> int { value: int = 1; pointer := &value; return pointer^; }\n"]);
+        inputs.append(DeclarationInput(strings.Concatenate([names[index], "/Main.chibi"]), source));
+    }
+    sizes: u64[] = [];
+    for (input in inputs) { sizes.append(u64(strings.ByteLength(input.text))); }
+    collections: routes.Collection[] = [];
+    options: snapshot.Options = {project: "/probe", has_project: true, has_options: true,
+        has_files: true, has_collections: false, file_count: length(inputs), collection_count: 0};
+    switch snapshot.Build(options, collections, inputs, sizes) {
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            os.Print(diagnostic.message);
+            assert(false, "declaration growth fixture snapshot is valid");
+        case .Accepted(roots, documents, nodes, imports, built):
+            assert(length(documents) == count + 1 && length(imports) == count);
+            switch built {
+                case .Rejected(error, cycle):
+                    assert(false, "declaration growth fixture graph is valid");
+                case .Accepted(packages, files_of, file_packages, order, edges, links):
+                    assert(length(packages) == count + 1 && length(files_of) == count + 1);
+                    assert(length(file_packages) == count + 1 && length(order) == count + 1);
+                    assert(length(edges) == count && length(links) == count);
+                    for (index in 0..<length(packages)) {
+                        expected := "app";
+                        if (index > 0) { expected = names[index - 1]; }
+                        assert(packages[index].name == expected && packages[index].member_count == 1);
+                        assert(files_of[packages[index].member_start] == index && file_packages[index] == index);
+                    }
+                    switch compiler.Declare(nodes, documents, packages, files_of, order, edges, file_packages[0], imports, links, TargetFacts()) {
+                        case .Failed(diagnostic):
+                            os.Print(diagnostic.message);
+                            assert(false, "declaration growth fixture declares successfully");
+                        case .Declared(callables, params, types, members, constants, active_order, bound, kept):
+                            assert(length(callables) == count + 1 && length(params) == 0);
+                            assert(length(members) == 0 && length(constants) == 0);
+                            assert(length(active_order) == count + 1 && length(bound) == count && length(kept) == count);
+                            declared := resize([false], length(packages));
+                            for (callable in callables) {
+                                package := callable.package;
+                                assert(package >= 0 && package < length(packages) && !declared[package]);
+                                expected := "Touch";
+                                if (package == file_packages[0]) { expected = "Main"; }
+                                assert(callable.name == expected && callable.count == 0);
+                                declared[package] = true;
+                            }
+                            for (package in active_order) { assert(declared[package]); }
+                            return length(types);
+                    }
+            }
+    }
+    return 0;
+}
+
+BoundedDeclarationConstructors :: () {
+    one := DeclarationTypeCount(1);
+    four := DeclarationTypeCount(4);
+    assert(one > 0 && four > 0 && four <= 4 * one, "declaration type constructors grow at most with source package count");
+}
+
+InferredGenericAddressCompiles :: () {
+    paths := ["Main.chibi", "lib/Lib.chibi"];
+    sources := ["package probe\nimport lib \"project:lib\"\n\nMain :: () -> int {\n    original := [int(7)][0..<1];\n    return lib.Read(original);\n}\n",
+                "package lib\n\npub Read :: (value: $T) -> int {\n    pointer := &value;\n    return 77;\n}\n"];
+    collections: string[] = [];
+    // Compilation only: the nonzero ABI stamp is serialized unchanged and
+    // makes no claim about artifact admission or runtime execution.
+    compiled := compiler.Compile("/project", collections, collections, paths, sources, false,
+                                 TargetFacts(), u64(1), Names(), Natives(), Ports(), Identities());
+    assert(compiled.error == nil, "inferred optional generic value has an addressable type");
+    assert(length(compiled.bytes) > 0, "generic address demand emits prepared module bytes");
+}
+
+InlineGcRecordsKeepStructuralIdentity :: () {
+    source := "package probe\nFlat :: struct { value:int; pointer:^int; }\nInline :: struct { values:^int[]; label:string; pointer:^int; }\nMain :: () -> int { number:=7; flat:Flat={value:3,pointer:&number}; cell:=&flat; value:Inline={values:[&number],label:\"held\",pointer:&number}; return cell.value+value.pointer^; }\n";
+    rows := Produced(source);
+    inline := -1; flat := -1;
+    for index in 0..<length(rows) {
+        row := rows[index];
+        if (row.kind != facts.RecordRow) { continue; }
+        if (row.name == "Inline") { inline = index; }
+        if (row.name == "Flat") { flat = index; }
+    }
+    assert(inline >= 0 && flat >= 0, "both authored records project");
+    assert(rows[inline].literal == 0, "value-only GC records carry structural root identity");
+    for field in inline + 1..<inline + 1 + rows[inline].count { assert(rows[field].literal == 0); }
+    assert(rows[flat].literal != 0, "the actual cell keeps a nominal layout identity");
+    for field in flat + 1..<flat + 1 + rows[flat].count { assert(rows[field].literal != 0); }
+    assert(scalar.Validate(rows) == "", "structural and nominal metadata remain distinct valid facts");
+    invalid := ChangedRows(rows, [Changed(inline + 1, LiteralField, i64(1))]);
+    assert(scalar.Validate(invalid) == "invalid scalar record member row", "structural members cannot carry cell tags");
+}
+InlineIdentityProof :: () -> int { InlineGcRecordsKeepStructuralIdentity(); return 0; }

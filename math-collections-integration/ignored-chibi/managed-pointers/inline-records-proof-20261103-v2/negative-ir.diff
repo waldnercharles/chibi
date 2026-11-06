@@ -1,0 +1,10 @@
+--- positive/InlineRecords.ll
++++ negative/InlineRecords.ll
+@@ -628,7 +628,6 @@
+ define internal void @chibi_managed.trace.record1(ptr %heap, ptr %value) {
+ entry:
+   %field1 = getelementptr inbounds %record1, ptr %value, i32 0, i32 1
+-  call void @chibi_managed.trace.record0(ptr %heap, ptr %field1)
+   ret void
+ }
+ declare void @chibi_native_step()

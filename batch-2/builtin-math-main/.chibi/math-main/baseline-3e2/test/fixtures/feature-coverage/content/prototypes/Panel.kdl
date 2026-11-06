@@ -1,0 +1,5 @@
+name "Panel"
+components {
+    (object)Transform
+    Ui document="Panel"
+}

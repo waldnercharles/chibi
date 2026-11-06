@@ -1,0 +1,15 @@
+package facts
+
+// byte-preserving strings
+@test
+Calls :: () {
+    r1: string = Binary();
+    e1: string = "a\u0000b";
+    assert(r1 == e1, "Binary call 1");
+    r2: string = ReadDefault();
+    e2: string = "a\u0000b";
+    assert(r2 == e2, "ReadDefault call 2");
+    r3: bool = Equal();
+    e3: bool = false;
+    assert(r3 == e3, "Equal call 3");
+}

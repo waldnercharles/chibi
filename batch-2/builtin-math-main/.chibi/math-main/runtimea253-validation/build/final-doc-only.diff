@@ -1,0 +1,22 @@
+diff --git a/docs/chibi-shaders/builtin-math-stage.md b/docs/chibi-shaders/builtin-math-stage.md
+index 8e06a6594..cc70bf6d9 100644
+--- a/docs/chibi-shaders/builtin-math-stage.md
++++ b/docs/chibi-shaders/builtin-math-stage.md
+@@ -46,6 +46,17 @@ reachability #790. The coordinator has not allocated a heavy producer to math;
+ this source preparation runs no compiler or asset producer. Main/CLI migration
+ remains with its existing owner.
+ 
++The affected native checks pass on frozen math source tree `b4dbc77d`:
++`--compiler-fixture`, `--package-imports` and `--package-tests`, totaling 33
++cases and 2,282 assertions. All 44 authored math module tests pass on each of
++BYTECODE and SLJIT. Fresh strict Clang 22 Release configuration took 3.494 s,
++build 23.557 s and serial policy checks 2.785 s. The existing asset-host guard
++was selected off. This covers the C collection preparation, fixture root
++import and module boundary; the nine authored source-compiler import samples
++and combined math compiler matrix remain pending. No full compiler fixture,
++artifact writer, self-build or asset producer ran. The receipt is
++`.chibi/math-main/runtimea253-validation/build/validation-receipt.json`.
++
+ ## Accepted runtime boundary and earlier checks
+ 
+ On 28 October 2026, the math worktree was first forwarded to accepted merge

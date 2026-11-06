@@ -1,0 +1,21 @@
+package facts
+Sign: int : -1 << 31;
+Small: i8 : (64 << 1) - 1;
+Unsigned: u32 : 4294967295 >> 1;
+Floor: int : -3 >> 1;
+Wide: i64 : -1 << 63;
+Mask: u64 : ~0;
+Low: u8 : ~u8(15);
+Big: int : (1 << 100) >> 98;
+Half: i8 : (127 + 1) / 2;
+Wrapped: u8 : u8(wrap: 300);
+ReadSign :: () -> int { return Sign; }
+ReadSmall :: () -> i8 { return Small; }
+ReadUnsigned :: () -> u32 { return Unsigned; }
+ReadFloor :: () -> int { return Floor; }
+ReadWide :: () -> i64 { return Wide; }
+ReadMask :: () -> u64 { return Mask; }
+ReadLow :: () -> u8 { return Low; }
+ReadBig :: () -> int { return Big; }
+ReadHalf :: () -> i8 { return Half; }
+ReadWrapped :: () -> u8 { return Wrapped; }

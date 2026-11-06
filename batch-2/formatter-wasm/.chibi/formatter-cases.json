@@ -1,0 +1,123 @@
+[
+  {
+    "name": "indent",
+    "source": "package playground\n\nMain :: () { x := 1\nif x > 0 { x = x + 1 }\n}\n",
+    "options": {
+      "indent_width": 2
+    },
+    "expected": {
+      "ok": true,
+      "text": "package playground\n\nMain :: () {\n  x := 1\n  if x > 0 {\n    x = x + 1\n  }\n}\n",
+      "original_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">playground</span>\n\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () { x <span class=\"chibi-operator\">:=</span> <span class=\"chibi-number\">1</span>\n<span class=\"chibi-keyword\">if</span> x <span class=\"chibi-operator\">&gt;</span> <span class=\"chibi-number\">0</span> { x <span class=\"chibi-operator\">=</span> x <span class=\"chibi-operator\">+</span> <span class=\"chibi-number\">1</span> }\n}\n",
+      "formatted_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">playground</span>\n\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () {\n  x <span class=\"chibi-operator\">:=</span> <span class=\"chibi-number\">1</span>\n  <span class=\"chibi-keyword\">if</span> x <span class=\"chibi-operator\">&gt;</span> <span class=\"chibi-number\">0</span> {\n    x <span class=\"chibi-operator\">=</span> x <span class=\"chibi-operator\">+</span> <span class=\"chibi-number\">1</span>\n  }\n}\n"
+    }
+  },
+  {
+    "name": "tabs",
+    "source": "package p\nMain :: () {\nx := [1,2,3]\nif x[0] > 0 { x[0] = 2 }\n}\n",
+    "options": {
+      "use_tabs": true
+    },
+    "expected": {
+      "ok": true,
+      "text": "package p\nMain :: () {\n\tx := [1, 2, 3]\n\tif x[0] > 0 {\n\t\tx[0] = 2\n\t}\n}\n",
+      "original_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () {\nx <span class=\"chibi-operator\">:=</span> [<span class=\"chibi-number\">1</span>,<span class=\"chibi-number\">2</span>,<span class=\"chibi-number\">3</span>]\n<span class=\"chibi-keyword\">if</span> x[<span class=\"chibi-number\">0</span>] <span class=\"chibi-operator\">&gt;</span> <span class=\"chibi-number\">0</span> { x[<span class=\"chibi-number\">0</span>] <span class=\"chibi-operator\">=</span> <span class=\"chibi-number\">2</span> }\n}\n",
+      "formatted_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () {\n\tx <span class=\"chibi-operator\">:=</span> [<span class=\"chibi-number\">1</span>, <span class=\"chibi-number\">2</span>, <span class=\"chibi-number\">3</span>]\n\t<span class=\"chibi-keyword\">if</span> x[<span class=\"chibi-number\">0</span>] <span class=\"chibi-operator\">&gt;</span> <span class=\"chibi-number\">0</span> {\n\t\tx[<span class=\"chibi-number\">0</span>] <span class=\"chibi-operator\">=</span> <span class=\"chibi-number\">2</span>\n\t}\n}\n"
+    }
+  },
+  {
+    "name": "semicolons",
+    "source": "package p;\nMain :: () { x:=1; x=x+2; }\n",
+    "options": {
+      "semicolons": "omit"
+    },
+    "expected": {
+      "ok": true,
+      "text": "package p;\nMain :: () {\n    x := 1\n    x = x + 2\n}\n",
+      "original_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>;\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () { x<span class=\"chibi-operator\">:=</span><span class=\"chibi-number\">1</span>; x<span class=\"chibi-operator\">=</span>x<span class=\"chibi-operator\">+</span><span class=\"chibi-number\">2</span>; }\n",
+      "formatted_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>;\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () {\n    x <span class=\"chibi-operator\">:=</span> <span class=\"chibi-number\">1</span>\n    x <span class=\"chibi-operator\">=</span> x <span class=\"chibi-operator\">+</span> <span class=\"chibi-number\">2</span>\n}\n"
+    }
+  },
+  {
+    "name": "width",
+    "source": "package p\nMain :: () { result := LongerCall(firstValue, secondValue, thirdValue) }\n",
+    "options": {
+      "preferred_width": 20
+    },
+    "expected": {
+      "ok": true,
+      "text": "package p\nMain :: () {\n    result := LongerCall(\n        firstValue,\n        secondValue,\n        thirdValue\n    )\n}\n",
+      "original_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () { result <span class=\"chibi-operator\">:=</span> <span class=\"chibi-function\">LongerCall</span>(firstValue, secondValue, thirdValue) }\n",
+      "formatted_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () {\n    result <span class=\"chibi-operator\">:=</span> <span class=\"chibi-function\">LongerCall</span>(\n        firstValue,\n        secondValue,\n        thirdValue\n    )\n}\n"
+    }
+  },
+  {
+    "name": "unicode",
+    "source": "package p\nMain :: () { text := \"こんにちは 👾\" // café\n}\n",
+    "options": {
+      "indent_width": 2
+    },
+    "expected": {
+      "ok": true,
+      "text": "package p\nMain :: () {\n  text := \"こんにちは 👾\" // café\n}\n",
+      "original_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () { text <span class=\"chibi-operator\">:=</span> <span class=\"chibi-string\">&quot;こんにちは 👾&quot;</span> <span class=\"chibi-comment\">// café</span>\n}\n",
+      "formatted_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () {\n  text <span class=\"chibi-operator\">:=</span> <span class=\"chibi-string\">&quot;こんにちは 👾&quot;</span> <span class=\"chibi-comment\">// café</span>\n}\n"
+    }
+  },
+  {
+    "name": "nul",
+    "source": "package p\nMain :: () { text := \"a\u0000b\" }\n",
+    "options": {},
+    "expected": {
+      "ok": true,
+      "text": "package p\nMain :: () {\n    text := \"a\u0000b\"\n}\n",
+      "original_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () { text <span class=\"chibi-operator\">:=</span> <span class=\"chibi-string\">&quot;a\u0000b&quot;</span> }\n",
+      "formatted_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () {\n    text <span class=\"chibi-operator\">:=</span> <span class=\"chibi-string\">&quot;a\u0000b&quot;</span>\n}\n"
+    }
+  },
+  {
+    "name": "comments",
+    "source": "package p\n/* first\n * second */\nMain :: () { value := 1 // kept\n}\n",
+    "options": {
+      "line_ending": "crlf"
+    },
+    "expected": {
+      "ok": false,
+      "error": "Formatting would change the token stream",
+      "original_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n<span class=\"chibi-comment\">/* first</span>\n<span class=\"chibi-comment\"> * second */</span>\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () { value <span class=\"chibi-operator\">:=</span> <span class=\"chibi-number\">1</span> <span class=\"chibi-comment\">// kept</span>\n}\n"
+    }
+  },
+  {
+    "name": "invalid",
+    "source": "package p\nMain :: () {\n",
+    "options": {},
+    "expected": {
+      "ok": false,
+      "error": "Cannot format source with syntax errors: 3:1: Expected `}`, found the end of the file (to close the `{` at 2:12)",
+      "original_html": "package p\nMain :: () {\n"
+    }
+  },
+  {
+    "name": "bad-options",
+    "source": "package p\nMain :: () {}\n",
+    "options": {
+      "indent_width": 0
+    },
+    "expected": {
+      "ok": false,
+      "error": "Invalid formatter options: indent_width must be 1..16",
+      "original_html": "package p\nMain :: () {}\n"
+    }
+  },
+  {
+    "name": "preserve",
+    "source": "package p\n// chibi fmt: off\nMain :: () {  value:=1 }\n// chibi fmt: on\n",
+    "options": {},
+    "expected": {
+      "ok": true,
+      "text": "package p\n// chibi fmt: off\nMain :: () {  value:=1 }\n// chibi fmt: on\n",
+      "original_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n<span class=\"chibi-comment\">// chibi fmt: off</span>\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () {  value<span class=\"chibi-operator\">:=</span><span class=\"chibi-number\">1</span> }\n<span class=\"chibi-comment\">// chibi fmt: on</span>\n",
+      "formatted_html": "<span class=\"chibi-keyword\">package</span> <span class=\"chibi-namespace\">p</span>\n<span class=\"chibi-comment\">// chibi fmt: off</span>\n<span class=\"chibi-function\">Main</span> <span class=\"chibi-operator\">::</span> () {  value<span class=\"chibi-operator\">:=</span><span class=\"chibi-number\">1</span> }\n<span class=\"chibi-comment\">// chibi fmt: on</span>\n"
+    }
+  }
+]

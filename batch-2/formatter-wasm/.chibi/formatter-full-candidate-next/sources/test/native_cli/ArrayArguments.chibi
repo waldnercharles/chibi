@@ -1,0 +1,21 @@
+package native_array_arguments
+
+import os "core:os"
+import strings "core:strings"
+
+// Keep the authored argument-order cases unchanged: Observe(a, Grow(&a))
+// and Peek(&a, a) read the captured value while the scoped alias changes a.
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    root := strings.Concatenate([arguments[2], "/test/compiler/samples/collections"]);
+    folder := strings.Concatenate([root, "/lent_arguments/facts"]);
+    for (mode in ["-O0", "-O2"]) {
+        report := os.Capture([arguments[0], "test", mode, "--llvm", arguments[1], "--root", root, folder]);
+        if (report.status != 0) { os.Print(report.stdout); os.Print(report.stderr); }
+        assert(report.status == 0 && strings.Contains(report.stdout, "PASS project.Calls") &&
+               strings.Contains(report.stdout, "1 tests, 0 failed"), "array arguments capture before aliased mutations");
+    }
+    os.Print("native array arguments: captured values survive later and scoped writes at O0/O2");
+    return 0;
+}

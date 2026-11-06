@@ -1,0 +1,41 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/language_catalog.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/language_catalog.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/package_tests.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/package_tests.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_asset.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_asset.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_asset_completion.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_asset_completion.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_catalog.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_catalog.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_catalog_snapshot.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_catalog_snapshot.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_collection.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_collection.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_exports.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_exports.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_files.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_files.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_paths.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_paths.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_prepare.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_prepare.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_routes.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_routes.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_snapshot.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_snapshot.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_syntax.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_package_syntax.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_packages.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_packages.c.o.d"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_prototype_edit.c.o"
+  "CMakeFiles/chibi_source_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/source_prototype_edit.c.o.d"
+  "libchibi_source_catalog.a"
+  "libchibi_source_catalog.pdb"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang C)
+  include(CMakeFiles/chibi_source_catalog.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

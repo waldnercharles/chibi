@@ -1,0 +1,53 @@
+{
+  "accepted": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+  "previous": "3d72b51f0b034ab05c2951fcc9371fbba197abc2",
+  "merge_paths": 24,
+  "overlapping_paths": [
+    "sdk/CMakeLists.txt",
+    "sdk/README.md",
+    "src/authoring/project_compile.c",
+    "test/language/package_compiler_chibi.c"
+  ],
+  "other_incoming_blobs_exact_accepted": true,
+  "merged_tree": "bf72e3ee89918a030f5e5f11d305dbe1e41a01f3",
+  "tree_equals_accepted_plus_previous_complete_feature_patch": true,
+  "previous_feature_patch_sha256": "9fbe564d3485eecc88978c994312f2f6e03f33a6493fdc502d351a164ad58b27",
+  "compiler_closure_helper_sha256": "c16b7effccfe9145f3b298dcd1b81865adf6ff7a170f67b6b78368183484e299",
+  "bootstrap": {
+    "file": "compiler.chibip",
+    "bytes": 20792064,
+    "sha256": "27d8f3d0568e442e1a70b167c04ba97c671ea0d0b1e85e3a7493d88fc59bb912"
+  },
+  "bootstrap_sources_verified": [
+    "tools/compiler/package_compiler/Compile.chibi",
+    "tools/compiler/package_compiler/Body.chibi",
+    "tools/compiler/package_compiler/Steps.chibi",
+    "tools/compiler/package_compiler/Maps.chibi",
+    "tools/compiler/package_compiler/References.chibi",
+    "tools/compiler/package_compiler/Pointers.chibi",
+    "tools/compiler/package_compiler/Tasks.chibi",
+    "tools/compiler/package_compiler/TaskResults.chibi",
+    "tools/compiler/package_compiler/Tree.chibi",
+    "tools/compiler/package_compiler/Number.chibi",
+    "tools/compiler/package_compiler/Optional.chibi",
+    "tools/compiler/package_compiler/Sequences.chibi",
+    "tools/compiler/package_compiler/Queries.chibi",
+    "tools/compiler/package_compiler/QueryLoops.chibi",
+    "tools/compiler/package_compiler/Behavior.chibi",
+    "tools/compiler/package_compiler/Scalar.chibi",
+    "tools/compiler/syntax_diagnostics/Diagnostics.chibi",
+    "packages/core/strings/Strings.chibi",
+    "tools/compiler/source_snapshot/Snapshot.chibi",
+    "tools/compiler/compiler_syntax/Syntax.chibi",
+    "tools/compiler/package_routes/Routes.chibi",
+    "tools/compiler/package_syntax/Extract.chibi",
+    "tools/compiler/package_graph/Graph.chibi",
+    "tools/compiler/package_paths/Paths.chibi",
+    "tools/compiler/lexical_binding/Binding.chibi",
+    "tools/compiler/prepared_writer/Writer.chibi",
+    "tools/compiler/scalar_facts/Facts.chibi"
+  ],
+  "private_target_structurally_unchanged": true,
+  "review": "Independent library-specific review found no blocker; bind once finalhead/tree is recorded.",
+  "validation": "Source/blob/hash/merge review only; no runtime, compiler or SDK producer."
+}

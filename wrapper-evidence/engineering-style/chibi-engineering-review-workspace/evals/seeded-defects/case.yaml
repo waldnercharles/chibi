@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: seeded-defects
+expected_outcome: |
+  An architecture- and performance-led review: estimates minimum versus actual work, sizes the waste (quadratic rescans, per-element allocation, per-site string keys), sketches the target shape, and treats bugs as a short secondary list.

@@ -1,0 +1,2 @@
+package lib
+pub Value :: () -> int { value: string[]? = ["text"]; pointer := &value; observed := pointer^; if observed { return text_byte_length(observed[0]) - 3; } return 0; }

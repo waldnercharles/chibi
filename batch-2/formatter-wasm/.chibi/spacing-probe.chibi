@@ -1,0 +1,26 @@
+package spacing_probe
+import format "project:source_format"
+Show :: (label: string, source: string, options: format.Options) {
+ print_string(label);
+ switch format.Format(source,options) {
+  case .Rejected(message): print_string(message);
+  case .Formatted(first, notes):
+   print_string(first);
+   print_string("SECOND PASS:");
+   switch format.Format(first,options) {
+    case .Rejected(message): print_string(message);
+    case .Formatted(second,notes): print_string(second);
+   }
+ }
+}
+Main :: () {
+ o := format.Defaults();
+ o.operator_spacing=1; o.space_multiplicative=3; o.space_additive=1; o.space_comparison=1; o.space_logical=3; o.space_bitwise=1; o.space_assignment=1;
+ Show("OPERATORS", "package p\nA :: () { x := a * b + c / d; yes := a == b && c != d; bits := a & b ^ c; }\n", o);
+ o = format.Defaults(); o.space_inside_empty_parens=2; o.space_inside_empty_brackets=2; o.space_inside_empty_record_braces=3;
+ Show("EMPTY", "package p\nA :: () { Call(); values := []; value := R{}; }\n",o);
+ o = format.Defaults(); o.space_before_type_colon=2; o.space_after_type_colon=1; o.space_before_field_colon=3; o.space_after_field_colon=1; o.space_before_named_argument_colon=2; o.space_after_named_argument_colon=3; o.space_inside_record_braces=2;
+ Show("COLONS", "package p\nA :: (value: int) { Call(Name: value); object := R{x: value}; }\n",o);
+ o = format.Defaults(); o.space_after_unary=2; o.space_before_postfix=2;
+ Show("UNARY", "package p\nA :: (value: int) { negative := -value; inverted := ~value; pointer: ^int = &value; dereferenced := pointer^; }\n",o);
+}

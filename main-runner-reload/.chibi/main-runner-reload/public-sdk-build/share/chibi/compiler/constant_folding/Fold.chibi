@@ -1,0 +1,229 @@
+package constant_folding
+
+import ir "project:constant_ir"
+import proof "project:constant_admissibility"
+import scalar "project:constant_scalar"
+
+Frame :: struct {
+    expression: int;
+    depth: int;
+    phase: int;
+}
+
+FrameValue :: (expression: int, depth: int) -> Frame {
+    return {expression: expression, depth: depth, phase: 0};
+}
+Frames :: (count: int) -> Frame[] {
+    frames: Frame[] = [];
+    index: int = 0;
+    while (index < count) {
+        frames.append(FrameValue(0, 0));
+        index += 1;
+    }
+    return frames;
+}
+Values :: (count: int) -> scalar.Value[] {
+    values: scalar.Value[] = [];
+    index: int = 0;
+    while (index < count) {
+        values.append(scalar.Value.Bool(false));
+        index += 1;
+    }
+    return values;
+}
+Numeric :: (type: ir.Type) -> bool {
+    return type.container == 0 && (!type.has_nominal || (type.flags & 32) != 0) &&
+           type.storage >= 2 && type.storage <= 11 && (type.flags & 75) == 0;
+}
+ArithmeticStorage :: (left: ir.Type, right: ir.Type) -> int {
+    if ((left.flags & ir.Untyped) != 0) {
+        if ((right.flags & ir.Untyped) == 0) {
+            return right.storage;
+        }
+        return 11;
+    }
+    if ((right.flags & ir.Untyped) != 0) {
+        return left.storage;
+    }
+    if (left.storage == 11 || right.storage == 11) {
+        return 11;
+    }
+    if (left.storage == 10 || right.storage == 10) {
+        return 10;
+    }
+    return scalar.CommonInteger(left.storage, right.storage);
+}
+StringStorage :: (storage: int) -> bool {
+    return storage == 12 || storage == 13;
+}
+
+// Evaluation revisits shared expressions. Only admissibility memoizes proofs:
+// caching values here would change which programs exceed the fixed step limit.
+Evaluate :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
+             literals: scalar.Value[], expression: int) -> scalar.Result {
+    frames := Frames(257);
+    lefts := Values(257);
+    frames[0] = FrameValue(expression, 0);
+    top: int = 0;
+    steps: int = 65536;
+    returning := false;
+    value := scalar.Value.Bool(false);
+    while (top >= 0) {
+        frame := frames[top];
+        if (returning) {
+            current := expressions[frame.expression];
+            if (current.kind == ir.SymbolReference || frame.phase == 3) {
+                top -= 1;
+                continue;
+            }
+            if (frame.phase == 1) {
+                if (current.kind == ir.Cast) {
+                    converted := scalar.Convert(value, types[current.type].storage, current.conversion);
+                    switch converted {
+                        case .Rejected:
+                            return scalar.Result.Failed("unsupported scalar constant conversion");
+                        case .Unfit:
+                            return scalar.Result.Failed("integer constant does not fit its conversion");
+                        case .Accepted(item):
+                            value = item;
+                    }
+                    top -= 1;
+                    continue;
+                }
+                if (current.kind == ir.Unary) {
+                    operated := scalar.Operation(current.op, value, scalar.Value.Bool(false), types[current.type].storage);
+                    switch operated {
+                        case .Failed(message):
+                            return operated;
+                        case .Folded(item):
+                            value = item;
+                    }
+                    top -= 1;
+                    continue;
+                }
+                if (value is .Bool(boolean)) {
+                    if (current.op == scalar.OpAnd || current.op == scalar.OpOr) {
+                        if ((current.op == scalar.OpAnd && !boolean) ||
+                            (current.op == scalar.OpOr && boolean)) {
+                            top -= 1;
+                            continue;
+                        }
+                        frame.phase = 3;
+                        frames[top] = frame;
+                        top += 1;
+                        frames[top] = FrameValue(current.right, frame.depth + 1);
+                        returning = false;
+                        continue;
+                    }
+                }
+                lefts[top] = value;
+                frame.phase = 2;
+                frames[top] = frame;
+                top += 1;
+                frames[top] = FrameValue(current.right, frame.depth + 1);
+                returning = false;
+                continue;
+            }
+            left := lefts[top];
+            right := value;
+            leftType := types[expressions[current.left].type];
+            rightType := types[expressions[current.right].type];
+            if (Numeric(leftType) && Numeric(rightType)) {
+                storage := ArithmeticStorage(leftType, rightType);
+                convertedLeft := scalar.Convert(left, storage, 0);
+                switch convertedLeft {
+                    case .Rejected:
+                        return scalar.Result.Failed("unsupported scalar constant conversion");
+                    case .Unfit:
+                        return scalar.Result.Failed("constant does not fit its conversion");
+                    case .Accepted(item):
+                        left = item;
+                }
+                convertedRight := scalar.Convert(right, storage, 0);
+                switch convertedRight {
+                    case .Rejected:
+                        return scalar.Result.Failed("unsupported scalar constant conversion");
+                    case .Unfit:
+                        return scalar.Result.Failed("constant does not fit its conversion");
+                    case .Accepted(item):
+                        right = item;
+                }
+            } else if (scalar.Storage(left) != scalar.Storage(right) &&
+                       !(StringStorage(scalar.Storage(left)) && StringStorage(scalar.Storage(right)))) {
+                return scalar.Result.Failed("incompatible scalar constant operands");
+            }
+            operated := scalar.Operation(current.op, left, right, types[current.type].storage);
+            switch operated {
+                case .Failed(message):
+                    return operated;
+                case .Folded(item):
+                    value = item;
+            }
+            top -= 1;
+            continue;
+        }
+        if (frame.expression < 0 || frame.depth >= 256) {
+            return scalar.Result.Failed("constant evaluation exceeds its bounded budget");
+        }
+        steps -= 1;
+        if (steps < 0) {
+            return scalar.Result.Failed("constant evaluation exceeds its bounded budget");
+        }
+        current := expressions[frame.expression];
+        type := types[current.type];
+        if (type.container != ir.Single || (type.flags & ~(ir.Untyped | ir.Literal)) != 0 ||
+            type.storage < ir.Boolean || type.storage > ir.String) {
+            return scalar.Result.Failed("requires a scalar compile-time value");
+        }
+        if (current.kind == ir.Constant) {
+            value = literals[current.literal];
+            returning = true;
+            top -= 1;
+            continue;
+        }
+        if (current.kind == ir.SymbolReference) {
+            top += 1;
+            frames[top] = FrameValue(symbols[current.symbol].initializer, frame.depth + 1);
+            continue;
+        }
+        if (current.kind != ir.Unary && current.kind != ir.Binary && current.kind != ir.Cast) {
+            return scalar.Result.Failed("requires scalar compile-time values and operators");
+        }
+        frame.phase = 1;
+        frames[top] = frame;
+        top += 1;
+        frames[top] = FrameValue(current.left, frame.depth + 1);
+    }
+    return scalar.Result.Folded(value);
+}
+
+// Inputs retain analyzer type-family invariants: literal payload storage matches
+// its declared type, comparisons/not produce Bool, float operations produce
+// F32/F64, and integer operations produce integer storage (possibly wider or
+// narrower than operands). Arbitrary cross-family C union byte interpretations
+// are not an input format for this compiler component.
+pub Fold :: (expressions: ir.Expression[], types: ir.Type[], symbols: ir.Symbol[],
+             arguments: ir.Argument[], literals: scalar.Value[],
+             expression: int, expected_storage: int) -> scalar.Result {
+    checked := proof.Check(expressions, types, symbols, arguments,
+                           {expression: expression, steps: 65536, scalar: true, has_steps: true});
+    switch checked {
+        case .Checked(allowed, remaining, depths):
+            if (!allowed) {
+                return scalar.Result.Failed("requires bounded compile-time values and operators");
+            }
+    }
+    evaluated := Evaluate(expressions, types, symbols, literals, expression);
+    switch evaluated {
+        case .Failed(message):
+            return evaluated;
+        case .Folded(value):
+            converted := scalar.Convert(value, expected_storage, 0);
+            switch converted {
+                case .Accepted(item):
+                    return scalar.Result.Folded(item);
+                case:
+                    return scalar.Result.Failed("incompatible scalar constant result");
+            }
+    }
+}

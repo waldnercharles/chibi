@@ -1,0 +1,8 @@
+package place_parts
+ResetKey :: (values: ^([int: int[]])) -> int { values^ = [1: [20], 2: [30]]; return 1; }
+ResetIndex :: (values: ^([int: int[]])) -> int { values^ = [1: [20], 2: [30]]; return 0; }
+ResetValue :: (values: ^([int: int[]])) -> int { values^ = [1: [20], 2: [30]]; return 7; }
+Key :: () -> int { values: [int: int[]] = [1: [11]]; before := values[ResetKey(&values)]; assert(before[0] == 11); return 0; }
+Index :: () -> int { values: [int: int[]] = [1: [11]]; before := values[1][ResetIndex(&values)]; assert(before == 11); return 0; }
+Append :: () -> int { values: [int: int[]] = [1: [11]]; values[1].append(ResetValue(&values)); assert(values[1][1] == 7); return 0; }
+Set :: () -> int { values: [int: int[]] = [1: [11]]; values[1][ResetIndex(&values)] = 9; assert(values[1][0] == 9); return 0; }

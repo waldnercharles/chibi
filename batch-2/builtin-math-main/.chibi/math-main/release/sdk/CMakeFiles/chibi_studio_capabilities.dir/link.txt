@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_studio_capabilities.a "CMakeFiles/chibi_studio_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/studio_native.c.o" "CMakeFiles/chibi_studio_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/studio_definition.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_studio_capabilities.a

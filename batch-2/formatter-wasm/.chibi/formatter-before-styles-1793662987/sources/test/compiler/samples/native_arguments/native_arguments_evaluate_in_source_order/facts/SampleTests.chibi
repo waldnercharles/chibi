@@ -1,0 +1,9 @@
+package facts
+
+// native arguments evaluate in source order
+@test
+Calls :: () {
+    r1: int = Run();
+    e1: int = 321;
+    assert(r1 == e1, "Run call 1");
+}

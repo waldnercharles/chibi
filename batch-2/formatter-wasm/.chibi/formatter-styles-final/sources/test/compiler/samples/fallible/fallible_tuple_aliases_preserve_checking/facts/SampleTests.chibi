@@ -1,0 +1,9 @@
+package facts
+
+// fallible tuple aliases preserve checking
+@test
+Calls :: () {
+    r1: int = Use();
+    e1: int = 14;
+    assert(r1 == e1, "Use call 1");
+}

@@ -1,0 +1,11 @@
+{
+  "accepted": "bdfb401e8da7f3dbf219b7e24aa5af522d938b5d",
+  "previous": "eb2a5cfdc53d2ef140b72974cf4df6be2d68ab3d",
+  "changed_paths": [
+    "test/tools/test_policy.c"
+  ],
+  "exact_accepted_blob": true,
+  "file_sha256": "5bf1e73371820df59fd03642475355ad6ddf669001883825ea06b2ce411d7385",
+  "scope": "fixture clock readiness and serial membership recorder only; no production runtime, compiler, source inventory or artifact changes",
+  "no_build_or_runtime_execution": true
+}

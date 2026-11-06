@@ -1,0 +1,36 @@
+{
+  "binary": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/release/test_language",
+  "binary_sha256": "620bd1ec781950c194e07dc2be1edceda57a6f907a5de7355b6d46ac66771e4a",
+  "results": [
+    {
+      "selector": "--package-compiler-chibi-types",
+      "status": 0,
+      "seconds": 94.195,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/final--package-compiler-chibi-types.log"
+    },
+    {
+      "selector": "--package-compiler-chibi-types-compiled",
+      "status": 0,
+      "seconds": 20.392,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/final--package-compiler-chibi-types-compiled.log"
+    },
+    {
+      "selector": "--package-compiler-chibi-collections",
+      "status": 0,
+      "seconds": 25.893,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/final--package-compiler-chibi-collections.log"
+    },
+    {
+      "selector": "--package-compiler-chibi-collections-compiled",
+      "status": 0,
+      "seconds": 22.47,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/final--package-compiler-chibi-collections-compiled.log"
+    },
+    {
+      "selector": "--package-compiler-chibi-sharing",
+      "status": 0,
+      "seconds": 32.151,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/final--package-compiler-chibi-sharing.log"
+    }
+  ]
+}

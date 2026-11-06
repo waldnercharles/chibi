@@ -1,0 +1,15 @@
+package native_asset_probe
+import compiler "project:package_compiler"
+Main :: () -> int {
+    target: compiler.Target = {pointer_storage: 9, pointer_size: 8, value_size: 48, payload_offset: 8, arguments_offset: 168, results_offset: 208, delta_seconds_offset: 344, error_status_offset: 496, type_offset: 0, container_offset: 16, name_offset: 24, record_offset: 32, schema_offset: 40, count_offset: 24, items_offset: 32, data_offset: 40, stride_offset: 48, map_count_offset: 96, data_failure: 4, argument_failure: 7, assert_failure: 3};
+    natives: compiler.CatalogNative[] = [];
+    ports: compiler.CatalogPort[] = [];
+    types: compiler.GameType[] = [];
+    fields: compiler.GameField[] = [];
+    ids: u64[] = [];
+    names: string[] = [];
+    effects: int[] = [];
+    compiled := compiler.CompileWithCatalog("/project", names, names, ["Main.chibi"], ["package p\nMain :: () -> int { return 42; }\n"], false, target, 0, names, natives, ports, ids, types, fields, 0, 1, 1, effects);
+    if (compiled.error) { return 1; }
+    return length(compiled.bytes);
+}

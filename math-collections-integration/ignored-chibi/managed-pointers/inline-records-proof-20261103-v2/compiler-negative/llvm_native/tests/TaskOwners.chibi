@@ -1,0 +1,99 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+OwnerCode :: (type: int) -> native.Instruction[] {
+    code := [Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0),
+             Code(native.Argument, type, 0, 0, 0, 0, 0), Code(native.TextRetain, type, 0, 0, 0, 0, 0),
+             Code(native.Save, type, 0, 0, 0, 0, 0), Code(native.OwnerPin, type, 0, 0, 0, 1, 0),
+             Code(native.Suspend, 0, 0, 0, 0, 0, 0), Code(native.OwnerUnpin, 0, 0, 0, 0, 1, 0),
+             Code(native.Local, type, 1, 0, 0, 0, 0), Code(native.TextRelease, type, 0, 1, 0, 0, 0),
+             Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 2, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    if (type != abi.TextStorage) {
+        code[4] = Code(native.Check, 0, 0, 0, 0, 0, 0);
+        code[10] = Code(native.Check, 0, 0, 0, 0, 0, 0);
+    }
+    return code;
+}
+OwnerModule :: (code: native.Instruction[], type: int, extra: bool = false, program: bool = true) -> native.Result {
+    count := 3;
+    slots := [abi.IntStorage, type, type, abi.IntStorage];
+    if (extra) { count += 1; slots.append(abi.BoolStorage); }
+    functions := [Function(abi.IntStorage, 0, 0, 1, 0, 3, 0, 0),
+                  Function(abi.IntStorage, 1, 1, count, 3, length(code) - 3, 0, 0)];
+    worker := functions[1]; worker.locals = 1; functions[1] = worker;
+    empty: int[] = [];
+    records: native.Record[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    if (program) {
+        return native.EmitProgram(abi.LinuxX64(), functions, [type], slots, [type], code, empty,
+            records, empty, texts, source, texts, empty, empty);
+    }
+    return native.Emit(abi.LinuxX64(), functions, [type], slots, [type], code, empty,
+        records, empty, texts, source, texts, empty, empty, false, 1);
+}
+@test
+FrameOwnerMembershipReusesItsCanonicalLocation :: () {
+    code := OwnerCode(abi.TextStorage);
+    code.insert(9, Code(native.OwnerPin, abi.TextStorage, 0, 0, 0, 1, 0));
+    code.insert(10, Code(native.Suspend, 0, 0, 0, 0, 0, 0));
+    code.insert(11, Code(native.OwnerUnpin, 0, 0, 0, 0, 1, 0));
+    text := Emitted(OwnerModule(code, abi.TextStorage));
+    assert(strings.Count(text, "%owner.l0 = alloca ptr") == 1);
+    assert(strings.Count(text, "store ptr %l0, ptr %owner.l0") == 2);
+}
+@test
+FrameOwnerSchemaRejectsWrongLocationsAndTypes :: () {
+    original := OwnerCode(abi.TextStorage);
+    for (variant in 0..<4) {
+        code := original;
+        pin := code[6];
+        if (variant == 0) { pin.left = 1; }
+        else if (variant == 1) { pin.target = 2; }
+        else if (variant == 2) { pin.output = 1; }
+        else { pin.type = abi.IntStorage; }
+        code[6] = pin;
+        expected := "native frame owner differs from its canonical location";
+        if (variant == 3) { expected = "native frame owner has an invalid type or overlapping lifetime"; }
+        Rejects(OwnerModule(code, abi.TextStorage), expected);
+    }
+    Rejects(OwnerModule(OwnerCode(native.PointerType), native.PointerType),
+        "native frame owner has an invalid type or overlapping lifetime");
+    Rejects(OwnerModule(original, abi.TextStorage, false, false),
+        "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
+    borrowed := native.RefType + abi.TextStorage;
+    Rejects(OwnerModule(OwnerCode(borrowed), borrowed),
+        "native waiting parameters need scalar values; managed values and dependencies are not supported yet");
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}];
+    fields := [native.PointerType, abi.TextStorage];
+    assert(!native.TaskOwnedType(records, native.ValueLayouts(records, fields), native.RecordType));
+}
+@test
+FrameOwnerRegionsRejectOverlapReverseCloseAndEntry :: () {
+    duplicate := OwnerCode(abi.TextStorage);
+    duplicate.insert(7, duplicate[6]);
+    Rejects(OwnerModule(duplicate, abi.TextStorage), "native frame owner has an invalid type or overlapping lifetime");
+    wrong := OwnerCode(abi.TextStorage);
+    wrong[8] = Code(native.OwnerUnpin, 0, 0, 0, 0, 0, 0);
+    Rejects(OwnerModule(wrong, abi.TextStorage), "native frame owners must close in reverse order");
+    entered := OwnerCode(abi.TextStorage);
+    entered.insert(6, Code(native.Constant, abi.BoolStorage, 3, 0, 0, 0, 1));
+    entered.insert(7, Code(native.Branch, 0, 0, 3, 0, 6, 0));
+    Rejects(OwnerModule(entered, abi.TextStorage, true), "native control flow cannot enter a frame owner region");
+}
+
+@test
+FrameOwnerResizeBoundaryNeedsItsFailurePolicy :: () {
+    array := native.ArrayType + abi.IntStorage;
+    code := OwnerCode(array);
+    code[4] = Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0);
+    code[7] = Code(native.ArrayResize, array, 1, 0, 2, 0, 0);
+    code[9] = Code(native.Suspend, 0, 0, 0, 0, 0, 0);
+    code[11] = Code(native.Check, 0, 0, 0, 0, 0, 0);
+    Rejects(OwnerModule(code, array), "native frame owners must bracket one fallible or waiting call");
+}

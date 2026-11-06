@@ -1,0 +1,134 @@
+{
+  "expectations": [
+    {
+      "text": "The review states a minimum-work versus actual-work estimate for the change with concrete numbers (for example call sites or nodes multiplied by bytes scanned).",
+      "passed": false,
+      "evidence": "No minimum-work versus actual-work estimate with concrete numbers. The closest is M5's symbolic 'A file with k calls costs about 2·k·n native calls' against using the stored row/column. There is no call-site count, byte count or computed total for any real file, and no minimum-work figure."
+    },
+    {
+      "text": "The review flags LineOf/ColumnOf rescanning the text from the start for every call site, gives a quantified cost (a count or operation estimate), and recommends using the row/column SnapshotNode already stores.",
+      "passed": true,
+      "evidence": "M5 'LineOf and ColumnOf recompute data the node already has, at O(sites × bytes)': 'scans from byte 0 to offset twice per call site ... A file with k calls costs about 2·k·n native calls. Both helpers should go; use forest[node].row + 1 and forest[node].column + 1'. The quantification is symbolic but is an explicit operation estimate, which the assertion allows."
+    },
+    {
+      "text": "The review flags the per-element xstrdup/free in pin_array_count_type as needless allocation and recommends comparing in place.",
+      "passed": true,
+      "evidence": "M4 bullet: 'It allocates on the heap once per element for nothing (array.c:130-134). xstrdup followed by free around a read-only strcmp is wasted allocator traffic. Compare value.type_name directly.'"
+    },
+    {
+      "text": "The review flags the per-site strings.Concat(\"call:\", callee) key building (allocation per site and/or the pointless prefix) as waste or a design defect.",
+      "passed": true,
+      "evidence": "M6: 'The keys have a prefix the sites don't ... The prefix carries no information because the map holds only calls.' B2: 'The prefix shouldn't be there at all, though (see M6).' This flags the prefix as a design defect. The per-site allocation isn't mentioned, but the assertion accepts either."
+    },
+    {
+      "text": "The review flags CallSite's derivable or flag fields (offset/line/column copies or the is_dead list-membership bool) as a representation problem.",
+      "passed": true,
+      "evidence": "Minor: 'CallSite stores derived data. offset, line and column all follow from node (M5). is_dead is mutable state with no use case yet. A site could be {node, callee} until a consumer needs more.'"
+    },
+    {
+      "text": "The review flags CountCallsInForest as a layer that only forwards and should be deleted.",
+      "passed": true,
+      "evidence": "Minor: 'CountCallsInForest is a pure alias (CallCensus.chibi:39-42). It forwards to CollectCalls under a misleading name ... Delete it.'"
+    },
+    {
+      "text": "The review sketches a concrete target shape for the census (for example sites as node indices, or derived counts) instead of only listing defects.",
+      "passed": true,
+      "evidence": "'Suggested path' step 2 gives the per-document signature 'CollectCalls :: (forest, text, node_start: int, node_end: int) -> CallSite[]', with callee via Text(...Field(...)) and location via row + 1 / column + 1, 'Base it on finalized callee identity, not callee text', and a site shape of '{node, callee}'. The target is concrete, though less fully developed than node indices or a histogram."
+    },
+    {
+      "text": "The review addresses comparing forest[index].kind against the string \"call_expression\", either as a finding or explicitly left alone with a stated reason about the forest's string-kind representation.",
+      "passed": false,
+      "evidence": "The only mention is the Minor bullet 'Use the package's helper for kind checks. Write Is(forest, index, \"call_expression\") rather than forest[index].kind == ...'. That is a consistency nit that keeps the same string compare. It doesn't treat the string comparison or the string-kind representation as an issue, and doesn't leave it alone with a reason about that representation. A literal reading could pass it, so I graded strictly."
+    },
+    {
+      "text": "Architecture and performance findings come before correctness or bug findings in the review's ordering, or bugs are kept in a clearly separate secondary section.",
+      "passed": false,
+      "evidence": "The review opens with '## Blocking' B1-B5, all correctness or build bugs (unlisted source, missing Concat, Slice end/count, global forest, assert side effect). Architecture (M2) and performance (M4 allocation, M5 LineOf/ColumnOf) come after. Bugs are the primary section, not a secondary one."
+    },
+    {
+      "text": "Every performance finding states the work removed or its scale (a count, an estimate or a measurement).",
+      "passed": true,
+      "evidence": "Every performance item states its scale or the work removed. M5: 'about 2·k·n native calls'. M4: 'allocates on the heap once per element' and 'Packed arrays don't need a loop ... yet the loop builds a pin_value for every element'. MarkDead: 'Cost is O(sites × removed)'. All are symbolic, with no number tied to the real input. That still meets 'a count, an estimate', but only loosely."
+    },
+    {
+      "text": "The review does not recommend SIMD, threading or micro-optimizations (unrolling, branch hints) for this code.",
+      "passed": true,
+      "evidence": "No SIMD, threading, unrolling or branch-hint suggestions. The packed-array shortcut is algorithmic."
+    },
+    {
+      "text": "The review does not recommend splitting functions for length or adding defensive NULL checks.",
+      "passed": true,
+      "evidence": "No function-splitting advice: 'Split them' in Commit hygiene refers to splitting the commit. M4 says to remove the defensive NULL early return and use 'assert(array && type_name)', the fail-fast form the repo prescribes."
+    }
+  ],
+  "summary": {
+    "passed": 9,
+    "failed": 3,
+    "total": 12,
+    "pass_rate": 0.75
+  },
+  "claims": [
+    {
+      "claim": "CompilerSources.txt lists package_compiler files one by one (lines 1-18) without CallCensus.chibi, and compiler_bootstrap.c:384-414 fails with '... does not list it' (asserted at test/tools/compiler_bootstrap.c:268)",
+      "type": "factual",
+      "verified": true,
+      "evidence": "CompilerSources.txt lines 1-18 are the 18 package_compiler entries, and the folder holds 19 .chibi files. compiler_bootstrap.c:384-414 scans siblings and formats '%s is in the package of a compiler source but %s does not list it'. test/tools/compiler_bootstrap.c:268 checks that message."
+    },
+    {
+      "claim": "Strings.chibi exports Concatenate (line 551) and has no Concat; nothing else in the tree calls strings.Concat",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Strings.chibi:551 'pub Concatenate'. git grep finds strings.Concat only at CallCensus.chibi:28."
+    },
+    {
+      "claim": "intrinsics.c:580 sets .type_name = \"int\", while intrinsics.c:2453, 2467, 2545 and 2563 build PIN_I32 values with type_name unset",
+      "type": "factual",
+      "verified": true,
+      "evidence": "src/execution/intrinsics.c line 580 has '.type_name = \"int\"'. Lines 2453, 2467, 2545 and 2563 are '(pin_value){ .type = PIN_I32, .i = ... }' with no type_name."
+    },
+    {
+      "claim": "Tree.chibi:65 Text slices with end - start and returns \"\" for -1",
+      "type": "factual",
+      "verified": true,
+      "evidence": "package_compiler/Tree.chibi:65-70: 'if (node < 0) { return \"\"; } return strings.Slice(text, forest[node].start, forest[node].end - forest[node].start);'"
+    },
+    {
+      "claim": "The commit adds 115 lines",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git show --stat HEAD: 3 files changed, 115 insertions(+)."
+    }
+  ],
+  "timing": {
+    "total_tokens": 128256,
+    "duration_ms": 462932,
+    "total_duration_seconds": 462.9,
+    "executor_duration_seconds": 462.9
+  },
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "assertion": "The review flags LineOf/ColumnOf rescanning the text from the start for every call site, gives a quantified cost (a count or operation estimate), and recommends using the row/column SnapshotNode already stores.",
+        "reason": "A symbolic formula passes ('about 2·k·n native calls' in the baseline), so this doesn't separate a review that measured the real input (390,526,400 ByteAt calls for Body.chibi) from one that didn't. Require at least one number tied to a real file if that difference matters."
+      },
+      {
+        "assertion": "The review addresses comparing forest[index].kind against the string \"call_expression\", either as a finding or explicitly left alone with a stated reason about the forest's string-kind representation.",
+        "reason": "Ambiguous: the baseline's 'use Is(forest, index, \"call_expression\")' finding addresses the line but not the string-kind representation, and a literal reading would pass it. Say whether the finding has to be about the string comparison or representation itself."
+      },
+      {
+        "assertion": "The review does not recommend splitting functions for length or adding defensive NULL checks.",
+        "reason": "Both runs recommend assert(array && type_name), which follows the repo's fail-fast rule. Say explicitly that asserts are fine and silent early returns are not, so a grader doesn't count the assert as a defensive check."
+      },
+      {
+        "reason": "No assertion covers the most severe defect, which only the baseline found: CallCensus.chibi isn't listed in asset_compiler/CompilerSources.txt (18 of 19 package_compiler files are listed), so the bootstrap source-completeness check (compiler_bootstrap.c:384-414) rejects the package before it compiles. The with-skill run attributes the build break only to strings.Concat. Add an assertion for it."
+      },
+      {
+        "reason": "The correctness bugs both runs found (Slice given an end where it takes a count, the whole-forest walk against one document's text, assert(matches++ ...) changing the result in debug builds, the nonexistent strings.Concat) have no assertions. They don't discriminate today, but without them a skill that drops correctness coverage would still score full marks."
+      },
+      {
+        "reason": "Non-discriminating in this iteration: the xstrdup/free, Concat-key, CallSite-fields, CountCallsInForest, no-SIMD and no-split/NULL assertions pass for both configurations. Only the min-vs-actual-work, kind-string and ordering assertions separate them."
+      }
+    ],
+    "overall": "Perf and architecture coverage is solid, but most assertions pass for the baseline as well. The assertions that discriminate check quantification and ordering. The largest gap is the unasserted CompilerSources.txt build break, which the with-skill run missed."
+  }
+}

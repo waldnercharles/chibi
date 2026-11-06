@@ -1,0 +1,95 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+RecordPromise :: (fields: int[], code: native.Instruction[], program: bool = true) -> native.Result {
+    empty: int[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    functions := [Function(abi.IntStorage, 0, 0, 3, 0, 6, 0, 0),
+                  Function(native.RecordType, 0, 3, 1, 6, 5, 0, 0)];
+    slots := [native.TaskType, native.RecordType + 1, abi.IntStorage, native.RecordType];
+    records: native.Record[] = [{first: 0, count: 1, identity: 0}, {first: 1, count: 2, identity: 0}];
+    if (program) {
+        return native.EmitProgram(abi.LinuxX64(), functions, empty, slots, empty, code, empty, records,
+                                  fields, texts, source, texts, empty, empty);
+    }
+    return native.Emit(abi.LinuxX64(), functions, empty, slots, empty, code, empty, records,
+                       fields, texts, source, texts, empty, empty, false, 1);
+}
+RecordPromiseCode :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Call, native.TaskType, 0, 1, 0, 0, i64(native.CallSpawned)),
+            Code(native.AwaitResult, native.RecordType + 1, 1, 0, native.RecordType, 0, 0),
+            Code(native.Constant, abi.IntStorage, 2, 0, 0, 0, 0),
+            Code(native.Publish, abi.IntStorage, 0, 2, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0),
+            Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Suspend, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, native.RecordType, 0, 0, 0, 0, 0),
+            Code(native.Publish, native.RecordType, 0, 0, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+@test
+RecordPromisesUseTheirDeclaredPayload :: () {
+    text := Emitted(RecordPromise([abi.IntStorage, abi.IntStorage, native.RecordType], RecordPromiseCode()));
+    assert(strings.Contains(text, "%payload2 = load %record0, ptr %promise2"));
+    code := RecordPromiseCode();
+    item := code[2]; item.right = abi.IntStorage; code[2] = item;
+    Rejects(RecordPromise([abi.IntStorage, abi.IntStorage, native.RecordType], code),
+            "native task observer or result differs from its type");
+}
+@test
+OwnedPromisesCopyOnJoinAndDropOnDestroy :: () {
+    text := Emitted(RecordPromise([abi.TextStorage, abi.IntStorage, native.RecordType], RecordPromiseCode()));
+    assert(strings.Contains(text, "%payload.copy2 = call %record0 @chibi_value.32.copy"));
+    assert(strings.Contains(text, "store %record0 zeroinitializer, ptr %result0\n  call void @chibi_value.32.drop"));
+}
+@test
+OwnedPromisesRequireTheProgramOwner :: () {
+    Rejects(RecordPromise([abi.TextStorage, abi.IntStorage, native.RecordType], RecordPromiseCode(), false),
+            "native waiting frames cannot own managed values or pointers yet");
+}
+@test
+CollectorPointersRequirePromiseRootsBeforeAdmission :: () {
+    code := RecordPromiseCode();
+    code[2] = Code(native.AwaitHandle, 0, 0, 0, 0, 0, 0);
+    code[8] = Code(native.Constant, native.PointerType, 0, 0, 0, 0, 0);
+    code[9] = Code(native.Publish, native.PointerType, 0, 0, 0, 0, 0);
+    empty: int[] = [];
+    texts: string[] = [];
+    records: native.Record[] = [];
+    Rejects(native.EmitProgram(abi.LinuxX64(),
+        [Function(abi.IntStorage, 0, 0, 3, 0, 6, 0, 0), Function(native.PointerType, 0, 3, 1, 6, 5, 0, 0)],
+        empty, [native.TaskType, abi.IntStorage, abi.IntStorage, native.PointerType], empty, code, empty,
+        records, empty, texts, {file: "", directory: ""}, texts, empty, empty),
+        "native waiting results require a pointer-free value and program-owned cleanup");
+}
+@test
+SharedRecordResultGraphDoesNotExpandItsPaths :: () {
+    records: native.Record[] = [{first: 0, count: 2, identity: 0}];
+    fields := [abi.IntStorage, abi.BoolStorage];
+    for layer in 0..<30 {
+        records.append({first: length(fields), count: 2, identity: 0});
+        fields.extend([native.RecordType + layer, native.RecordType + layer]);
+    }
+    type := native.RecordType + 30;
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0),
+             Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Suspend, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, type, 0, 0, 0, 0, 0),
+             Code(native.Publish, type, 0, 0, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    empty: int[] = [];
+    texts: string[] = [];
+    text := Emitted(native.EmitProgram(abi.LinuxX64(),
+        [Function(abi.IntStorage, 0, 0, 1, 0, 4, 0, 0), Function(type, 0, 1, 1, 4, 5, 0, 0)],
+        empty, [abi.IntStorage, type], empty, code, empty, records, fields, texts,
+        {file: "", directory: ""}, texts, empty, empty));
+    assert(strings.Contains(text, "%record30 = type { %record29, %record29 }"));
+}

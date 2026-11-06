@@ -1,0 +1,7 @@
+package map_array_backed_record
+
+Value :: struct { items: int[]; }
+Main :: () -> int {
+    values: [int: Value] = [1: {items: [int(1)]}];
+    return values[1].items[0];
+}

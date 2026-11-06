@@ -1,0 +1,1152 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+
+SequenceSliceIntrinsic: int : 51;
+SequenceViewIntrinsic: int : 52;
+SequenceCloneIntrinsic: int : 53;
+ArrayMutateIntrinsic: int : 54;
+SequenceGetIntrinsic: int : 55;
+SequenceLengthIntrinsic: int : 56;
+SequenceBorrowIntrinsic: int : 62;
+
+// Ranges occur only as an index or a sequence method's argument. They never
+// become runtime values. Existing slice(start, count) calls stay native calls.
+SequenceOperation :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], package: int, node: int) -> int {
+    if (Is(forest, node, "index_expression") && Is(forest, Field(forest, node, "index"), "range_expression")) {
+        return 0;
+    }
+    if (!Is(forest, node, "call_expression")) {
+        return -1;
+    }
+    callee := Field(forest, node, "function");
+    if (!Is(forest, callee, "member_expression") ||
+        QualifierOf(forest, text, names, package, Field(forest, callee, "object")) >= 0) {
+        return -1;
+    }
+    receiver := Field(forest, callee, "object");
+    if (Is(forest, receiver, "identifier") && Lookup(names, Text(forest, text, receiver)) < 0) {
+        return -1;
+    }
+    member := Text(forest, text, Field(forest, callee, "member"));
+    argument := FirstMember(forest, Field(forest, node, "arguments"));
+    if (member == "clone" && argument < 0) {
+        return 2;
+    }
+    if (member == "length" && argument < 0) {
+        return 3;
+    }
+    if (member == "view") {
+        return 1;
+    }
+    if (member == "slice" && Is(forest, argument, "range_expression")) {
+        return 0;
+    }
+    return -1;
+}
+
+// Emits one intrinsic call with typed cells. A literal tag, when present,
+// follows the evaluated arguments. No argument is copied implicitly.
+SequenceCallStep :: (arguments: Value[], intrinsic: int, result: Value, tag: u64, tagged: bool,
+                     popped: int, ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    cells: Cell[] = [];
+    roots: Root[] = [];
+    index: int = 0;
+    for (argument in arguments) {
+        cell := MovedCell(argument);
+        written := SlotStorage(argument.storage, argument.container, target);
+        if (argument.place || argument.storage == ReferenceStorage) {
+            cell = ReferenceCell(target);
+            written = target.pointer_storage;
+        }
+        cells.append(cell);
+        slots.append(AddressSlot(target));
+        code.append(Instruction(ops.host_slot, target.pointer_storage, at.slot + index, at.cell + index, 0, 0, node));
+        write := Instruction(ops.write, written, 0,
+                             argument.slot, at.slot + index, 0, node);
+        write.offset = target.payload_offset;
+        code.append(write);
+        if (!argument.place) {
+            code.extend(SchemaWriteCode(argument, at.slot + index, ops, target, node));
+        }
+        index += 1;
+    }
+    if (tagged) {
+        cells.append({storage: WordStorage, container: 0, record: -1, constant: tag, variant: -1, kind: ValueKind});
+    }
+    output := at.cell + length(cells);
+    cells.append(MovedCell(result));
+    hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: output,
+                      result_count: 1, written: false}];
+    // An index outside the sequence is an argument failure, as stage zero
+    // reports it.
+    failure := target.data_failure;
+    if (intrinsic == SequenceGetIntrinsic || intrinsic == SequenceBorrowIntrinsic) {
+        failure = target.argument_failure;
+    }
+    code.append(Instruction(ops.host_call, 0, 0, failure, 0, at.host, node));
+    slots.append(AddressSlot(target));
+    address := at.slot + length(slots) - 1;
+    code.append(Instruction(ops.host_slot, target.pointer_storage, address, output, 0, 0, node));
+    slots.append({storage: SlotStorage(result.storage, result.container, target),
+                  kind: SlotKind(result.storage, result.container)});
+    result.slot = at.slot + length(slots) - 1;
+    read := Instruction(ops.load, SlotStorage(result.storage, result.container, target), result.slot, address, 0, 0, node);
+    read.offset = target.payload_offset;
+    code.append(read);
+    if (Pointer(result.storage, result.container)) {
+        roots.append({slot: result.slot, storage: result.storage, container: result.container, record: result.record});
+    }
+    result.cell = output;
+    result.owned = intrinsic == ValueCopyIntrinsic || intrinsic == SequenceSliceIntrinsic ||
+                   intrinsic == SequenceCloneIntrinsic || intrinsic == SequenceViewIntrinsic;
+    return CellSchemaStep(Step.Emitted(code, slots, [], cells, hosts, roots, [], [], [], popped, result, NoValue(), []),
+                          output, ops, target, at, node);
+}
+
+SequenceStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, table: ^(TypeDecl[]),
+                 values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    types := table^;
+    node := forest[item.node];
+    index := node.kind == "index_expression";
+    receiver := Field(forest, item.node, "object");
+    range := Field(forest, item.node, "index");
+    operation: int = 0;
+    if (!index) {
+        callee := Field(forest, item.node, "function");
+        receiver = Field(forest, callee, "object");
+        range = FirstMember(forest, Field(forest, item.node, "arguments"));
+        member := Text(forest, text, Field(forest, callee, "member"));
+        if (member == "view") {
+            operation = 1;
+        } else if (member == "clone") {
+            operation = 2;
+        } else if (member == "length") {
+            operation = 3;
+        }
+    }
+    count: int = 1;
+    ranged := operation == 0 || operation == 1;
+    if (ranged) {
+        count = 3;
+        if (!Is(forest, range, "range_expression") || (!index && NextMember(forest, range) >= 0)) {
+            return Fail(forest, item.node, document, "sequence slice or view needs one half-open range");
+        }
+    }
+    if (item.phase == 0) {
+        next: Work[] = [Visit(receiver)];
+        if (ranged) {
+            next.append(Expect(Field(forest, range, "start"), IntStorage, 0, -1));
+            next.append(Expect(Field(forest, range, "end"), IntStorage, 0, -1));
+        }
+        next.append(Resume(item.node, 1, 0, 0));
+        return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+    }
+    object := values[top - count];
+    element: ValueType = {storage: object.storage, container: object.container, record: object.record};
+    if (operation == 1 && Single(object, PointerStorage)) {
+        element = PointerElement(types, object);
+        if (element.container != ArrayContainer || types[object.record].key != 0) {
+            return Fail(forest, receiver, document, "mutable view needs a present pointer to an array");
+        }
+    } else if (operation == 1 && !Single(object, TextStorage)) {
+        return Fail(forest, receiver, document, "mutable view needs a pointer to an array");
+    } else if (object.container != ArrayContainer && object.container != ViewContainer && !Single(object, TextStorage)) {
+        return Fail(forest, receiver, document, "slice, view and clone need a string or array");
+    }
+    if (operation == 3) {
+        emitted := SequenceCallStep([object], SequenceLengthIntrinsic, Typed(-1, IntStorage, 0, -1),
+                                    u64(0), false, 1, ops, target, at, node);
+        return CleanupSequenceValues(emitted, [object], ops, target, at, node);
+    }
+    if (element.container != 0) {
+        element.container = ArrayContainer;
+        if (operation == 1) {
+            element.container = ViewContainer;
+        }
+    }
+    result := Typed(-1, element.storage, element.container, element.record);
+    intrinsic := SequenceCloneIntrinsic;
+    if (ranged) {
+        if (!Single(values[top - 2], IntStorage) || !Single(values[top - 1], IntStorage)) {
+            return Fail(forest, range, document, "range bounds need int values");
+        }
+        optional := EnsureOptional(table, element, 0);
+        types = table^;
+        result = Typed(-1, UnionStorage, 0, optional);
+        intrinsic = SequenceSliceIntrinsic;
+        if (operation == 1) {
+            intrinsic = SequenceViewIntrinsic;
+        }
+    }
+    arguments := slice(values, top - count, count);
+    emitted := SequenceCallStep(arguments, intrinsic, result, OptionalTag(types, element),
+                                ranged, count, ops, target, at, node);
+    return CleanupSequenceValues(emitted, arguments, ops, target, at, node);
+}
+
+ArrayMutation :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: ResolvedNative[],
+                  ports: ResolvedPort[], package: int, node: int) -> int {
+    // A method that changes its array is a statement of its own; the call
+    // step rejects one used as a value.
+    if (!Is(forest, node, "call_expression") || !Is(forest, forest[node].parent, "expression_statement")) {
+        return 0;
+    }
+    callee := Field(forest, node, "function");
+    if (!Is(forest, callee, "member_expression") ||
+        QualifierOf(forest, text, names, package, Field(forest, callee, "object")) >= 0) {
+        return 0;
+    }
+    receiver := Field(forest, callee, "object");
+    if (Is(forest, receiver, "identifier") && Lookup(names, Text(forest, text, receiver)) < 0) {
+        return 0;
+    }
+    method := Text(forest, text, Field(forest, callee, "member"));
+    native := ArrayMethod(natives, ports, method);
+    if (native < 0 || !ArrayChanger(natives, native)) {
+        return 0;
+    }
+    changers: string[] = ["append", "add_unique", "extend", "set_array_elem", "insert", "remove_index",
+                          "remove_item", "clear", "reverse", "swap", "resize"];
+    operation: int = 1;
+    for (changer in changers) {
+        if (NameMatches(method, changer)) {
+            return operation;
+        }
+        operation += 1;
+    }
+    return 0;
+}
+
+MutationStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], members: TypeMember[],
+                 natives: ResolvedNative[], ports: ResolvedPort[], names: Name[], values: Value[], top: int,
+                 item: Work, operation: int, ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    receiver := Field(forest, Field(forest, item.node, "function"), "object");
+    first := FirstMember(forest, Field(forest, item.node, "arguments"));
+    if (item.phase == 0) {
+        return Step.Emitted([], [], [], [], [], [], [], [],
+                            [PlaceVisit(receiver), Resume(item.node, 1, 0, 0)], 0, NoValue(), NoValue(), []);
+    }
+    if (item.phase == 1) {
+        object := values[top - 1];
+        if (object.place && Single(object, PointerStorage)) {
+            return PointerContinue(ReadSequencePlace(object, 1, ops, target, at, node),
+                                   Resume(item.node, PlacePointerPhase, 1, 0));
+        }
+        if (object.container != ArrayContainer && object.container != ViewContainer) {
+            return Fail(forest, receiver, document, "mutating method needs an array or view");
+        }
+        if (object.container == ViewContainer && operation != 4 && operation != 9 && operation != 10) {
+            return Fail(forest, item.node, document, "a view has fixed length");
+        }
+        next: Work[] = [];
+        argument := first;
+        count: int = 0;
+        element := SequenceElement(types, {storage: object.storage, container: object.container, record: object.record});
+        if (operation == 11 && NeedsPointerValue(types, members, element.storage, element.container, element.record)) {
+            return Fail(forest, item.node, document, "resize cannot create missing initialized values");
+        }
+        native := ArrayMethod(natives, ports, Text(forest, text, Field(forest, Field(forest, item.node, "function"),
+                                                                       "member")));
+        while (argument >= 0) {
+            // A named argument binds as stage zero binds it; this step takes
+            // the arguments in parameter order.
+            value := argument;
+            if (Is(forest, argument, "named_argument")) {
+                value = Field(forest, argument, "value");
+                if (value < 0) {
+                    value = Field(forest, argument, "source");
+                }
+                parameter := NativeParameter(ports, natives[native], Text(forest, text, Field(forest, argument, "name")),
+                                             count + 2);
+                if (parameter != count + 1) {
+                    return Fail(forest, argument, document, "name an array update's arguments in parameter order");
+                }
+            }
+            storage := element.storage;
+            container := element.container;
+            record := element.record;
+            if (operation == 3) {
+                storage = object.storage;
+                container = ArrayContainer;
+                record = object.record;
+            } else if (operation == 6 || operation == 10 || operation == 11 ||
+                       ((operation == 4 || operation == 5) && count == 0)) {
+                storage = IntStorage;
+                container = 0;
+                record = -1;
+            }
+            next.append(Expect(value, storage, container, record));
+            next.append(Resume(value, CopyValuePhase, 0, 0));
+            count += 1;
+            argument = NextMember(forest, argument);
+        }
+        expected: int = 1;
+        if (operation == 4 || operation == 5 || operation == 10) {
+            expected = 2;
+        } else if (operation == 8 || operation == 9) {
+            expected = 0;
+        }
+        if (count != expected) {
+            return Fail(forest, item.node, document, "mutating method has the wrong number of arguments");
+        }
+        next.append(Resume(item.node, 2, count, 0));
+        // Stage zero watches a named array, not a pointer it follows, where
+        // it evaluates it, before the arguments, which can invoke another body.
+        found: int = -1;
+        if (Is(forest, receiver, "identifier")) {
+            found = Lookup(names, Text(forest, text, receiver));
+        }
+        if (!ops.debug || found < 0 || (names[found].storage == PointerStorage && names[found].container == 0)) {
+            return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+        }
+        switch ReadSequencePlace(object, 0, ops, target, at, node) {
+            case .Failed(diagnostic):
+                return Step.Failed(diagnostic);
+            case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, scheduled, popped, value, retained,
+                          marks):
+                watches: Code[] = [WatchCode(ops, value.slot, value.storage, value.container, value.record, 0, true,
+                                             forest[receiver], target),
+                                   WatchCode(ops, value.slot, value.storage, value.container, value.record, 0, false,
+                                             node, target)];
+                return Step.Emitted(extend(code, watches), slots, locals, cells, hosts, roots, calls, bound, next,
+                                    0, NoValue(), retained, marks);
+        }
+    }
+    count := item.a + 1;
+    arguments := slice(values, top - count, count);
+    object := arguments[0];
+    element := SequenceElement(types, {storage: object.storage, container: object.container, record: object.record});
+    index: int = 1;
+    while (index < count) {
+        expected := Typed(-1, element.storage, element.container, element.record);
+        if (operation == 3) {
+            expected = Typed(-1, object.storage, ArrayContainer, object.record);
+        } else if (operation == 6 || operation == 10 || operation == 11 ||
+                   ((operation == 4 || operation == 5) && index == 1)) {
+            expected = Typed(-1, IntStorage, 0, -1);
+        }
+        if (!Accepts(types, expected.storage, expected.container, expected.record, arguments[index])) {
+            return Fail(forest, item.node, document, "argument differs from the mutating method's parameter type");
+        }
+        index += 1;
+    }
+    // Each argument is the call's next watched input, as stage zero watches it.
+    watches: Code[] = [];
+    index = 1;
+    while (ops.debug && index < count) {
+        argument := arguments[index];
+        watches.append(WatchCode(ops, argument.slot, argument.storage, argument.container, argument.record, index,
+                                 false, node, target));
+        index += 1;
+    }
+    // Runtime accepts the operation as its second, int-typed argument.
+    operation_slot := at.slot;
+    operation_code := ConstantCode(ops, IntStorage, u64(operation), operation_slot, node);
+    watches.append(operation_code);
+    operation_value := Typed(operation_slot, IntStorage, 0, -1);
+    arguments = insert(arguments, 1, operation_value);
+    shifted: Bases = {pc: at.pc + length(watches), slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host,
+                      call: at.call};
+    switch SequenceCallStep(arguments, ArrayMutatePlaceIntrinsic, Typed(-1, BoolStorage, 0, -1), u64(0), false,
+                            count, ops, target, shifted, node) {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, names, next, popped, result, retained, marks):
+            emitted := Step.Emitted(extend(watches, code), extend([ValueLocal(IntStorage)], slots),
+                                    locals, cells, hosts, roots, calls, names, next, popped, result, retained, marks);
+            return CleanupSequenceValues(emitted, Held(types, members, arguments), ops, target, at, node);
+    }
+}
+
+ArrayElementAssignment :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> bool {
+    if (!Is(forest, node, "assignment")) {
+        return false;
+    }
+    destination := Field(forest, node, "target");
+    if (Is(forest, destination, "index_expression")) {
+        return true;
+    }
+    if (!Is(forest, destination, "member_expression")) {
+        return false;
+    }
+    root := RootOf(forest, destination);
+    if (Is(forest, root, "identifier")) {
+        named := Lookup(names, Text(forest, text, root));
+        // A name the body may not write reports as stage zero does, and
+        // `e.C.f = v` on a handle writes the entity's component instead.
+        return named >= 0 && names[named].writable && names[named].place != SelfPlace &&
+               names[named].place != AliasPlace &&
+               (names[named].storage != HandleStorage || names[named].container != 0);
+    }
+    return Is(forest, root, "dereference_expression");
+}
+
+ElementAssignStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                      values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    destination := Field(forest, item.node, "target");
+    operator := CompoundOperator(Text(forest, text, Field(forest, item.node, "operator")));
+    compound := operator != "";
+    if (item.phase == 0) {
+        return Step.Emitted([], [], [], [], [], [], [], [],
+                            [DestinationVisit(destination), Resume(item.node, 1, 0, 0)],
+                            0, NoValue(), NoValue(), []);
+    }
+    if (item.phase == 1) {
+        place := values[top - 1];
+        next: Work[] = [Expect(Field(forest, item.node, "value"), place.storage, place.container, place.record),
+                        Resume(Field(forest, item.node, "value"), CopyValuePhase, 0, 0),
+                        Resume(item.node, 2, 0, 0)];
+        if (place.newkey && compound) {
+            return Fail(forest, item.node, document, "compound map assignment is not supported yet");
+        }
+        if (place.newkey) {
+            return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+        }
+        // Validate the destination before evaluating the right side. The
+        // eventual write resolves the path again after any authored calls.
+        switch ReadSequencePlace(place, 0, ops, target, at, node) {
+            case .Failed(diagnostic):
+                return Step.Failed(diagnostic);
+            case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, scheduled,
+                          popped, value, retained, marks):
+                kept := value;
+                if (!compound) {
+                    kept = NoValue();
+                }
+                return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                                    0, kept, NoValue(), marks);
+        }
+    }
+    count: int = 2;
+    if (compound) {
+        count = 3;
+    }
+    place := values[top - count];
+    value := values[top - 1];
+    code: Code[] = [];
+    slots: Slot[] = [];
+    if (place.container == 0 && MixedCompoundIntegers(operator, place.storage, value)) {
+        return Fail(forest, item.node, document,
+                    format_text("Mismatched integer types {} and {}; convert one operand",
+                                TypeName(place.storage), TypeName(value.storage)));
+    }
+    // A number converts to the destination's type, as stage zero converts it.
+    if (place.container == 0 && value.container == 0 && value.storage != place.storage &&
+        Converts(value.storage, place.storage)) {
+        slots.extend(NumberSlots(value.storage, place.storage));
+        code.extend(NumberCode(ops, value.storage, place.storage, value.slot, at.slot, node));
+        value = Typed(at.slot + length(slots) - 1, place.storage, 0, -1);
+    }
+    if (!Accepts(types, place.storage, place.container, place.record, value)) {
+        return Fail(forest, destination, document, "assigned value differs from its destination");
+    }
+    if (compound) {
+        before := values[top - 2];
+        operation := BinaryOp(ops, operator);
+        if (!Numeric(place.storage) || place.container != 0 || !Computes(ops, operation, place.storage)) {
+            return Fail(forest, destination, document, "compound assignment needs numeric operands");
+        }
+        // The destination's current value is watched at it, as stage zero
+        // does, except an array or view element, which it updates in place.
+        if (ops.debug && (!Is(forest, destination, "index_expression") || place.newkey)) {
+            code.append(WatchCode(ops, before.slot, before.storage, before.container, before.record, 0, true,
+                                  forest[destination], target));
+        }
+        slots.append(ValueLocal(place.storage));
+        code.append(Instruction(operation, place.storage, at.slot + length(slots) - 1, before.slot, value.slot, -1,
+                                node));
+        value.slot = at.slot + length(slots) - 1;
+    }
+    shifted := SlotsPast(at, length(slots));
+    emitted := PointerPrefix(code, slots, IgnoreSequenceValue(SequenceCallStep([place, value], ReferenceWriteIntrinsic,
+                                                                               Typed(-1, BoolStorage, 0, -1), u64(0), false, count,
+                                                                               ops, target, shifted, node)));
+    return CleanupSequenceValues(emitted, [value], ops, target, at, node);
+}
+IgnoreSequenceValue :: (step: Step) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                      popped, value, retained, marks):
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                                popped, NoValue(), retained, marks);
+    }
+}
+
+ValueCopyIntrinsic: int : 57;
+ValueDropIntrinsic: int : 58;
+ArrayMutatePlaceIntrinsic: int : 59;
+PlacePhase: int : 41;
+PlaceFieldPhase: int : 42;
+PlaceIndexPhase: int : 43;
+PlaceIndexDonePhase: int : 44;
+PlacePointerPhase: int : 45;
+CopyValuePhase: int : 46;
+ReferenceKeyIntrinsic: int : 35;
+ReferenceUnionIntrinsic: int : 60;
+PlaceComponentPhase: int : 49;
+
+// A record, union or collection its consumer keeps: a temporary passes as it
+// is, since nothing else holds it, and anything else is copied.
+CopyValueStep :: (value: Value, popped: int, ops: Ops, target: Target, at: Bases,
+                  node: snapshot.SnapshotNode) -> Step {
+    if (value.owned || value.place || value.storage <= 0 ||
+        (value.container == 0 && value.storage != StructStorage && value.storage != UnionStorage)) {
+        return Step.Emitted([], [], [], [], [], [], [], [], [], popped, value, NoValue(), []);
+    }
+    return SequenceCallStep([value], ValueCopyIntrinsic, Typed(-1, value.storage, value.container, value.record),
+                            u64(0), false, popped, ops, target, at, node);
+}
+
+PlaceVisit :: (node: int) -> Work {
+    return Resume(node, PlacePhase, 0, 0);
+}
+// The place an assignment writes, which as an array element has no point of its own.
+DestinationVisit :: (node: int) -> Work {
+    return Resume(node, PlacePhase, 0, 1);
+}
+PlaceResult :: (step: Step, element: ValueType) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                      popped, value, retained, marks):
+            result := value;
+            result.storage = element.storage;
+            result.container = element.container;
+            result.record = element.record;
+            result.place = true;
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                                popped, result, retained, marks);
+    }
+}
+ReadSequencePlace :: (place: Value, popped: int, ops: Ops, target: Target, at: Bases,
+                      node: snapshot.SnapshotNode) -> Step {
+    return SequenceCallStep([place], ReferenceReadIntrinsic,
+                            Typed(-1, place.storage, place.container, place.record), u64(0), false,
+                            popped, ops, target, at, node);
+}
+// A place carries only a rooted logical location. Projections preserve the
+// owner and their evaluated indices; they never retain a backing data pointer.
+SequencePlaceStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                      members: TypeMember[], names: Name[], values: Value[], top: int, item: Work,
+                      ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    if (item.phase == PlaceComponentPhase) {
+        entity := values[top - 1];
+        if (!Single(entity, HandleStorage)) {
+            return Fail(forest, item.node, document, "component place requires an entity");
+        }
+        return SequenceComponentPlace(types, item.a, entity.slot, 1, ops, target, at, node);
+    }
+    if (item.phase == PlacePointerPhase) {
+        pointer := values[top - 1];
+        element := PointerElement(types, pointer);
+        if (element.storage == 0 || (pointer.record >= 0 && types[pointer.record].key != 0)) {
+            return Fail(forest, item.node, document, "place requires a present pointer");
+        }
+        step := PlaceResult(PointerReferenceStep(pointer, ops, target, at, node), element);
+        if (item.a != 0) {
+            return PointerContinue(step, Resume(item.node, item.a, 0, 0));
+        }
+        return step;
+    }
+    if (item.phase == PlaceFieldPhase) {
+        base := values[top - 1];
+        if (base.storage == PointerStorage && base.container == 0) {
+            resumed := Resume(item.node, PlacePointerPhase, PlaceFieldPhase, 0);
+            return PointerContinue(ReadSequencePlace(base, 1, ops, target, at, node), resumed);
+        }
+        if (!base.place || base.storage != StructStorage || base.container != 0) {
+            return Fail(forest, item.node, document, "field mutation requires a writable record");
+        }
+        field := FindField(types, members, base.record, Text(forest, text, Field(forest, item.node, "member")));
+        if (field < 0) {
+            return Fail(forest, item.node, document, "Unknown field");
+        }
+        part := members[field];
+        element: ValueType = {storage: part.storage, container: part.container, record: part.record};
+        offset := TypedCell(WordStorage, 0, -1);
+        offset.constant = u64(part.offset);
+        cells: Cell[] = [ReferenceCell(target), TypedCell(part.storage, part.container, part.record),
+                         offset, TypedCell(BoolStorage, 0, -1), ReferenceCell(target)];
+        code := CellWrite(target.pointer_storage, base.slot, at.cell, ops, target, at.slot, node);
+        code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+        code.extend(CellRead(target.pointer_storage, at.cell + 4, ops, target, at.slot + 1, node));
+        hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ReferenceFieldIntrinsic, linked: -1, first: at.cell,
+                          result_first: at.cell + 4, result_count: 1, written: false}];
+        result := Typed(at.slot + 2, part.storage, part.container, part.record);
+        result.place = true;
+        // A component-typed record's field reads it, as stage zero records.
+        return EffectsStep(Step.Emitted(code, [AddressSlot(target), AddressSlot(target), DescriptorSlot(target)], [],
+                                        cells, hosts, [], [], [], [], 1, result, NoValue(), []),
+                           MemberEffects(types, base.record));
+    }
+    if (item.phase == PlaceIndexPhase) {
+        base := values[top - 1];
+        storage := IntStorage;
+        if (IsMap(base)) {
+            storage = types[base.record].key;
+        }
+        if (!base.place || (base.container != ArrayContainer && base.container != ViewContainer && !IsMap(base))) {
+            return Fail(forest, item.node, document, "indexed mutation requires a writable array or map");
+        }
+        // A map entry an assignment writes keeps its point, as stage zero
+        // marks a key it stores.
+        points: Code[] = [];
+        if (item.b == 1 && IsMap(base)) {
+            points = [ExpressionCode(ops, node)];
+        }
+        return Step.Emitted(points, [], [], [], [], [], [], [],
+                            [Expect(Field(forest, item.node, "index"), storage, 0, -1),
+                             Resume(item.node, PlaceIndexDonePhase, 0, 0)],
+                            0, NoValue(), NoValue(), []);
+    }
+    if (item.phase == PlaceIndexDonePhase) {
+        base := values[top - 2];
+        index := values[top - 1];
+        element := SequenceElement(types, {storage: base.storage, container: base.container, record: base.record});
+        intrinsic := ReferenceFieldIntrinsic;
+        if (IsMap(base)) {
+            map := types[base.record];
+            element = {storage: map.value_storage, container: map.value_container, record: map.value_record};
+            intrinsic = ReferenceKeyIntrinsic;
+        }
+        cells: Cell[] = [ReferenceCell(target), TypedCell(element.storage, element.container, element.record),
+                         TypedCell(index.storage, index.container, index.record)];
+        if (intrinsic == ReferenceFieldIntrinsic) {
+            selected := TypedCell(BoolStorage, 0, -1);
+            selected.constant = 1;
+            cells.append(selected);
+        }
+        output := at.cell + length(cells);
+        cells.append(ReferenceCell(target));
+        code := CellWrite(target.pointer_storage, base.slot, at.cell, ops, target, at.slot, node);
+        code.extend(CellWrite(index.storage, index.slot, at.cell + 2, ops, target, at.slot + 1, node));
+        code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+        code.extend(CellRead(target.pointer_storage, output, ops, target, at.slot + 2, node));
+        hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: output,
+                          result_count: 1, written: false}];
+        result := Typed(at.slot + 3, element.storage, element.container, element.record);
+        result.place = true;
+        result.newkey = IsMap(base);
+        return Step.Emitted(code, [AddressSlot(target), AddressSlot(target), AddressSlot(target), DescriptorSlot(target)],
+                            [], cells, hosts, [], [], [], [], 2, result, NoValue(), []);
+    }
+    if (node.kind == "parenthesized_expression") {
+        return Step.Emitted([], [], [], [], [], [], [], [],
+                            [PlaceVisit(Field(forest, item.node, "expression"))], 0, NoValue(), NoValue(), []);
+    }
+    if (node.kind == "dereference_expression") {
+        // Stage zero marks a pointer it follows to reach an element or field.
+        points: Code[] = [];
+        if (Is(forest, node.parent, "index_expression") || Is(forest, node.parent, "member_expression")) {
+            points = [ExpressionCode(ops, node)];
+        }
+        return Step.Emitted(points, [], [], [], [], [], [], [],
+                            [Visit(Field(forest, item.node, "operand")), Resume(item.node, PlacePointerPhase, 0, 0)],
+                            0, NoValue(), NoValue(), []);
+    }
+    if (node.kind == "member_expression") {
+        component := SelfComponent(forest, text, types, names, item.node);
+        if (component >= 0) {
+            return SequenceComponentPlace(types, component, -1, 0, ops, target, at, node);
+        }
+        object := Field(forest, item.node, "object");
+        found: int = -1;
+        if (Is(forest, object, "identifier")) {
+            found = Lookup(names, Text(forest, text, object));
+        }
+        component = Component(types, Text(forest, text, Field(forest, item.node, "member")));
+        if (component >= 0 && found >= 0 && names[found].storage == HandleStorage) {
+            return Step.Emitted([], [], [], [], [], [], [], [],
+                                [Visit(object), Resume(item.node, PlaceComponentPhase, component, 0)],
+                                0, NoValue(), NoValue(), []);
+        }
+    }
+    if (node.kind == "member_expression" || node.kind == "index_expression") {
+        // As stage zero marks a place: each field and element, outermost
+        // first, then the name it starts from.
+        phase := PlaceFieldPhase;
+        points: Code[] = [ExpressionCode(ops, node)];
+        root := PlaceVisit(Field(forest, item.node, "object"));
+        if (node.kind == "index_expression") {
+            phase = PlaceIndexPhase;
+        }
+        if (node.kind == "index_expression" && item.b == 1) {
+            points = [];
+            // Stage zero stores an element of a local array in place: it
+            // marks the element, and the array's name at the statement.
+            if (StoresLocalElement(forest, text, names, item.node)) {
+                points = [ExpressionCode(ops, node)];
+                root.b = 2;
+            }
+        }
+        return Step.Emitted(points, [], [], [], [], [], [], [], [root, Resume(item.node, phase, 0, item.b)],
+                            0, NoValue(), NoValue(), []);
+    }
+    found := Lookup(names, Text(forest, text, item.node));
+    if (node.kind != "identifier" || found < 0 || !names[found].writable) {
+        return Fail(forest, item.node, document, "mutation requires a writable place");
+    }
+    points := NamePoints(forest, text, names, ops, item.node);
+    binding := names[found];
+    if (item.b == 2) {
+        points = [SymbolCode(ops, binding.node, forest[forest[node.parent].parent])];
+    }
+    if (binding.place == NarrowedPlace) {
+        // The payload's place in the optional's, which stage zero marks
+        // again as the payload.
+        points.append(ExpressionCode(ops, node));
+        element: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
+        return PointerPrefix(points, [], PayloadPlaceAfter(types, NamePlaceStep(forest, document, types, names[binding.index],
+                                                                                item.node, ops, target, at),
+                                                           element, ops, target, at, node));
+    }
+    return PointerPrefix(points, [], NamePlaceStep(forest, document, types, binding, item.node, ops, target, at));
+}
+// Whether the assignment target `node` is an element of a local array that
+// stage zero stores in place: a plain assignment to a writable local's
+// element, not a parameter's.
+StoresLocalElement :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> bool {
+    object := Field(forest, node, "object");
+    statement := forest[node].parent;
+    if (!Is(forest, object, "identifier") || !Is(forest, statement, "assignment") ||
+        CompoundOperator(Text(forest, text, Field(forest, statement, "operator"))) != "") {
+        return false;
+    }
+    found := Lookup(names, Text(forest, text, object));
+    return found >= 0 && names[found].place == CellPlace && names[found].container == ArrayContainer &&
+           names[found].writable && !Parameter(forest, names[found]);
+}
+// The place of the local `binding` that the name `name` reads.
+NamePlaceStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], binding: Name, name: int, ops: Ops,
+                  target: Target, at: Bases) -> Step {
+    node := forest[name];
+    element: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
+    if (binding.place == ManagedPlace) {
+        pointer := FindPointer(types, element, false);
+        code := CellRead(PointerStorage, binding.index, ops, target, at.slot, node);
+        slots: Slot[] = [AddressSlot(target), {storage: PointerStorage, kind: ValueKind}];
+        return PlaceResult(PointerPrefix(code, slots, PointerPopped(PointerReferenceStep(
+            Typed(at.slot + 1, PointerStorage, 0, pointer), ops, target, SlotsPast(at, 2), node), 0)), element);
+    }
+    if (binding.place == LocalPlace && Single(Typed(-1, binding.storage, binding.container, binding.record),
+                                              PointerStorage)) {
+        // A pointer local writes through to its target, whose place it is;
+        // stage zero marks and watches the pointer as the value it
+        // dereferences.
+        pointer := Typed(at.slot, PointerStorage, 0, binding.record);
+        target_type := PointerElement(types, pointer);
+        if (target_type.storage == 0 || types[binding.record].key != 0) {
+            return Fail(forest, name, document, "place requires a present pointer");
+        }
+        code: Code[] = [ExpressionCode(ops, node), Instruction(ops.local, PointerStorage, at.slot, binding.index, 0, 0, node)];
+        if (ops.debug) {
+            code.append(WatchCode(ops, at.slot, PointerStorage, 0, binding.record, 0, true, node, target));
+        }
+        return PlaceResult(PointerPrefix(code, [ValueLocal(PointerStorage)],
+                                         PointerPopped(PointerReferenceStep(
+                                             pointer, ops, target, SlotsPast(at, 1), node), 0)), target_type);
+    }
+    if (binding.place != CellPlace && binding.place != BoxPlace && binding.place != ReferencePlace) {
+        return Fail(forest, name, document, "mutation requires a local value");
+    }
+    code: Code[] = [];
+    slots: Slot[] = [];
+    cells: Cell[] = [];
+    hosts: Host[] = [];
+    descriptor := at.slot;
+    if (binding.place == ReferencePlace) {
+        slots.append(DescriptorSlot(target));
+        code.append(DescriptorCode(ops, target, binding.index, descriptor, node));
+    } else {
+        cells = MakeValueCells(target, binding.storage, binding.container, binding.record);
+        slots = MakeValueSlots(target);
+        code.extend(MakeValueCode(ops, target, binding.index, at.cell, at.host, at.slot, node));
+        hosts = [MakeValueHost(at.cell)];
+        descriptor = at.slot + 5;
+    }
+    result := Typed(descriptor, binding.storage, binding.container, binding.record);
+    result.place = true;
+    return Step.Emitted(code, slots, [], cells, hosts, [], [], [], [], 0, result, NoValue(), []);
+}
+
+SequenceJoined :: (prefix: Step, suffix: Step) -> Step {
+    switch prefix {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                      popped, value, retained, marks):
+            switch suffix {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(tail_code, tail_slots, tail_locals, tail_cells, tail_hosts, tail_roots,
+                              tail_calls, tail_bound, tail_next, tail_popped, tail_value, tail_retained, tail_marks):
+                    return Step.Emitted(extend(code, tail_code), extend(slots, tail_slots), extend(locals, tail_locals),
+                                        extend(cells, tail_cells), extend(hosts, tail_hosts), extend(roots, tail_roots),
+                                        extend(calls, tail_calls), extend(bound, tail_bound), extend(next, tail_next),
+                                        popped + tail_popped, tail_value, tail_retained, extend(marks, tail_marks));
+            }
+    }
+}
+// Whether a value of record or union type `record` can hold a collection,
+// which is all a drop releases. A record reaches one only through a union
+// field. A type met again on the way may hold one.
+HoldsCollection :: (types: TypeDecl[], members: TypeMember[], record: int, visiting: int[]) -> bool {
+    for (seen in visiting) {
+        if (seen == record) {
+            return true;
+        }
+    }
+    declared := types[record];
+    within := extend(visiting, [record]);
+    if (declared.kind == UnionDecl) {
+        variant := declared.first;
+        while (variant < declared.first + declared.count) {
+            if (HoldsCollection(types, members, variant, within)) {
+                return true;
+            }
+            variant += 1;
+        }
+        return false;
+    }
+    if (declared.kind != RecordDecl && declared.kind != VariantDecl) {
+        return true;
+    }
+    index := declared.first;
+    while (index < declared.first + declared.count) {
+        field := members[index];
+        if (field.container != 0 ||
+            ((field.storage == StructStorage || field.storage == UnionStorage) &&
+             HoldsCollection(types, members, field.record, within))) {
+            return true;
+        }
+        index += 1;
+    }
+    return false;
+}
+// The values a drop could release anything from: collections, and records
+// and unions that can hold one. Dropping any other value does nothing.
+Held :: (types: TypeDecl[], members: TypeMember[], values: Value[]) -> Value[] {
+    held: Value[] = [];
+    for (value in values) {
+        if (value.container != 0 || value.record < 0 || value.record >= length(types) ||
+            (value.storage != StructStorage && value.storage != UnionStorage) ||
+            HoldsCollection(types, members, value.record, [])) {
+            held.append(value);
+        }
+    }
+    return held;
+}
+// Release only values whose producer handed ownership to this expression.
+// Plain reads and logical places never own the value they temporarily expose.
+DropSequenceValues :: (values: Value[], ops: Ops, target: Target, at: Bases,
+                       node: snapshot.SnapshotNode) -> Step {
+    result := Step.Emitted([], [], [], [], [], [], [], [], [], 0, NoValue(), NoValue(), []);
+    shifted := at;
+    for (value in values) {
+        if (value.owned && value.storage > 0) {
+            step := IgnoreSequenceValue(SequenceCallStep([value], ValueDropIntrinsic,
+                                                         Typed(-1, BoolStorage, 0, -1), u64(0), false,
+                                                         0, ops, target, shifted, node));
+            switch step {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                              popped, produced, retained, marks):
+                    shifted.pc += length(code);
+                    shifted.slot += length(slots);
+                    shifted.local += length(locals);
+                    shifted.cell += length(cells);
+                    shifted.host += length(hosts);
+                    shifted.call += length(calls);
+            }
+            result = SequenceJoined(result, step);
+        }
+    }
+    return result;
+}
+CleanupSequenceValues :: (prefix: Step, values: Value[], ops: Ops, target: Target, at: Bases,
+                          node: snapshot.SnapshotNode) -> Step {
+    switch prefix {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                      popped, produced, retained, marks):
+            shifted: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots),
+                              local: at.local + length(locals), cell: at.cell + length(cells),
+                              host: at.host + length(hosts), call: at.call + length(calls)};
+            joined := SequenceJoined(prefix, DropSequenceValues(values, ops, target, shifted, node));
+            switch joined {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(all_code, all_slots, all_locals, all_cells, all_hosts, all_roots,
+                              all_calls, all_bound, all_next, all_popped, dropped, all_retained, all_marks):
+                    return Step.Emitted(all_code, all_slots, all_locals, all_cells, all_hosts, all_roots,
+                                        all_calls, all_bound, all_next, all_popped, produced, retained, all_marks);
+            }
+    }
+}
+
+DropNamesStep :: (names: Name[], first: int, natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops, target: Target, at: Bases,
+                  node: snapshot.SnapshotNode) -> Step {
+    prefix := Step.Emitted([], [], [], [], [], [], [], [], [], 0, NoValue(), NoValue(), []);
+    shifted := at;
+    index := first;
+    while (index < length(names)) {
+        binding := names[index];
+        if (binding.owned && binding.place == ResultsPlace && binding.storage == ResultsStorage) {
+            dropped := DropNativeResultsStep(Typed(binding.index, ResultsStorage, 0, binding.record),
+                                             natives, ports, ops, target, shifted, node);
+            switch dropped {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(added_code, added_slots, locals, cells, hosts, roots, calls, bound, next,
+                              popped, produced, retained, marks):
+                    shifted.pc += length(added_code);
+                    shifted.slot += length(added_slots);
+                    shifted.local += length(locals);
+                    shifted.cell += length(cells);
+                    shifted.host += length(hosts);
+                    shifted.call += length(calls);
+            }
+            prefix = SequenceJoined(prefix, dropped);
+        }
+        if (binding.owned && binding.place == CellPlace) {
+            value := Typed(shifted.slot + 1, binding.storage, binding.container, binding.record);
+            value.owned = true;
+            code := CellRead(SlotStorage(binding.storage, binding.container, target), binding.index,
+                             ops, target, shifted.slot, node);
+            slots: Slot[] = [AddressSlot(target),
+                             {storage: SlotStorage(binding.storage, binding.container, target),
+                              kind: SlotKind(binding.storage, binding.container)}];
+            read := Step.Emitted(code, slots, [], [], [], [], [], [], [], 0, NoValue(), NoValue(), []);
+            dropped := CleanupSequenceValues(read, [value], ops, target, shifted, node);
+            switch dropped {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(added_code, added_slots, locals, cells, hosts, roots, calls, bound, next,
+                              popped, produced, retained, marks):
+                    shifted.pc += length(added_code);
+                    shifted.slot += length(added_slots);
+                    shifted.local += length(locals);
+                    shifted.cell += length(cells);
+                    shifted.host += length(hosts);
+                    shifted.call += length(calls);
+            }
+            prefix = SequenceJoined(prefix, dropped);
+        }
+        index += 1;
+    }
+    return prefix;
+}
+DropBeforeFinish :: (step: Step, names: Name[], natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops, target: Target, at: Bases,
+                     node: snapshot.SnapshotNode) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                      popped, produced, retained, marks):
+            if (length(code) == 0 || code[length(code) - 1].op != ops.finish) {
+                return step;
+            }
+            finish := code[length(code) - 1];
+            prefix := Step.Emitted(slice(code, 0, length(code) - 1), slots, locals, cells, hosts, roots,
+                                   calls, bound, next, popped, produced, retained, marks);
+            shifted: Bases = {pc: at.pc + length(code) - 1, slot: at.slot + length(slots),
+                              local: at.local + length(locals), cell: at.cell + length(cells),
+                              host: at.host + length(hosts), call: at.call + length(calls)};
+            dropped := DropNamesStep(names, 0, natives, ports, ops, target, shifted, node);
+            suffix := Step.Emitted([finish], [], [], [], [], [], [], [], [], 0, NoValue(), NoValue(), []);
+            return SequenceJoined(SequenceJoined(prefix, dropped), suffix);
+    }
+}
+
+DropNativeResultsStep :: (bundle: Value, natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops, target: Target,
+                          at: Bases, node: snapshot.SnapshotNode) -> Step {
+    prefix := Step.Emitted([], [], [], [], [], [], [], [], [], 0, NoValue(), NoValue(), []);
+    shifted := at;
+    called := natives[bundle.record];
+    index: int = 0;
+    while (index < called.results) {
+        port := ports[called.first + called.parameters + index];
+        if (Pointer(port.storage, port.container)) {
+            value := Typed(shifted.slot + 1, port.storage, port.container, port.record);
+            value.owned = true;
+            code := CellRead(SlotStorage(port.storage, port.container, target), bundle.slot + index,
+                             ops, target, shifted.slot, node);
+            slots: Slot[] = [AddressSlot(target),
+                             {storage: SlotStorage(port.storage, port.container, target),
+                              kind: SlotKind(port.storage, port.container)}];
+            read := Step.Emitted(code, slots, [], [], [], [], [], [], [], 0, NoValue(), NoValue(), []);
+            dropped := CleanupSequenceValues(read, [value], ops, target, shifted, node);
+            switch dropped {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(added_code, added_slots, locals, cells, hosts, roots, calls, bound, next,
+                              popped, produced, retained, marks):
+                    shifted.pc += length(added_code);
+                    shifted.slot += length(added_slots);
+                    shifted.local += length(locals);
+                    shifted.cell += length(cells);
+                    shifted.host += length(hosts);
+                    shifted.call += length(calls);
+            }
+            prefix = SequenceJoined(prefix, dropped);
+        }
+        index += 1;
+    }
+    return prefix;
+}
+
+SequenceComponentPlace :: (types: TypeDecl[], component: int, entity: int, popped: int, ops: Ops,
+                           target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    code := OwnerCode(ops, target, at.cell, entity, at.slot, node);
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(target.pointer_storage, at.cell + 9, ops, target, at.slot + 4, node));
+    slots := extend(OwnerSlots(target), [AddressSlot(target), DescriptorSlot(target)]);
+    cells := MakeCells(target, component, ComponentFacts(types[component]));
+    hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ReferenceMakeIntrinsic, linked: -1, first: at.cell,
+                      result_first: at.cell + 9, result_count: 1, written: true}];
+    result := Typed(at.slot + 5, StructStorage, 0, component);
+    result.place = true;
+    return Step.Emitted(code, slots, [], cells, hosts, [], [], [], [], popped, result, NoValue(), []);
+}
+
+SequenceKept :: (prefix: Step, suffix: Step) -> Step {
+    switch prefix {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                      popped, produced, retained, marks):
+            joined := SequenceJoined(prefix, suffix);
+            switch joined {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(all_code, all_slots, all_locals, all_cells, all_hosts, all_roots,
+                              all_calls, all_bound, all_next, all_popped, dropped, all_retained, all_marks):
+                    return Step.Emitted(all_code, all_slots, all_locals, all_cells, all_hosts, all_roots,
+                                        all_calls, all_bound, all_next, all_popped, produced, retained, all_marks);
+            }
+    }
+}
+// A projection from a temporary must keep its selected value before the
+// temporary's owner is released. Projections from named values stay borrowed.
+CleanupProjectionStep :: (prefix: Step, owner: Value, natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops,
+                          target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+    if (!owner.owned) {
+        return prefix;
+    }
+    switch prefix {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                      popped, produced, retained, marks):
+            shifted: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots),
+                              local: at.local + length(locals), cell: at.cell + length(cells),
+                              host: at.host + length(hosts), call: at.call + length(calls)};
+            copied := SequenceJoined(prefix, CopyValueStep(produced, 0, ops, target, shifted, node));
+            if (owner.storage != ResultsStorage) {
+                return CleanupSequenceValues(copied, [owner], ops, target, at, node);
+            }
+            switch copied {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(all_code, all_slots, all_locals, all_cells, all_hosts, all_roots,
+                              all_calls, all_bound, all_next, all_popped, value, held, all_marks):
+                    cleanup_at: Bases = {pc: at.pc + length(all_code), slot: at.slot + length(all_slots),
+                                         local: at.local + length(all_locals), cell: at.cell + length(all_cells),
+                                         host: at.host + length(all_hosts), call: at.call + length(all_calls)};
+                    return SequenceKept(copied, DropNativeResultsStep(owner, natives, ports, ops, target, cleanup_at, node));
+            }
+    }
+}
+
+CopyResultCellsStep :: (bundle: Value, result_types: Value[], ops: Ops, target: Target,
+                        at: Bases, node: snapshot.SnapshotNode) -> Step {
+    output_cells: Cell[] = [];
+    index: int = 0;
+    while (index < length(result_types)) {
+        port := result_types[index];
+        output_cells.append(TypedCell(port.storage, port.container, port.record));
+        index += 1;
+    }
+    prefix := Step.Emitted([], [], [], output_cells, [], [], [], [], [], 0, NoValue(), NoValue(), []);
+    index = 0;
+    while (index < length(result_types)) {
+        port := result_types[index];
+        switch prefix {
+            case .Failed(diagnostic):
+                return Step.Failed(diagnostic);
+            case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                          popped, produced, retained, marks):
+                shifted: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots),
+                                  local: at.local + length(locals), cell: at.cell + length(cells),
+                                  host: at.host + length(hosts), call: at.call + length(calls)};
+                value := Typed(shifted.slot + 1, port.storage, port.container, port.record);
+                read_code := CellRead(SlotStorage(port.storage, port.container, target), bundle.slot + index,
+                                      ops, target, shifted.slot, node);
+                read_slots: Slot[] = [AddressSlot(target),
+                                      {storage: SlotStorage(port.storage, port.container, target),
+                                       kind: SlotKind(port.storage, port.container)}];
+                read := Step.Emitted(read_code, read_slots, [], [], [], [], [], [], [], 0, value, NoValue(), []);
+                copy_at := SlotsPast(shifted, 2);
+                copied := SequenceJoined(read, CopyValueStep(value, 0, ops, target, copy_at, node));
+                switch copied {
+                    case .Failed(diagnostic):
+                        return Step.Failed(diagnostic);
+                    case .Emitted(copy_code, copy_slots, copy_locals, copy_cells, copy_hosts, copy_roots,
+                                  copy_calls, copy_bound, copy_next, copy_popped, result, copy_retained, copy_marks):
+                        store_code := CellWrite(SlotStorage(port.storage, port.container, target), result.slot,
+                                                at.cell + index, ops, target, shifted.slot + length(copy_slots), node);
+                        store := Step.Emitted(store_code, [AddressSlot(target)], [], [], [], [], [], [], [],
+                                              0, NoValue(), NoValue(), []);
+                        prefix = SequenceJoined(prefix, SequenceJoined(copied, store));
+                }
+        }
+        index += 1;
+    }
+    result := Typed(at.cell, bundle.storage, 0, bundle.record);
+    result.cell = at.cell;
+    result.owned = true;
+    switch prefix {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                      popped, produced, retained, marks):
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next,
+                                1, result, NoValue(), marks);
+    }
+}
+
+CopyNativeResultsStep :: (bundle: Value, natives: ResolvedNative[], ports: ResolvedPort[], ops: Ops, target: Target,
+                          at: Bases, node: snapshot.SnapshotNode) -> Step {
+    called := natives[bundle.record];
+    result_types: Value[] = [];
+    index: int = 0;
+    while (index < called.results) {
+        port := ports[called.first + called.parameters + index];
+        result_types.append(Typed(-1, port.storage, port.container, port.record));
+        index += 1;
+    }
+    return CopyResultCellsStep(bundle, result_types, ops, target, at, node);
+}
+CopyFunctionResultsStep :: (bundle: Value, callables: Callable[], params: Param[], ops: Ops, target: Target,
+                            at: Bases, node: snapshot.SnapshotNode) -> Step {
+    called := callables[bundle.record];
+    result_types: Value[] = [];
+    index: int = 0;
+    while (index < called.results) {
+        param := params[called.first + called.count + index];
+        result_types.append(Typed(-1, param.storage, param.container, param.record));
+        index += 1;
+    }
+    return CopyResultCellsStep(bundle, result_types, ops, target, at, node);
+}

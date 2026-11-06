@@ -1,0 +1,5 @@
+package facts
+U :: union { A | B }
+One :: (u: U) -> int { switch u { case .A: return 2; } return 1; }
+
+// error: 3:24: Non-exhaustive switch: a union alternative is missing

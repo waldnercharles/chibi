@@ -1,0 +1,184 @@
+package source_format_tests
+
+import format "project:source_format"
+
+@test
+ForeignIndentationIsAnIndependentStyle :: () {
+    source := "package p\nforeign {\nRead :: () -> int;\nWrite :: (value: int);\n}\n";
+    unindented := format.Defaults();
+    With(unindented, source, source);
+    indented := format.Defaults();
+    indented.indent_foreign_blocks = true;
+    With(indented, source, "package p\nforeign {\n    Read :: () -> int;\n    Write :: (value: int);\n}\n");
+}
+
+@test
+WhenElseIndentationKeepsNestedFunctionBodies :: () {
+    source := "package p\nwhen true {\nA :: () { Call(); }\n} else when false {\nB :: () {}\n} else {\nC :: () {}\n}\n";
+    base_mode := format.Defaults();
+    With(base_mode, source, "package p\nwhen true {\nA :: () {\n    Call();\n}\n} else when false {\nB :: () {}\n} else {\nC :: () {}\n}\n");
+    nested := format.Defaults();
+    nested.indent_when_blocks = true;
+    nested.indent_foreign_blocks = true;
+    With(nested, source, "package p\nwhen true {\n    A :: () {\n        Call();\n    }\n} else when false {\n    B :: () {}\n} else {\n    C :: () {}\n}\n");
+}
+
+@test
+FollowingKeywordsCanStartTheirOwnLine :: () {
+    source := "package p\nA :: (ready: bool) { if ready { First(); } else { Second(); } }\n";
+    next := format.Defaults();
+    next.following_keyword = 1;
+    With(next, source, "package p\nA :: (ready: bool) {\n    if ready {\n        First();\n    }\n    else {\n        Second();\n    }\n}\n");
+    preserve := format.Defaults();
+    preserve.following_keyword = 2;
+    With(preserve, "package p\nwhen true {}\nelse {}\n", "package p\nwhen true {}\nelse {}\n");
+}
+
+@test
+ExplicitVerticalListsDoNotVerticalizeExpressions :: () {
+    vertical := format.Defaults();
+    vertical.list_layout = 2;
+    With(vertical, "package p\nA :: () { Call(a, b); value := (a + b); }\n",
+         "package p\nA :: () {\n    Call(\n        a,\n        b\n    );\n    value := (a + b);\n}\n");
+}
+
+@test
+ListPoliciesPackOrChopWithTheSameWidth :: () {
+    packed := format.Defaults();
+    packed.list_layout = 1;
+    packed.preferred_width = 25;
+    With(packed, "package p\nA :: () { Call(alpha, beta, gamma, delta); }\n",
+         "package p\nA :: () {\n    Call(\n        alpha, beta,\n        gamma, delta\n    );\n}\n");
+    chopped := packed;
+    chopped.list_layout = 3;
+    With(chopped, "package p\nA :: () { Call(alpha, beta, gamma, delta); }\n",
+         "package p\nA :: () {\n    Call(\n        alpha,\n        beta,\n        gamma,\n        delta\n    );\n}\n");
+}
+
+@test
+ListKindsHaveIndependentPoliciesAndClosingLines :: () {
+    o := format.Defaults();
+    o.arguments_layout = 3;
+    o.closing_delimiter = 1;
+    With(o, "package p\nA :: (a: int, b: int) { Call(a, b); }\n",
+         "package p\nA :: (a: int, b: int) {\n    Call(\n        a,\n        b);\n}\n");
+}
+
+@test
+ShortFunctionAndBranchPoliciesAreIndependent :: () {
+    o := format.Defaults();
+    o.short_functions = 3;
+    o.short_branches = 1;
+    With(o, "package p\nOne :: () -> int {\nreturn 1;\n}\nA :: (ready: bool) {\nif ready { Call(); }\n}\n",
+         "package p\nOne :: () -> int { return 1; }\nA :: (ready: bool) {\n    if ready {\n        Call();\n    }\n}\n");
+}
+
+@test
+PerConstructBraceAndEmptyPolicies :: () {
+    o := format.Defaults();
+    o.function_braces = 3;
+    o.control_braces = 2;
+    o.empty_function_blocks = 3;
+    With(o, "package p\nEmpty :: () {}\nA :: (ready: bool) { if ready { Call(); } }\n",
+         "package p\nEmpty :: ()\n{\n}\nA :: (ready: bool)\n{\n    if ready {\n        Call();\n    }\n}\n");
+}
+
+@test
+BlockPaddingAddsOrRemovesOneBlankLine :: () {
+    padded := format.Defaults();
+    padded.block_padding = 2;
+    With(padded, "package p\nA :: () { Call(); }\n", "package p\nA :: () {\n\n    Call();\n\n}\n");
+    tight := format.Defaults();
+    tight.block_padding = 1;
+    With(tight, "package p\nA :: () {\n\nCall();\n\n}\n", "package p\nA :: () {\n    Call();\n}\n");
+}
+
+@test
+UnbracedForHeadersKeepTheirImplicitSeparator :: () {
+    o := format.Defaults();
+    o.semicolons = format.Always;
+    With(o, "package p\nA :: () { for index in 0..<3\nCall(index)\n}\n",
+         "package p\nA :: () {\n    for index in 0..<3\n        Call(index);\n}\n");
+    With(o, "package p\nA :: () { for (index in 0..<3)\nCall(index)\n}\n",
+         "package p\nA :: () {\n    for (index in 0..<3)\n        Call(index);\n}\n");
+}
+
+@test
+ListItemLimitsWorkWithoutAGlobalWidth :: () {
+    o := format.Defaults();
+    o.max_items_per_line = 2;
+    With(o, "package p\nA :: () { Call(a, b, c, d); }\n",
+         "package p\nA :: () {\n    Call(\n        a, b,\n        c, d\n    );\n}\n");
+    contextual := format.Defaults();
+    contextual.arguments_width = 20;
+    With(contextual, "package p\nA :: () { Call(alpha, beta, gamma); }\n",
+         "package p\nA :: () {\n    Call(\n        alpha,\n        beta,\n        gamma\n    );\n}\n");
+}
+
+@test
+CompactBlocksRespectStatementLimitsAndComments :: () {
+    o := format.Defaults();
+    o.short_functions = 3;
+    o.max_inline_statements = 2;
+    With(o, "package p\nA :: () {\nFirst();\nSecond();\n}\nB :: () {\n// reason\nCall();\n}\n",
+         "package p\nA :: () { First(); Second(); }\nB :: () {\n    // reason\n    Call();\n}\n");
+    o.max_inline_statements = 1;
+    With(o, "package p\nA :: () { First(); Second(); }\n",
+         "package p\nA :: () {\n    First();\n    Second();\n}\n");
+}
+
+@test
+BinaryOperatorsCanLeadOrTrailContinuedLines :: () {
+    leading := format.Defaults();
+    leading.binary_operator_position = 1;
+    With(leading, "package p\nA :: () { value := first +\nsecond; }\n",
+         "package p\nA :: () {\n    value := first\n             + second;\n}\n");
+    trailing := format.Defaults();
+    trailing.binary_operator_position = 2;
+    With(trailing, "package p\nA :: () { value := first\n+ second; }\n",
+         "package p\nA :: () {\n    value := first +\n             second;\n}\n");
+}
+
+@test
+PrecedenceGroupsKeepProductsTogetherWhenBreaking :: () {
+    o := format.Defaults();
+    o.binary_layout = 2;
+    With(o, "package p\nA :: () { value := a * b + c * d; }\n",
+         "package p\nA :: () {\n    value := a * b\n             + c * d;\n}\n");
+    o.binary_layout = 1;
+    With(o, "package p\nA :: () { value := a * b + c * d; }\n",
+         "package p\nA :: () {\n    value := a\n             * b\n             + c\n             * d;\n}\n");
+}
+
+@test
+MemberChainsHaveTheirOwnLayoutAndIndent :: () {
+    o := format.Defaults();
+    o.chain_layout = 2;
+    With(o, "package p\nA :: () { value := actor.First().Second(); }\n",
+         "package p\nA :: () {\n    value := actor\n        .First()\n        .Second();\n}\n");
+    o.chain_indent = false;
+    With(o, "package p\nA :: () { value := actor.First().Second(); }\n",
+         "package p\nA :: () {\n    value := actor\n    .First()\n    .Second();\n}\n");
+    o.chain_layout = 1;
+    With(o, "package p\nA :: () { value := actor\n.First()\n.Second(); }\n",
+         "package p\nA :: () {\n    value := actor.First().Second();\n}\n");
+}
+
+@test
+VerticalGapsAreTiedToSyntaxKinds :: () {
+    o := format.Defaults();
+    o.blank_lines_before_final_return = 1;
+    o.blank_lines_after_control = 1;
+    o.blank_lines_between_members = 1;
+    o.max_blank_lines = 0;
+    With(o, "package p\nR :: struct { x: int; y: int; }\nA :: (ready: bool) -> int { if ready { Call(); } value := 1; return value; }\n",
+         "package p\nR :: struct {\n    x: int;\n\n    y: int;\n}\nA :: (ready: bool) -> int {\n    if ready {\n        Call();\n    }\n\n    value := 1;\n\n    return value;\n}\n");
+}
+
+@test
+ImportCollectionsCanHaveRequiredGaps :: () {
+    o := format.Defaults();
+    o.blank_lines_between_import_groups = 1;
+    With(o, "package p\nimport a \"core:a\"\nimport b \"core:b\"\nimport c \"project:c\"\nimport d \"./d\"\n",
+         "package p\nimport a \"core:a\"\nimport b \"core:b\"\n\nimport c \"project:c\"\n\nimport d \"./d\"\n");
+}

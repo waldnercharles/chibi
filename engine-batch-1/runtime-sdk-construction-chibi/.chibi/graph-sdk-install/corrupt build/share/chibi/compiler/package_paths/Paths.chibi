@@ -1,0 +1,79 @@
+package package_paths
+
+import strings "core:strings"
+
+// Presence flags preserve the distinction between NULL and an empty C string.
+// Base and floor retain the caller's canonical-path preconditions.
+pub Request :: struct {
+    base: string;
+    path: string;
+    floor: string;
+    has_base: bool;
+    has_path: bool;
+    has_floor: bool;
+}
+
+pub Path :: union {
+    Normalized(path: string)
+    | Invalid
+}
+
+pub Bounded :: (path: string) -> bool {
+    return strings.ByteLength(path) < 4096 && strings.IndexByte(path, 92) < 0;
+}
+
+pub Within :: (root: string, path: string) -> bool {
+    if (root == "/") {
+        return strings.ByteAt(path, 0) == 47;
+    }
+    if (!strings.HasPrefix(path, root)) {
+        return false;
+    }
+    next := strings.ByteAt(path, strings.ByteLength(root));
+    return next < 0 || next == 47;
+}
+
+pub Normalize :: (request: Request) -> Path {
+    if (!request.has_path || !Bounded(request.path)) {
+        return Path.Invalid;
+    }
+    joined := request.path;
+    if (strings.ByteAt(request.path, 0) != 47) {
+        if (!request.has_base) {
+            return Path.Invalid;
+        }
+        joined = format_text("{}/{}", request.base, request.path);
+    }
+    if (strings.ByteLength(joined) >= 4096) {
+        return Path.Invalid;
+    }
+
+    result := "/";
+    starts := resize([int(0)], 2048);
+    depth: int = 0;
+    for (part in strings.Split(joined, "/")) {
+        if (part == "..") {
+            if (depth == 0) {
+                return Path.Invalid;
+            }
+            depth -= 1;
+            result = strings.Slice(result, 0, starts[depth]);
+            // Leaving and later re-entering the floor is still an escape.
+            if (request.has_floor && !Within(request.floor, result)) {
+                return Path.Invalid;
+            }
+        } else if (part != "." && part != "") {
+            starts[depth] = strings.ByteLength(result);
+            depth += 1;
+            if (strings.ByteLength(result) > 1) {
+                result = format_text("{}/{}", result, part);
+            } else {
+                result = format_text("{}{}", result, part);
+            }
+        }
+    }
+    if (request.has_floor && !Within(request.floor, result)) {
+        return Path.Invalid;
+    }
+    return Path.Normalized(result);
+}

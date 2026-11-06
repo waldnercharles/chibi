@@ -1,0 +1,9 @@
+package facts
+
+// native mixed arguments
+@test
+Calls :: () {
+    r1: string = Run();
+    e1: string = "bc";
+    assert(r1 == e1, "Run call 1");
+}

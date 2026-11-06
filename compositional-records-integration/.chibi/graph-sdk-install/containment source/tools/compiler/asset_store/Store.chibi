@@ -1,0 +1,265 @@
+package asset_store
+
+import call "project:asset_call"
+import cache "project:asset_cache"
+import sha256 "core:hash/sha256"
+import strings "core:strings"
+import bytes "core:bytes"
+
+pub Ticket :: struct { directory: string; key: string; identity: string; }
+pub ReadResult :: struct { found: bool; data: u8[]; }
+Entry :: struct { key: string; stamp: u64; }
+Join :: (parts: string[]) -> string { return strings.Concatenate(parts); }
+Word :: (data: u8[], first: int) -> u64 {
+    value: u64 = 0;
+    for (index in 0..<8) { value |= u64(data[first + index]) << u32(index * 8); }
+    return value;
+}
+
+ReadAll :: (fd: int, buffer: ^(u8[])) -> bool {
+    // Move out while forwarding a local scoped pointer across a package call.
+    // The descriptor is published back before return on both read outcomes.
+    data := buffer^;
+    buffer^ = [];
+    at := 0;
+    valid := true;
+    while at < length(data) {
+        read := call.FileRead(fd, &data, at, length(data) - at);
+        if (read <= 0 || read > length(data) - at) { valid = false; break; }
+        at += read;
+    }
+    buffer^ = data;
+    return valid;
+}
+WriteAll :: (fd: int, data: u8[]) -> bool {
+    at := 0;
+    while at < length(data) {
+        written := call.FileWrite(fd, data, at, length(data) - at);
+        if (written <= 0 || written > length(data) - at) { return false; }
+        at += written;
+    }
+    return true;
+}
+
+// Stream the actual executable, bounded to 256 MiB and one reusable 64-KiB
+// buffer. A filename/size/timestamp is never a compiler cache identity.
+pub Digest :: (path: string) -> string {
+    fd := call.FileOpen(path);
+    if (fd < 0) { return ""; }
+    info := resize([u8(0)], 16);
+    valid := call.FileInfo(fd, &info) == 0;
+    size := Word(info, 0);
+    valid = valid && size > u64(0) && size <= u64(268435456);
+    stream := sha256.Begin();
+    buffer := resize([u8(0)], 65536);
+    total: u64 = 0;
+    while valid && total < size {
+        if (call.Cancelled() != 0) { valid = false; break; }
+        count := length(buffer);
+        if (size - total < u64(count)) { count = int(size - total); }
+        read := call.FileRead(fd, &buffer, 0, count);
+        if (read <= 0 || read > count) { valid = false; break; }
+        added := sha256.Update(&stream, buffer, 0, read);
+        assert(added, "bounded executable digest fits SHA-256");
+        total += u64(read);
+    }
+    if (valid) { valid = call.FileRead(fd, &buffer, 0, 1) == 0; }
+    closed := call.FileClose(fd);
+    if (!valid || closed != 0 || total != size) { return ""; }
+    return sha256.FinishHex(stream);
+}
+
+pub Bind :: (directory: string, identity: string, request: u8[]) -> Ticket {
+    unavailable: Ticket = {directory: "", key: "", identity: ""};
+    if (directory == "" || strings.ByteLength(directory) >= 4096 || !cache.ValidIdentity(identity)) { return unavailable; }
+    size := call.SaltLength();
+    if (size == call.NoSalt) { return unavailable; }
+    stream := sha256.Begin();
+    compiler_added := sha256.Update(&stream, bytes.FromString(identity));
+    assert(compiler_added, "the validated compiler identity fits SHA-256");
+    chunk := resize([u8(0)], 65536);
+    first: u64 = 0;
+    while first < size {
+        if (call.Cancelled() != 0) { return unavailable; }
+        count := length(chunk);
+        if (size - first < u64(count)) { count = int(size - first); }
+        if (call.SaltRead(first, &chunk, count) != 0) { return unavailable; }
+        added := sha256.Update(&stream, chunk, 0, count);
+        if (!added) { return unavailable; }
+        first += u64(count);
+    }
+    key := cache.FinishClosureKey(stream, request);
+    if (key == "") { return unavailable; }
+    return {directory: directory, key: key, identity: identity};
+}
+
+pub Read :: (ticket: Ticket) -> ReadResult {
+    missing: ReadResult = {found: false, data: []};
+    if (ticket.directory == "") { return missing; }
+    path := Join([ticket.directory, "/", ticket.key, ".bin"]);
+    if (strings.ByteLength(path) >= 4096) { return missing; }
+    fd := call.FileOpen(path);
+    if (fd < 0) { return missing; }
+    info := resize([u8(0)], 16);
+    valid := call.FileInfo(fd, &info) == 0;
+    framed := Word(info, 0);
+    valid = valid && framed >= u64(cache.HeaderBytes) && framed <= u64(cache.HeaderBytes + cache.OutputLimit);
+    header := resize([u8(0)], cache.HeaderBytes);
+    if (valid) { valid = ReadAll(fd, &header); }
+    size := -1;
+    if (valid) { size = cache.CachePayloadSize(ticket.key, header, framed); }
+    valid = valid && size >= 0;
+    payload: u8[] = [];
+    if (valid) {
+        payload = resize([u8(0)], size);
+        valid = ReadAll(fd, &payload);
+    }
+    extra := [u8(0)];
+    if (valid) { valid = call.FileRead(fd, &extra, 0, 1) == 0; }
+    closed := call.FileClose(fd);
+    if (!valid || closed != 0 || !cache.CachePayloadMatches(header, payload)) { return missing; }
+    return {found: true, data: payload};
+}
+
+Directories :: (directory: string) -> bool {
+    size := strings.ByteLength(directory);
+    if (size == 0 || size >= 4096) { return false; }
+    for (index in 1..size) {
+        if (index == size || strings.ByteAt(directory, index) == 47) {
+            part := strings.Slice(directory, 0, index);
+            if (call.DirectoryMake(part) != 0) { return false; }
+        }
+    }
+    return true;
+}
+
+Earlier :: (left: Entry, right: Entry) -> bool {
+    return left.stamp < right.stamp || (left.stamp == right.stamp && strings.Compare(left.key, right.key) < 0);
+}
+// A bounded inventory is ordered once by eviction priority: O(n log n), rather
+// than rescanning all entries once per eviction. Scratch is reused per pass.
+Ordered :: (entries: Entry[]) -> Entry[] {
+    count := length(entries);
+    values := entries;
+    empty: Entry = {key: "", stamp: 0};
+    scratch := resize([empty], count);
+    width := 1;
+    while width < count {
+        base := 0;
+        while base < count {
+            middle := base + width;
+            if (middle > count) { middle = count; }
+            end := middle + width;
+            if (end > count) { end = count; }
+            left := base;
+            right := middle;
+            at := base;
+            while at < end {
+                if (right == end || (left < middle && Earlier(values[left], values[right]))) {
+                    scratch[at] = values[left]; left += 1;
+                } else { scratch[at] = values[right]; right += 1; }
+                at += 1;
+            }
+            base = end;
+        }
+        previous := values;
+        values = scratch;
+        scratch = previous;
+        width *= 2;
+    }
+    return values;
+}
+
+Inventory :: (directory: string) -> (valid: bool, entries: Entry[]) {
+    entries: Entry[] = [];
+    opened := call.DirectoryOpen(directory);
+    if (opened == u64(0)) { return (false, entries); }
+    name := resize([u8(0)], 4097);
+    info := resize([u8(0)], 16);
+    visited := 0;
+    valid := true;
+    while true {
+        count := call.DirectoryNext(opened, &name, length(name));
+        if (count == 0) { break; }
+        visited += 1;
+        if (count < 0 || visited > cache.ScanLimit + 16) { valid = false; break; }
+        // Test the fixed suffix/prefix before allocating an entry name.
+        temporary := count >= 5 && name[0] == u8(46) && name[1] == u8(116) && name[2] == u8(109) && name[3] == u8(112) && name[4] == u8(45);
+        binary := count > 4 && count <= 164 && name[count - 4] == u8(46) && name[count - 3] == u8(98) && name[count - 2] == u8(105) && name[count - 1] == u8(110);
+        if (!temporary && !binary) { continue; }
+        filename := text_from_bytes(name.slice(0, count));
+        path := Join([directory, "/", filename]);
+        if (strings.ByteLength(path) >= 4096 || call.NameInfo(path, &info) != 0) { continue; }
+        if (temporary) { removed := call.FileRemove(path); continue; }
+        key := strings.Slice(filename, 0, count - 4);
+        if (!cache.ValidKey(key)) { continue; }
+        if (length(entries) == cache.ScanLimit) { valid = false; break; }
+        entries.append({key: key, stamp: Word(info, 8)});
+    }
+    closed := call.DirectoryClose(opened);
+    return (valid && closed == 0, entries);
+}
+
+Write :: (ticket: Ticket, data: u8[]) -> bool {
+    path := Join([ticket.directory, "/", ticket.key, ".bin"]);
+    temporary := bytes.FromString(Join([ticket.directory, "/.tmp-XXXXXX"]));
+    temporary.append(u8(0));
+    if (strings.ByteLength(path) >= 4096 || length(temporary) > 4096) { return false; }
+    fd := call.FileTemporary(&temporary);
+    if (fd < 0) { return false; }
+    filename := text_from_bytes(temporary.slice(0, length(temporary) - 1));
+    header := cache.CacheHeader(ticket.key, data);
+    valid := WriteAll(fd, header);
+    if (valid) { valid = WriteAll(fd, data); }
+    if (valid) { valid = call.FileSync(fd) == 0; }
+    closed := call.FileClose(fd);
+    valid = valid && closed == 0;
+    if (valid) { valid = call.FileRename(filename, path) == 0; }
+    if (!valid) { removed := call.FileRemove(filename); }
+    return valid;
+}
+
+// The caller has checked cancellation and re-hashed its compiler identity.
+// Cache environment failures never turn a successful compile into a failure.
+pub Publish :: (ticket: Ticket, data: u8[]) {
+    if (ticket.directory == "" || length(data) == 0 || length(data) > cache.OutputLimit || !Directories(ticket.directory)) { return; }
+    locked := call.FileLock(Join([ticket.directory, "/.lock"]));
+    if (locked < 0) { return; }
+    inventory := Inventory(ticket.directory);
+    if (inventory.valid) {
+        entries := Ordered(inventory.entries);
+        remove := length(entries) - cache.CacheEntries + 1;
+        for (index in 0..<remove) {
+            if (call.FileRemove(Join([ticket.directory, "/", entries[index].key, ".bin"])) != 0) { break; }
+        }
+        written := Write(ticket, data);
+    }
+    unlocked := call.FileClose(locked);
+}
+
+
+pub FileContents :: union {
+    Unavailable | Invalid | Bytes(data: u8[])
+}
+
+// Service outputs may be links, unlike persistent cache entries. The opened
+// regular file supplies its full 64-bit size before any allocation. A prefix
+// reads at most limit bytes; a whole artifact also requires exact EOF.
+pub ReadService :: (path: string, limit: int, whole: bool) -> FileContents {
+    assert(limit >= 0 && limit <= cache.OutputLimit, "a bounded service read");
+    fd := call.ServiceOpen(path);
+    if (fd < 0) { return FileContents.Unavailable; }
+    info := resize([u8(0)], 16);
+    valid := call.FileInfo(fd, &info) == 0;
+    size := Word(info, 0);
+    take := limit;
+    if (valid && size < u64(limit)) { take = int(size); }
+    if (whole && size > u64(limit)) { valid = false; }
+    data: u8[] = [];
+    if (valid) { data = resize([u8(0)], take); valid = ReadAll(fd, &data); }
+    extra := [u8(0)];
+    if (valid && whole) { valid = call.FileRead(fd, &extra, 0, 1) == 0; }
+    closed := call.FileClose(fd);
+    if (!valid || closed != 0) { return FileContents.Invalid; }
+    return FileContents.Bytes(data);
+}

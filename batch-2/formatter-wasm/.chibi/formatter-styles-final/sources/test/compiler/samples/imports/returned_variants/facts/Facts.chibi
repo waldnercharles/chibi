@@ -1,0 +1,33 @@
+package facts
+Holder :: union { Some(items: int[], name: string) }
+KeptMake :: (n: int) -> Holder {
+    xs: int[] = [];
+    i: int = 0;
+    while (i < n) { xs.append(i); i += 1; }
+    return (Holder.Some(xs, "made"));
+}
+KeptAgain :: (h: Holder) -> Holder {
+    switch h { case .Some(items, name): return Holder.Some(items, name); }
+}
+KeptParam :: (xs: int[]) -> Holder { return Holder.Some(xs, "p"); }
+Total :: () -> int {
+    a := KeptMake(3);
+    b := KeptMake(5);
+    c := KeptAgain(a);
+    total: int = 0;
+    switch a { case .Some(items, name): total += items[2] * 100; }
+    switch b { case .Some(items, name): total += items[4] * 10; }
+    switch c { case .Some(items, name): total += items[1]; }
+    return total;
+}
+Changed :: () -> int {
+    ys: int[] = [1, 2];
+    h := KeptParam(ys);
+    ys[0] = 7;
+    switch h { case .Some(items, name): return items[0] * 10 + ys[0]; }
+}
+CopiedHold :: (xs: int[]) -> int {
+    h := Holder.Some(xs, "x");
+    xs[0] = 9;
+    switch h { case .Some(items, name): return items[0]; }
+}

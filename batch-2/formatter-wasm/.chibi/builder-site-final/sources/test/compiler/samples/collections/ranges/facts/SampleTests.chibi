@@ -1,0 +1,49 @@
+package facts
+
+// ranges
+@test
+Calls :: () {
+    a1_0: int = 1;
+    a1_1: int = 4;
+    r1: int = Sum(a1_0, a1_1);
+    e1: int = 10;
+    assert(r1 == e1, "Sum call 1");
+    a2_0: int = 5;
+    r2: int = Below(a2_0);
+    e2: int = 8;
+    assert(r2 == e2, "Below call 2");
+    a3_0: int = 3;
+    r3: int = Down(a3_0);
+    e3: int = 321;
+    assert(r3 == e3, "Down call 3");
+    a4_0: int = 3;
+    r4: int = DownBelow(a4_0);
+    e4: int = 210;
+    assert(r4 == e4, "DownBelow call 4");
+    a5_0: int = 0;
+    r5: int = DownBelow(a5_0);
+    e5: int = 0;
+    assert(r5 == e5, "DownBelow call 5");
+    a6_0: int = 2147483646;
+    a6_1: int = 2147483647;
+    r6: int = Count(a6_0, a6_1);
+    e6: int = 4;
+    assert(r6 == e6, "Count call 6");
+    a7_0: int = -2147483648;
+    a7_1: int = -2147483647;
+    r7: int = Count(a7_0, a7_1);
+    e7: int = 4;
+    assert(r7 == e7, "Count call 7");
+    a8_0: u8 = 3;
+    r8: int = Small(a8_0);
+    e8: int = 4;
+    assert(r8 == e8, "Small call 8");
+    a9_0: int[] = [5, 6, 7];
+    r9: int = Keys(a9_0);
+    e9: int = 20;
+    assert(r9 == e9, "Keys call 9");
+    a10_0: int[] = [1, 2, 3];
+    r10: int = Back(a10_0);
+    e10: int = 322110;
+    assert(r10 == e10, "Back call 10");
+}

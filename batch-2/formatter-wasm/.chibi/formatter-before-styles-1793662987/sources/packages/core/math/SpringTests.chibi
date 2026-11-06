@@ -1,0 +1,82 @@
+package math
+
+SpringNear :: (actual: number, expected: number, tolerance: number) -> bool {
+    return actual >= expected - tolerance && actual <= expected + tolerance;
+}
+
+@test
+SpringZeroTimeAndEquilibrium :: () {
+    spring: Spring = {position: 3, velocity: -7};
+    zero := AdvanceSpring(spring, -20, 2, 0.5, 0);
+    negative := AdvanceSpring(spring, -20, 2, 0.5, -1);
+    assert(zero.position == 3 && zero.velocity == -7);
+    assert(negative.position == 3 && negative.velocity == -7);
+    equilibrium := AdvanceSpring({position: 3, velocity: 0}, 3, 1000, 2, 1000);
+    assert(equilibrium.position == 3 && equilibrium.velocity == 0);
+}
+
+@test
+SpringCriticalAnalyticReference :: () {
+    // Unit displacement, zero velocity, omega=2*pi after 1/8 second.
+    // Independent high-precision evaluation: x=(1+pi/4)*exp(-pi/4).
+    result := AdvanceSpring({position: 1, velocity: 0}, 0, 1, 1, 0.125);
+    assert(SpringNear(result.position, 0.8140312, 0.0000002));
+    assert(SpringNear(result.velocity, -2.2499645, 0.000001));
+}
+
+@test
+SpringUndampedQuarterPeriod :: () {
+    result := AdvanceSpring({position: 1, velocity: 0}, 0, 1, 0, 0.25);
+    assert(SpringNear(result.position, 0, 0.0000001));
+    assert(SpringNear(result.velocity, -6.2831853, 0.000001));
+}
+
+@test
+SpringSubdivisionAndRetargeting :: () {
+    ratios: number[] = [0, 0.5, 0.99999994, 1, 1.00000012, 2, 1000000];
+    for ratio in ratios {
+        initial: Spring = {position: -2, velocity: 3};
+        whole := AdvanceSpring(initial, 5, 2, ratio, 0.25);
+        first := AdvanceSpring(initial, 5, 2, ratio, 0.125);
+        halves := AdvanceSpring(first, 5, 2, ratio, 0.125);
+        assert(SpringNear(halves.position, whole.position, 0.000002));
+        assert(SpringNear(halves.velocity, whole.velocity, 0.00001));
+        retargeted := AdvanceSpring(first, -8, 2, ratio, 0);
+        assert(retargeted.position == first.position && retargeted.velocity == first.velocity);
+        continued := AdvanceSpring(first, -8, 2, ratio, 0.03125);
+        assert(IsFinite(continued.position) && IsFinite(continued.velocity));
+    }
+}
+
+@test
+SpringExtremeDampingAndSmallSteps :: () {
+    spring: Spring = {position: 1, velocity: 0};
+    slow := AdvanceSpring(spring, 0, 1, 100000000, 1);
+    assert(slow.position > 0.9999 && slow.position <= 1);
+    assert(slow.velocity < 0 && slow.velocity > -0.0001);
+    tiny := AdvanceSpring({position: 0, velocity: 1}, 0, 1, 2, 0.0000000001);
+    assert(tiny.position > 0 && tiny.position <= 0.0000000001);
+    assert(tiny.velocity > 0.99999 && tiny.velocity <= 1);
+    long := AdvanceSpring(spring, 0, 1, 1, 1000);
+    assert(long.position == 0 && long.velocity == 0);
+}
+
+@test
+SpringTinyMovementTowardADistantTarget :: () {
+    ratios: number[] = [0, 0.5, 1, 2, 1000000];
+    for ratio in ratios {
+        result := AdvanceSpring({position: 1, velocity: 0}, 1e20, 1, ratio, 1e-12);
+        assert(SpringNear(result.position, 1.0019739, 0.0000002));
+    }
+    settled := AdvanceSpring({position: 1e20, velocity: 0}, 1, 1, 1, 1000);
+    assert(settled.position == 1 && settled.velocity == 0);
+}
+
+@test
+SpringRetargetingContinuesItsExistingMomentum :: () {
+    first := AdvanceSpring({position: -2, velocity: 3}, 5, 2, 0.5, 0.125);
+    next := AdvanceSpring(first, -8, 2, 0.5, 0.03125);
+    // Independent complex-root evaluation, rounding the intermediate state to f32.
+    assert(SpringNear(next.position, 3.067892074584961, 0.000002));
+    assert(SpringNear(next.velocity, -14.758637428283691, 0.00001));
+}

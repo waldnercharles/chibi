@@ -1,0 +1,73 @@
+{
+    "version": 1,
+    "artifact_hash": "35215312c85fb44f",
+    "embedded": [
+        {
+            "kind": "shader",
+            "key": "ClaySurface",
+            "bytes": 1382,
+            "content_hash": "3b67b0ebd652a56f"
+        },
+        {
+            "kind": "shader",
+            "key": "ClayBlock",
+            "bytes": 516,
+            "content_hash": "375f7d3f3f40538e"
+        },
+        {
+            "kind": "model",
+            "key": "ClayBlock",
+            "bytes": 834,
+            "content_hash": "56e04720879a4376"
+        },
+        {
+            "kind": "shader",
+            "key": "ClayCapsule",
+            "bytes": 430,
+            "content_hash": "f98ba9eae0513443"
+        },
+        {
+            "kind": "model",
+            "key": "ClayCapsule",
+            "bytes": 658,
+            "content_hash": "6141fe9e407f27ea"
+        },
+        {
+            "kind": "shader",
+            "key": "ClaySculpt",
+            "bytes": 991,
+            "content_hash": "ae7c9cfd9516ed9d"
+        },
+        {
+            "kind": "model",
+            "key": "ClaySculpt",
+            "bytes": 2466,
+            "content_hash": "19c9d0ef9c6df3bb"
+        },
+        {
+            "kind": "shader",
+            "key": "ClaySphere",
+            "bytes": 297,
+            "content_hash": "fa53495992567dbc"
+        },
+        {
+            "kind": "model",
+            "key": "ClaySphere",
+            "bytes": 376,
+            "content_hash": "916a29e33e9e239d"
+        },
+        {
+            "kind": "shader-values",
+            "key": "parameters",
+            "bytes": 19102,
+            "content_hash": "affe4bb1bdd18218"
+        },
+        {
+            "kind": "parts",
+            "key": "parts",
+            "bytes": 11,
+            "content_hash": "9af98571205f1f12"
+        }
+    ],
+    "external": []
+}

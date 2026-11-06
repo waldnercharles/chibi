@@ -1,0 +1,15 @@
+package facts
+
+Read :: () -> int {
+    pointer: ^int? = nil;
+    other: ^int? = nil;
+    result := 0;
+    if pointer == nil { result += 100; }
+    if other == nil { result += 10; }
+    value: int = 2;
+    pointer = &value;
+    if pointer != nil { pointer^ += 5; }
+    other = pointer;
+    if other != nil { result += value * 10 + other^; }
+    return result;
+}

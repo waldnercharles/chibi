@@ -1,0 +1,114 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+
+// Typed side data for test scheduling and non-escaping callable checks. A plain
+// collection allocates it only when callable bindings need it. Each mask follows
+// one FunctionRow in the returned rows; rejected collections have no masks.
+pub ScalarCollection :: struct {
+    rows: facts.Row[];
+    effects: int[];
+    waiting: bool[];
+}
+
+ScalarEffectSummary :: struct {
+    wanted: bool;
+    natives: int[];
+    direct: int[];
+    waiting: bool[];
+    calls: EffectCall[];
+}
+
+// The same body/host/command effects as ordinary source assembly. Native
+// admission quiets foreign effects, so use their original catalog masks here.
+ScalarBodyEffects :: (summary: ^ScalarEffectSummary, function: int, waiting: bool, effects: int,
+                      ops: Ops, code: Code[], hosts: Host[], calls: Invocation[]) {
+    mask := effects | Effects(ops, code, false, false);
+    for (host in hosts) {
+        if (host.command == CancelCommand || host.command == CancelAfterCommand) {
+            mask |= WriteEffect;
+        } else if (host.command != 0) {
+            mask |= SuspendEffect;
+        } else if (host.linked >= 0) {
+            mask |= summary.natives[host.linked];
+        }
+    }
+    summary.direct.append(mask);
+    summary.waiting.append(waiting);
+    for (call in calls) {
+        edge: EffectCall = {caller: function, callee: call.callee, task: call.task};
+        summary.calls.append(edge);
+    }
+}
+
+// Reverse call adjacency propagates only masks that gained a bit. With seven
+// effect bits, each function enters the queue at most seven times; every edge
+// is visited at most seven times, including recursive call graphs.
+ScalarClosedEffects :: (summary: ScalarEffectSummary) -> int[] {
+    effects := summary.direct;
+    offsets := resize([int(0)], length(effects) + 1);
+    for (call in summary.calls) { offsets[call.callee + 1] += 1; }
+    for (index in 0..<length(effects)) { offsets[index + 1] += offsets[index]; }
+    next := offsets;
+    edges := resize([int(0)], length(summary.calls));
+    for (call, index in summary.calls) {
+        edges[next[call.callee]] = index;
+        next[call.callee] += 1;
+    }
+    pending: int[] = [];
+    for (mask, function in effects) {
+        if (mask != 0) { pending.append(function); }
+    }
+    at := 0;
+    while (at < length(pending)) {
+        callee := pending[at];
+        at += 1;
+        for (index in offsets[callee]..<offsets[callee + 1]) {
+            call := summary.calls[edges[index]];
+            inherited := effects[callee];
+            if (call.task) { inherited &= ~SuspendEffect; }
+            combined := effects[call.caller] | inherited;
+            if (combined != effects[call.caller]) {
+                effects[call.caller] = combined;
+                pending.append(call.caller);
+            }
+        }
+    }
+    return effects;
+}
+
+// Reuse the already checked bodies and typed call edges. Only suspension is
+// relevant here; declared waiting functions seed the same rule as assembly.
+ScalarSynchronous :: (forest: snapshot.SnapshotNode[], callables: Callable[], bindings: GenericBinding[],
+                       summary: ScalarEffectSummary) -> GenericCheck {
+    if (!GenericNeedsSynchronous(bindings)) { return GenericCheck.Valid; }
+    checked := summary;
+    direct := checked.direct;
+    for (index in 0..<length(direct)) {
+        direct[index] &= SuspendEffect;
+        if (checked.waiting[index]) { direct[index] |= SuspendEffect; }
+    }
+    checked.direct = direct;
+    effects := ScalarClosedEffects(checked);
+    suspended := checked.waiting;
+    for (index in 0..<length(suspended)) { suspended[index] = (effects[index] & SuspendEffect) != 0; }
+    return GenericSynchronousBindings(forest, callables, bindings, suspended);
+}
+
+// Collect a program once, retaining closed typed effects for its functions.
+pub CollectScalarProgramWithEffects :: (project: string, collection_names: string[], collection_paths: string[],
+                                        paths: string[], sources: string[], target: Target, names: string[],
+                                        natives: Native[], ports: Port[], identities: u64[], os: int, arch: int,
+                                        chosen: string) -> ScalarCollection {
+    summary: ScalarEffectSummary = {wanted: true, natives: [], direct: [], waiting: [], calls: []};
+    rows := ScalarCollectWithEffects(project, collection_names, collection_paths, paths, sources, target, names,
+                                    natives, ports, identities, true, os, arch, chosen, false, &summary);
+    effects: int[] = [];
+    waiting: bool[] = [];
+    if (length(rows) > 1 && rows[1].kind != facts.RejectionRow) {
+        effects = ScalarClosedEffects(summary);
+        waiting = summary.waiting;
+    }
+    return {rows: rows, effects: effects, waiting: waiting};
+}

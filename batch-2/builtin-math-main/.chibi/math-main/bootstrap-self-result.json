@@ -1,0 +1,16 @@
+{
+  "status": 0,
+  "seconds": 691.17,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/bootstrap-self.log",
+  "binary_sha256": "620bd1ec781950c194e07dc2be1edceda57a6f907a5de7355b6d46ac66771e4a",
+  "files": {
+    "compiler.chibip": {
+      "bytes": 22469206,
+      "sha256": "f1a6bdffc9d8bec2de2b55f61bad48a2d8593c2a8ab1fc21cca42f46a6497c9c"
+    },
+    "compile.json": {
+      "bytes": 1448524,
+      "sha256": "4558a92058e1cc2178dbe9d77e9516235acc7958a57901900ac2e47b4efb2271"
+    }
+  }
+}

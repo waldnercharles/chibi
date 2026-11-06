@@ -1,0 +1,23 @@
+{
+  "name": "compiler-imports-sljit",
+  "command": [
+    "python3",
+    "tools/test_policy.py",
+    "native",
+    "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-focused-snapshot/.chibi/integration/native-math-focused-language/test_language",
+    "--package-compiler-chibi-imports-compiled"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-focused-snapshot",
+  "head": "6990373667fc211faf828035ab9d4bb051f085bd",
+  "snapshot_revision": "699037366-dirty",
+  "started_unix": 1793208618.7466428,
+  "environment": {},
+  "wall_seconds": 28.784362957812846,
+  "exit_code": 0,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-focused-evidence/compiler-imports-sljit.log",
+  "log_sha256": "b8e56f33500201d06cdfc036d283a80a7958d18945c223e9c5da72734fc8e660",
+  "summaries": [
+    "Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 17024",
+    "Test command wall time: 28.701s; includes in-test fixture setup; external configuration/build excluded."
+  ]
+}

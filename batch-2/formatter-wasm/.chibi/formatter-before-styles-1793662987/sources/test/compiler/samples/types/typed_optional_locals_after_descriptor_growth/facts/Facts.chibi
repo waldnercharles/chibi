@@ -1,0 +1,14 @@
+package facts
+
+Read :: () -> int {
+    absent: int? = nil;
+    earlier: int? = 3;
+    flag: bool? = false;
+    repeated: int? = 5;
+    result := 0;
+    if absent == nil { result += 100; }
+    if flag { result += 1; }
+    if earlier { result += earlier; }
+    if repeated { result += repeated; }
+    return result;
+}

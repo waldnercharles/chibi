@@ -1,0 +1,14 @@
+{
+  "purpose": "NATIVE MATH LOCAL DIRTY DIAGNOSTIC ONLY",
+  "head": "8b14194143d47ac0ec089e2bb3f034e541d1955e",
+  "tree": "0d37a14441cb01d97aef3157c9daaaded75f25b7",
+  "actual_git_describe": "8b1419414-dirty",
+  "source_files_hashed": 3467,
+  "only_dirty_paths": [
+    "tools/compiler/bootstrap/bootstrap.json",
+    "tools/compiler/bootstrap/compiler.chibip"
+  ],
+  "all_other_source_hashes_match": true,
+  "artifact_attribution": "2a76e61a8",
+  "snapshot_diff_sha256": "1c9a048f3bb498deed3b23a33faf7697a58abcd63be010bafc60cdf37d69d70d"
+}

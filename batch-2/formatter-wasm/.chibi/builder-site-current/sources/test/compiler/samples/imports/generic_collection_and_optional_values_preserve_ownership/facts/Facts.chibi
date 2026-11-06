@@ -1,0 +1,8 @@
+package facts
+import lib "project:generic_collection_and_optional_values_preserve_ownership/lib"
+Nested :: () -> int { rows: int[][] = [[1, 2], [3]]; head := lib.First(rows); head.append(7); head[0] = 8; return rows[0][0] * 1000 + rows[0].length() * 100 + head[0] * 10 + head.length(); }
+Whole :: () -> int { rows: int[][] = [[1, 2], [3]]; copied := lib.Identity(rows); copied[1].append(4); return rows[1].length() * 100 + copied[1].length() * 10 + copied[1][1]; }
+Present :: () -> int { values: int[] = [3, 4]; selected := lib.Identity(values[0..<2]); if selected { selected[0] = 8; return values[0] * 100 + selected[0] * 10 + selected.length(); } return -1; }
+Absent :: () -> int { values: int[] = [3, 4]; selected := lib.Identity(values[0..<3]); if selected { return -1; } return values[0]; }
+Empty :: () -> int { values: int[] = [3, 4]; selected := lib.Identity(values[2..<2]); if selected { return selected.length() + 1; } return -1; }
+Fallback :: () -> int { values: int[] = [3, 4]; fallback: int[] = [9]; present := lib.OrElse(values[0..<1], fallback); absent := lib.OrElse(values[0..<3], fallback); absent[0] = 7; return present[0] * 100 + fallback[0] * 10 + absent[0]; }

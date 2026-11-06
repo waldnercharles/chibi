@@ -1,0 +1,13 @@
+package named
+import left "project:left"
+import right "project:right"
+Read :: () -> (value: int, flag: bool) { return (13, true); }
+@test
+CrossPackageNamedResults :: () {
+    own := Read();
+    a := left.Read();
+    b := right.Read();
+    assert(own.value == 13 && own.flag);
+    assert(a.value == 3 && !a.flag);
+    assert(b.value == 5000000000 && b.note == "right");
+}

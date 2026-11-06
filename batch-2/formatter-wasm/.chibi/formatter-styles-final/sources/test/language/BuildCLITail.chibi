@@ -1,0 +1,16 @@
+package build_cli_tail
+
+Build :: () -> int {
+    args := build.arguments();
+    if (length(args) != 6) {
+        return 1;
+    }
+    if (args[0] != "native" || args[1] != "CLI build" ||
+        args[2] != "--configure-only" || args[3] != "--" ||
+        args[4] != "-DNOTE=space \"quote\";$literal*" || args[5] != "") {
+        return 2;
+    }
+    command := ["cmake", "-S", build.root(), "-B", args[1]];
+    command.extend(args);
+    return build.run(command);
+}

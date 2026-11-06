@@ -1,0 +1,222 @@
+package source_format_tests
+
+import format "project:source_format"
+import syntax "project:compiler_syntax"
+
+PunctuationRun :: (source: string, policies: format.PunctuationPolicies, comma_pass: bool) -> string {
+    switch syntax.Parse(source) {
+        case .Rejected(diagnostic):
+            print_string(diagnostic.message);
+            assert(false, "punctuation fixture parses");
+            return "";
+        case .Parsed(rows, fields, named, extras, root):
+            if (comma_pass) {
+                switch format.PunctuationCommas(source, rows, fields, named, root, policies) {
+                    case .Rejected(message): print_string(message); return message;
+                    case .Formatted(text, notes):
+                        if (notes != "") { print_string(notes); }
+                        return text;
+                }
+            }
+            switch format.PunctuationParens(source, rows, fields, named, root, policies) {
+                case .Rejected(message): print_string(message); return message;
+                case .Formatted(text, notes):
+                    if (notes != "") { print_string(notes); }
+                    return text;
+            }
+    }
+}
+
+PunctuationCase :: (source: string, expected: string, policies: format.PunctuationPolicies, comma_pass: bool) {
+    actual := PunctuationRun(source, policies, comma_pass);
+    if (actual != expected) { print_string(actual); }
+    assert(actual == expected, "punctuation style produces expected spelling");
+    assert(PunctuationRun(actual, policies, comma_pass) == actual, "punctuation style is a fixed point");
+}
+
+@test
+ControlParenthesesCanBeRequiredPerConstruct :: () {
+    policies := format.PunctuationDefaults();
+    policies.if_parens = format.Always;
+    policies.while_parens = format.Always;
+    policies.for_parens = format.Always;
+    policies.switch_parens = format.Always;
+    PunctuationCase("package p\nMain :: () { if ready { Call(); } while ready { Step(); } for item in first..<last { Use(item); } switch value { case 1: Call(); } }\n",
+                    "package p\nMain :: () { if (ready) { Call(); } while (ready) { Step(); } for (item in first..<last) { Use(item); } switch (value) { case 1: Call(); } }\n", policies, false);
+    PunctuationCase("package p\nMain :: () { for < item in first..<last { Use(item); } }\n",
+                    "package p\nMain :: () { for < (item in first..<last) { Use(item); } }\n", policies, false);
+}
+
+@test
+ControlParenthesesCanBeOmittedWithoutExpressionChanges :: () {
+    policies := format.PunctuationDefaults();
+    policies.if_parens = format.Omit;
+    policies.while_parens = format.Omit;
+    policies.for_parens = format.Omit;
+    policies.switch_parens = format.Omit;
+    PunctuationCase("package p\nMain :: () { if ((ready && other)) { Call(); } while (ready) { Step(); } for (item in first..<last) { Use(item); } switch (value) { case 1: Call(); } }\n",
+                    "package p\nMain :: () { if ready && other { Call(); } while ready { Step(); } for item in first..<last { Use(item); } switch value { case 1: Call(); } }\n", policies, false);
+}
+
+@test
+RedundantGroupsKeepPrecedenceAndAssociation :: () {
+    policies := format.PunctuationDefaults();
+    policies.expression_parens = format.Omit;
+    PunctuationCase("package p\nMain :: () { first := ((a + b)) * c; second := a + (b * c); third := a + (b + c); fourth := (a + b) + c; }\n",
+                    "package p\nMain :: () { first := (a + b) * c; second := a + b * c; third := a + (b + c); fourth := a + b + c; }\n", policies, false);
+}
+
+@test
+ReadabilityGroupsMakeMixedPrecedenceExplicit :: () {
+    policies := format.PunctuationDefaults();
+    policies.expression_parens = format.Always;
+    PunctuationCase("package p\nMain :: () { math := a * b + c * d; accepted := ready && fast || forced; }\n",
+                    "package p\nMain :: () { math := (a * b) + (c * d); accepted := (ready && fast) || forced; }\n", policies, false);
+}
+
+@test
+RepeatedGroupsFlattenWithoutRemovingRequiredGrouping :: () {
+    policies := format.PunctuationDefaults();
+    policies.flatten_parens = true;
+    PunctuationCase("package p\nMain :: () { value := (((a + b))) * c; }\n",
+                    "package p\nMain :: () { value := (a + b) * c; }\n", policies, false);
+    PunctuationCase("package p\nMain :: () { if (((ready))) { Call(); } }\n",
+                    "package p\nMain :: () { if (ready) { Call(); } }\n", policies, false);
+    policies.expression_parens = format.Omit;
+    PunctuationCase("package p\nMain :: () { value := (((a + b))) * c; other := (((a))); }\n",
+                    "package p\nMain :: () { value := (a + b) * c; other := a; }\n", policies, false);
+}
+
+@test
+PunctuationRespectsCommentsAndProtectedRegions :: () {
+    policies := format.PunctuationDefaults();
+    policies.expression_parens = format.Omit;
+    policies.if_parens = format.Always;
+    PunctuationCase("package p\nMain :: () {\n// chibi fmt: off\nvalue := ((a));\nif ready { Call(); }\n// chibi fmt: on\nother := (/* reason */ a);\nif ready { /* body reason */ Call(); }\n}\n",
+                    "package p\nMain :: () {\n// chibi fmt: off\nvalue := ((a));\nif ready { Call(); }\n// chibi fmt: on\nother := (/* reason */ a);\nif (ready) { /* body reason */ Call(); }\n}\n", policies, false);
+}
+
+@test
+MultilineListsReceiveTrailingCommas :: () {
+    policies := format.PunctuationDefaults();
+    policies.trailing_commas = format.Always;
+    PunctuationCase("package p\nMain :: (first: int,\nsecond: int) { Call(first,\nsecond); values := [first,\nsecond]; record := {first: first,\nsecond: second}; }\n",
+                    "package p\nMain :: (first: int,\nsecond: int,) { Call(first,\nsecond,); values := [first,\nsecond,]; record := {first: first,\nsecond: second,}; }\n", policies, true);
+}
+
+@test
+TrailingCommaOmissionKeepsRequiredSingletonReturnComma :: () {
+    policies := format.PunctuationDefaults();
+    policies.trailing_commas = format.Omit;
+    PunctuationCase("package p\nMain :: (first: int,) { Call(first,); values := [first,]; return (first,); }\n",
+                    "package p\nMain :: (first: int) { Call(first); values := [first]; return (first,); }\n", policies, true);
+}
+
+@test
+CommaStylesPreserveCommentsAndEmptyLists :: () {
+    policies := format.PunctuationDefaults();
+    policies.trailing_commas = format.Omit;
+    PunctuationCase("package p\nMain :: () { Call(first, /* keep */); empty := []; map := [:]; }\n",
+                    "package p\nMain :: () { Call(first /* keep */); empty := []; map := [:]; }\n", policies, true);
+    policies.trailing_commas = format.Always;
+    PunctuationCase("package p\nMain :: () { Call(\nfirst // keep with first\n); values := [\nfirst /* keep */\n]; }\n",
+                    "package p\nMain :: () { Call(\nfirst, // keep with first\n); values := [\nfirst, /* keep */\n]; }\n", policies, true);
+}
+
+@test
+RemovingGroupsNeverCreatesAnOperatorOrComment :: () {
+    policies := format.PunctuationDefaults();
+    policies.expression_parens = format.Omit;
+    PunctuationCase("package p\nMain :: () { value := a + (-b); pointer := &(&value); }\n",
+                    "package p\nMain :: () { value := a + -b; pointer := & &value; }\n", policies, false);
+}
+
+@test
+WhenParenthesesAreIndependentOfRuntimeControls :: () {
+    policies := format.PunctuationDefaults();
+    policies.when_parens = format.Always;
+    PunctuationCase("package p\nwhen first { A :: 1; } else when second { B :: 2; }\nMain :: () { if ready { Call(); } }\n",
+                    "package p\nwhen (first) { A :: 1; } else when (second) { B :: 2; }\nMain :: () { if ready { Call(); } }\n", policies, false);
+    policies.when_parens = format.Omit;
+    PunctuationCase("package p\nwhen ((first)) { A :: 1; } else when (second) { B :: 2; }\n",
+                    "package p\nwhen first { A :: 1; } else when second { B :: 2; }\n", policies, false);
+}
+
+@test
+CoalescingAndPostfixGroupsKeepTheirParse :: () {
+    policies := format.PunctuationDefaults();
+    policies.expression_parens = format.Omit;
+    PunctuationCase("package p\nMain :: () { left := (a ?? b) ?? c; right := a ?? (b ?? c); call := (f)(x); deref := (-value)^; }\n",
+                    "package p\nMain :: () { left := (a ?? b) ?? c; right := a ?? b ?? c; call := f(x); deref := (-value)^; }\n", policies, false);
+}
+
+@test
+PunctuationRejectsInvalidDirectPolicies :: () {
+    policies := format.PunctuationDefaults();
+    policies.if_parens = 3;
+    assert(PunctuationRun("package p\nMain :: () {}\n", policies, false) == "Invalid control parenthesis policy",
+           "invalid public policy is rejected");
+    policies = format.PunctuationDefaults();
+    policies.trailing_commas = 3;
+    assert(PunctuationRun("package p\nMain :: () {}\n", policies, true) == "Invalid trailing comma policy",
+           "invalid comma policy is rejected");
+    policies = format.PunctuationDefaults();
+    policies.trailing_commas_arrays = -2;
+    assert(PunctuationRun("package p\nMain :: () {}\n", policies, true) == "Invalid list-specific trailing comma policy",
+           "invalid inherited policy is rejected");
+}
+
+@test
+SamePrecedenceMixedOperatorsCanReceiveReadabilityGroups :: () {
+    policies := format.PunctuationDefaults();
+    policies.expression_parens = format.Always;
+    PunctuationCase("package p\nMain :: () { value := a + b - c; other := a * b / c; same := a + b + c; }\n",
+                    "package p\nMain :: () { value := a + b - c; other := a * b / c; same := a + b + c; }\n", policies, false);
+    policies.readability_mixed_operators = true;
+    PunctuationCase("package p\nMain :: () { value := a + b - c; other := a * b / c; same := a + b + c; right := a - (b + c); }\n",
+                    "package p\nMain :: () { value := (a + b) - c; other := (a * b) / c; same := a + b + c; right := a - (b + c); }\n", policies, false);
+}
+
+@test
+TrailingCommaPoliciesAreIndependentByListKind :: () {
+    policies := format.PunctuationDefaults();
+    policies.trailing_commas = format.Always;
+    policies.trailing_commas_arguments = format.Omit;
+    policies.trailing_commas_parameters = format.Keep;
+    policies.trailing_commas_arrays = format.Omit;
+    policies.trailing_commas_records = format.Always;
+    policies.trailing_commas_tuples = format.Omit;
+    PunctuationCase("package p\nMain :: (first: int,\nsecond: int,) { Call(first,\nsecond,); values := [first,\nsecond,]; map := [first: first,\nsecond: second,]; record := {first: first,\nsecond: second}; return (first,\nsecond,); }\n",
+                    "package p\nMain :: (first: int,\nsecond: int,) { Call(first,\nsecond); values := [first,\nsecond]; map := [first: first,\nsecond: second]; record := {first: first,\nsecond: second,}; return (first,\nsecond); }\n", policies, true);
+}
+
+@test
+SpecificCommaPoliciesActivateWithTheGlobalPolicyPreserved :: () {
+    policies := format.PunctuationDefaults();
+    policies.trailing_commas_arguments = format.Always;
+    policies.trailing_commas_parameters = format.Omit;
+    policies.trailing_commas_tuples = format.Always;
+    PunctuationCase("package p\nMain :: (first: int,) { Call(first,\nsecond); values := [first,\nsecond]; return (first,\nsecond); }\n",
+                    "package p\nMain :: (first: int) { Call(first,\nsecond,); values := [first,\nsecond]; return (first,\nsecond,); }\n", policies, true);
+}
+
+@test
+BindingCommaPoliciesCoverPatternsAndPrototypeBases :: () {
+    policies := format.PunctuationDefaults();
+    policies.trailing_commas_bindings = format.Always;
+    PunctuationCase("package p\nChild :: prototype (First,\nSecond) {}\nMain :: () { if value is .Pair(first,\nsecond) { Call(first, second); } }\n",
+                    "package p\nChild :: prototype (First,\nSecond,) {}\nMain :: () { if value is .Pair(first,\nsecond,) { Call(first, second); } }\n", policies, true);
+    policies.trailing_commas_bindings = format.Omit;
+    PunctuationCase("package p\nChild :: prototype (First, Second,) {}\nMain :: () { if value is .Pair(first, second,) { Call(first, second); } }\n",
+                    "package p\nChild :: prototype (First, Second) {}\nMain :: () { if value is .Pair(first, second) { Call(first, second); } }\n", policies, true);
+}
+
+@test
+ExpressionBodyRecordResultsKeepTheirRequiredGroup :: () {
+    policies := format.PunctuationDefaults(); policies.expression_parens = format.Omit;
+    PunctuationCase("package p\nMake :: () -> Point => ({x: 1});\nMain :: () { other := ((1)); return ({x: 1}); }\n",
+                    "package p\nMake :: () -> Point => ({x: 1});\nMain :: () { other := 1; return {x: 1}; }\n", policies, false);
+    policies.flatten_parens = true;
+    PunctuationCase("package p\nMake :: () -> Point => ((({x: 1})));\nMain :: () { other := ((1)); }\n",
+                    "package p\nMake :: () -> Point => ({x: 1});\nMain :: () { other := 1; }\n", policies, false);
+}

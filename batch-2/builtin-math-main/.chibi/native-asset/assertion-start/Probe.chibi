@@ -1,0 +1,29 @@
+package exit_status_start
+import link "project:native_link"
+import os "core:os"
+
+Case :: struct { name: string; triple: string; static_link: bool; context: bool; }
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 1) { return 2; }
+    cases: Case[] = [
+        {name: "mac-plain", triple: "aarch64-apple-darwin", static_link: false, context: false},
+        {name: "mac-context", triple: "aarch64-apple-darwin", static_link: false, context: true},
+        {name: "linux-plain", triple: "x86_64-unknown-linux-gnu", static_link: false, context: false},
+        {name: "linux-context", triple: "x86_64-unknown-linux-gnu", static_link: false, context: true},
+        {name: "linux-static", triple: "x86_64-unknown-linux-gnu", static_link: true, context: false},
+        {name: "windows-plain", triple: "x86_64-pc-windows-msvc", static_link: true, context: false},
+        {name: "windows-context", triple: "x86_64-pc-windows-msvc", static_link: true, context: true}
+    ];
+    for item in cases {
+        for (formatting in [false, true]) {
+            raw := link.ProgramStart(item.triple, item.static_link, item.context, formatting);
+            run := link.RunStart(item.triple, item.static_link, item.context, formatting);
+            for (text, index in [raw, run]) {
+                written := os.WriteText(format_text("{}/{}-{}-{}.ll", arguments[0], item.name, formatting, index), text);
+                assert(written == nil);
+            }
+        }
+    }
+    return 0;
+}

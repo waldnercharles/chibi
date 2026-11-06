@@ -1,0 +1,17 @@
+{
+  "scope": "immutable native CLI before export cancellation fix",
+  "head": "498f1b9aebca18597f1ce93fd292fd0739b2e39a",
+  "binary_sha256": "ebefa28f8aaa9cb8061cd19d4543fd496d2d92f0d2c42b1232b9b3cff0292004",
+  "source_binary": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi",
+  "cli": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/export-pre-cancel-sdk/bin/chibi",
+  "source_hashes": {
+    "src/host/process.c": "d80cfd232a67ba6d8f8f6d5063832389d39a277c607cfbea574cc5b2b87bc082",
+    "src/host/process.h": "28fd4ec47f0ead3f152f9ad7254a4f8d91cf828262229aabd63910e3e42c655f",
+    "src/host/application_io.c": "25bb7a1254cc92eb21fa963052edd87315aff656651eede08f7876394eea9875",
+    "src/host/application_tools.c": "b273a833e887be50efbfac3e190b024190628f3ebd5a21b567373d932ac59bfc",
+    "src/host/export.c": "db8f85ebeda23b4d9c39b7b91f7215c5bd99c9d4fd05f53a40a612a8bcec0ccb",
+    "src/host/export.h": "2d6985f5a93598030e77757d9ef8d1325e8fbbe27258fcdd5fa675328f9b2463",
+    "src/host/application.c": "a96ef26a31b4dbb9a5ba3e4a7a9b47ee82ea6f571f973527f273c423738c1419"
+  },
+  "removed_after_regression_proof": true
+}

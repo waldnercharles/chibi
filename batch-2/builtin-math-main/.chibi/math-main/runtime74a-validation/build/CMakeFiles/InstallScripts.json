@@ -1,0 +1,9 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/sdk/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/sdk/language/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

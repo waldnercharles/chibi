@@ -1,0 +1,50 @@
+package facts
+Point :: struct { x: int; y: int; }
+Segment :: struct { from: Point; to: Point; }
+Path :: struct { name: string; points: Point[]; weights: f64[]; }
+SquaredLength :: (segment: Segment) -> int {
+    dx := segment.to.x - segment.from.x;
+    dy := segment.to.y - segment.from.y;
+    return dx * dx + dy * dy;
+}
+Square :: (side: int) -> Path {
+    path: Path = {name: "square", points: [], weights: []};
+    origin: Point = {x: 0, y: 0};
+    path.points.append(origin);
+    corner: Point = {x: side, y: 0};
+    path.points.append(corner);
+    far: Point = {x: side, y: side};
+    path.points.append(far);
+    path.weights.append(0.5);
+    path.weights.append(1.5);
+    path.points[0].x = 1;
+    path.points[2].y += 10;
+    return path;
+}
+Sum :: (path: Path) -> int {
+    total := 0;
+    for point in path.points {
+        total += point.x + point.y;
+    }
+    return total;
+}
+Weight :: (path: Path) -> f64 {
+    total: f64 = 0.0;
+    for weight in path.weights {
+        total += weight;
+    }
+    return total;
+}
+Moved :: (segment: Segment, by: int) -> Segment {
+    result := segment;
+    result.from.x += by;
+    result.to = result.from;
+    return result;
+}
+Span: int : SquaredLength({from: {x: 1, y: 2}, to: {x: 4, y: 6}});
+Total: int : Sum(Square(5));
+Weights: f64 : Weight(Square(5));
+Count: int : length(Square(3).points);
+Right: int : Square(7).points[1].x;
+Name: int : text_byte_length(Square(1).name);
+Shifted: int : SquaredLength(Moved({from: {x: 0, y: 0}, to: {x: 3, y: 4}}, 2));

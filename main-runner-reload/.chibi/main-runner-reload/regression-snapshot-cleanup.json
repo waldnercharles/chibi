@@ -1,0 +1,7 @@
+{
+  "removed_sdk_copies": [
+    "process-basic-sdk",
+    "export-pre-cancel-sdk"
+  ],
+  "retained": "baseline hashes and RED/GREEN logs"
+}

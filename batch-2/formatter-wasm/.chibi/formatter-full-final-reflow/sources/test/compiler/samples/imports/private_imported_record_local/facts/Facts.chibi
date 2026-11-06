@@ -1,0 +1,5 @@
+package facts
+import lib "project:private_imported_record_local/lib"
+One :: () -> int { value: lib.Hidden = lib.Make(); return value.x; }
+
+// error: 3:27: 'lib.Hidden' is private: declare it pub to use it from another package

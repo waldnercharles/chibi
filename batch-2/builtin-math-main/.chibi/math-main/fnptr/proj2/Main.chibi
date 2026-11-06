@@ -1,0 +1,13 @@
+package scalar
+foreign import probe "libprobe.a"
+foreign probe {
+    chibi_probe_add :: (a: i32, b: i32) -> i32
+    chibi_probe_pick :: (n: i32, flag: bool) -> bool
+    chibi_probe_scale :: (value: f64, by: f64) -> f64
+}
+Main :: () -> int {
+    total := chibi_probe_add(40, 2);
+    if (chibi_probe_pick(5, true)) { total = total + 1; }
+    if (chibi_probe_pick(2, true)) { total = total + 100; }
+    return total + int(chibi_probe_scale(0.5, 2.0));
+}

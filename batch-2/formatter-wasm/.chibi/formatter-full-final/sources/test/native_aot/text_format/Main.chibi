@@ -1,0 +1,42 @@
+package text_format
+
+import strings "core:strings"
+
+// Language-level regression through the installed scalar format_text callback.
+// The first conversion example is shared with test/language/text_format.c.
+Main :: () -> int {
+    largest: u64 = 18446744073709551615;
+    pi: f64 = 3.14159265;
+    assert(format_text("{0:.2f}|{1:x}|{2:<5.3s}|{{ok}}|%", pi, largest, "alphabet") == "3.14|ffffffffffffffff|alp  |{ok}|%", "scalar conversion families");
+    assert(format_text("{1}|{}|{0}|{}", "first", "second") == "second|first|first|second", "explicit indexes preserve sequential position");
+    assert(format_text("{9999999999999999999999999}|{0}", "safe") == "|safe", "saturating index");
+    assert(format_text("{{{0}}}|{x}|{0!}|{0:missing", "value") == "{value}|{x}|{0!}|{0:missing", "escaped and malformed braces");
+    malformed := strings.Repeat("{:unclosed", 4000);
+    assert(format_text(malformed) == malformed, "unterminated modifiers stay literal without rescanning the suffix");
+    assert(format_text("{:bad{{tail") == "{:bad{tail", "unterminated modifiers retain escapes");
+    assert(format_text("a{9}b{}c{}d", "one") == "abonecd", "missing inputs");
+    long := "a string longer than the old per-input allocation bound";
+    repeated := format_text("{0}{0}{0}{0}{0}{0}{0}{0}{0}{0}{0}{0}{0}", long);
+    assert(strings.ByteLength(repeated) == strings.ByteLength(long) * 12, "at most 12 successful holes");
+    assert(repeated == strings.Repeat(long, 12), "repeated indexes allocate enough bytes");
+    assert(format_text("{:d}|{:u}|{:x}", largest, int(-1), i8(-1)) == "-1|4294967295|ffffffff", "integer storage widths");
+    assert(format_text("{:+06d}|{:#x}|{:#o}|{:08.4d}", int(-42), int(42), int(42), int(42)) == "-00042|0x2a|052|    0042", "integer modifiers");
+    assert(format_text("{:c}|{:>4c}|{:<4c}", int(65), int(65), int(65)) == "A|   A|A   ", "character width");
+    zero := format_text("{:c}", int(0));
+    high := format_text("{:c}", int(255));
+    assert(strings.ByteLength(zero) == 1 && strings.ByteAt(zero, 0) == 0, "NUL character retains length");
+    assert(strings.ByteLength(high) == 1 && strings.ByteAt(high, 0) == 255, "raw byte character");
+    embedded := format_text("a{}b", zero);
+    assert(strings.ByteLength(embedded) == 3, "NUL text retains length");
+    padded := format_text("{:>6.3s}", embedded);
+    assert(strings.ByteLength(padded) == 6 && strings.ByteAt(padded, 4) == 0, "NUL text modifiers retain length");
+    assert(format_text("{:0s}|{:.2c}|{:llx}|{:*d}|{:n}|{:999999999d}", "raw", int(37), int(37), int(37), int(37), int(37)) == "raw|37|37|37|37|37", "invalid modifiers fall back");
+    assert(format_text("{}|{}|{:d}", true, false, true) == "true|false|1", "boolean defaults and numeric modifiers");
+    single: f32 = 1.25;
+    negative: f64 = -0.0;
+    assert(format_text("{}|{:.1f}|{:e}|{:.1a}", single, int(42), single, single) == "1.25|42.0|1.250000e+00|0x1.4p+0", "float defaults and numeric promotion");
+    assert(format_text("{}", negative) == "-0", "negative zero");
+    clipped := format_text("{:.255f}", pi);
+    assert(strings.ByteLength(clipped) == 255 && strings.HasPrefix(clipped, "3.14159"), "numeric rendering is bounded");
+    return 0;
+}

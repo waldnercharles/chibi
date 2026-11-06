@@ -1,0 +1,22 @@
+{
+  "file": "test/language/package_compiler_chibi.c",
+  "before_sha256": "9c592061186801a3b0283483eea167f09810b142ad679bb41c9b87313f0b8a12",
+  "after_sha256": "8e99a1d3c4a1d9ac9b0f45e213fe633b3ff30920dd2c261ee7770efa9bfb4559",
+  "changed_math_sample_calls": 34,
+  "all_string_literals_preserved": true,
+  "outside_math_samples_unchanged": true,
+  "formatter": "/opt/homebrew/opt/llvm@22/bin/clang-format",
+  "formatter_version": "Homebrew clang-format version 22.1.8",
+  "delta_file": "math-sample-call-initializers.patch",
+  "delta_sha256": "7373077293cdabdeca54e59317a42b6d92106056143b3a5df3551c91f0ca2026",
+  "immutable_red_artifacts_sha256": {
+    "build.log": "2b603b6dfd6005beb704319c157163525097442b3fade2a0f019ae7ec1ba6118",
+    "build.json": "44de2828cb2469c428d754c7bf9aa793df75d9e1524b7c18f5d9232cc0c391f3",
+    "receipt.json": "505cc5ff3899781759930799f308eae66d3d9a37034c4845b12ffa7a7948a66a",
+    "capture.json": "8808e2e9877547faa31232cd5b9e034ef5d586706165ee0ef2909213423ea045",
+    "configure.log": "e835a22b40d1d3ff9e5874fe1f202947e8ecd5e2d04871db2af9d0cea36b2f5d",
+    "configure.json": "9dcea4501b62c628ff3cde89aa6201cbcf8e0793687e58d1b9e34c5538f47b55",
+    "source-files.json": "3aa063de14c48b0586f77a491cc3d19f988de07aadfbdc5004a2fb3db598f328",
+    "strict-fixture-commands.json": "eb6d9cb9a9a73c916b740152196eae2b2d8d1f916604ffb2186d27fa930795f0"
+  }
+}

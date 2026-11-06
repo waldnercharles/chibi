@@ -1,0 +1,71 @@
+package graph_discovery
+
+import engine "graph:engine"
+import strings "core:strings"
+
+// The native dispatcher owns the scratch root. No real compiler or library
+// is needed to exercise the missing-driver and versioned-name boundaries.
+Verify :: () -> int {
+    arguments := build.arguments();
+    root := arguments[0];
+    if (engine.ClangResourceInclude("") != "") {
+        return 1;
+    }
+    libraries := strings.Join([root, "/lib"], "");
+    include := strings.Join([libraries, "/clang/18/include"], "");
+    other := strings.Join([libraries, "/clang/19/include"], "");
+    if (!build.make_directory(include) ||
+        !build.write_file(strings.Join([include, "/stdbool.h"], ""), "")) {
+        return 1;
+    }
+    names := ["libclang.so", "libclang.18.dylib", "libclang-18.so.18"];
+    for (name in names) {
+        path := strings.Join([libraries, "/", name], "");
+        if (!build.write_file(path, "") || engine.ClangResourceInclude(path) != include) {
+            return 2;
+        }
+    }
+    if (!build.make_directory(other) ||
+        !build.write_file(strings.Join([other, "/stdbool.h"], ""), "")) {
+        return 3;
+    }
+    for (name in names) {
+        expected := include;
+        if (name == "libclang.so") {
+            expected = "";
+        }
+        if (engine.ClangResourceInclude(strings.Join([libraries, "/", name], "")) != expected) {
+            return 4;
+        }
+    }
+    missing := strings.Join([libraries, "/libclang-20.so"], "");
+    if (!build.write_file(missing, "") || engine.ClangResourceInclude(missing) != "") {
+        return 5;
+    }
+    sibling := strings.Join([root, "/clang++-18"], "");
+    if (!build.write_file(sibling, "") ||
+        engine.CxxCompiler(strings.Join([root, "/clang-18"], ""), "Clang") != sibling) {
+        return 6;
+    }
+    shared := strings.Join([libraries, "/libGraphDiscovery.so"], "");
+    if (!build.write_file(shared, "") ||
+        engine.SystemLibrary("/bin/false", "libGraphDiscovery.so") != shared ||
+        engine.SystemLibrary("/bin/false", "libAbsentGraphDiscovery.so") != "" ||
+        engine.SystemLibrary("", "libAbsentGraphDiscovery.so") != "") {
+        return 7;
+    }
+    headers := strings.Join([root, "/include"], "");
+    if (!build.make_directory(strings.Join([headers, "/GL"], "")) ||
+        !build.write_file(strings.Join([headers, "/GL/gl.h"], ""), "") ||
+        engine.OpenGLInclude() != headers) {
+        return 8;
+    }
+    // An incomplete matching directory is still ambiguous, as CMake's
+    // resource fallback counts candidates before checking the sole header.
+    partial := strings.Join([libraries, "/clang/18.1/include"], "");
+    if (!build.make_directory(partial) ||
+        engine.ClangResourceInclude(strings.Join([libraries, "/libclang-18.so.18"], "")) != "") {
+        return 9;
+    }
+    return 0;
+}

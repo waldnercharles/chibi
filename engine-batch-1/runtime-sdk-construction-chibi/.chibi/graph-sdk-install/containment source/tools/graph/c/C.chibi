@@ -1,0 +1,529 @@
+package c
+
+import os "core:os"
+import strings "core:strings"
+
+// Compiles C sources into static libraries. A caller starts the compiles of
+// every library that needs them, at most `jobs` at once, finishes them in the
+// order started, then archives each library; an object is rebuilt only when its
+// command or an input changed. Paths are absolute, so steps behave the same
+// from any working directory.
+
+// The tools that build C and C++, and how many compiles may run at once. A
+// launcher, such as ccache, runs the compiler when it is not empty.
+pub Tools :: struct {
+    launcher: string;
+    compiler: string;
+    cxx_compiler: string;
+    archiver: string;
+    ranlib: string;
+    jobs: int;
+}
+
+// A static library: the root its sources are below, the build directory
+// generated sources are below, the directory third-party sources are below,
+// the directory its objects go to and the archive it becomes. Its sources and
+// the flags each compile takes, in order, are arrays beside it, since records
+// hold only scalars.
+pub Library :: struct {
+    name: string;
+    root: string;
+    build_dir: string;
+    third_party: string;
+    objects: string;
+    output: string;
+}
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+// The object a source compiles to: its path below the root, or below
+// `build/` or `third-party/` for a generated or third-party source, below the
+// library's object directory.
+pub Object :: (target: Library, source: string) -> string {
+    base := target.root;
+    prefix := "";
+    if (strings.HasPrefix(source, Join([target.build_dir, "/"]))) {
+        base = target.build_dir;
+        prefix = "build/";
+    } else if (target.third_party != "" && strings.HasPrefix(source, Join([target.third_party, "/"]))) {
+        base = target.third_party;
+        prefix = "third-party/";
+    }
+    relative := strings.Slice(source, strings.ByteLength(base) + 1, strings.ByteLength(source));
+    return Join([target.objects, "/", prefix, relative, ".o"]);
+}
+
+// The compiler for a source: the C++ compiler for a .cpp source.
+Compiler :: (tools: Tools, source: string) -> string {
+    if (strings.HasSuffix(source, ".cpp")) {
+        return tools.cxx_compiler;
+    }
+    return tools.compiler;
+}
+
+// The compile command of a source, as CMake writes it, without its launcher.
+pub Command :: (tools: Tools, target: Library, flags: string[], source: string) -> string[] {
+    command := [Compiler(tools, source)];
+    command.extend(flags);
+    command.extend(["-o", Object(target, source), "-c", source]);
+    return command;
+}
+
+// The record that says what built a file: its command, one argument per line,
+// an empty line, then for each input and for the output its path and, on the
+// next line, its stamp.
+Record :: (output: string) -> string {
+    return Join([output, ".chibi-record"]);
+}
+RecordText :: (command: string, inputs: string[], output: string) -> string {
+    lines := [command, ""];
+    recorded := slice(inputs, 0, length(inputs));
+    recorded.append(output);
+    for (input in recorded) {
+        lines.extend([input, os.Stamp(input)]);
+    }
+    lines.append("");
+    return strings.Join(lines, "\n");
+}
+
+// Whether output was built by command from inputs that have not changed since.
+// The host splits each record in one scan. The VM imports the lines before
+// another callback reuses the host's result bank. Paths and their stamps are
+// separate lines, so validation compares whole fields without splitting again.
+Current :: (command: string[], output: string) -> bool {
+    record := Record(output);
+    if (!os.Exists(record) || !os.Exists(output)) {
+        return false;
+    }
+    lines := strings.Lines(build.read_file(record));
+    count := length(command);
+    if (length(lines) < count + 2 || lines[count] != "") {
+        return false;
+    }
+    for (i in 0..<count) {
+        if (lines[i] != command[i]) {
+            return false;
+        }
+    }
+    if ((length(lines) - count - 1) % 2 != 0) {
+        return false;
+    }
+    for (i in 0..<(length(lines) - count - 1) / 2) {
+        at := count + 1 + 2 * i;
+        if (os.Stamp(lines[at]) != lines[at + 1]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The prerequisites a compiler's -MD file lists: everything after the target,
+// with line continuations joined and escaped spaces, `#` and `$` restored.
+// Read bytes once and treat each continuation as a space. Only a token that
+// needs unescaping allocates host text, so a cold build does not retain copies
+// of every depfile in the host's bounded value storage.
+pub Dependencies :: (text: string) -> string[] {
+    bytes := strings.Bytes(text);
+    count := length(bytes);
+    first := -1;
+    i := 0;
+    while (i + 1 < count) {
+        if (bytes[i] == 58) {
+            if (bytes[i + 1] == 32) {
+                first = i + 2;
+                break;
+            }
+            if (i + 2 < count && bytes[i + 1] == 92 && bytes[i + 2] == 10) {
+                first = i + 3;
+                break;
+            }
+            if (i + 3 < count && bytes[i + 1] == 92 && bytes[i + 2] == 13 && bytes[i + 3] == 10) {
+                first = i + 4;
+                break;
+            }
+        }
+        i += 1;
+    }
+    if (first < 0) {
+        return [];
+    }
+    paths: string[] = [];
+    start := -1;
+    escaped := false;
+    needs_unescape := false;
+    i = first;
+    while (i < count) {
+        byte := bytes[i];
+        advance := 1;
+        if (byte == 92 && i + 1 < count) {
+            if (bytes[i + 1] == 10) {
+                byte = 32;
+                advance = 2;
+            } else if (i + 2 < count && bytes[i + 1] == 13 && bytes[i + 2] == 10) {
+                byte = 32;
+                advance = 3;
+            }
+        }
+        space := byte == 32 || byte == 9 || byte == 10 || byte == 13;
+        if (space && !escaped) {
+            if (start >= 0) {
+                path := strings.Slice(text, start, i - start);
+                if (needs_unescape) {
+                    path = Unescape(path);
+                }
+                paths.append(path);
+                start = -1;
+                needs_unescape = false;
+            }
+        } else if (start < 0) {
+            start = i;
+        }
+        needs_unescape = needs_unescape || byte == 92 || byte == 36;
+        escaped = byte == 92 && !escaped;
+        i += advance;
+    }
+    if (start >= 0) {
+        path := strings.Slice(text, start, count - start);
+        if (needs_unescape) {
+            path = Unescape(path);
+        }
+        paths.append(path);
+    }
+    return paths;
+}
+Unescape :: (path: string) -> string {
+    joined := strings.ReplaceAll(strings.ReplaceAll(path, "\\\r\n", " "), "\\\n", " ");
+    return strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(joined, "\\ ", " "), "\\#", "#"), "$$", "$");
+}
+
+// Whether a source must compile: its object is missing, or was built by
+// another command or from inputs that changed since.
+pub Stale :: (tools: Tools, target: Library, flags: string[], source: string) -> bool {
+    return !Current(Command(tools, target, flags, source), Object(target, source));
+}
+
+// A compile that was started: the library that owns it, its object, its
+// command with one argument per line, and the handle to wait for, 0 when the
+// object's directory could not be made and nothing started.
+pub Running :: struct {
+    owner: string;
+    object: string;
+    command: string;
+    handle: int;
+}
+
+// Starts compiling a source, writing its -MD dependencies beside the object.
+pub Start :: (tools: Tools, target: Library, flags: string[], source: string) -> Running {
+    object := Object(target, source);
+    command := Command(tools, target, flags, source);
+    started := slice(command, 0, length(command));
+    if (tools.launcher != "") {
+        started = [tools.launcher];
+        started.extend(command);
+    }
+    started.extend(["-MD", "-MF", Join([object, ".d"])]);
+    handle := 0;
+    if (!os.MakeDirectory(strings.Slice(object, 0, strings.LastIndex(object, "/")))) {
+        handle = os.Start(started, os.Piped);
+    }
+    return {
+        owner: target.name,
+        object: object,
+        command: strings.Join(command, "\n"),
+        handle: handle
+    };
+}
+
+// Waits for a compile and records what built its object; false when it failed,
+// leaving no record so the next run compiles it again.
+pub Finish :: (compile: Running) -> bool {
+    if (compile.handle == 0 || os.Wait(compile.handle, -1) != 0) {
+        if (os.Remove(Record(compile.object))) {
+            os.Print(Join(["graph: removing compile record failed: ", compile.object]));
+        }
+        return false;
+    }
+    inputs := Dependencies(build.read_file(Join([compile.object, ".d"])));
+    return !os.WriteText(Record(compile.object), RecordText(compile.command, inputs, compile.object));
+}
+
+// Archives a library's objects when any compiled, or the archive is missing or
+// was archived from other objects.
+pub Archive :: (tools: Tools, target: Library, sources: string[], compiled: bool) -> bool {
+    objects: string[] = [];
+    for (source in sources) {
+        objects.append(Object(target, source));
+    }
+    archive := [tools.archiver, "qc", target.output];
+    archive.extend(objects);
+    if (!compiled && Current(archive, target.output)) {
+        return true;
+    }
+    if (os.MakeDirectory(strings.Slice(target.output, 0, strings.LastIndex(target.output, "/"))) ||
+        os.Remove(target.output)) {
+        return false;
+    }
+    return os.Run(archive) == 0 && os.Run([tools.ranlib, target.output]) == 0 &&
+           !os.WriteText(Record(target.output), RecordText(strings.Join(archive, "\n"), objects, target.output));
+}
+
+// Copies each header that differs to its place below a staged include root,
+// and removes files there that no header names, as CMake's chibi_sdk_headers
+// does, so a moved header cannot still be included. The kept headers are
+// ones a step wrote there itself.
+pub StageHeaders :: (root: string, headers: string[], destination: string, kept: string[]) -> bool {
+    for (header in headers) {
+        from := Join([root, "/", header]);
+        to := Join([destination, "/", header]);
+        if (os.Exists(to) && build.hash_file(to) == build.hash_file(from)) {
+            continue;
+        }
+        if (os.MakeDirectory(strings.Slice(to, 0, strings.LastIndex(to, "/"))) || os.Copy(from, to)) {
+            return false;
+        }
+    }
+    listed := slice(headers, 0, length(headers));
+    listed.extend(kept);
+    return !os.Exists(destination) || RemoveUnlisted(destination, "", listed);
+}
+
+// Removes the files below directory whose path from the staged root, under
+// prefix, no header names.
+RemoveUnlisted :: (directory: string, prefix: string, headers: string[]) -> bool {
+    for (name in build.list_directory(directory)) {
+        path := Join([directory, "/", name]);
+        relative := name;
+        if (prefix != "") {
+            relative = Join([prefix, "/", name]);
+        }
+        if (os.IsDirectory(path)) {
+            if (!RemoveUnlisted(path, relative, headers)) {
+                return false;
+            }
+            continue;
+        }
+        listed := false;
+        for (header in headers) {
+            listed = listed || header == relative;
+        }
+        if (!listed && os.Remove(path)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// A JSON string holding text; build arguments hold no control characters.
+Quote :: (text: string) -> string {
+    // core:strings replaces byte by byte in the interpreter, and few arguments
+    // hold a backslash or quote; the host's split finds one natively.
+    if (strings.Partition(text, "\\").head == text && strings.Partition(text, "\"").head == text) {
+        return Join(["\"", text, "\""]);
+    }
+    return Join(["\"", strings.ReplaceAll(strings.ReplaceAll(text, "\\", "\\\\"), "\"", "\\\""), "\""]);
+}
+
+// An executable's link command, as CMake writes it: the compiler, `flags`, the
+// objects, `-o` and the output, then `libraries`.
+pub LinkCommand :: (tools: Tools, output: string, objects: string[], flags: string[], libraries: string[]) -> string[] {
+    command := [tools.compiler];
+    command.extend(flags);
+    command.extend(objects);
+    command.extend(["-o", output]);
+    command.extend(libraries);
+    return command;
+}
+
+// The link_commands.json entry of an executable: its output and arguments.
+pub LinkEntry :: (command: string[], output: string) -> string {
+    arguments: string[] = [];
+    for (argument in command) {
+        arguments.append(Quote(argument));
+    }
+    return Join(["{\"output\": ", Quote(output), ", \"arguments\": [", strings.Join(arguments, ", "), "]}"]);
+}
+
+// A compile_commands.json entry for a source, in the `arguments` form clangd
+// and other tools read.
+pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: string) -> string {
+    arguments: string[] = [];
+    for (argument in Command(tools, target, flags, source)) {
+        arguments.append(Quote(argument));
+    }
+    return Join([
+        "{\"directory\": ", Quote(target.root), ", \"file\": ", Quote(source), ", \"output\": ",
+        Quote(Object(target, source)), ", \"arguments\": [", strings.Join(arguments, ", "), "]}"
+    ]);
+}
+
+// Links an executable from objects when one changed, or the executable is
+// missing or was linked by another command. `flags` come before the objects
+// and `libraries` after the output, as CMake orders a link; those that are
+// absolute paths are inputs too. 1 when it linked, 0 when it was current, -1
+// on failure.
+pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], libraries: string[]) -> int {
+    command := LinkCommand(tools, output, objects, flags, libraries);
+    // Records hold one argument per line. A response file must not turn an
+    // embedded NUL or line ending into a different command or cache identity.
+    if (output == "" || tools.compiler == "") {
+        os.Print("graph: invalid link output or compiler");
+        return -1;
+    }
+    for (argument in command) {
+        for (byte in strings.Bytes(argument)) {
+            if (byte == 0 || byte == 10 || byte == 13) {
+                os.Print("graph: link arguments cannot contain NUL or line endings");
+                return -1;
+            }
+        }
+    }
+    if (Current(command, output)) {
+        return 0;
+    }
+    inputs := slice(objects, 0, length(objects));
+    for (linked in libraries) {
+        if (strings.HasPrefix(linked, "/")) {
+            inputs.append(linked);
+        }
+    }
+    if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/")))) {
+        os.Print(Join(["graph: creating link output directory failed: ", output]));
+        return -1;
+    }
+    response := Join([output, ".chibi-link.rsp"]);
+    // A killed host can leave the response file, but no successful record.
+    // Retry owns the base and numbered regular files even when its new
+    // command needs fewer segments. Other files and directories stay intact.
+    if (os.Remove(Record(output))) {
+        os.Print(Join(["graph: removing link record failed: ", output]));
+        return -1;
+    }
+    if (!RemovePreviousResponses(response)) {
+        os.Print(Join(["graph: removing link responses failed: ", output]));
+        return -1;
+    }
+    // Older GNU response tokenizers discard quoted empty tokens. Keep every
+    // empty argument directly in argv and preserve the nonempty runs around
+    // it. Compress a run only when its @path is smaller, so transport never
+    // increases the host's argument count or byte admission requirements.
+    // Step and Archive retain their programs' own argument contracts.
+    started := [command[0]];
+    responses: string[] = [];
+    index := 1;
+    while (index < length(command)) {
+        if (command[index] == "") {
+            started.append("");
+            index += 1;
+            continue;
+        }
+        first := index;
+        bytes := 0;
+        while (index < length(command) && command[index] != "") {
+            bytes += strings.ByteLength(command[index]) + 1;
+            index += 1;
+        }
+        path := response;
+        if (length(responses) > 0) {
+            path = format_text("{0}.{1}", response, length(responses));
+        }
+        argument := Join(["@", path]);
+        if (strings.ByteLength(argument) + 1 >= bytes) {
+            started.extend(slice(command, first, index - first));
+            continue;
+        }
+        kind := os.Kind(path);
+        if (kind != os.KindNone && kind != os.KindFile) {
+            RemoveResponses(responses);
+            os.Print(Join(["graph: writing link response failed: ", output]));
+            return -1;
+        }
+        responses.append(path);
+        quoted: string[] = [];
+        for (i in first..<index) {
+            escaped := strings.ReplaceAll(strings.ReplaceAll(command[i], "\\", "\\\\"), "\"", "\\\"");
+            quoted.append(Join(["\"", escaped, "\""]));
+        }
+        if (os.WriteText(path, Join([strings.Join(quoted, "\n"), "\n"]))) {
+            RemoveResponses(responses);
+            os.Print(Join(["graph: writing link response failed: ", output]));
+            return -1;
+        }
+        started.append(argument);
+    }
+    status := os.Run(started);
+    removed := RemoveResponses(responses);
+    if (status != 0 || !removed || !os.Exists(output)) {
+        os.Print(Join(["graph: step failed: ", output]));
+        return -1;
+    }
+    if (os.WriteText(Record(output), RecordText(strings.Join(command, "\n"), inputs, output))) {
+        return -1;
+    }
+    return 1;
+}
+
+// Response files are generated inputs owned by one link output. Try every
+// cleanup even after a failure; absence already satisfies the cleanup.
+RemoveResponses :: (paths: string[]) -> bool {
+    removed := true;
+    for (path in paths) {
+        if (os.Remove(path)) {
+            removed = false;
+        }
+    }
+    return removed;
+}
+
+RemovePreviousResponses :: (response: string) -> bool {
+    directory := "./";
+    name := response;
+    slash := strings.LastIndex(response, "/");
+    if (slash >= 0) {
+        directory = strings.Slice(response, 0, slash + 1);
+        name = strings.Slice(response, slash + 1, strings.ByteLength(response));
+    }
+    prefix := Join([name, "."]);
+    paths: string[] = [];
+    for (item in build.list_directory(directory)) {
+        owned := item == name;
+        if (strings.HasPrefix(item, prefix)) {
+            suffix := strings.Partition(item, prefix).tail;
+            owned = suffix != "";
+            for (byte in strings.Bytes(suffix)) {
+                if (byte < 48 || byte > 57) {
+                    owned = false;
+                    break;
+                }
+            }
+        }
+        path := Join([directory, item]);
+        if (owned && os.IsFile(path)) {
+            paths.append(path);
+        }
+    }
+    return RemoveResponses(paths);
+}
+
+// Runs a command that writes output, unless output was written by the same
+// command from inputs that have not changed since, and records it as a
+// compile is recorded. 1 when it ran, 0 when output was current, -1 on
+// failure.
+pub Step :: (command: string[], inputs: string[], output: string) -> int {
+    if (Current(command, output)) {
+        return 0;
+    }
+    if (os.MakeDirectory(strings.Slice(output, 0, strings.LastIndex(output, "/")))) {
+        os.Print(Join(["graph: creating step output directory failed: ", output]));
+        return -1;
+    }
+    if (os.Run(command) != 0) {
+        os.Print(Join(["graph: step failed: ", output]));
+        return -1;
+    }
+    if (os.WriteText(Record(output), RecordText(strings.Join(command, "\n"), inputs, output))) {
+        return -1;
+    }
+    return 1;
+}

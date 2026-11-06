@@ -1,0 +1,22 @@
+native-driver-cache 1
+target aarch64-apple-darwin
+entry Main
+mode 2
+lines false
+static false
+shared false
+compiler /Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/map-arrays/chibi-native-arrays
+compiler-sha256 911e552d0b06e32c115e6dffc74f8b72f49e7463728f1edd84141ba0790cc385
+opt /tmp/chibi-llvm22/opt
+opt-sha256 2bd5eaa23de1e47480d02ac50d9376df0e071130d995e34f1fd3f2b76d1bb3d6
+llc /tmp/chibi-llvm22/llc
+llc-sha256 71ae3605805a8667d8875d11e9945be073baf6449a2468561a16086c90b03136
+linker /tmp/chibi-llvm22/ld64.lld
+linker-sha256 b46796ecf50def5ccf45ffefafd29f83854fb2f7789c0d7f00ec1270b33eb1a8
+collection core=/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/packages/core
+source ManagedRecords.chibi
+source-sha256 c740ed91719d74951213eaec28801c0aa15ed89cb511edfe55c5671769b09194
+key 86dde2d4759bce7dc50664c8f3d2a0463365c6ab06329eea41b304497d4267bc
+output-kind executable
+linkage dynamic libSystem
+program-sha256 56d889533658b6c6bb247e4a32749d6857e770a9b478526eb5074a8ac8e652ff

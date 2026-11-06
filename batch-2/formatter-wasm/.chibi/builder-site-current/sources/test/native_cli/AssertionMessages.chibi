@@ -1,0 +1,36 @@
+package native_assertion_message_test
+
+import os "core:os"
+import strings "core:strings"
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    folder := format_text("{}/assertion cases", arguments[2]);
+    made := os.MakeDirectory(folder);
+    assert(made == nil, "make assertion message fixture");
+    folder = os.RealPath(folder);
+    source := "package assertion_cases\nimport testing \"core:testing\"\nimport target \"core:target\"\n@test\nNoMessage :: () { assert(false); }\n@test\nQuotedOperands :: () { assert(\"a\" == \"b\"); }\n@test\nExplicit :: () { assert(false, \"say \\\"hello\\\"\\nnext\\u0000\"); }\n@test\nNamed :: () { assert(Message: \"named\", Condition: false); }\n@test\nEmpty :: () { assert((false), \"\"); }\n@test\nParenthesized :: () { assert((false), (\"grouped\")); }\n@test\nMismatch :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); assert(false, \"wrong category\"); }\n@test\nTarget :: () { assert(target.Os == TARGET_OS && target.Arch == TARGET_ARCH && target.PointerBits == 64, \"wrong physical target\"); assert(false, \"physical target constants\"); }\n";
+    expected_os := 1;
+    if (os.Platform() == "Darwin") { expected_os = 2; }
+    else if (os.Platform() == "Windows") { expected_os = 3; }
+    expected_arch := 1;
+    if (os.Platform() == "Darwin") { expected_arch = 2; }
+    source = strings.ReplaceAll(source, "TARGET_OS", format_text("{}", expected_os));
+    source = strings.ReplaceAll(source, "TARGET_ARCH", format_text("{}", expected_arch));
+    written := os.WriteText(strings.Concatenate([folder, "/Tests.chibi"]), source);
+    assert(written == nil, "write assertion message fixture");
+    command := [arguments[0], "test", "-O0", "--llvm", arguments[1], folder];
+    if (os.Platform() == "Darwin") { command.extend(["--target", "arm64-apple-macosx11.0.0"]); }
+    report := os.Capture(command);
+    if (report.status != 1 || !strings.Contains(report.stdout, "8 tests, 8 failed")) { os.Print(report.stdout); os.Print(report.stderr); }
+    assert(report.status == 1 && strings.Contains(report.stdout, "8 tests, 8 failed"), "all assertion failures are reported");
+    assert(strings.Contains(report.stdout, "Assertion failed: false\n"), "no message and empty messages show the condition");
+    assert(strings.Contains(report.stdout, "Assertion failed: \"a\" == \"b\"\n"), "quoted operands do not become the message");
+    assert(strings.Contains(report.stdout, "Assertion failed: say \"hello\"\nnext\\0\n"), "messages decode escapes and render NUL like the compiler");
+    assert(strings.Contains(report.stdout, "Assertion failed: named\n") && strings.Contains(report.stdout, "Assertion failed: grouped\n"), "named and parenthesized messages retain their meaning");
+    assert(strings.Contains(report.stdout, "expected IndexOutOfRange, but it failed with AssertionFailed: Assertion failed: wrong category"), "message decoding preserves failure classification");
+    assert(strings.Contains(report.stdout, "Assertion failed: physical target constants"), "accepted target spellings select the physical target constants");
+    os.Print("native assertion messages: conditions, strings, named arguments and target aliases passed");
+    return 0;
+}

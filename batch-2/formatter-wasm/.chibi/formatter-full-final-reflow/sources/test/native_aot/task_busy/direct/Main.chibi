@@ -1,0 +1,18 @@
+package native_test_waiting_entry
+foreign {
+    chibi_native_test_index :: () -> int
+    chibi_native_test_begin :: () -> int
+    chibi_native_test_end :: () -> int
+}
+Main :: () -> int {
+    index := chibi_native_test_index();
+    if (index != 0) { return 1; }
+    chibi_native_test_begin();
+    result := await Ready();
+    if (result != 9) { return 2; }
+    return chibi_native_test_end();
+}
+Ready :: () -> int {
+    if (false) { yield }
+    return 9;
+}

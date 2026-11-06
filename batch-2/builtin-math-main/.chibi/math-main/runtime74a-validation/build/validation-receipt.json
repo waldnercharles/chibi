@@ -1,0 +1,224 @@
+{
+  "head": "74a9ac60a44a0a8735149a89f1b5482bdd87d127",
+  "staged_tree": "6429cc98eadf167ae532521045b0b82edda73fc3",
+  "full_patch_sha256": "a8ecf7853e128a7065bb6fca712901b64d67e5e36ee71da1bd1a9dd5104872e4",
+  "scope": "Lightweight native/module assertions only; no selfhost compiler/scalar/types/artifact/recovery/selfbuild/assets or producer execution",
+  "source_snapshot": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation",
+  "build": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build",
+  "binary": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/test_language",
+  "binary_sha256": "e52539cedd21915aac58426d2dc1aff88f44e8a2b91fcb50d1a5826f4945725f",
+  "source_identity": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/source-identity.json",
+  "compiled_input_identity": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/compiled-input-identity.json",
+  "object_identity": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/object-identity.json",
+  "archive_identity": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/archive-identity.json",
+  "dependency_admission": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/dependency-audit.json",
+  "ordered_compiler_texts": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/ordered-compiler-inputs.json",
+  "compiler": "Clang22.1.8",
+  "configuration": "Fresh standalone Release; native/desktopOFF; existing defaultON assethost guard selectedOFF; sanitizersOFF; ccacheOFF; buildjobs4",
+  "additional_source_helpers": [],
+  "authoritative_patch_unchanged": true,
+  "producer_outputs_present": [],
+  "export_seconds": 1.8232781670521945,
+  "configure": {
+    "command": [
+      "cmake",
+      "-S",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/test/language",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+      "-DCMAKE_C_COMPILER_LAUNCHER=",
+      "-DCMAKE_C_FLAGS=",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DCHIBI_SDK_BUILD_COMPILER=ON",
+      "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+      "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+      "-DCHIBI_ENABLE_SANITIZERS=OFF",
+      "-DCHIBI_LANGUAGE_TEST_ASSET_COMPILER_HOST=OFF",
+      "-DCHIBI_THIRD_PARTY_CACHE=/Users/cwaldner/Personal/chibi/chibi/.git/chibi/third_party"
+    ],
+    "exit_code": 0,
+    "seconds": 3.655904207844287,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/configure.log"
+  },
+  "build_result": {
+    "command": [
+      "cmake",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build",
+      "--target",
+      "test_language",
+      "--parallel",
+      "4"
+    ],
+    "exit_code": 0,
+    "seconds": 28.073784499894828,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/build.log"
+  },
+  "serial_checks_seconds": 2.699811751022935,
+  "native_cases": 235,
+  "native_assertions": 21636,
+  "small_authored_math_module_cases": {
+    "BYTECODE": 44,
+    "SLJIT": 44
+  },
+  "results": [
+    {
+      "selector": "--semantic",
+      "exit_code": 0,
+      "seconds": 0.8250102498568594,
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/tools/test_policy.py",
+        "--jobs",
+        "1",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/test_language",
+        "--semantic"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/semantic.log",
+      "passed_cases": 80,
+      "assertions": 1113
+    },
+    {
+      "selector": "--package-tests",
+      "exit_code": 0,
+      "seconds": 0.42661233409307897,
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/tools/test_policy.py",
+        "--jobs",
+        "1",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/test_language",
+        "--package-tests"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/package-tests.log",
+      "passed_cases": 6,
+      "assertions": 338
+    },
+    {
+      "selector": "--record-prepared",
+      "exit_code": 0,
+      "seconds": 0.22384483413770795,
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/tools/test_policy.py",
+        "--jobs",
+        "1",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/test_language",
+        "--record-prepared"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/record-prepared.log",
+      "passed_cases": 23,
+      "assertions": 6465
+    },
+    {
+      "selector": "--record-runtime",
+      "exit_code": 0,
+      "seconds": 0.18840270885266364,
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/tools/test_policy.py",
+        "--jobs",
+        "1",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/test_language",
+        "--record-runtime"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/record-runtime.log",
+      "passed_cases": 9,
+      "assertions": 3736
+    },
+    {
+      "selector": "--record-semantic",
+      "exit_code": 0,
+      "seconds": 0.18178370804525912,
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/tools/test_policy.py",
+        "--jobs",
+        "1",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/test_language",
+        "--record-semantic"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/record-semantic.log",
+      "passed_cases": 10,
+      "assertions": 204
+    },
+    {
+      "selector": "--record-values",
+      "exit_code": 0,
+      "seconds": 0.1592406660784036,
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/tools/test_policy.py",
+        "--jobs",
+        "1",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/test_language",
+        "--record-values"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/record-values.log",
+      "passed_cases": 15,
+      "assertions": 318
+    },
+    {
+      "selector": "--record-compatibility",
+      "exit_code": 0,
+      "seconds": 0.1635180409066379,
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/tools/test_policy.py",
+        "--jobs",
+        "1",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/test_language",
+        "--record-compatibility"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/record-compatibility.log",
+      "passed_cases": 1,
+      "assertions": 1480
+    },
+    {
+      "selector": "--execution",
+      "exit_code": 0,
+      "seconds": 0.37485345895402133,
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/tools/test_policy.py",
+        "--jobs",
+        "1",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/test_language",
+        "--execution"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/execution.log",
+      "passed_cases": 83,
+      "assertions": 7681
+    },
+    {
+      "selector": "--execution-scope",
+      "exit_code": 0,
+      "seconds": 0.15654575009830296,
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/tools/test_policy.py",
+        "--jobs",
+        "1",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/test_language",
+        "--execution-scope"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime74a-validation/build/execution-scope.log",
+      "passed_cases": 8,
+      "assertions": 301
+    }
+  ],
+  "preservation": "Original source files and earlier proofs unchanged; all new snapshot/build/log/receipt files confined to runtime74a-validation."
+}

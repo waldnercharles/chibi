@@ -1,0 +1,61 @@
+package facts
+import strings "core:strings"
+Greeting :: (name: string) -> string { return format_text("Hello, {}!\n", name); }
+Vowels :: (word: string) -> int {
+    total := 0;
+    index := 0;
+    while (index < strings.ByteLength(word)) {
+        letter := strings.Slice(word, index, 1);
+        if (letter == "a" or letter == "e" or letter == "i" or letter == "o" or letter == "u") {
+            total += 1;
+        }
+        index += 1;
+    }
+    return total;
+}
+Joined :: (parts: string[]) -> string {
+    out := "";
+    for part in parts {
+        out = format_text("{}{}-", out, part);
+    }
+    return out;
+}
+Hash :: (word: string) -> int {
+    hash := 7;
+    for byte in strings.Bytes(word) {
+        hash = (hash * 31 + byte) % 1000003;
+    }
+    return hash;
+}
+Different :: (left: string, right: string) -> int {
+    if (left != right) {
+        return 1;
+    }
+    return 0;
+}
+Suffixed :: (path: string) -> int {
+    if (strings.HasSuffix(path, ".png")) {
+        return 1;
+    }
+    return 0;
+}
+Tagged :: (names: string[], wanted: string) -> int {
+    index := 0;
+    while (index < length(names)) {
+        if (names[index] == wanted) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+Label :: struct { name: string; size: int; }
+Describe :: (label: Label) -> string { return format_text("{}={}", label.name, label.size); }
+Length: int : strings.ByteLength(Greeting("Ada"));
+Counted: int : Vowels("education");
+JoinedLength: int : strings.ByteLength(Joined(["a", "bc", "def"]));
+Hashed: int : Hash("chibi");
+Unequal: int : Different(format_text("{}{}", "a", "b"), "ab") * 10 + Different("a", "b");
+Image: int : Suffixed("sprite.png") * 10 + Suffixed("sprite.jpg");
+Position: int : Tagged(["move", "jump", "fall"], "jump");
+Described: int : strings.ByteLength(Describe({name: "ab", size: 12}));

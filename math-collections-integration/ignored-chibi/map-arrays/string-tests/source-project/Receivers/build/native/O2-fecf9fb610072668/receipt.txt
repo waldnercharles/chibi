@@ -1,0 +1,22 @@
+native-driver-cache 1
+target aarch64-apple-darwin
+entry Main
+mode 2
+lines false
+static false
+shared false
+compiler .chibi/map-arrays/chibi-string-effects
+compiler-sha256 267f06f1db33f396a08f071e8fd3c13741f9e0100ba413daf370674307167397
+opt /tmp/chibi-llvm22/opt
+opt-sha256 2bd5eaa23de1e47480d02ac50d9376df0e071130d995e34f1fd3f2b76d1bb3d6
+llc /tmp/chibi-llvm22/llc
+llc-sha256 71ae3605805a8667d8875d11e9945be073baf6449a2468561a16086c90b03136
+linker /tmp/chibi-llvm22/ld64.lld
+linker-sha256 b46796ecf50def5ccf45ffefafd29f83854fb2f7789c0d7f00ec1270b33eb1a8
+collection core=/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/packages/core
+source Receivers.chibi
+source-sha256 23c7b4bafc39fbfb2a1975753e0086ba250ac54a45c2e9f72efc5ec5eb0a7c15
+key fecf9fb6100726688e46f0e4072a9f25f21547afda6c7beea794a86a340db7e3
+output-kind executable
+linkage dynamic libSystem
+program-sha256 f3682b5b2261ca63e2add46c03e87cc440804355cdbd1bd32a1e28574fae1ad4

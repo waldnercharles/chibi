@@ -1,0 +1,278 @@
+diff --git a/PLAN.md b/PLAN.md
+index 47f1aa12e..31a74db89 100644
+--- a/PLAN.md
++++ b/PLAN.md
+@@ -7,6 +7,137 @@
+ 
+ # Chibi toolchain consolidation and self-hosting
+ 
++## Ordinary Chibi CLI application and shared program sessions, 2026-10-28
++
++The owner approved making the public CLI an ordinary Chibi application with
++Main and a shared compiler/runtime interface. The isolated worktree started at
++2c6d3ed5c and is now on codex/chibi-main-app-20261028 at accepted origin/main
++51650ccff, with all changes carried forward without conflicts. The validated
++authored-runner candidate is preserved in
++.chibi/main-runner-reload/authored-runner-preservation; the original checkout
++and both earlier checkpoints remain intact.
++
++Move all public command routing, argument validation, watching, retry, exit
++policy, game-cache decisions and subprocess construction into apps/chibi.
++Install that package with the SDK. The native chibi_main.c only resolves the
++application/core resources, starts the ordinary application host and returns
++its Main result. Remove the private Run entry, runner.* pack and compiler --run
++bridge rather than retaining a second route. Program arguments are ordinary
++application argv, allowing chibi apps/chibi -- version to run the CLI itself.
++
++Export Chibi::program beside source_catalog. An explicit program session owns
++candidate/accepted generations and structured diagnostics, accepts an immutable
++source snapshot, native declarations/bindings/backend/services, and exposes
++transactional preparation/replacement plus synchronous invocation. This gives
++Studio's native host an interface for unsaved document snapshots without file
++polling or terminal policy. The authored program service owns checked session
++handles, independent argv and a small open/update/call/diagnostic/close interface.
++CLI and user programs use this same service. Existing compiler and runtime
++replacement remain the source of truth; no second compiler or migration engine.
++
++Generic application services expose OS/file/process/network operations. Native
++project adapters expose typed inspection/export and SDK identity facts. No
++native callback parses command argv. Catalogs/services outlive their sessions;
++caller/target heaps stay distinct, active/reentrant sessions reject mutation,
++invalid drafts preserve the accepted generation, and cancellation tears down
++owned sessions, listeners and temporary directories. Compiler services remain
++outside deployed game catalogs. Windows file/path loading must work for the
++new application startup rather than regressing previously native CLI commands.
++
++Changes include apps/chibi, authoring/program{,_service}, host/application{,
++_io,_tools}, the tiny launcher, ordinary catalog composition, SDK/CMake/graph
++resource and link ownership, source reader portability, focused tests and
++documentation. Studio packaging must carry application resources when copying
++the public executable. Studio UI changes are outside this increment.
++
++Verify all public commands, authored argument tests, nested CLI execution,
++multiple session handles, buffer snapshots, retained-state reload and rejected
++edits, cancellation/cleanup, installed SDK C consumers, graph/CMake resource
++parity and relocation. Select native language/CLI/export/native-build/packaging
++checks for the affected behavior, report actual times, and cross-compile the
++Windows paths when native execution is unavailable. Record remaining coverage
++and final results below after implementation.
++
++Accepted-base progress: native release graph build passes in 135.4s plus 2.2s
++dependency preparation. Shared/runtime selectors pass 279 cases / 22,410
++assertions in 2.168s combined subprocess time, including 7 program-session
++cases. POSIX source/path selectors pass 23 / 15,851 in 2.570s runner time.
++The public-header-only SDK consumer passes 1 / 13 in 0.271s; graph/CMake
++application resource parity passes 2 / 20 in 51.338s. The actual CLI runs its own
++six authored tests and can invoke itself through the normal program path with
++byte-identical version output. Initial CLI integration passed 28/31; three new
++fixtures used invalid dynamic assertion messages, now corrected for retry.
++Full public SDK installation/export validation is still pending; the private
++compiler-tools SDK does not establish it. Native Windows execution is unrun;
++strict MinGW release syntax passes for nine production files and the Windows
++filesystem fixture. Linux graph link-order parity is not established here.
++
++Independent review fixed drive/UNC root handling, empty argv, temporary-prefix
++ownership, worker-safe signal polling and test-runtime argv registration. The
++launcher admits standard reflected value layouts so native vector defaults
++remain valid. Cooperative outer invocation keeps cleanup and status decisions
++in Main; nested calls are interruptible. No C command dispatcher remains.
++
++## Main runner and state-preserving reload, 2026-10-28
++
++Port the local Main runner onto origin/main at 2c6d3ed5c in an isolated
++worktree. Preserve the original checkout and its tracked/untracked changes;
++the backup is .chibi/hello-port-preservation-20261028 in that checkout.
++
++The CLI supports explicit run and file/directory shorthand. Installed
++tools/toolchain/Run.chibi owns run-request parsing, the opt-in --watch loop,
++revision suppression, compile/prepare/commit decisions and exit-status policy.
++Private native capabilities supply source snapshots, compiler/runtime handles,
++diagnostics, signals and waits. They are absent from user-program catalogs.
++The native launcher still routes public commands and paths.
++
++The host keeps an execution_program alive between Main calls. Runtime-owned
++invocation binds retained state and imports. Existing prepare/commit replacement
++owns state migration, resets and retired generations. Invalid edits retain the
++accepted generation. Ordinary locals reinitialize; retain locals persist. Main
++remains synchronous. Policy and user code execute in separately owned runtimes
++and managed heaps, with no borrowed values crossing their invocation boundary.
++
++Changes cover the source loader, program authoring host, runtime function-call
++boundary, CLI/compiler dispatch, both build descriptions, documentation and
++native boundary regressions. No syntax, project-version or Studio change.
++
++Verify Main file/directory execution, exit status and diagnostics; retained
++state across valid reloads, invalid-edit recovery and import changes; current
++publication, record-publication and root-state/runtime coverage. Build against
++this worktree's matching compiler/runtime. Record actual results and elapsed
++time; do not infer new-main readiness from the old runner's test results.
++
++The preserved native-orchestration checkpoint against 2c6d3ed5c passed its
++release build. CLI: 28 cases,
++398 assertions, 13.856 seconds. Native runtime: program 211/14,167/1.519s,
++publication 6/320/1.047s, record-publication 7/230/1.046s, root-state
++3/194/1.036s, modules 22/908/0.830s. All passed; runtime call/reload cases
++exercise bytecode and the platform compiled backend. Manual watch printed
++Run 1 then Reloaded 2 in one process. Clang-format 22 and diff checks passed.
++Full native/material/project/language/tooling aggregates, browser/Windows and
++Studio were not run. No SDK installation or publishing occurred.
++
++The authored-policy candidate replaces that C watch loop. Its release build
++passes (149 seconds for the initial graph build; subsequent incremental builds
++passed, most recently 15.0 seconds plus 2.3 seconds of dependency configuration).
++CLI: 29 cases, 424 assertions, 14.931 seconds. Runtime: program 211/14,167/1.668s,
++publication 6/320/1.318s, record-publication 7/230/1.322s, root-state
++3/194/1.282s, modules 22/908/1.374s. Graph/CMake resource parity: 2/20/54.115s.
++SDK packaging and relocation: 8/214/293.815s. All pass, including numeric
++retained-state migration, invalid-edit recovery, imported state, required
++installed-policy loading and isolation of private capabilities. Two earlier
++CLI attempts caught diagnostic wording changes; both original entry-error
++oracles now pass. Logs and attempt history are in .chibi/main-runner-reload.
++
++Manual Hello World and watch output Run 1 then Reloaded 2 pass through the
++authored policy. All four unchanged authored parser tests pass through the
++private host with a disposable entry wrapper. Independent ownership/phase
++review, clang-format 22 and diff checks pass. Broader aggregates, browser,
++Windows and Studio remain unrun. The user's installed SDK remains unchanged.
++The prior native checkpoint is preserved under
++.chibi/main-runner-reload/c-host-preservation in this worktree.
++
+ ## Coordinated named struct results, 2026-10-22
+ 
+ The next local setup slice extends the ABI20 authored compiler's existing
+diff --git a/sdk/CMakeLists.txt b/sdk/CMakeLists.txt
+index c40fbb2fb..759dd5d03 100644
+--- a/sdk/CMakeLists.txt
++++ b/sdk/CMakeLists.txt
+@@ -730,19 +730,49 @@ if(CHIBI_SDK_COMPILER_HOST_ONLY)
+ endif()
+ # `chibi PROJECT` prepares a changed project and plays it with its siblings.
+ if(TARGET chibi-compile AND TARGET chibi-player)
+-    add_executable(chibi "${CHIBI_SDK_ROOT}/src/host/chibi_main.c"
++    add_library(chibi_application OBJECT "${CHIBI_SDK_ROOT}/src/host/application.c"
++        "${CHIBI_SDK_ROOT}/src/host/application_tools.c"
++        "${CHIBI_SDK_ROOT}/src/host/application_io.c"
+         "${CHIBI_SDK_ROOT}/src/host/export.c" "${CHIBI_SDK_ROOT}/src/host/process.c")
+-    foreach(header export process serve)
++    foreach(header application application_tools application_io export process serve)
+         configure_file("${CHIBI_SDK_ROOT}/src/host/${header}.h"
+             "${CMAKE_CURRENT_BINARY_DIR}/private/launcher/host/${header}.h" COPYONLY)
+     endforeach()
++    foreach(header compiler_syntax compiler_json)
++        configure_file("${CHIBI_SDK_ROOT}/src/toolchain/${header}.h"
++            "${CMAKE_CURRENT_BINARY_DIR}/private/launcher/toolchain/${header}.h" COPYONLY)
++    endforeach()
+     # chibi web serves an export on loopback; Windows has no server yet.
+     if(NOT WIN32)
+-        target_sources(chibi PRIVATE "${CHIBI_SDK_ROOT}/src/host/serve.c")
++        target_sources(chibi_application PRIVATE "${CHIBI_SDK_ROOT}/src/host/serve.c")
+     endif()
+-    target_include_directories(chibi PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/private/launcher"
++    target_include_directories(chibi_application PUBLIC "${CMAKE_CURRENT_BINARY_DIR}/private/launcher")
++    target_include_directories(chibi_application PRIVATE
+         "${CHIBI_SDK_ROOT}/third_party/yyjson")
+-    target_link_libraries(chibi PRIVATE chibi_project_document chibi_support chibi_json)
++    target_link_libraries(chibi_application PUBLIC chibi_program chibi_project_compilation
++        chibi_project_document chibi_host_native_default chibi_core_capabilities
++        chibi_text_capabilities chibi_array_capabilities chibi_support chibi_json chibi_task_pool_runtime
++        chibi_compiler_syntax chibi_compiler_json)
++    target_compile_options(chibi_application PRIVATE -Wall -Wextra -Werror)
++    add_executable(chibi "${CHIBI_SDK_ROOT}/src/host/chibi_main.c")
++    target_link_libraries(chibi PRIVATE chibi_application)
++    # The public CLI loads an ordinary authored application.
++    file(GLOB_RECURSE application_inputs CONFIGURE_DEPENDS
++        RELATIVE "${CHIBI_SDK_ROOT}/apps/chibi" "${CHIBI_SDK_ROOT}/apps/chibi/*.chibi")
++    foreach(source IN LISTS application_inputs)
++        configure_file("${CHIBI_SDK_ROOT}/apps/chibi/${source}"
++            "${CMAKE_BINARY_DIR}/share/chibi/apps/chibi/${source}" COPYONLY)
++    endforeach()
++    file(GLOB_RECURSE application_core_inputs CONFIGURE_DEPENDS
++        RELATIVE "${CHIBI_SDK_ROOT}/packages/core" "${CHIBI_SDK_ROOT}/packages/core/*.chibi")
++    foreach(source IN LISTS application_core_inputs)
++        configure_file("${CHIBI_SDK_ROOT}/packages/core/${source}"
++            "${CMAKE_BINARY_DIR}/share/chibi/core/${source}" COPYONLY)
++    endforeach()
++    install(DIRECTORY "${CHIBI_SDK_ROOT}/apps/chibi/" DESTINATION share/chibi/apps/chibi
++        FILES_MATCHING PATTERN "*.chibi")
++    install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
++        FILES_MATCHING PATTERN "*.chibi")
+     target_compile_options(chibi PRIVATE -Wall -Wextra -Werror)
+     add_dependencies(chibi chibi-compile chibi-player)
+     chibi_windows_manifest(chibi)
+diff --git a/test/tools/build_graph.c b/test/tools/build_graph.c
+index d55356db6..583433310 100644
+--- a/test/tools/build_graph.c
++++ b/test/tools/build_graph.c
+@@ -1741,10 +1741,9 @@ static int same_tree(const char *ours, const char *theirs)
+     return count;
+ }
+ 
+-/* The launcher's share/chibi and chibi_ctl's resources equal what CMake
+- * configures: the build identity, the core and documentation sources and the
+- * shaders. They are written before any compile, so a compiler that always
+- * fails still writes them, and an unchanged run leaves their stamps. */
++/* Product resources equal what CMake configures: the build identity, core,
++ * documentation, program runner and shaders. They are written before any
++ * compile; unchanged runs leave their stamps and stale copies are refreshed. */
+ TEST_CASE(resources_install_as_cmake)
+ {
+     char build_dir[GRAPH_PATH], ours[GRAPH_PATH], theirs[GRAPH_PATH],
+@@ -1762,20 +1761,19 @@ TEST_CASE(resources_install_as_cmake)
+     };
+     const char *const installs[] = { "--target", "chibi", "--target", "chibi_ctl", NULL };
+     REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, failing, installs) == -1);
+-    /* The identity, seven sources and the shaders below share/chibi, and the
+-     * identity and the shaders again for chibi_ctl. The shaders are compared
+-     * with the sources CMake copies, since it copies chibi_ctl's only when it
+-     * configures. */
++    /* The shaders are compared with their source because CMake copies the
++     * controller's shaders only when it configures. */
+     const char *const trees[][2] = {
+         { "share/chibi/engine.json", "build/share/chibi/engine.json" },
+         { "share/chibi/core", "build/share/chibi/core" },
+         { "share/chibi/docs", "build/share/chibi/docs" },
++        { "share/chibi/apps/chibi", "build/share/chibi/apps/chibi" },
+         { "share/chibi/shaders", "src/render/shaders" },
+         { "controller_resources/engine.json", "build/controller_resources/engine.json" },
+         { "controller_resources/shaders", "src/render/shaders" },
+     };
+-    int files = 0;
+-    for (int i = 0; i < 6; i++) {
++    int files = 0, application_files = 0;
++    for (size_t i = 0; i < sizeof trees / sizeof *trees; i++) {
+         join(ours, build_dir, trees[i][0]);
+         if (!strncmp(trees[i][1], "build/", 6)) {
+             join(theirs, reference, trees[i][1] + 6);
+@@ -1785,8 +1783,11 @@ TEST_CASE(resources_install_as_cmake)
+         int count = same_tree(ours, theirs);
+         REQUIRE(count > 0);
+         files += count;
++        if (!strcmp(trees[i][0], "share/chibi/apps/chibi")) {
++            application_files = count;
++        }
+     }
+-    REQUIRE(files == 213);
++    REQUIRE(files == 213 + application_files);
+     struct stat before, after, identity_before, identity_after;
+     char identity[GRAPH_PATH];
+     join(ours, build_dir, "share/chibi/engine.json");
+@@ -1803,6 +1804,19 @@ TEST_CASE(resources_install_as_cmake)
+         identity_after.st_ino == identity_before.st_ino &&
+         identity_after.st_mtime == identity_before.st_mtime
+     );
++    join(ours, build_dir, "share/chibi/apps/chibi/Main.chibi");
++    join(theirs, CHIBI_SOURCE_ROOT, "apps/chibi/Main.chibi");
++    struct stat policy_before, policy_after;
++    REQUIRE(!stat(ours, &policy_before));
++    const char *const application_only[] = { "--target", "chibi", NULL };
++    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, failing, application_only) == -1);
++    REQUIRE(
++        !stat(ours, &policy_after) && policy_after.st_ino == policy_before.st_ino &&
++        policy_after.st_mtime == policy_before.st_mtime
++    );
++    tool_write(ours, "stale application source\n");
++    REQUIRE(run_graph(CHIBI_SOURCE_ROOT, build_dir, failing, application_only) == -1);
++    REQUIRE(same_tree(ours, theirs) == 1);
+     return true;
+ }
+ 

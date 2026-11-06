@@ -1,0 +1,2132 @@
+{
+  "event_date": "2026-10-28",
+  "source_commit": "d1315047c0a533a3848569a39af83a33c98a8799",
+  "source_tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+  "coherent_artifact_candidate": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+  "coherent_artifact_tree": "09eba7d216264b9ed3461839369a750961127d4b",
+  "accepted_main": "498f1b9aebca18597f1ce93fd292fd0739b2e39a",
+  "final_integration_commit": "4c9bf0a8c6ab576495c581fe14243dfc44ae116a",
+  "final_integration_tree": "3b91f2176e2aa3882e1fcb3538a2b2ee51696661",
+  "artifact": {
+    "bytes": 20792064,
+    "sha256": "27d8f3d0568e442e1a70b167c04ba97c671ea0d0b1e85e3a7493d88fc59bb912",
+    "manifest_sha256": "2204ba9cce1e68ab95d8a5b7ed6158ba4d1bbae864f0dee624aaa550672c80f1",
+    "producer_revision": "d1315047c0a533a3848569a39af83a33c98a8799",
+    "sources": [
+      {
+        "path": "package_compiler/Compile.chibi",
+        "bytes": 150403,
+        "sha256": "7398ea88f67f5e890babdc749f95a8da90e52d27cd7ed5e351ff594f49c50ee4"
+      },
+      {
+        "path": "package_compiler/Body.chibi",
+        "bytes": 180122,
+        "sha256": "718fe5933fa59a537c27126e92ae7e2f1320722896130d7ed1f0bc5ba3776743"
+      },
+      {
+        "path": "package_compiler/Steps.chibi",
+        "bytes": 309690,
+        "sha256": "68d5a8af7b542f3a89d0ba4d4cb76405afbce19d3201a7211d002fe0cb67b6dc"
+      },
+      {
+        "path": "package_compiler/Maps.chibi",
+        "bytes": 29459,
+        "sha256": "351d13270cdfffcda31f35026681b33933e9fde05babb221fc963976061add00"
+      },
+      {
+        "path": "package_compiler/References.chibi",
+        "bytes": 40733,
+        "sha256": "d73825ac0b16dd082005650699e2bd6a35987592103a553f76fd0b5783414852"
+      },
+      {
+        "path": "package_compiler/Pointers.chibi",
+        "bytes": 52353,
+        "sha256": "a60181b885210b47741be52754d7d06ed7203ff47f4008dba6f80a696659f665"
+      },
+      {
+        "path": "package_compiler/Tasks.chibi",
+        "bytes": 11882,
+        "sha256": "43c5ec60e6a9d87490dabe19a2ce379cc0a57c40c2d88d9ffeebaa60c0700970"
+      },
+      {
+        "path": "package_compiler/TaskResults.chibi",
+        "bytes": 10463,
+        "sha256": "dfb8db278474f39ccec2c5066ae13137d885eca76c430b32dcfe0cc3b86bfef1"
+      },
+      {
+        "path": "package_compiler/Tree.chibi",
+        "bytes": 2578,
+        "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a"
+      },
+      {
+        "path": "package_compiler/Number.chibi",
+        "bytes": 29513,
+        "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2"
+      },
+      {
+        "path": "package_compiler/Optional.chibi",
+        "bytes": 20634,
+        "sha256": "91c199e4ef66413df60ab11efd05ed2b984dbe049c0e6cbfeb7c018e0152ecf8"
+      },
+      {
+        "path": "package_compiler/Sequences.chibi",
+        "bytes": 61040,
+        "sha256": "e32665981a97d00ca0eda60bde73f81ffdcd7ba8f25ed2a3cf826eff89a53b53"
+      },
+      {
+        "path": "package_compiler/Queries.chibi",
+        "bytes": 93003,
+        "sha256": "772064ffa7540a34d1beb7070da58d208b5d51e6b5111e9bd23e6fb7648c1b28"
+      },
+      {
+        "path": "package_compiler/QueryLoops.chibi",
+        "bytes": 12308,
+        "sha256": "6d731bf9a6a97533119dc83c186119f4ff9070a681bb5be890e9d432198be588"
+      },
+      {
+        "path": "package_compiler/Behavior.chibi",
+        "bytes": 56738,
+        "sha256": "82f35ecb2f9e6c11241ceb9950a1bbc367a182936cee40cd100c5b2af751f41d"
+      },
+      {
+        "path": "package_compiler/Scalar.chibi",
+        "bytes": 115064,
+        "sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b"
+      },
+      {
+        "path": "syntax_diagnostics/Diagnostics.chibi",
+        "bytes": 2282,
+        "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
+      },
+      {
+        "path": "/sdk/core/strings/Strings.chibi",
+        "bytes": 16404,
+        "sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df"
+      },
+      {
+        "path": "source_snapshot/Snapshot.chibi",
+        "bytes": 15871,
+        "sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622"
+      },
+      {
+        "path": "compiler_syntax/Syntax.chibi",
+        "bytes": 1529,
+        "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4"
+      },
+      {
+        "path": "package_routes/Routes.chibi",
+        "bytes": 7736,
+        "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228"
+      },
+      {
+        "path": "package_syntax/Extract.chibi",
+        "bytes": 4276,
+        "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146"
+      },
+      {
+        "path": "package_graph/Graph.chibi",
+        "bytes": 13271,
+        "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da"
+      },
+      {
+        "path": "package_paths/Paths.chibi",
+        "bytes": 2274,
+        "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30"
+      },
+      {
+        "path": "lexical_binding/Binding.chibi",
+        "bytes": 8673,
+        "sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1"
+      },
+      {
+        "path": "prepared_writer/Writer.chibi",
+        "bytes": 40444,
+        "sha256": "2dcc3d41a4feb3e95855d9de860eaf36b1347ae96bdab0d7bd3280720a838081"
+      },
+      {
+        "path": "scalar_facts/Facts.chibi",
+        "bytes": 16982,
+        "sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50"
+      }
+    ],
+    "prepared_format": 26,
+    "format": 1,
+    "version": 7,
+    "minimum": 6,
+    "non_root_payloads_identical_to_baseline": 11
+  },
+  "runtime": {
+    "source": "/Users/cwaldner/Personal/chibi/.worktrees/emit-body-finalization/chibi/.chibi/emit-body/post802/runtime-e1/chibi-compiler-host-macos-arm64",
+    "copy": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/runtime/chibi-compiler-host",
+    "pin": {
+      "format": 1,
+      "repository": "waldnercharles/chibi",
+      "tag": "compiler-runtime-prepared26-43eec64f98e6fb288935dacfcbf86296dbc43b02",
+      "source_revision": "43eec64f98e6fb288935dacfcbf86296dbc43b02",
+      "source_tree": "ee4e5e7a065e79db159b28e6c9d8101664d85b00",
+      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/40768054554",
+      "platforms": {
+        "macos-arm64": {
+          "asset": "chibi-compiler-host-macos-arm64",
+          "sha256": "7526a0a611e4e4be562e7eb7b91633b61238c6d7fe762429c0139f2fa637951c",
+          "bytes": 1367136
+        },
+        "linux-x64": {
+          "asset": "chibi-compiler-host-linux-x64",
+          "sha256": "fb7de83bce7de2485c1bb2772e0a169db51b6102f9e103fde71c7ca421f09e62",
+          "bytes": 2118648
+        },
+        "windows-x64": {
+          "asset": "chibi-compiler-host-windows-x64.exe",
+          "sha256": "6a7130e5a693528cbdf4f5270b0cf3917b7105497306cc554dc400a1bc78a639",
+          "bytes": 2117120
+        }
+      }
+    },
+    "verified_bytes": 1367136,
+    "verified_sha256": "7526a0a611e4e4be562e7eb7b91633b61238c6d7fe762429c0139f2fa637951c",
+    "copied_only_accepted_pinned_runtime_binary": true
+  },
+  "bootstrap_isolation": {
+    "source": "d1315047c0a533a3848569a39af83a33c98a8799",
+    "snapshot": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/bootstrap-snapshot",
+    "tracked_files_compared": 3462,
+    "sole_changed_path": "test/language/CMakeLists.txt",
+    "helper_sha256": "6e69822faba80d95e4fb021b649a407dd99cdbd7deca63d687584bcf4a11a813",
+    "snapshot_revision": "d1315047c0a533a3848569a39af83a33c98a8799-dirty",
+    "no_production_or_test_or_assertion_changes": true
+  },
+  "short_build": {
+    "long_build": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/release",
+    "short_build": "/tmp/p790-hqmks0bc",
+    "task_alias": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/release-short",
+    "host_argument_bytes_limit_unchanged": 65536,
+    "planned_argument_bytes": [
+      {
+        "output": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/release/sdk/chibi-build-host",
+        "arguments": 42,
+        "original_bytes": 4974,
+        "short_path_bytes": 2016
+      },
+      {
+        "output": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/release/sdk/chibi-compiler-host",
+        "arguments": 38,
+        "original_bytes": 4115,
+        "short_path_bytes": 1667
+      },
+      {
+        "output": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/release/sdk/chibi-compile",
+        "arguments": 118,
+        "original_bytes": 16388,
+        "short_path_bytes": 6290
+      },
+      {
+        "output": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/release/bin/chibi_ctl",
+        "arguments": 228,
+        "original_bytes": 24454,
+        "short_path_bytes": 9868
+      },
+      {
+        "output": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/release/test/language/test_language",
+        "arguments": 255,
+        "original_bytes": 39781,
+        "short_path_bytes": 15811
+      },
+      {
+        "output": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/release/test/tools/test_tools",
+        "arguments": 502,
+        "original_bytes": 71540,
+        "short_path_bytes": 29006
+      },
+      {
+        "output": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/release/test/tools/policy_worker",
+        "arguments": 12,
+        "original_bytes": 502,
+        "short_path_bytes": 298
+      },
+      {
+        "output": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/release/test/tools/benchmark_trials",
+        "arguments": 13,
+        "original_bytes": 666,
+        "short_path_bytes": 360
+      }
+    ],
+    "source_revision_unchanged": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+    "only_build_output_location_changes": true
+  },
+  "short_successful_record_sha256": "9b58c09dc88ab0ae436dbf92a98ea1adfc888bc1bda90776f625b8b62d1b9ec5",
+  "invocation_environment_additions": {
+    "final-graph-resources": {
+      "CHIBI_GRAPH_REFLECT": "/tmp/p790-hqmks0bc/reflect"
+    }
+  },
+  "scope": {
+    "native_selectors_on_bad6": 13,
+    "native_cases": 97,
+    "native_assertions": 354802,
+    "wasm_selectors_on_bad6": 7,
+    "wasm_cases": 37,
+    "wasm_assertions": 350680,
+    "existing_compiler_fixture_size_based_bytecode_fallback_exception_retained": true,
+    "controlled_reuse_unit_not_current_source_certification": true,
+    "no_allocation_or_general_throughput_claim": true,
+    "original_deep_path_graph_remains_failed": true,
+    "no_runtime_seed_or_guard_increase": true,
+    "bad6_results_not_relabelled_as_final_integration_execution": true,
+    "windows_execution": false,
+    "powershell_transport_executed": false,
+    "full_local_native_material_project_wasm_gpu_suites": false,
+    "fresh_final_candidate_ci": "pending replacement PR; final root review/merge required"
+  },
+  "records": [
+    {
+      "name": "bootstrap-fixedpoint",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-bootstrap"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:10:47.601554+00:00",
+      "wall_seconds": 398.3594209579751,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/bootstrap-fixedpoint.log",
+      "log_sha256": "7cc99c8efc1ea5ebe912adb797d77a983788f42cab89089bd4d95942c937b231",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/bootstrap-native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/bootstrap-native",
+        "CHIBI_BOOTSTRAP_SEED": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/fixture-seed"
+      },
+      "test_summary": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 31262
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/bootstrap-fixedpoint.json",
+      "receipt_sha256": "bade4fdba308fc7f65b707ebba703855d85891c44ea9adc233ed178b6e5c0925"
+    },
+    {
+      "name": "build-bootstrap-driver",
+      "argv": [
+        "cmake",
+        "--build",
+        ".chibi/integration/pure-807/bootstrap-native",
+        "--target",
+        "test_language",
+        "--parallel",
+        "4",
+        "--verbose"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:09:21.186310+00:00",
+      "wall_seconds": 33.73427224997431,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/build-bootstrap-driver.log",
+      "log_sha256": "5619484182b3fb7cfd57152b2978dbb863d9f98d06d4036d36d4e663bcb8287b",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/build-bootstrap-driver.json",
+      "receipt_sha256": "e64a4bf3e3b6debed7162b2efa880e32aa3b9929038e643e9614f888fbde8ecb"
+    },
+    {
+      "name": "build-native-after-artifact",
+      "argv": [
+        "cmake",
+        "--build",
+        ".chibi/integration/pure-807/native",
+        "--target",
+        "test_language",
+        "chibi-compiler-host",
+        "chibi-build-host",
+        "--parallel",
+        "4",
+        "--verbose"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:29:18.561335+00:00",
+      "wall_seconds": 116.31450404180214,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/build-native-after-artifact.log",
+      "log_sha256": "63e18f1d8df745b650a31fcbe95085d801cb86547f80627dcba2eb5d344f8837",
+      "selected_environment": {
+        "CHIBI_BUILD_TIMINGS": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native-timings"
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/build-native-after-artifact.json",
+      "receipt_sha256": "470373bf09882fc3b60a1e366ae61504264db466199cde97cb520d584f35a9ab"
+    },
+    {
+      "name": "build-native-before-artifact",
+      "argv": [
+        "cmake",
+        "--build",
+        ".chibi/integration/pure-807/native",
+        "--target",
+        "test_language",
+        "chibi-compiler-host",
+        "chibi-build-host",
+        "--parallel",
+        "4",
+        "--verbose"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:00:23.086411+00:00",
+      "wall_seconds": 339.1095357912127,
+      "exit_code": 2,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/build-native-before-artifact.log",
+      "log_sha256": "4466eee955c7820107b24d46ad6e317a780dfeee8444edb247b34232e48d170f",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/build-native-before-artifact.json",
+      "receipt_sha256": "3e54a3d6bacb4bf356a085d3e39f06a1a4f07dc3797a9bf364ddcd8c35ee5837"
+    },
+    {
+      "name": "build-wasm-candidate",
+      "argv": [
+        "cmake",
+        "--build",
+        ".chibi/integration/pure-807/wasm",
+        "--target",
+        "test_language",
+        "--parallel",
+        "4",
+        "--verbose"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:29:46.492092+00:00",
+      "wall_seconds": 0.33352608303539455,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/build-wasm-candidate.log",
+      "log_sha256": "31dd18b6b9469cb30341d391c490a5d8fed25c1bb9e3761ebfc7acedb2833ba7",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/build-wasm-candidate.json",
+      "receipt_sha256": "904551588dc80a637d9ea40e7801c2147e9bbc44aafd406b0135051de43fabdd"
+    },
+    {
+      "name": "build-wasm",
+      "argv": [
+        "cmake",
+        "--build",
+        ".chibi/integration/pure-807/wasm",
+        "--target",
+        "test_language",
+        "--parallel",
+        "4",
+        "--verbose"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:22:45.845863+00:00",
+      "wall_seconds": 45.64586495794356,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/build-wasm.log",
+      "log_sha256": "ef397387dcb5cb15beee59299f56cd7f48084a0dd976082f7e93878d6e2f85cd",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/build-wasm.json",
+      "receipt_sha256": "6877ee4f57ea451d527fc8194b3914b83754201abe78dff527ed6d83fe14121e"
+    },
+    {
+      "name": "configure-bootstrap-driver",
+      "argv": [
+        "cmake",
+        "-S",
+        ".chibi/integration/pure-807/bootstrap-snapshot/test/language",
+        "-B",
+        ".chibi/integration/pure-807/bootstrap-native",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCHIBI_ENABLE_SANITIZERS=OFF",
+        "-DCHIBI_SDK_BUILD_COMPILER=ON",
+        "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:09:10.662338+00:00",
+      "wall_seconds": 6.4164547910913825,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/configure-bootstrap-driver.log",
+      "log_sha256": "1476505710db758d03aaa4cae741535aad8b58c71e05aa7de6cb898426e662e5",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/configure-bootstrap-driver.json",
+      "receipt_sha256": "b99c2fe168bcce2a238f98ebf8b7e7e5d8c1d2bf77235aaa46324ca06b0cf9fe"
+    },
+    {
+      "name": "configure-graph-reference-canonical",
+      "argv": [
+        "sh",
+        "tools/configure_native.sh",
+        "/private/tmp/p790-hqmks0bc-cmake-canonical",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCHIBI_ENABLE_SANITIZERS=OFF",
+        "-DCHIBI_ENABLE_WARNINGS=ON",
+        "-DCHIBI_ENABLE_CCACHE=ON"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:59:39.262069+00:00",
+      "wall_seconds": 5.525806832825765,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/configure-graph-reference-canonical.log",
+      "log_sha256": "d159af098e3d9d741c55abb607f9c23376df961d152b9308496f47e4490620fb",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/configure-graph-reference-canonical.json",
+      "receipt_sha256": "7e29044baff56e1468e2cd24c1542a685ce5e59b5fc75764850325645faa8adf"
+    },
+    {
+      "name": "configure-graph-reference",
+      "argv": [
+        "sh",
+        "tools/configure_native.sh",
+        "/tmp/p790-hqmks0bc-cmake",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCHIBI_ENABLE_SANITIZERS=OFF",
+        "-DCHIBI_ENABLE_WARNINGS=ON",
+        "-DCHIBI_ENABLE_CCACHE=ON"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:51:43.189873+00:00",
+      "wall_seconds": 5.846638125134632,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/configure-graph-reference.log",
+      "log_sha256": "0187ef0e212872877920c965d2c253d1addfdd12ffcab4a0ca3f39639ddf3b06",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/configure-graph-reference.json",
+      "receipt_sha256": "77da496efa1da490ab3db9b94aad2f0dccf9e25930ad681836e103d488fbbd7d"
+    },
+    {
+      "name": "configure-native-after-artifact",
+      "argv": [
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        ".chibi/integration/pure-807/native",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCHIBI_ENABLE_SANITIZERS=OFF",
+        "-DCHIBI_SDK_BUILD_COMPILER=ON",
+        "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+        "-DCHIBI_ENABLE_WARNINGS=ON",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:28:59.032611+00:00",
+      "wall_seconds": 2.4860805419739336,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/configure-native-after-artifact.log",
+      "log_sha256": "e1c2136d7546f83b6ed6d8835871104a3977c13b06995615b72f12555643263e",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/configure-native-after-artifact.json",
+      "receipt_sha256": "b750572bb19172aa4721844d817d7bdbd7b4df842fda1d132f4cc757003bfe74"
+    },
+    {
+      "name": "configure-native",
+      "argv": [
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        ".chibi/integration/pure-807/native",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCHIBI_ENABLE_SANITIZERS=OFF",
+        "-DCHIBI_SDK_BUILD_COMPILER=ON",
+        "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+        "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+        "-DCHIBI_ENABLE_WARNINGS=ON",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T22:59:39.775297+00:00",
+      "wall_seconds": 8.564224042231217,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/configure-native.log",
+      "log_sha256": "67b3c3e66b2aae24c38cb49421220cb0952537e5d0a3e13d1f2a0ce3f9172736",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/configure-native.json",
+      "receipt_sha256": "38f7b69f01cbfafcbebfc09ee6fb39489bc7d4ce003585db365719edad9da20b"
+    },
+    {
+      "name": "configure-wasm-candidate",
+      "argv": [
+        "sh",
+        "tools/web_env.sh",
+        "emcmake",
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        ".chibi/integration/pure-807/wasm",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCHIBI_WEB_THREADS=OFF",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:29:37.987342+00:00",
+      "wall_seconds": 2.9579829999711365,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/configure-wasm-candidate.log",
+      "log_sha256": "0ea32aa31ee338e373d1a8f4a4c8fd3abaef758e4d89680c26681bc1ce1b1daf",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/configure-wasm-candidate.json",
+      "receipt_sha256": "bdf102b9d2cbce675d9b7ce1b4584db3719a1eb8e93e8abfe1ce7b85588f5401"
+    },
+    {
+      "name": "configure-wasm",
+      "argv": [
+        "sh",
+        "tools/web_env.sh",
+        "emcmake",
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        ".chibi/integration/pure-807/wasm",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCHIBI_WEB_THREADS=OFF",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:22:22.037926+00:00",
+      "wall_seconds": 3.3820479169953614,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/configure-wasm.log",
+      "log_sha256": "469d0d7f33ec8c1730397ac3728b63fb883557e6ce76db485971cf8a0d7b9350",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/configure-wasm.json",
+      "receipt_sha256": "d457643f6cded09d079e90df3d213707fa21e33a8cbc2c1581f8b93c26e52589"
+    },
+    {
+      "name": "final-graph-resources",
+      "argv": [
+        "/tmp/p790-hqmks0bc/test/tools/test_tools",
+        "--build-graph-resources",
+        "/tmp/p790-hqmks0bc/sdk/chibi-build-host",
+        "/private/tmp/p790-hqmks0bc-cmake-canonical"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-29T00:13:50.241937+00:00",
+      "wall_seconds": 47.16251395805739,
+      "exit_code": 0,
+      "before": {
+        "head": "4c9bf0a8c6ab576495c581fe14243dfc44ae116a",
+        "tree": "3b91f2176e2aa3882e1fcb3538a2b2ee51696661",
+        "status": ""
+      },
+      "after": {
+        "head": "4c9bf0a8c6ab576495c581fe14243dfc44ae116a",
+        "tree": "3b91f2176e2aa3882e1fcb3538a2b2ee51696661",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/final-graph-resources.log",
+      "log_sha256": "706388844207f30e562cbe9ce67e2920f37a8cfe82df18342abdaea17daf9f00",
+      "selected_environment": {},
+      "test_summary": {
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "assertions": 20
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/final-graph-resources.json",
+      "receipt_sha256": "713890c6ba7170c68d88be1050d8c2eeb2cb2df0c2bc4f14837070ff9aadb717"
+    },
+    {
+      "name": "final-test-runner",
+      "argv": [
+        "/tmp/p790-hqmks0bc/test/tools/test_tools",
+        "--test-runner"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-29T00:13:51.538609+00:00",
+      "wall_seconds": 94.20629120897502,
+      "exit_code": 0,
+      "before": {
+        "head": "4c9bf0a8c6ab576495c581fe14243dfc44ae116a",
+        "tree": "3b91f2176e2aa3882e1fcb3538a2b2ee51696661",
+        "status": ""
+      },
+      "after": {
+        "head": "4c9bf0a8c6ab576495c581fe14243dfc44ae116a",
+        "tree": "3b91f2176e2aa3882e1fcb3538a2b2ee51696661",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/final-test-runner.log",
+      "log_sha256": "74d444c130823703190bf2cd74a4dd85dc9cd347c5cffb4cd6c06f0804ae39f1",
+      "selected_environment": {},
+      "test_summary": {
+        "passed": 64,
+        "failed": 0,
+        "total": 64,
+        "assertions": 900
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/final-test-runner.json",
+      "receipt_sha256": "e4d0adedec4474fe0ac6385e2ba49de987729b4e01b7e1eb348aad92a7ed4bd5"
+    },
+    {
+      "name": "graph-debug-commands-canonical",
+      "argv": [
+        "/tmp/p790-hqmks0bc/test/tools/test_tools",
+        "--build-graph-debug-optimization",
+        "/tmp/p790-hqmks0bc/sdk/chibi-build-host",
+        "/private/tmp/p790-hqmks0bc-cmake-canonical"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-29T00:01:29.625339+00:00",
+      "wall_seconds": 196.65848520793952,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/graph-debug-commands-canonical.log",
+      "log_sha256": "5bdb8a118b1402b53fa7028b68fb76024039ad7a0cc1f91b0a18afa4c91aea65",
+      "selected_environment": {},
+      "test_summary": {
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "assertions": 4002151
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/graph-debug-commands-canonical.json",
+      "receipt_sha256": "01b1099dcf7f3c288e4fe7a79c0895688f13a4a615923e37a7744ffc21e12111"
+    },
+    {
+      "name": "graph-debug-commands",
+      "argv": [
+        "/tmp/p790-hqmks0bc/test/tools/test_tools",
+        "--build-graph-debug-optimization",
+        "/tmp/p790-hqmks0bc/sdk/chibi-build-host",
+        "/tmp/p790-hqmks0bc-cmake"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:55:26.687676+00:00",
+      "wall_seconds": 195.8177637080662,
+      "exit_code": 1,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/graph-debug-commands.log",
+      "log_sha256": "842bee829917253c85220d0b7191de17b96ad3b99f4aad11793474106d2c127c",
+      "selected_environment": {},
+      "test_summary": {
+        "passed": 4,
+        "failed": 1,
+        "total": 5,
+        "assertions": 4002151
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/graph-debug-commands.json",
+      "receipt_sha256": "83e18668fde940b1278e57f5a7977545f4cea56487d58f6385fd2dc71cea26e1"
+    },
+    {
+      "name": "native-compiler-fixture",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-compiler-fixture"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:34:48.419066+00:00",
+      "wall_seconds": 3.8473180839791894,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-compiler-fixture.log",
+      "log_sha256": "a8e0f9559de88064906c732b793d70a6aa79f8d215346623c46b8cb0c6f44c82",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 9,
+        "failed": 0,
+        "total": 9,
+        "assertions": 414
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-compiler-fixture.json",
+      "receipt_sha256": "a36ffc3e93e0acde8dcab2ae294b0bac311dd80c3c81e83b3f6433714544ce7c"
+    },
+    {
+      "name": "native-docs-markdown",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-docs-markdown"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:35:25.866776+00:00",
+      "wall_seconds": 1.937377749942243,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-docs-markdown.log",
+      "log_sha256": "9a944e4e4b41a772380863ac507875a5c51c6459b6fe19d804505678707abc6b",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 14,
+        "failed": 0,
+        "total": 14,
+        "assertions": 1778
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-docs-markdown.json",
+      "receipt_sha256": "7d8bf9457f89e2db225a62b3e3897574d38418e8bc7662fe9332e57390e595a7"
+    },
+    {
+      "name": "native-package-compiler-chibi-compiled",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-compiled"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:46:35.990217+00:00",
+      "wall_seconds": 10.244580749887973,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-package-compiler-chibi-compiled.log",
+      "log_sha256": "41a5f166653f80cb916ad1934f854b64654c3741a4acec24c08a4aa1a306eb26",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 19067
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-package-compiler-chibi-compiled.json",
+      "receipt_sha256": "8a2d29436dd1fba6a90f53a3684446e7fc0c73c1dccc667d5eaf5e83820ccc2f"
+    },
+    {
+      "name": "native-package-compiler-chibi-imports-compiled",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-imports-compiled"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:46:15.266142+00:00",
+      "wall_seconds": 20.442754833959043,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-package-compiler-chibi-imports-compiled.log",
+      "log_sha256": "93ba21642c714bff4351c4fd46c8502157ea0978608209d79fe4b856efb85172",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "assertions": 14888
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-package-compiler-chibi-imports-compiled.json",
+      "receipt_sha256": "11d720cf90eeb1920856bc39a9d6f38d38c2e76ab0203a2cdfe11b5b463b415e"
+    },
+    {
+      "name": "native-package-compiler-chibi-imports",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-imports"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:45:47.215193+00:00",
+      "wall_seconds": 27.57006866694428,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-package-compiler-chibi-imports.log",
+      "log_sha256": "0a478cbc829d5014e4fe198431d7336d01bdceee60866df42d9aafad9631b1e3",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "assertions": 15281
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-package-compiler-chibi-imports.json",
+      "receipt_sha256": "36f8aa0a3e9e418c105b72670175ccfd8c37035396ee867e7137aa2f9c4a019c"
+    },
+    {
+      "name": "native-package-compiler-chibi-sharing",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-sharing"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:46:46.530206+00:00",
+      "wall_seconds": 15.503240000223741,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-package-compiler-chibi-sharing.log",
+      "log_sha256": "f5b3c757dbc135b2e701c076b766182f4e2c4d90cd9ecc2e806c181193a61195",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 175
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-package-compiler-chibi-sharing.json",
+      "receipt_sha256": "53a70965e313b3573b165c2ffd907c5c54f05130dfb5145100ddd7e794a74e96"
+    },
+    {
+      "name": "native-package-core",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-core"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:34:55.353678+00:00",
+      "wall_seconds": 30.1654712499585,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-package-core.log",
+      "log_sha256": "c7a62ae68b330a171f86b951346f4a77ffc2009c560b831dbb69ad3a6cb46db3",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "assertions": 14762
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-package-core.json",
+      "receipt_sha256": "250152d1043021f3bc49164eef0ba704305ee509f06f928f70523d41ca7dbfff"
+    },
+    {
+      "name": "native-package-files",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-files"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:35:28.612102+00:00",
+      "wall_seconds": 0.1871401248499751,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-package-files.log",
+      "log_sha256": "5bd5045956d6ba4a61a26a189b687f6e810b259760d68e19d25f4fd90311fe3e",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "assertions": 149
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-package-files.json",
+      "receipt_sha256": "41bc39d2b782f0d2a2349feef5dcc77179625683d595e726fb519295c76c734e"
+    },
+    {
+      "name": "native-package-imports",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-imports"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:34:52.606896+00:00",
+      "wall_seconds": 0.18475745897740126,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-package-imports.log",
+      "log_sha256": "48170d804b4b0b69d5ffb3be4c76ba6b1435f540a53dee3e8526b729bb5c740c",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 18,
+        "failed": 0,
+        "total": 18,
+        "assertions": 1530
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-package-imports.json",
+      "receipt_sha256": "99366737c58c2fb61648bf7d9711b4a1a9a29f7a77edd85e729badaaa6915e75"
+    },
+    {
+      "name": "native-package-resolution",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-resolution"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:34:54.857074+00:00",
+      "wall_seconds": 0.18214833294041455,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-package-resolution.log",
+      "log_sha256": "c1cafa5e38568073951cc6f226d6352af6e7433bc2c87cbee4bf56d6a6cc943c",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "assertions": 164
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-package-resolution.json",
+      "receipt_sha256": "95dd6a39c17dad9ded1640f516cd144f63e3c9430009a27107f8d6f63159f7eb"
+    },
+    {
+      "name": "native-package-snapshot-chibi",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-snapshot-chibi"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:34:53.096961+00:00",
+      "wall_seconds": 0.47057570796459913,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-package-snapshot-chibi.log",
+      "log_sha256": "d6d4883e21057835bc4202e91ae2d31ee54d8da197d4bc00b62f84b711391592",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 16,
+        "failed": 0,
+        "total": 16,
+        "assertions": 286093
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-package-snapshot-chibi.json",
+      "receipt_sha256": "cd27d3bd057cbeba3d5cf4892e22325fdada4f522993b4ba678ef992489efb6f"
+    },
+    {
+      "name": "native-package-tests",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-tests"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:34:53.955466+00:00",
+      "wall_seconds": 0.39680337510071695,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-package-tests.log",
+      "log_sha256": "5fcbf4dcbb5133c8a09ee06577df2a3fa93240e5bdca97de1be602926d907ec6",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "assertions": 271
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-package-tests.json",
+      "receipt_sha256": "c8889cdc227a46e889cf4f9d673cdb038dbc340789eb992ae6f0896c188ad984"
+    },
+    {
+      "name": "native-record-publication",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "language-record-publication"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:35:28.160061+00:00",
+      "wall_seconds": 0.16178416600450873,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/native-record-publication.log",
+      "log_sha256": "cf522f25431292540f9225ba94cac2df0d1932660e712c2cee1bd14d90179c78",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "assertions": 230
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/native-record-publication.json",
+      "receipt_sha256": "b0ac638708ab0e1cfc5f7bfe086708e3c112806e51b461eb894b2950eab44a47"
+    },
+    {
+      "name": "ordinary-graph-release-short",
+      "argv": [
+        "make",
+        "build-release",
+        "RELEASE_BUILD_DIR=/tmp/p790-hqmks0bc",
+        "CMAKE_REFERENCE_DIR=/tmp/p790-hqmks0bc-cmake",
+        "BUILD_HOST=/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-build-host",
+        "BUILD_TARGET=test_language test_tools chibi-compile chibi_ctl chibi-compiler-host",
+        "NATIVE_TOOLCHAIN_FLAGS=-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "JOBS=4"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:43:30.730439+00:00",
+      "wall_seconds": 192.33460812503472,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/ordinary-graph-release-short.log",
+      "log_sha256": "d4a27f7838c625c5719cef078c6e05d43dfa8153d51a6545de7f4e58bd80ddc1",
+      "selected_environment": {
+        "CHIBI_BUILD_TIMINGS": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/short-release-timings"
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/ordinary-graph-release-short.json",
+      "receipt_sha256": "116b467c9b4056630a9d2ba7f308a5f896841f8f122cbe653cc24ebe8d285bbf"
+    },
+    {
+      "name": "ordinary-graph-release",
+      "argv": [
+        "make",
+        "build-release",
+        "RELEASE_BUILD_DIR=.chibi/integration/pure-807/release",
+        "CMAKE_REFERENCE_DIR=.chibi/integration/pure-807/release-cmake",
+        "BUILD_HOST=/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-build-host",
+        "BUILD_TARGET=test_language test_tools chibi-compile chibi_ctl chibi-compiler-host",
+        "NATIVE_TOOLCHAIN_FLAGS=-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "JOBS=4"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:34:09.010078+00:00",
+      "wall_seconds": 194.51578304194845,
+      "exit_code": 2,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/ordinary-graph-release.log",
+      "log_sha256": "e6250b93c7216214b6f57bc57258b9313bdd9b161c68d424133b9fed41e52f99",
+      "selected_environment": {
+        "CHIBI_BUILD_TIMINGS": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/release-timings"
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/ordinary-graph-release.json",
+      "receipt_sha256": "fe994ea88ec5b4b7e326727d9a680cdf0e59d2aa345af0d83b7c29f0868ffcf2"
+    },
+    {
+      "name": "production-writer",
+      "argv": [
+        ".chibi/integration/pure-807/native/sdk/chibi-compiler-host",
+        "--bootstrap",
+        ".chibi/integration/pure-807/artifact",
+        "--compiler",
+        "tools/compiler",
+        "--core",
+        "packages/core",
+        "--seed",
+        ".chibi/integration/pure-807/fixture-seed",
+        "--revision",
+        "d1315047c0a533a3848569a39af83a33c98a8799"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:21:43.980680+00:00",
+      "wall_seconds": 90.67238725000061,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/production-writer.log",
+      "log_sha256": "d7f62def781ba2829d277e1102f2f941c6f4526a6b85db83471c91afec50a3d8",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/production-writer.json",
+      "receipt_sha256": "88ff8fba73f4f25c5a2974653a7adf85bcc32b30e7be67c8235c7966faa34bc4"
+    },
+    {
+      "name": "rebuild-tools-final-integration",
+      "argv": [
+        "make",
+        "build-release",
+        "RELEASE_BUILD_DIR=/tmp/p790-hqmks0bc",
+        "CMAKE_REFERENCE_DIR=/private/tmp/p790-hqmks0bc-cmake-canonical",
+        "BUILD_HOST=/tmp/p790-hqmks0bc/sdk/chibi-build-host",
+        "BUILD_TARGET=test_tools",
+        "NATIVE_TOOLCHAIN_FLAGS=-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "JOBS=4"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-29T00:11:40.691042+00:00",
+      "wall_seconds": 100.31146170804277,
+      "exit_code": 0,
+      "before": {
+        "head": "4c9bf0a8c6ab576495c581fe14243dfc44ae116a",
+        "tree": "3b91f2176e2aa3882e1fcb3538a2b2ee51696661",
+        "status": ""
+      },
+      "after": {
+        "head": "4c9bf0a8c6ab576495c581fe14243dfc44ae116a",
+        "tree": "3b91f2176e2aa3882e1fcb3538a2b2ee51696661",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/rebuild-tools-final-integration.log",
+      "log_sha256": "744895342acf6d7a853b34b73e73b7be0f1a7f128800be6b88849c196631b0c0",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/rebuild-tools-final-integration.json",
+      "receipt_sha256": "af6a94c35c0e4b3c373bf0590cff7cde3b55dfa679195158091aaa8d21e86b2b"
+    },
+    {
+      "name": "reconfigure-graph-reference-final",
+      "argv": [
+        "sh",
+        "tools/configure_native.sh",
+        "/private/tmp/p790-hqmks0bc-cmake-canonical",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCHIBI_ENABLE_SANITIZERS=OFF",
+        "-DCHIBI_ENABLE_WARNINGS=ON",
+        "-DCHIBI_ENABLE_CCACHE=ON"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-29T00:11:41.779826+00:00",
+      "wall_seconds": 3.1066802500281483,
+      "exit_code": 0,
+      "before": {
+        "head": "4c9bf0a8c6ab576495c581fe14243dfc44ae116a",
+        "tree": "3b91f2176e2aa3882e1fcb3538a2b2ee51696661",
+        "status": ""
+      },
+      "after": {
+        "head": "4c9bf0a8c6ab576495c581fe14243dfc44ae116a",
+        "tree": "3b91f2176e2aa3882e1fcb3538a2b2ee51696661",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/reconfigure-graph-reference-final.log",
+      "log_sha256": "e8373581e33ad1a2720af82c540ed523f50046b3ed6d4a47732bc64ebce11770",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/reconfigure-graph-reference-final.json",
+      "receipt_sha256": "9f6c7570c570451492b85e68cfc36d96453cbfbcd864470b7383172428b6dfa0"
+    },
+    {
+      "name": "recover-current-source",
+      "argv": [
+        ".chibi/integration/pure-807/runtime/chibi-compiler-host",
+        "--bootstrap",
+        "tools/compiler/bootstrap",
+        "--compiler",
+        "tools/compiler",
+        "--core",
+        "packages/core",
+        "--recover",
+        ".chibi/integration/pure-807/seed/compiler.chibip"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T22:53:30.146914+00:00",
+      "wall_seconds": 216.3524839170277,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/recover-current-source.log",
+      "log_sha256": "be3da809ec552330d59389592175410cd7a90594926c7722b63fd653621bcd07",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/recover-current-source.json",
+      "receipt_sha256": "58e1738de03a826a8af3f64835abe937ff360f5e5e71596fe47cab0add472725"
+    },
+    {
+      "name": "recover-written-artifact",
+      "argv": [
+        ".chibi/integration/pure-807/runtime/chibi-compiler-host",
+        "--bootstrap",
+        ".chibi/integration/pure-807/artifact",
+        "--compiler",
+        "tools/compiler",
+        "--core",
+        "packages/core",
+        "--recover",
+        ".chibi/integration/pure-807/written-recovery.chibip"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:25:02.367503+00:00",
+      "wall_seconds": 75.80508054117672,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/recover-written-artifact.log",
+      "log_sha256": "5fe37a5f60d3259bdbe08fc06a2f5d967d202cd2a711c2e0329c63a614ef5b4c",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/recover-written-artifact.json",
+      "receipt_sha256": "92284ddcb999d99fce4680f999c67858921f35ba1f8106ccb795d118e9281e00"
+    },
+    {
+      "name": "reuse-written-artifact",
+      "argv": [
+        ".chibi/integration/pure-807/runtime/chibi-compiler-host",
+        "--reuse-bootstrap",
+        ".chibi/integration/pure-807/artifact",
+        "--compiler",
+        "tools/compiler",
+        "--core",
+        "packages/core",
+        "--input",
+        ".chibi/integration/pure-807/fixture-seed/compile.json",
+        "--output-artifact",
+        ".chibi/integration/pure-807/reused-written.chibip"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:27:28.330173+00:00",
+      "wall_seconds": 0.9545815831515938,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/reuse-written-artifact.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/reuse-written-artifact.json",
+      "receipt_sha256": "a9b0eb822b2bbfa1384f9668253768632c52b168342ef5931d9a9525532e2555"
+    },
+    {
+      "name": "stage-docs-through-chibi-target",
+      "argv": [
+        "make",
+        "build-release",
+        "RELEASE_BUILD_DIR=/tmp/p790-hqmks0bc",
+        "CMAKE_REFERENCE_DIR=/private/tmp/p790-hqmks0bc-cmake-canonical",
+        "BUILD_HOST=/tmp/p790-hqmks0bc/sdk/chibi-build-host",
+        "BUILD_TARGET=chibi",
+        "NATIVE_TOOLCHAIN_FLAGS=-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang -DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+        "JOBS=4"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-29T00:00:20.355528+00:00",
+      "wall_seconds": 13.6875185421668,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/stage-docs-through-chibi-target.log",
+      "log_sha256": "05ef3d28f76b914e6b691a73386b763320efb6ea66f6e1e69b3796a28dcf1182",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/stage-docs-through-chibi-target.json",
+      "receipt_sha256": "c22a81ea146b67dc133f0b8099cdc8486a5115d67aa8e6f56edf3d4967922b8a"
+    },
+    {
+      "name": "target-e1",
+      "argv": [
+        ".chibi/integration/pure-807/runtime/chibi-compiler-host",
+        "--target-json",
+        ".chibi/integration/pure-807/target-e1.json"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T22:53:25.357813+00:00",
+      "wall_seconds": 0.5407155419234186,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/target-e1.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/target-e1.json",
+      "receipt_sha256": "aec7a642fcd0c10ae0e1054e2f4aebe631110f66dfbe2fd254477fe68616999a"
+    },
+    {
+      "name": "target-native",
+      "argv": [
+        ".chibi/integration/pure-807/native/sdk/chibi-compiler-host",
+        "--target-json",
+        ".chibi/integration/pure-807/target-native.json"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:04:43.141373+00:00",
+      "wall_seconds": 0.6845251249615103,
+      "exit_code": 0,
+      "before": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "after": {
+        "head": "d1315047c0a533a3848569a39af83a33c98a8799",
+        "tree": "e354bc3263c912bb928ade409614ae9663ee30d2",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/target-native.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/target-native.json",
+      "receipt_sha256": "f6eeea1808545abe1c63a8a374ea471aa858f049d4b77dcde8b51400104c065b"
+    },
+    {
+      "name": "tools-compiler-bootstrap",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "compiler-bootstrap"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:55:26.728120+00:00",
+      "wall_seconds": 16.19509149994701,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/tools-compiler-bootstrap.log",
+      "log_sha256": "1d873ec0733d93963b81b45f85630174537c21fdce7166d0830847ba3b7e814f",
+      "selected_environment": {
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native",
+        "CHIBI_TOOLS_BUILD_DIR": "/tmp/p790-hqmks0bc/test/tools",
+        "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/native/sdk/chibi-compiler-host"
+      },
+      "test_summary": {
+        "passed": 18,
+        "failed": 0,
+        "total": 18,
+        "assertions": 204
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/tools-compiler-bootstrap.json",
+      "receipt_sha256": "c08ec945fbeba0c98b3cc6f7c730840740089e732be027486ff294edec07a92e"
+    },
+    {
+      "name": "tools-published-docs-with-resources",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "published-docs"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-29T00:02:03.526407+00:00",
+      "wall_seconds": 2.3980990420095623,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/tools-published-docs-with-resources.log",
+      "log_sha256": "d277092410d4779381ce744fcc0dc78c6a2e4b0e7b1e8c4401b1032ff7227ecf",
+      "selected_environment": {
+        "CHIBI_TOOLS_BUILD_DIR": "/tmp/p790-hqmks0bc/test/tools"
+      },
+      "test_summary": {
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "assertions": 58
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/tools-published-docs-with-resources.json",
+      "receipt_sha256": "aaf7f156bd4ac219221beedc4d94bec0621acfe9b5eaa929d19062fb345331a1"
+    },
+    {
+      "name": "tools-published-docs",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "published-docs"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:55:57.881148+00:00",
+      "wall_seconds": 1.8411050839349627,
+      "exit_code": 1,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/tools-published-docs.log",
+      "log_sha256": "e027d0b82b83983f7be96235b8170f180593d75e36f4e972d72ffcda218d5630",
+      "selected_environment": {
+        "CHIBI_TOOLS_BUILD_DIR": "/tmp/p790-hqmks0bc/test/tools"
+      },
+      "test_summary": {
+        "passed": 0,
+        "failed": 3,
+        "total": 3,
+        "assertions": 4
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/tools-published-docs.json",
+      "receipt_sha256": "7ee63941d005c3298e178fa82832120daa467b5e41b73d7385ed0d22492b94c0"
+    },
+    {
+      "name": "wasm-direct-compiler-fixture",
+      "argv": [
+        "/opt/homebrew/opt/node/bin/node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/wasm/test_language.js",
+        "--compiler-fixture"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:51:42.864458+00:00",
+      "wall_seconds": 1.6423105420544744,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/wasm-direct-compiler-fixture.log",
+      "log_sha256": "6cbbaf5d1e661d5ac68ff8144413e00bb4d80d34e547665968a77f47e6ca2b6b",
+      "selected_environment": {},
+      "test_summary": {
+        "passed": 9,
+        "failed": 0,
+        "total": 9,
+        "assertions": 414
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/wasm-direct-compiler-fixture.json",
+      "receipt_sha256": "a7fbee7011a39483fcb310c0e17dde4e8a476b8b7d1e2925ffb13c0cd34164b4"
+    },
+    {
+      "name": "wasm-direct-package-core",
+      "argv": [
+        "/opt/homebrew/opt/node/bin/node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/wasm/test_language.js",
+        "--package-core"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:51:44.770118+00:00",
+      "wall_seconds": 35.90252908389084,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/wasm-direct-package-core.log",
+      "log_sha256": "f51d0a26a7938449ee8659cf249b19b6848be76f16989da60b6ac5e3d25c6119",
+      "selected_environment": {},
+      "test_summary": {
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "assertions": 14762
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/wasm-direct-package-core.json",
+      "receipt_sha256": "06c342bc442332e87cee7926ab43ab06e56acb6c950748aff51879ae705c1c0b"
+    },
+    {
+      "name": "wasm-direct-package-snapshot-chibi",
+      "argv": [
+        "/opt/homebrew/opt/node/bin/node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/wasm/test_language.js",
+        "--package-snapshot-chibi"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:51:42.112227+00:00",
+      "wall_seconds": 0.5041877089533955,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/wasm-direct-package-snapshot-chibi.log",
+      "log_sha256": "51b76ae58e294ffad390df8e770428fb9ac416bb91cc6014dd17c30d3691d261",
+      "selected_environment": {},
+      "test_summary": {
+        "passed": 16,
+        "failed": 0,
+        "total": 16,
+        "assertions": 286093
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/wasm-direct-package-snapshot-chibi.json",
+      "receipt_sha256": "0e7a1742e12e32785cc461020099e1895857ddf6fb466379523bcdd231fac2d5"
+    },
+    {
+      "name": "wasm-package-compiler-chibi-compiled",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "wasm-package-compiler-chibi-compiled"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:47:59.718054+00:00",
+      "wall_seconds": 14.783904582960531,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/wasm-package-compiler-chibi-compiled.log",
+      "log_sha256": "3d72e3ce6e6e6896e4278da338443529226a195962a9f9c500a8649c80696d9a",
+      "selected_environment": {},
+      "test_summary": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 19067
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/wasm-package-compiler-chibi-compiled.json",
+      "receipt_sha256": "aefec126cd94fb4d5bf932d9538a7770c05989626f97b95da65f73d0a7bdaa4a"
+    },
+    {
+      "name": "wasm-package-compiler-chibi-imports-compiled",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "wasm-package-compiler-chibi-imports-compiled"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:47:31.325801+00:00",
+      "wall_seconds": 28.07428599987179,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/wasm-package-compiler-chibi-imports-compiled.log",
+      "log_sha256": "c6e6eb9d112f4ce157bd590db1df238e01dc8ae996f7492697d1469d9be1b63a",
+      "selected_environment": {},
+      "test_summary": {
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "assertions": 14888
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/wasm-package-compiler-chibi-imports-compiled.json",
+      "receipt_sha256": "47caca65619d7f4aecc1d2e3b667a17f594d73880946b4d98f0a9667087c835d"
+    },
+    {
+      "name": "wasm-package-compiler-chibi-imports",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "wasm-package-compiler-chibi-imports"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:47:02.364660+00:00",
+      "wall_seconds": 28.69159633293748,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/wasm-package-compiler-chibi-imports.log",
+      "log_sha256": "35fbeac8d2cd52dceb5d5cf821fe010c5bae67b9743e707d8d15971d8157a5ec",
+      "selected_environment": {},
+      "test_summary": {
+        "passed": 2,
+        "failed": 0,
+        "total": 2,
+        "assertions": 15281
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/wasm-package-compiler-chibi-imports.json",
+      "receipt_sha256": "1e6d861ead3fff40befcb02da96478b1a7aa21221fa231c9943a4fe55c9a7024"
+    },
+    {
+      "name": "wasm-package-compiler-chibi-sharing",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "wasm-package-compiler-chibi-sharing"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:48:14.803779+00:00",
+      "wall_seconds": 21.18417354207486,
+      "exit_code": 0,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/wasm-package-compiler-chibi-sharing.log",
+      "log_sha256": "eaecb051802c49234c90e7a7f4977967295cf65ffda29b02886145d8c33575d8",
+      "selected_environment": {},
+      "test_summary": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "assertions": 175
+      },
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/wasm-package-compiler-chibi-sharing.json",
+      "receipt_sha256": "6777248a6a080064cf43bfcff5033e7c6874688a436714d1f8ce4cb376f7a59e"
+    },
+    {
+      "name": "wasm-package-snapshot-chibi",
+      "argv": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "wasm-package-snapshot-chibi"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi",
+      "started_at_utc": "2026-10-28T23:48:36.336651+00:00",
+      "wall_seconds": 0.05734954192303121,
+      "exit_code": 2,
+      "before": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "after": {
+        "head": "bad6bd81d120bbdd2cd2c5cbcb35ec7e47fd57b0",
+        "tree": "09eba7d216264b9ed3461839369a750961127d4b",
+        "status": ""
+      },
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/logs/wasm-package-snapshot-chibi.log",
+      "log_sha256": "222d466576dcac1ac28f6702761d918b002ed7201b99f814ee2e4a0a9b943409",
+      "selected_environment": {},
+      "receipt_path": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/receipts/wasm-package-snapshot-chibi.json",
+      "receipt_sha256": "6549ede4884f2b422511ff1518017dc129cfb07196e5d3020b70072dc3c17df4"
+    }
+  ],
+  "final_focused_checks": {
+    "graph_resources": {
+      "passed": 3,
+      "assertions": 20,
+      "wall_seconds": 47.16251395805739
+    },
+    "test_runner": {
+      "passed": 64,
+      "assertions": 900,
+      "wall_seconds": 94.20629120897502,
+      "powershell_transport_executed": false
+    }
+  },
+  "final_tools_refresh": {
+    "wall_seconds": 100.31146170804277,
+    "normal_asset_generation_reran": true,
+    "bootstrap_reuse": 0,
+    "bootstrap_fallback": false,
+    "checked_pair_unchanged": true,
+    "was_not_only_a_C_rebuild": true
+  },
+  "independent_reviews": [
+    "math_port_map: eight-file source contract and accepted integration clean",
+    "math_port_map: exact private bootstrap isolation, 485 fresh strict objects and current headers clean",
+    "studio_review: actual fixture export, normal writer and 12-module artifact installation review clean",
+    "studio_review: native/Wasm matrix and normal SDK/short Graph evidence clean",
+    "math_port_map: long-path admission diagnosis and actual short successful per-binary record clean",
+    "math_port_map: final accepted-main integration and all 27 input identities clean"
+  ],
+  "retained_evidence": {
+    "preflight": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/preflight.json",
+    "source_snapshot": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/pure-807/bootstrap-snapshot",
+    "bootstrap_helper_patch_sha256": "6e69822faba80d95e4fb021b649a407dd99cdbd7deca63d687584bcf4a11a813",
+    "bootstrap_driver_sha256": "58c946b7937e8f7c8101448fc478d58a3179bcf230839c9eb65944ca2e026070",
+    "actual_request_sha256": "f83e51dbe6e066e4cdc13b4f2d47bafbfd073b944df22e7b3dacefccd3c89ea4",
+    "successful_short_record_sha256": "9b58c09dc88ab0ae436dbf92a98ea1adfc888bc1bda90776f625b8b62d1b9ec5",
+    "longpath_command_catalog_sha256": "060a74c5727446541a1ed1cdccdd11be604fc558cb8934b33cf009861c639695"
+  },
+  "full_final_feature_pair_diff_sha256": "259d7ce7669f0444ed2cbfaca1bc4cf01217ddb70075f26d9ce9f55fc5ed1059"
+}

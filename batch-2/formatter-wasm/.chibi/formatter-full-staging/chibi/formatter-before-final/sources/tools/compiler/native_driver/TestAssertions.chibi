@@ -1,0 +1,75 @@
+package native_driver
+
+import raw "project:compiler_syntax"
+import syntax "project:syntax_diagnostics"
+import json "project:json_string"
+import strings "core:strings"
+
+AssertionChild :: (nodes: syntax.Node[], fields: int[], parent: int, field: int) -> int {
+    if (parent < 0) { return -1; }
+    child := nodes[parent].first_child;
+    while (child >= 0) {
+        if (fields[child] == field) { return child; }
+        child = nodes[child].next_sibling;
+    }
+    return -1;
+}
+
+AssertionValue :: (nodes: syntax.Node[], fields: int[], value: int) -> int {
+    at := value;
+    while (at >= 0 && nodes[at].kind == syntax.ParenthesizedExpression) {
+        at = AssertionChild(nodes, fields, at, syntax.FieldExpression);
+    }
+    return at;
+}
+
+// Failure-only decoding follows the ordinary assert intrinsic: its explicit
+// nonempty string message, otherwise its unparenthesized condition's source.
+// Parse the call so quoted operands, comments and named arguments stay distinct.
+AssertionMessage :: (call: string) -> string {
+    prefix := "package chibi_assert_message\nMain :: () { ";
+    text := strings.Concatenate([prefix, call, "\n}\n"]);
+    start := strings.ByteLength(prefix);
+    switch raw.Parse(text) {
+        case .Rejected(diagnostic): return "";
+        case .Parsed(nodes, fields, named, extra, root):
+            for (node, index in nodes) {
+                if (node.kind != syntax.CallExpression || node.start != start) { continue; }
+                condition := -1;
+                message := -1;
+                arguments := AssertionChild(nodes, fields, index, syntax.FieldArguments);
+                if (arguments < 0) { return ""; }
+                argument := nodes[arguments].first_child;
+                ordinal := 0;
+                // A validated assert has at most two arguments. Each named
+                // argument and parenthesized value has a bounded child list.
+                while (argument >= 0) {
+                    if (named[argument] && !extra[argument]) {
+                        value := argument;
+                        position := ordinal;
+                        if (nodes[argument].kind == syntax.NamedArgument) {
+                            label := AssertionChild(nodes, fields, argument, syntax.FieldName);
+                            if (label < 0) { return ""; }
+                            name := strings.ToLower(strings.ReplaceAll(strings.Slice(text, nodes[label].start,
+                                nodes[label].end - nodes[label].start), "_", ""));
+                            position = -1;
+                            if (name == "condition") { position = 0; }
+                            else if (name == "message") { position = 1; }
+                            value = AssertionChild(nodes, fields, argument, syntax.FieldValue);
+                        }
+                        if (position == 0) { condition = AssertionValue(nodes, fields, value); }
+                        else if (position == 1) { message = AssertionValue(nodes, fields, value); }
+                        ordinal += 1;
+                    }
+                    argument = nodes[argument].next_sibling;
+                }
+                if (condition < 0) { return ""; }
+                if (message >= 0 && nodes[message].kind == syntax.String) {
+                    decoded := json.Value(strings.Slice(text, nodes[message].start, nodes[message].end - nodes[message].start));
+                    if (decoded.valid && decoded.value != "") { return strings.ReplaceAll(decoded.value, "\u0000", "\\0"); }
+                }
+                return strings.Slice(text, nodes[condition].start, nodes[condition].end - nodes[condition].start);
+            }
+    }
+    return "";
+}

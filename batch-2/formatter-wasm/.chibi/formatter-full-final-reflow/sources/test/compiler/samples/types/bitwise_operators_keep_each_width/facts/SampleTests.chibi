@@ -1,0 +1,17 @@
+package facts
+
+// Bitwise operators work in their operand's own width: complements, masks and
+// in-range shifts never carry bits past it.
+@test
+Calls :: () {
+    assert(Mix8(204, 170) == 204, "u8 mix");
+    assert(NotU8(0) == 255 && NotI8(0) == -1 && NotI8(127) == -128, "8 bits");
+    assert(NotU16(0) == 65535 && NotI16(0) == -1 && NotI16(-32768) == 32767, "16 bits");
+    assert(NotU32(0) == 4294967295 && NotI32(0) == -1, "32 bits");
+    assert(NotU64(0) == 18446744073709551615 && NotI64(0) == -1, "64 bits");
+    assert(XorI16(-1, 255) == -256, "i16 xor");
+    assert(AndU32(4294967295, 4278190080) == 4278190080, "u32 and keeps the top byte");
+    assert(OrI64(-9223372036854775807 - 1, 1) == -9223372036854775807, "i64 or at the sign bit");
+    assert(ShiftU16(65535, 8) == 65280, "u16 left shift drops outgoing bits");
+    assert(ShiftI8(-128, 7) == -1, "i8 right shift extends the sign");
+}

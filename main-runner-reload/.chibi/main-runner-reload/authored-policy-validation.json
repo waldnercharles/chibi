@@ -1,0 +1,46 @@
+[
+  {
+    "selector": "chibi-cli",
+    "returncode": 1,
+    "wall_seconds": 24.582,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-authored-policy.log"
+  },
+  {
+    "selector": "build-graph-resources",
+    "returncode": 0,
+    "wall_seconds": 54.203,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/build-graph-resources-authored-policy.log"
+  },
+  {
+    "selector": "build-sdk",
+    "returncode": 0,
+    "wall_seconds": 293.927,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/build-sdk-authored-policy.log"
+  },
+  {
+    "selector": "chibi-cli",
+    "phase": "final",
+    "returncode": 1,
+    "wall_seconds": 25.02,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-authored-policy-final.log",
+    "passed": 28,
+    "failed": 1,
+    "cases": 29,
+    "suites": 0,
+    "assertions": 422,
+    "runner_wall_seconds": 24.935
+  },
+  {
+    "selector": "chibi-cli",
+    "phase": "verified",
+    "returncode": 0,
+    "wall_seconds": 15.018,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-authored-policy-verified.log",
+    "passed": 29,
+    "failed": 0,
+    "cases": 29,
+    "suites": 0,
+    "assertions": 424,
+    "runner_wall_seconds": 14.931
+  }
+]

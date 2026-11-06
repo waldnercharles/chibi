@@ -1,0 +1,63 @@
+native-aot-driver 1
+output-kind executable
+input /Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/tools/compiler/native_driver/build/native/O2-4c96441ce3d83bd4.work/module.ll
+input-sha256 0bb84a243c5155dff02e9f2817ab4f77f89426e702c02de93f8c9fa032c31059
+opt /opt/homebrew/Cellar/llvm/23.1.1/bin/opt
+opt-sha256 8cacce59dea78a85e8cba5a5a32a0083bf4de7887161338bb8fd35833fb96a88
+llc /opt/homebrew/Cellar/llvm/23.1.1/bin/llc
+llc-sha256 0f6718463a00817723171a3401eb38e476476bd523f5536c3d627bd841980dc1
+mode 2
+module-sha256 f4a7f487363ed97f1f97ef16dcde549481a5eda820fcb980a40405b1036ee531
+object-sha256 273b0e302fb0822b8f96e1099286d7b2871ba1014f5737921341181a5ef3fe8c
+stage opt
+/opt/homebrew/Cellar/llvm/23.1.1/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/tools/compiler/native_driver/build/native/O2-4c96441ce3d83bd4.partial/source.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/tools/compiler/native_driver/build/native/O2-4c96441ce3d83bd4.partial/module.ll
+end-stage
+stage llc
+/opt/homebrew/Cellar/llvm/23.1.1/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/tools/compiler/native_driver/build/native/O2-4c96441ce3d83bd4.partial/module.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/tools/compiler/native_driver/build/native/O2-4c96441ce3d83bd4.partial/object.o
+end-stage
+linkage dynamic libSystem
+start-object-sha256 5a12f4de6c9f64a9b750c10526716924fc82c1000e1d9e7281aa5c1a2a2fa144
+linker /opt/homebrew/Cellar/lld@22/22.1.8/bin/lld
+linker-sha256 b46796ecf50def5ccf45ffefafd29f83854fb2f7789c0d7f00ec1270b33eb1a8
+program-sha256 d68fc30f03916f2269c72bcd4ac1ccc3f494c3bdb9517b04b1344d9273e9dc9e
+stage llc-start
+/opt/homebrew/Cellar/llvm/23.1.1/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/tools/compiler/native_driver/build/native/O2-4c96441ce3d83bd4.partial/start.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/tools/compiler/native_driver/build/native/O2-4c96441ce3d83bd4.partial/start.o
+end-stage
+stage link
+/opt/homebrew/Cellar/lld@22/22.1.8/bin/lld
+-flavor
+darwin
+-arch
+arm64
+-platform_version
+macos
+11.0.0
+11.0.0
+-dead_strip
+-undefined
+dynamic_lookup
+-e
+_main
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/tools/compiler/native_driver/build/native/O2-4c96441ce3d83bd4.partial/a.out
+/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/tools/compiler/native_driver/build/native/O2-4c96441ce3d83bd4.partial/object.o
+/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/tools/compiler/native_driver/build/native/O2-4c96441ce3d83bd4.partial/start.o
+/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/tools/compiler/native_driver/build/native/O2-4c96441ce3d83bd4.partial/System.tbd
+end-stage

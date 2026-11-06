@@ -1,0 +1,6 @@
+{
+  "test/language/package_compiler_chibi.c": "72338c0da96ac6016dac87734812bbe6c49e33682cddd65731987684bb8d19b0",
+  "test/language/main.c": "e3c94400bfaf571224cd2c4908b0b4ba816041aedd49a5f4a4658e6c0cebc6c6",
+  "test/language/package_compiler_chibi.h": "2f4922cc5d11439cf93860b8f1ac66e1efb1ef00673993787456909aabff047e",
+  "tools/compiler/package_compiler/Math.chibi": "90db58b390430e8ee1babeddcab8f01d66569699f29c27037079644a45192231"
+}

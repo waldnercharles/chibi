@@ -1,0 +1,145 @@
+{
+  "expectations": [
+    {
+      "text": "The review states the input scale (bytes or tokens of real Chibi source) and estimates the per-byte or per-token work, with numbers.",
+      "passed": true,
+      "evidence": "Method: '238 files, 3,221,141 bytes, 72,259 lines and 591,780 tokens'. Summary 4: 'about 5.2 million calls on the corpus, about 1.6 calls per source byte', broken into 1.7 M authored calls, 2.96 M appends and 0.55 M length natives; P2: '`}` costs about 30 comparisons and two calls'."
+    },
+    {
+      "text": "The review identifies at least one concrete source of per-byte or per-token waste in Tokenizer.chibi with a path:line and a count or estimate of its cost.",
+      "passed": true,
+      "evidence": "P1: 'Before calling Terminates (line 239) ... removes 116,024 Terminates calls ... roughly 464 k calls in all'. P2: 'Pair/Single chains ... (lines 754-911)' with 348,738 Single and 377,081 Pair calls. P5: 'lines 311-320 ... 295,951 loop iterations'."
+    },
+    {
+      "text": "The review sketches a concrete target shape for the hot scanning path (for example a data layout, a table or switch keyed by byte, or a loop structure).",
+      "passed": true,
+      "evidence": "P2: 'Build two more 256-entry tables with Classes: singles[c] ... a PairStart class ... The loop becomes: kind := singles[c], then call Pair only when classes[c] == PairStart.' P3 inlines the identifier loop and passes count; P7 proposes a packed Token[] record array or line_starts. Piecemeal rather than one sketch, but concrete and keyed by byte."
+    },
+    {
+      "text": "The review addresses the hand-numbered token-kind constants and the parallel KindNames table as a representation issue, taking into account that stage one lacks enums.",
+      "passed": true,
+      "evidence": "A2 'Make the kind table self-checking': '117 hand-numbered constants (lines 8-126), a hand-ordered KindNames (lines 171-185), and three hard-coded keyword-range sites', with drift history, interim fixes (Odin-style KeywordBegin/KeywordEnd sentinels, a count assert noting 'Stage one has the assert intrinsic', reordering the tail kinds) and 'The real fix is the language feature already proposed in docs/language-friction.md (\"No enumerations\")'."
+    },
+    {
+      "text": "The review checks how the tokenizer is called (its consumers or call sites) and says whether it is on a hot path.",
+      "passed": false,
+      "evidence": "Consumers are identified: 'Its consumers are source_parser, which nothing calls yet (docs/source-parser.md), and the differential test.' But the review never says whether the tokenizer is hot or cold, or whether its cost matters today. It goes straight into nine performance items (P1-P9) without reconciling them with 'nothing calls yet'; the only hot/cold remark is about Terminates' spacing loop ('It is cold now'). Borderline: 'nothing calls yet' implies it is off the production path, but the review never draws that conclusion."
+    },
+    {
+      "text": "The review does not recommend SIMD or threading before the identified waste is removed, and makes no micro-optimization suggestion without a measurement.",
+      "passed": false,
+      "evidence": "No SIMD or threading. But P4 suggests 'Hash in u32 ... so wrapping replaces the & 0xFFFFFFFF mask per byte (lines 574, 596)' with no count or cost. Section 4 suggests 'Terminates calls IsSpace(bytes[at]) per byte (line 432) instead of the classes table', while conceding 'It is cold now', also without a number. Most other perf items do carry corpus call counts."
+    },
+    {
+      "text": "Every finding includes concrete evidence (a count, estimate, measurement or named consumer).",
+      "passed": false,
+      "evidence": "Most findings are well evidenced (C1 trace, C2 grammar.js:62 and harness lines, P-items with call counts, A3 '43,238 of these records'). But two 'Smaller code notes' have no count, estimate, consumer or line citation: 'Scan takes text only to forward it to Illegal for text_slice. With P2, Illegal can be called directly' and 'KeywordTable and Keyword implement FNV-1a 32 separately ... assert at build time that both hash one name identically'. Same rule as for the other run: line citations proving a defect count as evidence, but an uncited claim does not."
+    },
+    {
+      "text": "The review does not recommend splitting functions for length or adding defensive checks.",
+      "passed": true,
+      "evidence": "No function splitting for length; P3 recommends inlining. The proposed assert(length(names) == KindCount) is fail-fast, as the project's CLAUDE.md asks, not a defensive check that masks defects. C6's stricter UTF-8 decoding is a correctness fix matching Odin's messages, not a defensive guard."
+    }
+  ],
+  "summary": {
+    "passed": 5,
+    "failed": 3,
+    "total": 8,
+    "pass_rate": 0.625
+  },
+  "claims": [
+    {
+      "claim": "'\\'' is valid Chibi that stage zero accepts, but the tokenizer reports two errors for it and splits it into two Char tokens; no test covers character literals.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "ScanEscape (lines 706-731) accepts only \" \\ / b f n r t u; for ' it returns Failed('unknown escape sequence') with end = offset, leaving ' unread. The resume (ScanString(bytes, start, 2)) reads it as the closing quote, so Char spans bytes 0-3; the last ' starts a new Char that fails 'Character literal not terminated'. Stage zero accepts \\' (src/language/semantic_context.c:146-165), grammar.js character accepts \\\\[^\\n]. No character literal appears in the harness's SOURCES or CASES."
+    },
+    {
+      "claim": "view is a grammar keyword (grammar.js:62, contextual at :67, added by #694 on 2026-10-28) and the tokenizer has no View kind.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "grammar.js:62 \"view\", :67 CONTEXTUAL includes \"view\"; git log -S finds 7c6ca2f5d 2026-10-28 'Collections as values (#694)'. KindNames and the constants have no view/View."
+    },
+    {
+      "claim": "The harness's word_kind (source_tokenizer_chibi.c:122-135) takes the expected keyword set from the tokenizer's own KindNames, so it cannot catch a missing keyword.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "word_kind loops over names[0], filled from the tokenizer's KindNames call (lines 95-104), and returns Ident when no lowercase name matches; leaf_kind routes every word-typed leaf through it (lines 162-163)."
+    },
+    {
+      "claim": "Chibi's 59 keywords have 3 colliding FNV slot pairs (library/on, events/or, query/split); the longest keyword is 12 bytes (relationship).",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Recomputed FNV-1a 32 & 511 over KindNames[54:113]: collisions [['library','on'], ['events','or'], ['query','split']]; max length 12."
+    },
+    {
+      "claim": "text_bytes makes one 48-byte pin_value per byte: about 15.8 MB for Steps.chibi and about 155 MB per corpus run.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "text_format.c text_bytes_call writes a full pin_value into items[i]; value.h layout is 48 B on 64-bit; 330,011 x 48 and 3,221,141 x 48 match."
+    },
+    {
+      "claim": "Corpus: 238 files, 3,221,141 bytes, 72,259 lines (591,780 tokens from a Python port).",
+      "type": "factual",
+      "verified": true,
+      "evidence": "File, byte and line counts match find/wc exactly. The token count cannot be checked because the port was deleted."
+    },
+    {
+      "claim": "'Single is a chain of 25 ifs, and Pair up to 20.'",
+      "type": "factual",
+      "verified": false,
+      "evidence": "Single has 26 if tests (lines 832-909). Pair's longest path is 14 compares (next == 61, then 13 tests); the other path is at most 13 even counting each && operand."
+    },
+    {
+      "claim": "Tokens is a one-variant union because stage one's records hold no arrays (docs/package-compiler.md:215), and this gap is not recorded in docs/language-friction.md.",
+      "type": "factual",
+      "verified": false,
+      "evidence": "docs/package-compiler.md:215 is about flat game-argument tables. docs/compositional-records.md:3 says 'Nested records and array fields are implemented in both compiler stages', and tools' CallCensus struct already holds sites: CallSite[]. docs/language-friction.md:152 '## Records hold only scalar fields' does record it. The premise is stale."
+    },
+    {
+      "claim": "#701 removed three keywords and rewrote 58 constant lines to renumber them.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "e15030915 tokenizer diff: 59 constant lines removed, 56 added (without, where and join dropped). The renumbering count is approximately right."
+    },
+    {
+      "claim": "Only 2 of the 4,566 comments are block comments.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "grep -c '/\\*' over the corpus totals 2 lines with a block-comment opener."
+    },
+    {
+      "claim": "C3: an unclosed ( or [ leaves a Group context open to the end of the file, and prototyping stays set until the next {, so a local error changes terminator placement for the rest of the file.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "depth decreases only on a closing bracket (lines 341-344); insertion requires top == Statements or Fields (line 239); prototyping resets only at OpenBrace (line 330) and is set at line 363."
+    },
+    {
+      "claim": "C4 fix: 'The second branch can't be reached. Delete it and keep the inline form.'",
+      "type": "quality",
+      "verified": false,
+      "evidence": "The unreachable second branch (274-276) is the inline form; the first (268-270) uses ByteAt. The advice contradicts itself: you have to delete the first branch and keep the second, or move the inline test into the first."
+    }
+  ],
+  "timing": {
+    "total_tokens": 265795,
+    "duration_ms": 1369736,
+    "total_duration_seconds": 1369.7
+  },
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "reason": "This run found the most important true defects in the file, and no assertion rewards them: the '\\'' character-escape bug (verified), the missing view keyword (verified), and the harness's circular keyword oracle (verified). It also found unique C3 error-propagation, UTF-8 overlong/BOM, ~550k redundant length(bytes) natives, the Lexeme/partial protocol and the union payload copy. Add assertions for the seeded correctness defects so the score reflects bug-finding, not only review structure."
+      },
+      {
+        "assertion": "The review checks how the tokenizer is called (its consumers or call sites) and says whether it is on a hot path.",
+        "reason": "Closest call in this run. The review names consumers and says nothing calls them yet, but never states a hot/cold verdict. If an implied answer should count, reword the assertion; if the intent is an explicit layer classification before perf work, say that."
+      },
+      {
+        "assertion": "Every finding includes concrete evidence (a count, estimate, measurement or named consumer).",
+        "reason": "The fail turns on two minor uncited notes in section 4. That is weak discrimination; the assertion would be more useful if it also checked that the numbers are correct (this run has two false counts, 'Single 25 ifs' and 'Pair up to 20', and a stale doc premise)."
+      }
+    ],
+    "overall": "Broader and more correctness-oriented than the skill run, with call counts from an instrumented port. Weaknesses: no hot/cold verdict before nine perf items, a few unmeasured micro-optimizations (u32 mask, IsSpace in a cold loop), two wrong counts, a stale claim that records can't hold arrays, and a self-contradictory C4 fix. Its three failures are on style and process assertions; it outperforms the skill run on the substance that no assertion checks."
+  }
+}

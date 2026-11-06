@@ -1,0 +1,21 @@
+package facts
+Point :: struct { x: int; y: int; }
+Holder :: struct { value: int; alias: ^int; }
+Link :: struct { value: int; next: ^Link?; }
+Bump :: (value: ^int) { value^ += 1; }
+Make :: () -> ^Point { value: Point = {x: 3, y: 4}; return &value; }
+Scalar :: () -> ^int { value: int = 2; return &value; }
+EscapeCopy :: (n: int) -> ^int { p := &n; p^ += 1; return p; }
+Parameter :: () -> int { value: int = 3; p := EscapeCopy(value); return value * 10 + p^; }
+Alias :: () -> int { value: int = 1; p: ^int = &value; q := p; q^ = 7; Bump(p); return value * 100 + p^ * 10 + q^; }
+Escaped :: () -> int { p := Make(); p.x = 9; return p^.x * 10 + p.y; }
+Field :: () -> int { value: Point = {x: 2, y: 4}; p := &value; x := &value.x; x^ = 5; return p.x * 10 + p^.y; }
+Copies :: () -> int { value: int = 2; original: Holder = {value: 3, alias: &value}; copied := original; copied.value = 7; copied.alias^ = 9; return original.value * 100 + copied.value * 10 + value; }
+Distinct :: () -> int { a := Scalar(); b := Scalar(); a^ = 11; return a^ * 100 + b^; }
+Nullable :: () -> int { p: ^int? = nil; value: int = 3; p = &value; if p != nil { return p^; } return 0; }
+ArrayCopies :: () -> int { x: int = 1; y: int = 2; original: ^int[] = [&x, &y]; copied := original; copied[0]^ = 5; return original[0]^ * 100 + original[1]^ * 10 + copied[1]^; }
+ReadGrouped :: (values: (^int)[]) -> int { return values[0]^; }
+Grouped :: () -> int { value: int = 4; return ReadGrouped([&value]); }
+Widened :: () -> i64 { small: int = 3; wide: i64 = small; p := &wide; p^ += 2; return p^; }
+WholeArray :: () -> int { values: int[] = [1, 2]; p: ^(int[]) = &values; p^ = [8, 9, 10]; return length(values) * 100 + values[0] * 10 + values[2]; }
+Cycle :: () -> int { a: Link = {value: 1, next: nil}; b: Link = {value: 2, next: nil}; p := &a; q := &b; p.next = q; q.next = p; return p.value * 10 + q.value; }

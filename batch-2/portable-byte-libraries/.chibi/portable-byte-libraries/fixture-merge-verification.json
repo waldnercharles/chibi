@@ -1,0 +1,96 @@
+{
+  "accepted": "afcd777ba1741dfa3f1d890c90d5310a9415e331",
+  "paths": 18,
+  "checks": [
+    {
+      "path": "test/language/borrow.c",
+      "exact_accepted_blob": true,
+      "sha256": "46421277898d146dedc91baa55d6dbf0871169cf85f81482de0eb83bfa3fc91d"
+    },
+    {
+      "path": "test/language/compiler_fixture.c",
+      "exact_accepted_blob": true,
+      "sha256": "08ad473dfad5fa4965d9546e228cb3a2025260ca46e27c24d1dbf467f5b666f8"
+    },
+    {
+      "path": "test/language/execution.c",
+      "exact_accepted_blob": true,
+      "sha256": "28d7dc339e564507444d185ee0d43cd0505939c35127e062053418d9990e63c5"
+    },
+    {
+      "path": "test/language/native_calls.c",
+      "exact_accepted_blob": true,
+      "sha256": "b6974a81a8da35a9b7746d2baf97f7c11f82de80c8225e50abb45f9fd60fb690"
+    },
+    {
+      "path": "test/language/outliner_projection.c",
+      "exact_accepted_blob": true,
+      "sha256": "04f5a4917d25cf08ded4bd57afd9e6e24fabccd5499631df80298dfd7514257b"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "accepted_plus_unchanged_helper": true,
+      "helper_sha256": "c16b7effccfe9145f3b298dcd1b81865adf6ff7a170f67b6b78368183484e299"
+    },
+    {
+      "path": "test/language/package_imports.c",
+      "exact_accepted_blob": true,
+      "sha256": "c079425f4ade03e5953dc5490bb02ea87efa3c3c082a506ee7bfecbdea9c13b6"
+    },
+    {
+      "path": "test/language/package_snapshot_chibi.c",
+      "exact_accepted_blob": true,
+      "sha256": "3fe3410523fabf67107b2295d6a951586ce07e03734992b61fba3d00fdf28029"
+    },
+    {
+      "path": "test/language/program.c",
+      "exact_accepted_blob": true,
+      "sha256": "838dd98ab4846f210f833fd8fbea8cb53582768fd95275a5e8a3e8651483ecfd"
+    },
+    {
+      "path": "test/language/record_publication.c",
+      "exact_accepted_blob": true,
+      "sha256": "c74dd85958c97c0aa23fbc8e219e96be910b8146640796d391b4b91de3deb637"
+    },
+    {
+      "path": "test/language/record_services.c",
+      "exact_accepted_blob": true,
+      "sha256": "932245ce9e5a0ea9381d54c395ef55eeb0e5ed7d0f4c7a7af6d2604e5bec81f9"
+    },
+    {
+      "path": "test/language/record_values.c",
+      "exact_accepted_blob": true,
+      "sha256": "fc463d61527b879568ecb2c15f5012641c1808ba5513b3e707d1d91c9e0c2302"
+    },
+    {
+      "path": "test/language/runtime_attribution.c",
+      "exact_accepted_blob": true,
+      "sha256": "3d3776a5e7b9c86cf8e43f2007c6ad2cd4546f2eab229433d02268dd9591dbea"
+    },
+    {
+      "path": "test/language/scalarize.c",
+      "exact_accepted_blob": true,
+      "sha256": "bdc0b08069246602ecea6b111e09ec3804be3ec31c85595634907f1a478ac5da"
+    },
+    {
+      "path": "test/language/semantic.c",
+      "exact_accepted_blob": true,
+      "sha256": "be19cd2bb1ea7b9aa2b348b9cc221bc18d12d385b1c3e7d16aff3c837d0bc5dd"
+    },
+    {
+      "path": "test/language/syntax.c",
+      "exact_accepted_blob": true,
+      "sha256": "b1d258fae97b7f4a4e081484f6850f55ba6d409a5596976e8d12de8ea8fd0e66"
+    },
+    {
+      "path": "test/language/union_members_chibi.c",
+      "exact_accepted_blob": true,
+      "sha256": "887a054f891d62e43b09da1a42b6b7e148724268856a488cd9ad0b246832f17a"
+    },
+    {
+      "path": "test/parallel.c",
+      "exact_accepted_blob": true,
+      "sha256": "4f1f82279d1cdce0519681ab75e37e49d2bf864f4ce386513ee341702d4e8800"
+    }
+  ]
+}

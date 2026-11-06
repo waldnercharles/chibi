@@ -1,0 +1,11 @@
+{
+  "base": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+  "tree": "9560445cdea500456b69adba97e21da143722205",
+  "full_patch_sha256": "c01f569d590bfaa1d86e659c471b467f88c13659ec394ea0300617348ce66e39",
+  "production_matches_706_f69": true,
+  "native_prerequisite_source": "43eec64f98e6fb288935dacfcbf86296dbc43b02",
+  "native_pin": "d6ee0ce259793ed2a835edae9114d9b3c6df5494",
+  "installed_seed_proof_sha256": "f0a551696341f2dc3ec875f797aa0a8d331158e43b04adfd970dd605f1a4ad6b",
+  "private_write_step_overlay_only": true,
+  "normal_math_candidate_not_rebased_or_regenerated": true
+}

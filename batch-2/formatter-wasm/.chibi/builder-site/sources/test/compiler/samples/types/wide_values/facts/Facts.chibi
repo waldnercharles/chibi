@@ -1,0 +1,13 @@
+package facts
+Wide: i64 : -5000000000;
+Tag :: union { Bits(value: u64) | None }
+Shifts :: (n: int) -> u64 { v := u64(n); return (v << 4) | (v >> 60) & 0xF; }
+Equal :: (a: int, b: int) -> bool { return u64(a) == u64(b) && u64(a) != 0; }
+Twice :: () -> i64 { wide := Wide; return wide * 2; }
+Negative :: (n: i64) -> bool { return n < 0; }
+Mk :: (v: u64) -> Tag { return Tag.Bits(v); }
+Pick :: (n: int) -> u64 {
+    t := Mk(u64(n) * 1000000007);
+    switch t { case .Bits(value): return value; case .None: return 0; }
+    return 0;
+}

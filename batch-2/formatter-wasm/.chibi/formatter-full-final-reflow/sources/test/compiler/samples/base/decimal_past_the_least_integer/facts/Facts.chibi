@@ -1,0 +1,4 @@
+package facts
+Run :: () -> i64 { return -9223372036854775809.0; }
+
+// error: 2:27: Numeric literal is outside the range of i64

@@ -1,0 +1,7 @@
+{
+  "scope": "immutable pre-CtrlZ/pre-devtty candidate for added TTY regression red check",
+  "binary_sha256": "4f454423c6e4796f9b8af08c4d47af59fb4d4df7e7fc6f2d3f54d9e9baa79e42",
+  "source_binary": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi",
+  "cli": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/process-basic-sdk/bin/chibi",
+  "removed_after_regression_proof": true
+}

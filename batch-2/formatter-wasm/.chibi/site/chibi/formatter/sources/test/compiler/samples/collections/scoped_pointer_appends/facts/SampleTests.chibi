@@ -1,0 +1,24 @@
+package facts
+
+// scoped pointer appends
+@test
+Calls :: () {
+    r1: int = Appended();
+    e1: int = 55;
+    assert(r1 == e1, "Appended call 1");
+    r2: int = Interleaved();
+    e2: int = 44;
+    assert(r2 == e2, "Interleaved call 2");
+    r3: int = Copied();
+    e3: int = 13;
+    assert(r3 == e3, "Copied call 3");
+    r4: int = SelfExtended();
+    e4: int = 42;
+    assert(r4 == e4, "SelfExtended call 4");
+    r5: int = Nodes();
+    e5: int = 180;
+    assert(r5 == e5, "Nodes call 5");
+    r6: int = Field();
+    e6: int = 34;
+    assert(r6 == e6, "Field call 6");
+}

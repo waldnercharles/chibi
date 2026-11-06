@@ -1,0 +1,13 @@
+package facts
+Bump :: (v: ^int) { v^ += 1; }
+Relay :: (p: ^^int) { Bump(p^); }
+Keep :: (p: ^int) -> ^int { return &(p^); }
+Relayed :: () -> int { x: int = 1; q := &x; Relay(&q); return x; }
+Kept :: () -> int { x: int = 1; k := Keep(&x); k^ = 5; return x; }
+Through :: (p: ^^int) -> int { p^^ = 5; return (p^)^ + 1; }
+Thrown :: () -> int { x: int = 1; q := &x; return Through(&q) * 10 + x; }
+Copy :: (p: ^^int) -> int { q := p^; q^ += 1; return q^; }
+Copied :: () -> int { x: int = 1; q := &x; return Copy(&q) * 10 + x; }
+Wrapped :: (p: ^int) { Bump((p)); }
+Unwrapped :: (p: ^^int) { Bump((p^)); }
+Parenthesized :: () -> int { x: int = 1; Wrapped(&x); q := &x; Unwrapped(&q); return x; }

@@ -1,0 +1,7 @@
+package task_parameter_rejection
+Main :: () -> int { return 0; }
+Read :: (pending: task(int)) -> int {
+    result := await pending;
+    if (result is not Cancelled) { return result; }
+    return 0;
+}

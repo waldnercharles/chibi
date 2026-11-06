@@ -1,0 +1,5 @@
+package main
+import facts "project:foreign_library/facts"
+Main :: () -> int {
+    return facts.Native();
+}

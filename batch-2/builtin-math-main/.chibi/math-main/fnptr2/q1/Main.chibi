@@ -1,0 +1,13 @@
+package scalar
+foreign {
+    abs :: (value: i32) -> i32
+}
+Main :: () -> int {
+    x: u64 = 7;
+    r: rawptr = Id(x);
+    y: u64 = r;
+    return int(y) + int(abs(-3));
+}
+Id :: (p: rawptr) -> rawptr {
+    return p;
+}

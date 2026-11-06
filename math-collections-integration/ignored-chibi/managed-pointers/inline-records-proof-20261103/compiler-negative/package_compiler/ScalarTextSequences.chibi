@@ -1,0 +1,65 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+
+ScalarTextSequence :: struct { operation: int; object: int; range: int; }
+// Ordinary sequence checking admits a string or an array here. Preserve the
+// array/window routes; the text operand projection below checks the remaining
+// receiver, including a presence-checked optional string, as a scalar string.
+ScalarTextSequenceOf :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                         names: Name[], types: TypeDecl[], members: TypeMember[], package: int, operand: int) -> ScalarTextSequence {
+    none: ScalarTextSequence = {operation: 0, object: -1, range: -1};
+    node := Unparenthesized(forest, operand);
+    selected := SequenceOperation(forest, text, names, package, node);
+    if (selected < 0) { return none; }
+    object := Field(forest, node, syntax.FieldObject);
+    range := Field(forest, node, syntax.FieldIndex);
+    if (Is(forest, node, syntax.CallExpression)) {
+        if (CalledFunction(forest, text, callables, [], names, package, node) >= 0) { return none; }
+        object = Field(forest, Field(forest, node, syntax.FieldFunction), syntax.FieldObject);
+        range = FirstMember(forest, Field(forest, node, syntax.FieldArguments));
+    }
+    operation := facts.TextRange;
+    if (selected == 1) { operation = facts.TextView; }
+    if (selected == 2) { operation = facts.TextClone; }
+    if (selected == 3) { operation = facts.TextLength; }
+    if (ScalarArrayShape(forest, text, callables, params, names, types, members, package, object).storage != 0 ||
+        ScalarViewShape(forest, text, callables, params, names, types, members, package, object).storage != 0 ||
+        ScalarPointerRecord(forest, text, callables, params, names, types, members, package, object) >= 0) { return none; }
+    return {operation: operation, object: object, range: range};
+}
+
+ScalarTextSequenceOptional :: (types: TypeDecl[], operation: int) -> int {
+    if (operation != facts.TextView && operation != facts.TextRange) { return -1; }
+    return FindOptional(types, {storage: TextStorage, container: 0, record: -1});
+}
+
+ScalarTextSequenceRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                           callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                           node: int, text_sequence: ScalarTextSequence, rows: facts.Row[]) -> ScalarOperands {
+    output := rows;
+    switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                         text_sequence.object, TextStorage, output) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): output = built;
+    }
+    count := 1;
+    result := facts.StringType;
+    if (text_sequence.operation == facts.TextLength) { result = facts.IntType; }
+    optional := ScalarTextSequenceOptional(types, text_sequence.operation);
+    if (optional >= 0) {
+        result = ScalarRecordType(types, optional);
+        for (bound in [syntax.FieldStart, syntax.FieldEnd]) {
+            switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                                 Field(forest, text_sequence.range, bound), IntStorage, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+        }
+        count = 3;
+    }
+    output.append(ScalarAt(forest, node, facts.TextRow, result, text_sequence.operation, count, ""));
+    return ScalarOperands.Built(output);
+}

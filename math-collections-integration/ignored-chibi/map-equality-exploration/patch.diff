@@ -1,0 +1,368 @@
+diff --git a/test/native_aot/map_programs/run.sh b/test/native_aot/map_programs/run.sh
+index 675c272c7..a04755a1f 100644
+--- a/test/native_aot/map_programs/run.sh
++++ b/test/native_aot/map_programs/run.sh
+@@ -10,7 +10,7 @@ case "$(uname -s)-$(uname -m)" in
+     Linux-x86_64) triple=x86_64-unknown-linux-gnu ;;
+     *) echo 'native map programs: unsupported test host' >&2; exit 2 ;;
+ esac
+-for name in Values Strings Iteration; do
++for name in Values Strings Iteration Equality; do
+     for level in 0 2; do
+         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+             --source "$root/test/native_aot/map_programs/$name.chibi" --entry Main \
+diff --git a/tools/compiler/llvm_native/Emit.chibi b/tools/compiler/llvm_native/Emit.chibi
+index b413d3a29..8b3528a61 100644
+--- a/tools/compiler/llvm_native/Emit.chibi
++++ b/tools/compiler/llvm_native/Emit.chibi
+@@ -274,6 +274,9 @@ pub MapLiveAt: int : 70;
+ // field's type; type is that reference type. The field is a number or a bool,
+ // and the reference lives as long as the local does.
+ pub FieldAddress: int : 71;
++// output = whether the two maps have equal key/value associations. Their map
++// type is literal; type is bool. Insertion order is not part of equality.
++pub MapEqual: int : 72;
+ // A waiting function is a coroutine: its body holds a Suspend, an AwaitHandle or an
+ // awaited Call. Suspend gives up the function's turn; it resumes at the next
+ // instruction on the scheduler's next update (`yield`).
+@@ -299,9 +302,12 @@ Index :: (value: int, count: int) -> bool {
+ Typed :: (slots: int[], slot: int, type: int) -> bool {
+     return Index(slot, length(slots)) && slots[slot] == type;
+ }
++MapInstruction :: (op: int) -> bool {
++    return (op >= MapLength && op <= MapLiveAt) || op == MapEqual;
++}
+ Produces :: (op: int) -> bool {
+     return op <= Local || op == LocalAddress || op == FieldAddress || op == Deref || (op >= Add && op <= Ne) || (op >= Call && op <= Format) || (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText ||
+-           op == ForeignCall || op == StateLoad || op == FunctionAddress || (op >= MapLength && op <= MapLiveAt && op != MapDrop);
++           op == ForeignCall || op == StateLoad || op == FunctionAddress || (MapInstruction(op) && op != MapDrop);
+ }
+ Comparison :: (op: int) -> bool {
+     return op >= Lt && op <= Ne;
+@@ -312,7 +318,7 @@ Unary :: (op: int) -> bool {
+ ReadsLeft :: (op: int) -> bool {
+     return op == Save || op == Publish || op == Branch || (op >= Add && op <= Ne) || (op >= Convert && op <= TextTake) ||
+            (op >= ArrayLength && op <= ArrayBytes) || op == ArrayText || op == ArrayDrop || op == TextRetain ||
+-           op == TextRelease || op == StateStore || op == Deref || op == Poke || op == AwaitHandle || op == Cancel || (op >= MapLength && op <= MapLiveAt);
++           op == TextRelease || op == StateStore || op == Deref || op == Poke || op == AwaitHandle || op == Cancel || MapInstruction(op);
+ }
+ Integer :: (type: int) -> bool {
+     return abi.IntegerBits(type) > 0;
+@@ -343,7 +349,7 @@ Fits :: (literal: i64, type: int) -> bool {
+ ReadsRight :: (op: int) -> bool {
+     return (op >= Add && op <= Ne && !Unary(op)) || op == Insert || op == Poke || (op >= TextByte && op <= TextTake) ||
+            ArrayReadsRight(op) || (op >= MapGet && op <= MapDelete && op != MapCopy && op != MapDrop) || op == MapKeyAt ||
+-           op == MapValueAt || op == MapLiveAt;
++           op == MapValueAt || op == MapLiveAt || op == MapEqual;
+ }
+ // Whether an array instruction reads a right slot: an index, an element,
+ // another array or a length.
+@@ -887,7 +893,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
+     pc: int = 0;
+     while (pc < length(code)) {
+         item := code[pc];
+-        if (item.op < Constant || item.op >= InstructionCount || (item.op > FieldAddress && item.op < Suspend)) {
++        if (item.op < Constant || item.op >= InstructionCount || (item.op > MapEqual && item.op < Suspend)) {
+             return Result.Rejected(base + pc, "unsupported native scalar instruction");
+         }
+         if (Produces(item.op)) {
+@@ -973,7 +979,7 @@ Validate :: (functions: Function[], function: int, module_parameters: int[], mod
+         if (((item.op >= ArrayLength && item.op <= ArrayBytes) || item.op == ArrayText) && !ArrayValid(records, slots, item)) {
+             return Result.Rejected(base + pc, "native array operation differs from its operands");
+         }
+-        if (item.op >= MapLength && item.op <= MapLiveAt && !MapValid(records, slots, item)) {
++        if (MapInstruction(item.op) && !MapValid(records, slots, item)) {
+             return Result.Rejected(base + pc, "native map operation differs from its operands");
+         }
+         if (item.op >= TextLength && item.op <= TextTake && !TextValid(slots, item)) {
+@@ -1411,7 +1417,7 @@ EmitInstruction :: (item: Instruction, pc: int, result: int, records: Record[],
+         out = format_text("{}{}", out, ArrayBytesRead(item, pc));
+     } else if (item.op == ArrayText) {
+         out = format_text("{}{}", out, ArrayTextRead(item, pc));
+-    } else if (item.op >= MapLength && item.op <= MapLiveAt) {
++    } else if (MapInstruction(item.op)) {
+         out = format_text("{}{}", out, MapRead(item, pc));
+     } else if (item.op >= ArrayLength && item.op <= ArrayRemove) {
+         out = format_text("{}{}", out, ArrayRead(item, pc));
+@@ -1520,7 +1526,7 @@ Counts :: (code: Instruction[]) -> bool {
+             ((item.op == StateLoad || item.op == StateStore) && item.type == abi.TextStorage)) {
+             return true;
+         }
+-        if (item.op >= MapLength && item.op <= MapLiveAt && MapHolds(MapUsed(item))) {
++        if (MapInstruction(item.op) && MapHolds(MapUsed(item))) {
+             return true;
+         }
+     }
+@@ -2633,7 +2639,7 @@ StatesNumbered :: (code: Instruction[]) -> bool {
+ Copies :: (code: Instruction[]) -> bool {
+     for (item in code) {
+         if (item.op == ArrayPush || item.op == ArrayCopy || (item.op >= ArrayExtend && item.op <= ArrayRemove && item.op != ArrayContains) ||
+-            (item.op >= MapLength && item.op <= MapLiveAt)) {
++            (MapInstruction(item.op))) {
+             return true;
+         }
+     }
+@@ -2642,7 +2648,7 @@ Copies :: (code: Instruction[]) -> bool {
+ // Whether `code` makes zeros for a longer array, which the module's zero does.
+ Zeroes :: (code: Instruction[]) -> bool {
+     for (item in code) {
+-        if (item.op == ArrayResize || (item.op >= MapLength && item.op <= MapLiveAt)) {
++        if (item.op == ArrayResize || (MapInstruction(item.op))) {
+             return true;
+         }
+     }
+@@ -2703,7 +2709,8 @@ Compares :: (code: Instruction[]) -> bool {
+         if (item.op == ArrayContains && item.literal == i64(abi.TextStorage)) {
+             return true;
+         }
+-        if (item.op >= MapLength && item.op <= MapLiveAt && MapKey(MapUsed(item)) == abi.TextStorage) {
++        if (MapInstruction(item.op) && (MapKey(MapUsed(item)) == abi.TextStorage ||
++            (item.op == MapEqual && MapValue(MapUsed(item)) == abi.TextStorage))) {
+             return true;
+         }
+     }
+@@ -3840,6 +3847,9 @@ MapValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
+     if (item.op == MapLength || item.op == MapSpan) {
+         return item.type == abi.IntStorage;
+     }
++    if (item.op == MapEqual) {
++        return item.type == abi.BoolStorage && Typed(slots, item.right, used);
++    }
+     if (item.op == MapGet) {
+         return item.type == value && Typed(slots, item.right, key);
+     }
+@@ -3867,7 +3877,7 @@ MapValid :: (records: Record[], slots: int[], item: Instruction) -> bool {
+ MapTypes :: (code: Instruction[]) -> int[] {
+     used: int[] = [];
+     for (item in code) {
+-        if (item.op >= MapLength && item.op <= MapLiveAt && !used.contains(MapUsed(item))) {
++        if (MapInstruction(item.op) && !used.contains(MapUsed(item))) {
+             used.append(MapUsed(item));
+         }
+     }
+@@ -3896,6 +3906,9 @@ MapRead :: (item: Instruction, pc: int) -> string {
+             field = 1;
+         }
+         out = format_text("{}  %v{} = extractvalue {} %m{}, {}\n", out, pc, map, pc, field);
++    } else if (item.op == MapEqual) {
++        out = format_text("{}{}", out, Load(format_text("b{}", pc), used, "s", item.right));
++        out = format_text("{}  %v{} = call i1 @chibi_map.{}.equal({} %m{}, {} %b{})\n", out, pc, used, map, pc, map, pc);
+     } else if (item.op == MapGet || item.op == MapHas) {
+         out = format_text("{}{}", out, Load(format_text("k{}", pc), key, "s", item.right));
+         out = format_text("{}  %v{} = call {} @chibi_map.{}.{}({} %m{}, {} %k{})\n", out, pc, TypeName(item.type), used,
+@@ -4118,7 +4131,66 @@ MapShared :: () -> string {
+ 
+ // The helpers of map type `type`, named `@chibi_map.<type>.<helper>`: hash,
+ // same, find, get, has, set, delete, copy and drop.
+-MapHelpers :: (type: int) -> string {
++// Walk live entries once and use the other map's index. Cached hashes avoid
++// rehashing keys. Do not use backing-pointer identity: NaN values are unequal
++// even when both operands name the same map.
++MapEqualityHelper :: (value: int) -> string {
++    same := "  %same = icmp eq $V %av, %bv";
++    if (value == abi.TextStorage) {
++        same = "  %same = call i1 @chibi_scalar.text_equal($V %av, $V %bv)";
++    } else if (abi.Floating(value)) {
++        same = "  %same = fcmp oeq $V %av, %bv";
++    }
++    return strings.Join([
++        "define internal i1 @chibi_map.$N.equal($M %a, $M %b) {",
++        "entry:",
++        "  %acount = extractvalue $M %a, 0",
++        "  %bcount = extractvalue $M %b, 0",
++        "  %counts = icmp eq i32 %acount, %bcount",
++        "  br i1 %counts, label %scan, label %no",
++        "scan:",
++        "  %aspan = extractvalue $M %a, 1",
++        "  %bspan = extractvalue $M %b, 1",
++        "  %bslots = extractvalue $M %b, 3",
++        "  %ae = extractvalue $M %a, 4",
++        "  %be = extractvalue $M %b, 4",
++        "  %bi = extractvalue $M %b, 5",
++        "  br label %head",
++        "head:",
++        "  %at = phi i32 [ 0, %scan ], [ %next, %step ]",
++        "  %end = icmp eq i32 %at, %aspan",
++        "  br i1 %end, label %yes, label %look",
++        "look:",
++        "  %off = zext i32 %at to i64",
++        "  %hp = getelementptr inbounds $E, ptr %ae, i64 %off, i32 2",
++        "  %hash = load i32, ptr %hp",
++        "  %live = icmp ne i32 %hash, 0",
++        "  br i1 %live, label %find, label %step",
++        "find:",
++        "  %kp = getelementptr inbounds $E, ptr %ae, i64 %off, i32 0",
++        "  %key = load $K, ptr %kp",
++        "  %found = call i32 @chibi_map.$N.find(ptr %be, ptr %bi, i32 %bspan, i32 %bslots, $K %key, i32 %hash)",
++        "  %present = icmp sge i32 %found, 0",
++        "  br i1 %present, label %compare, label %no",
++        "compare:",
++        "  %other = zext i32 %found to i64",
++        "  %ap = getelementptr inbounds $E, ptr %ae, i64 %off, i32 1",
++        "  %bp = getelementptr inbounds $E, ptr %be, i64 %other, i32 1",
++        "  %av = load $V, ptr %ap",
++        "  %bv = load $V, ptr %bp",
++        same,
++        "  br i1 %same, label %step, label %no",
++        "step:",
++        "  %next = add i32 %at, 1",
++        "  br label %head",
++        "yes:",
++        "  ret i1 true",
++        "no:",
++        "  ret i1 false",
++        "}"
++    ], "\n");
++}
++MapHelpers :: (type: int, compared: bool) -> string {
+     key := MapKey(type);
+     value := MapValue(type);
+     keyed := key == abi.TextStorage;
+@@ -4596,6 +4668,7 @@ MapHelpers :: (type: int) -> string {
+         "  ret void",
+         "}"
+     ], "\n");
++    if (compared) { text = format_text("{}\n{}", text, MapEqualityHelper(value)); }
+     text = strings.ReplaceAll(text, "$SCANNED", format_text("{}", MapScanned));
+     text = strings.ReplaceAll(text, "$LIMIT", format_text("{}", MapLimit));
+     text = strings.ReplaceAll(text, "$PREHASH", prehash);
+@@ -4617,8 +4690,12 @@ MapModule :: (code: Instruction[]) -> string {
+         return "";
+     }
+     out: string[] = [MapShared()];
++    compared: int[] = [];
++    for (item in code) {
++        if (item.op == MapEqual && !compared.contains(MapUsed(item))) { compared.append(MapUsed(item)); }
++    }
+     for (type in types) {
+-        out.append(MapHelpers(type));
++        out.append(MapHelpers(type, compared.contains(type)));
+     }
+     return format_text("\n{}", strings.Join(out, "\n"));
+ }
+diff --git a/tools/compiler/package_compiler/Scalar.chibi b/tools/compiler/package_compiler/Scalar.chibi
+index a1526ce57..34415b2b4 100644
+--- a/tools/compiler/package_compiler/Scalar.chibi
++++ b/tools/compiler/package_compiler/Scalar.chibi
+@@ -938,6 +938,11 @@ ScalarOperand :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
+     if (mapped_read.operator != 0) {
+         return ScalarMapReadRows(forest, text, callables, params, callable, names, types, members, constants, node, mapped_read, rows);
+     }
++    compared_map := ScalarMapCompared(forest, text, callables, names, types, callable.package, node);
++    if (compared_map >= 0) {
++        return ScalarMapComparison(forest, text, callables, params, callable, names, types, members, constants,
++                                   node, compared_map, rows);
++    }
+     if (Is(forest, node, syntax.UnaryExpression) && Operator(forest, node) == tk.Add) {
+         return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, Field(forest, node, syntax.FieldOperand),
+                              expected, rows);
+diff --git a/tools/compiler/package_compiler/ScalarMaps.chibi b/tools/compiler/package_compiler/ScalarMaps.chibi
+index 2a2d1cf69..60a827c12 100644
+--- a/tools/compiler/package_compiler/ScalarMaps.chibi
++++ b/tools/compiler/package_compiler/ScalarMaps.chibi
+@@ -102,6 +102,43 @@ ScalarMapValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
+     return ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, node, UnionStorage, output);
+ }
+ 
++// The common map type of an equality's operands, or -1 for another expression.
++ScalarMapCompared :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
++                      types: TypeDecl[], package: int, node: int) -> int {
++    if (!Is(forest, node, syntax.BinaryExpression) ||
++        (Operator(forest, node) != tk.CmpEq && Operator(forest, node) != tk.NotEq)) {
++        return -1;
++    }
++    left := ScalarMapShape(forest, text, callables, names, types, package, Field(forest, node, syntax.FieldLeft));
++    right := ScalarMapShape(forest, text, callables, names, types, package, Field(forest, node, syntax.FieldRight));
++    if (left < 0 || right < 0 || ScalarMapType(types, left) != ScalarMapType(types, right)) { return -1; }
++    return left;
++}
++ScalarMapComparison :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
++                        callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
++                        constants: ConstDecl[], node: int, record: int, rows: facts.Row[]) -> ScalarOperands {
++    output := rows;
++    left := Unparenthesized(forest, Field(forest, node, syntax.FieldLeft));
++    right := Field(forest, node, syntax.FieldRight);
++    // The left value must survive a call on the right that can replace it.
++    copied := Is(forest, left, syntax.Identifier) &&
++              NamePosition(AddressedNames(forest, text, right, []), Text(forest, text, left)) >= 0;
++    for (part in [left, right]) {
++        switch ScalarMapValue(forest, text, callables, params, callable, names, types, members, constants,
++                              part, record, copied && part == left, output) {
++            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
++            case .Built(built): output = built;
++        }
++    }
++    compared := ScalarAt(forest, node, facts.MapRow, facts.BoolType, facts.MapEqual, 2, "");
++    compared.literal = i64(ScalarMapType(types, record));
++    output.append(compared);
++    if (Operator(forest, node) == tk.NotEq) {
++        output.append(ScalarAt(forest, node, facts.UnaryRow, facts.BoolType, facts.Not, 1, ""));
++    }
++    return ScalarOperands.Built(output);
++}
++
+ // The object and key of m.has(k), k in m, k not in m, or m[k]. An operator
+ // of zero means this is another expression.
+ ScalarMapCall :: struct {
+diff --git a/tools/compiler/scalar_facts/Facts.chibi b/tools/compiler/scalar_facts/Facts.chibi
+index bc8a102c4..6ee9f1dd1 100644
+--- a/tools/compiler/scalar_facts/Facts.chibi
++++ b/tools/compiler/scalar_facts/Facts.chibi
+@@ -354,6 +354,8 @@ pub MapSpan: int : 8;
+ pub MapLiveAt: int : 9;
+ pub MapKeyAt: int : 10;
+ pub MapValueAt: int : 11;
++// Two maps of the type in literal; compares key/value associations, ignoring order.
++pub MapEqual: int : 12;
+ 
+ // Compare operators: the source's <, <=, >, >=, == and !=, signed or
+ // unsigned as their operands' type is. On floats, each is false when an
+diff --git a/tools/compiler/scalar_llvm/Emit.chibi b/tools/compiler/scalar_llvm/Emit.chibi
+index 29f7dffff..385eb62f1 100644
+--- a/tools/compiler/scalar_llvm/Emit.chibi
++++ b/tools/compiler/scalar_llvm/Emit.chibi
+@@ -929,7 +929,7 @@ MapOperands :: (operand: facts.Row) -> int {
+     if (operand.value == facts.MapSet) {
+         return 3;
+     }
+-    if (operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) {
++    if ((operand.value >= facts.MapGet && operand.value <= facts.MapValueAt) || operand.value == facts.MapEqual) {
+         return 2;
+     }
+     return -1;
+@@ -979,7 +979,8 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
+     if ((operand.value == facts.MapLength || operand.value == facts.MapSpan) && operand.type != facts.IntType) {
+         return mismatch;
+     }
+-    if ((operand.value == facts.MapHas || operand.value == facts.MapLiveAt) && operand.type != facts.BoolType) {
++    if ((operand.value == facts.MapHas || operand.value == facts.MapLiveAt || operand.value == facts.MapEqual) &&
++        operand.type != facts.BoolType) {
+         return mismatch;
+     }
+     if ((operand.value == facts.MapGet || operand.value == facts.MapValueAt) && operand.type != value) {
+@@ -990,6 +991,7 @@ ValidMap :: (rows: facts.Row[], records: int[], at: int, row: int, last: int, op
+     }
+     if (consumed >= 2) {
+         wanted := key;
++        if (operand.value == facts.MapEqual) { wanted = mapped; }
+         if (operand.value == facts.MapLiveAt || operand.value == facts.MapKeyAt || operand.value == facts.MapValueAt) {
+             wanted = facts.IntType;
+         }
+@@ -1958,6 +1960,7 @@ MapLowered :: (operand: facts.Row, type: int, slot: int, stack: int[], base: int
+     else if (operand.value == facts.MapLiveAt) { op = native.MapLiveAt; }
+     else if (operand.value == facts.MapKeyAt) { op = native.MapKeyAt; }
+     else if (operand.value == facts.MapValueAt) { op = native.MapValueAt; }
++    else if (operand.value == facts.MapEqual) { op = native.MapEqual; }
+     right := 0;
+     target := 0;
+     if (MapOperands(operand) >= 2) {
+@@ -2676,6 +2679,9 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                         if (op != facts.MapSet && op != facts.MapDelete && Holds(fresh, stack[base])) {
+                             pending.append(stack[base]);
+                         }
++                        if (op == facts.MapEqual && Holds(fresh, stack[base + 1])) {
++                            pending.append(stack[base + 1]);
++                        }
+                         // A string read borrows from its map. Retain it before
+                         // a fresh input map is dropped, then track the result
+                         // as fresh so the statement either keeps or releases it.

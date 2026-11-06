@@ -1,0 +1,583 @@
+package perf
+Type0 :: struct { value: int; }
+Type1 :: struct { value: int; }
+Type2 :: struct { value: int; }
+Type3 :: struct { value: int; }
+Type4 :: struct { value: int; }
+Type5 :: struct { value: int; }
+Type6 :: struct { value: int; }
+Type7 :: struct { value: int; }
+Type8 :: struct { value: int; }
+Type9 :: struct { value: int; }
+Type10 :: struct { value: int; }
+Type11 :: struct { value: int; }
+Type12 :: struct { value: int; }
+Type13 :: struct { value: int; }
+Type14 :: struct { value: int; }
+Type15 :: struct { value: int; }
+Type16 :: struct { value: int; }
+Type17 :: struct { value: int; }
+Type18 :: struct { value: int; }
+Type19 :: struct { value: int; }
+Type20 :: struct { value: int; }
+Type21 :: struct { value: int; }
+Type22 :: struct { value: int; }
+Type23 :: struct { value: int; }
+Type24 :: struct { value: int; }
+Type25 :: struct { value: int; }
+Type26 :: struct { value: int; }
+Type27 :: struct { value: int; }
+Type28 :: struct { value: int; }
+Type29 :: struct { value: int; }
+Type30 :: struct { value: int; }
+Type31 :: struct { value: int; }
+Type32 :: struct { value: int; }
+Type33 :: struct { value: int; }
+Type34 :: struct { value: int; }
+Type35 :: struct { value: int; }
+Type36 :: struct { value: int; }
+Type37 :: struct { value: int; }
+Type38 :: struct { value: int; }
+Type39 :: struct { value: int; }
+Type40 :: struct { value: int; }
+Type41 :: struct { value: int; }
+Type42 :: struct { value: int; }
+Type43 :: struct { value: int; }
+Type44 :: struct { value: int; }
+Type45 :: struct { value: int; }
+Type46 :: struct { value: int; }
+Type47 :: struct { value: int; }
+Type48 :: struct { value: int; }
+Type49 :: struct { value: int; }
+Type50 :: struct { value: int; }
+Type51 :: struct { value: int; }
+Type52 :: struct { value: int; }
+Type53 :: struct { value: int; }
+Type54 :: struct { value: int; }
+Type55 :: struct { value: int; }
+Type56 :: struct { value: int; }
+Type57 :: struct { value: int; }
+Type58 :: struct { value: int; }
+Type59 :: struct { value: int; }
+Type60 :: struct { value: int; }
+Type61 :: struct { value: int; }
+Type62 :: struct { value: int; }
+Type63 :: struct { value: int; }
+Type64 :: struct { value: int; }
+Type65 :: struct { value: int; }
+Type66 :: struct { value: int; }
+Type67 :: struct { value: int; }
+Type68 :: struct { value: int; }
+Type69 :: struct { value: int; }
+Type70 :: struct { value: int; }
+Type71 :: struct { value: int; }
+Type72 :: struct { value: int; }
+Type73 :: struct { value: int; }
+Type74 :: struct { value: int; }
+Type75 :: struct { value: int; }
+Type76 :: struct { value: int; }
+Type77 :: struct { value: int; }
+Type78 :: struct { value: int; }
+Type79 :: struct { value: int; }
+Main :: () {
+ value0: int = 0;
+ value1: int = 1;
+ value2: int = 2;
+ value3: int = 3;
+ value4: int = 4;
+ value5: int = 5;
+ value6: int = 6;
+ value7: int = 7;
+ value8: int = 8;
+ value9: int = 9;
+ value10: int = 10;
+ value11: int = 11;
+ value12: int = 12;
+ value13: int = 13;
+ value14: int = 14;
+ value15: int = 15;
+ value16: int = 16;
+ value17: int = 17;
+ value18: int = 18;
+ value19: int = 19;
+ value20: int = 20;
+ value21: int = 21;
+ value22: int = 22;
+ value23: int = 23;
+ value24: int = 24;
+ value25: int = 25;
+ value26: int = 26;
+ value27: int = 27;
+ value28: int = 28;
+ value29: int = 29;
+ value30: int = 30;
+ value31: int = 31;
+ value32: int = 32;
+ value33: int = 33;
+ value34: int = 34;
+ value35: int = 35;
+ value36: int = 36;
+ value37: int = 37;
+ value38: int = 38;
+ value39: int = 39;
+ value40: int = 40;
+ value41: int = 41;
+ value42: int = 42;
+ value43: int = 43;
+ value44: int = 44;
+ value45: int = 45;
+ value46: int = 46;
+ value47: int = 47;
+ value48: int = 48;
+ value49: int = 49;
+ value50: int = 50;
+ value51: int = 51;
+ value52: int = 52;
+ value53: int = 53;
+ value54: int = 54;
+ value55: int = 55;
+ value56: int = 56;
+ value57: int = 57;
+ value58: int = 58;
+ value59: int = 59;
+ value60: int = 60;
+ value61: int = 61;
+ value62: int = 62;
+ value63: int = 63;
+ value64: int = 64;
+ value65: int = 65;
+ value66: int = 66;
+ value67: int = 67;
+ value68: int = 68;
+ value69: int = 69;
+ value70: int = 70;
+ value71: int = 71;
+ value72: int = 72;
+ value73: int = 73;
+ value74: int = 74;
+ value75: int = 75;
+ value76: int = 76;
+ value77: int = 77;
+ value78: int = 78;
+ value79: int = 79;
+ value80: int = 80;
+ value81: int = 81;
+ value82: int = 82;
+ value83: int = 83;
+ value84: int = 84;
+ value85: int = 85;
+ value86: int = 86;
+ value87: int = 87;
+ value88: int = 88;
+ value89: int = 89;
+ value90: int = 90;
+ value91: int = 91;
+ value92: int = 92;
+ value93: int = 93;
+ value94: int = 94;
+ value95: int = 95;
+ value96: int = 96;
+ value97: int = 97;
+ value98: int = 98;
+ value99: int = 99;
+ value100: int = 100;
+ value101: int = 101;
+ value102: int = 102;
+ value103: int = 103;
+ value104: int = 104;
+ value105: int = 105;
+ value106: int = 106;
+ value107: int = 107;
+ value108: int = 108;
+ value109: int = 109;
+ value110: int = 110;
+ value111: int = 111;
+ value112: int = 112;
+ value113: int = 113;
+ value114: int = 114;
+ value115: int = 115;
+ value116: int = 116;
+ value117: int = 117;
+ value118: int = 118;
+ value119: int = 119;
+ value120: int = 120;
+ value121: int = 121;
+ value122: int = 122;
+ value123: int = 123;
+ value124: int = 124;
+ value125: int = 125;
+ value126: int = 126;
+ value127: int = 127;
+ value128: int = 128;
+ value129: int = 129;
+ value130: int = 130;
+ value131: int = 131;
+ value132: int = 132;
+ value133: int = 133;
+ value134: int = 134;
+ value135: int = 135;
+ value136: int = 136;
+ value137: int = 137;
+ value138: int = 138;
+ value139: int = 139;
+ value140: int = 140;
+ value141: int = 141;
+ value142: int = 142;
+ value143: int = 143;
+ value144: int = 144;
+ value145: int = 145;
+ value146: int = 146;
+ value147: int = 147;
+ value148: int = 148;
+ value149: int = 149;
+ value150: int = 150;
+ value151: int = 151;
+ value152: int = 152;
+ value153: int = 153;
+ value154: int = 154;
+ value155: int = 155;
+ value156: int = 156;
+ value157: int = 157;
+ value158: int = 158;
+ value159: int = 159;
+ value160: int = 160;
+ value161: int = 161;
+ value162: int = 162;
+ value163: int = 163;
+ value164: int = 164;
+ value165: int = 165;
+ value166: int = 166;
+ value167: int = 167;
+ value168: int = 168;
+ value169: int = 169;
+ value170: int = 170;
+ value171: int = 171;
+ value172: int = 172;
+ value173: int = 173;
+ value174: int = 174;
+ value175: int = 175;
+ value176: int = 176;
+ value177: int = 177;
+ value178: int = 178;
+ value179: int = 179;
+ value180: int = 180;
+ value181: int = 181;
+ value182: int = 182;
+ value183: int = 183;
+ value184: int = 184;
+ value185: int = 185;
+ value186: int = 186;
+ value187: int = 187;
+ value188: int = 188;
+ value189: int = 189;
+ value190: int = 190;
+ value191: int = 191;
+ value192: int = 192;
+ value193: int = 193;
+ value194: int = 194;
+ value195: int = 195;
+ value196: int = 196;
+ value197: int = 197;
+ value198: int = 198;
+ value199: int = 199;
+ value200: int = 200;
+ value201: int = 201;
+ value202: int = 202;
+ value203: int = 203;
+ value204: int = 204;
+ value205: int = 205;
+ value206: int = 206;
+ value207: int = 207;
+ value208: int = 208;
+ value209: int = 209;
+ value210: int = 210;
+ value211: int = 211;
+ value212: int = 212;
+ value213: int = 213;
+ value214: int = 214;
+ value215: int = 215;
+ value216: int = 216;
+ value217: int = 217;
+ value218: int = 218;
+ value219: int = 219;
+ value220: int = 220;
+ value221: int = 221;
+ value222: int = 222;
+ value223: int = 223;
+ value224: int = 224;
+ value225: int = 225;
+ value226: int = 226;
+ value227: int = 227;
+ value228: int = 228;
+ value229: int = 229;
+ value230: int = 230;
+ value231: int = 231;
+ value232: int = 232;
+ value233: int = 233;
+ value234: int = 234;
+ value235: int = 235;
+ value236: int = 236;
+ value237: int = 237;
+ value238: int = 238;
+ value239: int = 239;
+ value240: int = 240;
+ value241: int = 241;
+ value242: int = 242;
+ value243: int = 243;
+ value244: int = 244;
+ value245: int = 245;
+ value246: int = 246;
+ value247: int = 247;
+ value248: int = 248;
+ value249: int = 249;
+ value250: int = 250;
+ value251: int = 251;
+ value252: int = 252;
+ value253: int = 253;
+ value254: int = 254;
+ value255: int = 255;
+ value256: int = 256;
+ value257: int = 257;
+ value258: int = 258;
+ value259: int = 259;
+ value260: int = 260;
+ value261: int = 261;
+ value262: int = 262;
+ value263: int = 263;
+ value264: int = 264;
+ value265: int = 265;
+ value266: int = 266;
+ value267: int = 267;
+ value268: int = 268;
+ value269: int = 269;
+ value270: int = 270;
+ value271: int = 271;
+ value272: int = 272;
+ value273: int = 273;
+ value274: int = 274;
+ value275: int = 275;
+ value276: int = 276;
+ value277: int = 277;
+ value278: int = 278;
+ value279: int = 279;
+ value280: int = 280;
+ value281: int = 281;
+ value282: int = 282;
+ value283: int = 283;
+ value284: int = 284;
+ value285: int = 285;
+ value286: int = 286;
+ value287: int = 287;
+ value288: int = 288;
+ value289: int = 289;
+ value290: int = 290;
+ value291: int = 291;
+ value292: int = 292;
+ value293: int = 293;
+ value294: int = 294;
+ value295: int = 295;
+ value296: int = 296;
+ value297: int = 297;
+ value298: int = 298;
+ value299: int = 299;
+ value300: int = 300;
+ value301: int = 301;
+ value302: int = 302;
+ value303: int = 303;
+ value304: int = 304;
+ value305: int = 305;
+ value306: int = 306;
+ value307: int = 307;
+ value308: int = 308;
+ value309: int = 309;
+ value310: int = 310;
+ value311: int = 311;
+ value312: int = 312;
+ value313: int = 313;
+ value314: int = 314;
+ value315: int = 315;
+ value316: int = 316;
+ value317: int = 317;
+ value318: int = 318;
+ value319: int = 319;
+ value320: int = 320;
+ value321: int = 321;
+ value322: int = 322;
+ value323: int = 323;
+ value324: int = 324;
+ value325: int = 325;
+ value326: int = 326;
+ value327: int = 327;
+ value328: int = 328;
+ value329: int = 329;
+ value330: int = 330;
+ value331: int = 331;
+ value332: int = 332;
+ value333: int = 333;
+ value334: int = 334;
+ value335: int = 335;
+ value336: int = 336;
+ value337: int = 337;
+ value338: int = 338;
+ value339: int = 339;
+ value340: int = 340;
+ value341: int = 341;
+ value342: int = 342;
+ value343: int = 343;
+ value344: int = 344;
+ value345: int = 345;
+ value346: int = 346;
+ value347: int = 347;
+ value348: int = 348;
+ value349: int = 349;
+ value350: int = 350;
+ value351: int = 351;
+ value352: int = 352;
+ value353: int = 353;
+ value354: int = 354;
+ value355: int = 355;
+ value356: int = 356;
+ value357: int = 357;
+ value358: int = 358;
+ value359: int = 359;
+ value360: int = 360;
+ value361: int = 361;
+ value362: int = 362;
+ value363: int = 363;
+ value364: int = 364;
+ value365: int = 365;
+ value366: int = 366;
+ value367: int = 367;
+ value368: int = 368;
+ value369: int = 369;
+ value370: int = 370;
+ value371: int = 371;
+ value372: int = 372;
+ value373: int = 373;
+ value374: int = 374;
+ value375: int = 375;
+ value376: int = 376;
+ value377: int = 377;
+ value378: int = 378;
+ value379: int = 379;
+ value380: int = 380;
+ value381: int = 381;
+ value382: int = 382;
+ value383: int = 383;
+ value384: int = 384;
+ value385: int = 385;
+ value386: int = 386;
+ value387: int = 387;
+ value388: int = 388;
+ value389: int = 389;
+ value390: int = 390;
+ value391: int = 391;
+ value392: int = 392;
+ value393: int = 393;
+ value394: int = 394;
+ value395: int = 395;
+ value396: int = 396;
+ value397: int = 397;
+ value398: int = 398;
+ value399: int = 399;
+ value400: int = 400;
+ value401: int = 401;
+ value402: int = 402;
+ value403: int = 403;
+ value404: int = 404;
+ value405: int = 405;
+ value406: int = 406;
+ value407: int = 407;
+ value408: int = 408;
+ value409: int = 409;
+ value410: int = 410;
+ value411: int = 411;
+ value412: int = 412;
+ value413: int = 413;
+ value414: int = 414;
+ value415: int = 415;
+ value416: int = 416;
+ value417: int = 417;
+ value418: int = 418;
+ value419: int = 419;
+ value420: int = 420;
+ value421: int = 421;
+ value422: int = 422;
+ value423: int = 423;
+ value424: int = 424;
+ value425: int = 425;
+ value426: int = 426;
+ value427: int = 427;
+ value428: int = 428;
+ value429: int = 429;
+ value430: int = 430;
+ value431: int = 431;
+ value432: int = 432;
+ value433: int = 433;
+ value434: int = 434;
+ value435: int = 435;
+ value436: int = 436;
+ value437: int = 437;
+ value438: int = 438;
+ value439: int = 439;
+ value440: int = 440;
+ value441: int = 441;
+ value442: int = 442;
+ value443: int = 443;
+ value444: int = 444;
+ value445: int = 445;
+ value446: int = 446;
+ value447: int = 447;
+ value448: int = 448;
+ value449: int = 449;
+ value450: int = 450;
+ value451: int = 451;
+ value452: int = 452;
+ value453: int = 453;
+ value454: int = 454;
+ value455: int = 455;
+ value456: int = 456;
+ value457: int = 457;
+ value458: int = 458;
+ value459: int = 459;
+ value460: int = 460;
+ value461: int = 461;
+ value462: int = 462;
+ value463: int = 463;
+ value464: int = 464;
+ value465: int = 465;
+ value466: int = 466;
+ value467: int = 467;
+ value468: int = 468;
+ value469: int = 469;
+ value470: int = 470;
+ value471: int = 471;
+ value472: int = 472;
+ value473: int = 473;
+ value474: int = 474;
+ value475: int = 475;
+ value476: int = 476;
+ value477: int = 477;
+ value478: int = 478;
+ value479: int = 479;
+ value480: int = 480;
+ value481: int = 481;
+ value482: int = 482;
+ value483: int = 483;
+ value484: int = 484;
+ value485: int = 485;
+ value486: int = 486;
+ value487: int = 487;
+ value488: int = 488;
+ value489: int = 489;
+ value490: int = 490;
+ value491: int = 491;
+ value492: int = 492;
+ value493: int = 493;
+ value494: int = 494;
+ value495: int = 495;
+ value496: int = 496;
+ value497: int = 497;
+ value498: int = 498;
+ value499: int = 499;
+}

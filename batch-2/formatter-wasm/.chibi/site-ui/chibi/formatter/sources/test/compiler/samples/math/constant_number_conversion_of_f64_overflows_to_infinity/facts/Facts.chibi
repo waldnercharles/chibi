@@ -1,0 +1,12 @@
+package facts
+Wide: f64 : 1e300;
+Positive: number : number(Wide);
+pub Overflow :: (unused: number) -> bool { return Positive > 0.0 && Positive == Positive + Positive; }
+NegativeWide: f64 : -1e300;
+Negative: number : number(NegativeWide);
+pub NegativeOverflow :: (unused: number) -> bool { return Negative < 0.0 && Negative == Negative + Negative; }
+HalfwayPastMax: f64 : 340282356779733661637539395458142568448.0;
+Rounded: number : number(HalfwayPastMax);
+pub RoundToInfinity :: (unused: number) -> bool { return Rounded > 0.0 && Rounded == Rounded + Rounded; }
+Represented: number : number(f64(1e300));
+pub RepresentedDouble :: (unused: number) -> bool { return Represented > 0.0 && Represented == Represented + Represented; }

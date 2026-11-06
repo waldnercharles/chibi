@@ -1,0 +1,86 @@
+package characters
+
+import testing "core:testing"
+
+@error
+Failure :: struct { code: int; }
+Echo :: (value: char) -> char { return value; }
+Named :: (value: int) -> (scalar: char, error: Failure?) {
+    if (value == 0) {
+        failed: Failure = {code: 7};
+        return (char(0), failed);
+    }
+    return (char(value), nil);
+}
+Wide :: (value: u64) -> char { return char(value); }
+Signed :: (value: i64) -> char { return char(value); }
+
+@test
+ScalarBoundaries :: () {
+    values := [int(0), 127, 128, 0xD7FF, 0xE000, 0x10FFFF];
+    for value in values {
+        scalar := Echo(char(value));
+        assert(int(scalar) == value);
+        wide: u64 = scalar;
+        assert(wide == u64(value));
+    }
+    assert(int(Wide(0x10FFFF)) == 0x10FFFF);
+    assert(int(Signed(0x10FFFF)) == 0x10FFFF);
+    assert(int(char(65.0)) == 65 && int(char(+(65))) == 65);
+}
+
+@test
+NamedCharacterAndOptional :: () {
+    good := Named(233);
+    assert(good.error == nil);
+    assert(int(good.scalar) == 233);
+    bad := Named(0);
+    assert(int(bad.scalar) == 0 && bad.error != nil);
+    if bad.error { assert(bad.error.code == 7); }
+}
+
+@test
+CharacterFormatting :: () {
+    scalar := char(65);
+    assert(format_text("{}|{:x}|{:c}|{}", scalar, scalar, scalar, char(233)) == "65|41|A|233");
+    byte := format_text("{:c}", char(233));
+    assert(text_byte_length(byte) == 1 && text_byte_at(byte, 0) == 233);
+}
+
+// No assertion follows an invalid conversion: if it returns normally, the
+// armed expectation fails instead of passing on a later assertion.
+@test
+RejectNegative :: () {
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    invalid := Signed(-1);
+}
+@test
+RejectSurrogateFirst :: () {
+    value := 0xD800;
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    invalid := char(value);
+}
+@test
+RejectSurrogateLast :: () {
+    value := 0xDFFF;
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    invalid := char(value);
+}
+@test
+RejectPastScalarRange :: () {
+    value := 0x110000;
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    invalid := char(value);
+}
+@test
+RejectBeforeNarrowing :: () {
+    value: u64 = 0x100000041;
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    invalid := Wide(value);
+}
+@test
+RejectUnsignedMaximum :: () {
+    value: u64 = 0xFFFFFFFFFFFFFFFF;
+    testing.ExpectFailure(testing.Failure.AssertionFailed);
+    invalid := Wide(value);
+}

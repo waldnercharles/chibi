@@ -1,0 +1,135 @@
+package chibi_cli
+
+Serve :: (listener: int, folder: string) -> int {
+    Output(format_text("Serving {} at http://127.0.0.1:{}/\nPress Ctrl+C to stop.", folder, network.port(listener)))
+    status := network.serve(listener, folder)
+    network.close(listener)
+    return status
+}
+
+Listen :: (port: int) -> int {
+    listener := network.listen(port)
+    if listener < 0 {
+        Error(format_text("Cannot listen on 127.0.0.1:{}", port))
+    }
+    return listener
+}
+
+Document :: (options: Options) -> int {
+    if application.platform() == "Windows" {
+        Error("chibi doc cannot read package sources on Windows yet.")
+        return 2
+    }
+    root := Default(options.path, ".")
+    status := process.run([Compiler(), "--project-root", root, "--docs"])
+    if status != 0 || !options.serve {
+        return status
+    }
+    listener := Listen(options.port)
+    if listener < 0 {
+        return 1
+    }
+    return Serve(listener, Join([root, "/build/docs"]))
+}
+
+NativeLibraries :: (game: Project, llvm: string) -> string[] {
+    share := files.resolve(Join([application.bin(), "/../share/chibi"]))
+    tools := files.resolve(llvm)
+    if share == "" {
+        Error("native: cannot find the SDK's share/chibi")
+        return []
+    }
+    if tools == "" {
+        Error(format_text("native: cannot find {}", llvm))
+        return []
+    }
+    files.mkdir(Join([game.root, "/.chibi"]))
+    files.mkdir(Join([game.root, "/.chibi/build"]))
+    return NativeDriver(share, "Libraries", [game.content, tools, "2", Join([game.root, "/.chibi/build/native"])])
+}
+
+ExportStatus :: (exported: bool, interruption: int) -> int {
+    if interruption != 0 {
+        return interruption
+    }
+    if exported {
+        return 0
+    }
+    return 1
+}
+
+@test
+InterruptedExportKeepsSignalStatus :: () {
+    assert(ExportStatus(true, 0) == 0)
+    assert(ExportStatus(false, 0) == 1)
+    assert(ExportStatus(true, 130) == 130)
+    assert(ExportStatus(false, 130) == 130)
+    assert(ExportStatus(true, 143) == 143)
+    assert(ExportStatus(false, 143) == 143)
+}
+
+Export :: (options: Options) -> int {
+    llvm := LLVM(options.llvm)
+    if options.native {
+        if !sdk.native_export_supported() {
+            Error("export --native builds libraries on Linux x86-64 only so far")
+            return 2
+        }
+        if options.web != "" {
+            Error("export --native builds no browser site; the browser player runs every function in the VM")
+            return 2
+        }
+        if llvm == "" {
+            Error(Join(["export --native needs LLVM: ", NeedsLLVM()]))
+            return 2
+        }
+    }
+    game := ReadProject(options.path, true)
+    if !game.valid {
+        return 2
+    }
+    natives: string[] = []
+    if options.native {
+        natives = NativeLibraries(game, llvm)
+        if length(natives) == 0 {
+            return 2
+        }
+    }
+    exported := project.export(game.root, options.output, options.web, options.archive, natives)
+    return ExportStatus(exported, application.interrupt_status())
+}
+
+Web :: (options: Options) -> int {
+    if application.platform() == "Windows" {
+        Error("chibi web cannot serve on Windows yet; use chibi export --web.")
+        return 2
+    }
+    game := ReadProject(options.path, true)
+    if !game.valid {
+        return 2
+    }
+    listener := Listen(options.port)
+    if listener < 0 {
+        return 1
+    }
+    base := Default(application.environment("TMPDIR"), "/tmp")
+    temporary := files.temporary("chibi-web-")
+    if temporary == "" {
+        network.close(listener)
+        Error(format_text("Cannot create a temporary folder in {}", base))
+        return 1
+    }
+    site := Join([temporary, "/site"])
+    exported := project.export(game.root, site, options.web, false, [])
+    status := ExportStatus(exported, application.interrupt_status())
+    if exported && !application.stopped() {
+        status = Serve(listener, site)
+    } else {
+        network.close(listener)
+    }
+    if !files.remove(temporary) {
+        Error(format_text("Could not remove {}", temporary))
+        return 1
+    }
+    return status
+}

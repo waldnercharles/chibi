@@ -1,0 +1,78 @@
+package native_run_assertions
+
+import os "core:os"
+import strings "core:strings"
+
+Write :: (path: string, text: string) {
+    written := os.WriteText(path, text);
+    assert(written == nil, "write the assertion fixture");
+}
+
+Failure :: (command: string[], expected: string) {
+    report := os.Capture(command);
+    if (report.status != 1 || !strings.Contains(report.stderr, expected)) {
+        os.Print(report.stdout); os.Print(report.stderr);
+    }
+    assert(report.status == 1 && strings.Contains(report.stderr, expected), "public run reports the checked source assertion");
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    folder := format_text("{}/run assertion cases", arguments[2]);
+    made := os.MakeDirectory(folder);
+    assert(made == nil, "make the assertion workspace");
+    folder = os.RealPath(folder);
+    source := format_text("{}/Nested.chibi", folder);
+    text := "package main\nFail :: () {\n    assert(false, \"nested program failure\");\n}\nMain :: () { Fail(); }\n";
+    Write(source, text);
+    for (level in ["-O0", "-O2"]) {
+        Failure([arguments[0], "run", level, "--llvm", arguments[1], source],
+                format_text("{}:3:5: Assertion failed: nested program failure\n", source));
+    }
+    // Raw native programs still report failure134; a legitimate Main result134
+    // must never be reclassified by a launcher looking only at the exit code.
+    triple := "x86_64-unknown-linux-gnu";
+    if (os.Platform() == "Darwin") { triple = "aarch64-apple-darwin"; }
+    else if (os.Platform() == "Windows") { triple = "x86_64-pc-windows-msvc"; }
+    raw := format_text("{}/raw", folder);
+    if (os.Platform() == "Windows") { raw = strings.Concatenate([raw, ".exe"]); }
+    built := os.Run([arguments[0], "--compiler", folder, "--core", os.Getenv("CHIBI_CORE"),
+                     "--source", source, "--entry", "Main", "--target", triple, "--llvm", arguments[1],
+                     "--level", "0", "--output", raw]);
+    assert(built == 0, "build the raw assertion program");
+    raw_failure := os.Capture([raw]);
+    assert(raw_failure.status == 134 && strings.Contains(raw_failure.stderr, "native failure: AssertionFailed"),
+           "raw native assertion status is preserved");
+    Write(source, "package main\nMain :: () -> int { return 134; }\n");
+    explicit_status := os.Run([arguments[0], "run", "-O0", "--llvm", arguments[1], source]);
+    assert(explicit_status == 134, "an explicit Main result134 is preserved");
+
+    // The first document has no final newline. The imported assertion's joined
+    // offsets still resolve to its physical file, including an external entry.
+    project := format_text("{}/project", folder);
+    package_folder := format_text("{}/lib", project);
+    made_project := os.MakeDirectory(package_folder);
+    assert(made_project == nil, "make an imported package");
+    helper := format_text("{}/Lib.chibi", package_folder);
+    Write(helper, "package lib\npub Fail :: () {\n    assert(false, \"imported failure\");\n}\n");
+    entry_source := format_text("{}/Main.chibi", project);
+    imported := "package main\nimport lib \"project:lib\"\nMain :: () { lib.Fail(); }";
+    Write(entry_source, imported);
+    Failure([arguments[0], "run", "-O0", "--llvm", arguments[1], entry_source],
+            format_text("{}:3:5: Assertion failed: imported failure\n", helper));
+    Write(source, imported);
+    Failure([arguments[0], "run", "-O0", "--llvm", arguments[1], "--root", project, source],
+            format_text("{}:3:5: Assertion failed: imported failure\n", helper));
+    Write(source, "package main\nMain :: () {\n    assert(Message: \"say \\\"hello\\\"\\nnext\\u0000\", Condition: false);\n}\n");
+    Failure([arguments[0], "run", "-O0", "--llvm", arguments[1], source],
+            format_text("{}:3:5: Assertion failed: say \"hello\"\nnext\\0\n", source));
+    Write(source, "package main\nMain :: () {\n    code := 65;\n    assert(int(char(code)) == 66, \"after conversion\");\n}\n");
+    Failure([arguments[0], "run", "-O0", "--llvm", arguments[1], source],
+            format_text("{}:4:5: Assertion failed: after conversion\n", source));
+    Write(source, "package main\nMain :: () {\n    assert((false), \"\");\n    assert(false, \"unreached second assertion\");\n}\n");
+    Failure([arguments[0], "run", "-O0", "--llvm", arguments[1], source],
+            format_text("{}:3:5: Assertion failed: false\n", source));
+    os.Print("native run assertions: physical sources, decoded messages and distinct exit statuses passed");
+    return 0;
+}

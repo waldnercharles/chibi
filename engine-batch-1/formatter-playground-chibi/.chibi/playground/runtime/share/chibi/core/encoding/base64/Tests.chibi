@@ -1,0 +1,222 @@
+package encoding_base64
+
+import bytes "core:bytes"
+
+ExpectEncoded :: (data: u8[], expected: string, url: bool) {
+    if (url) {
+        result := EncodeUrl(data);
+        if (result.error) {
+            assert(false, "small URL encoding must fit");
+        }
+        assert(result.text == expected, "Base64url encoded bytes");
+        return;
+    }
+    result := Encode(data);
+    if (result.error) {
+        assert(false, "small encoding must fit");
+    }
+    assert(result.text == expected, "Base64 encoded bytes");
+}
+
+ExpectBytes :: (data: u8[], expected: u8[]) {
+    assert(length(data) == length(expected), "decoded length");
+    for (index in 0..<length(data)) {
+        assert(data[index] == expected[index], "decoded byte");
+    }
+}
+
+ExpectDecoded :: (text: string, expected: u8[], url: bool) {
+    if (url) {
+        result := DecodeUrl(text);
+        if (result.error) {
+            assert(false, "valid Base64url rejected");
+        }
+        ExpectBytes(result.data, expected);
+        return;
+    }
+    result := Decode(text);
+    if (result.error) {
+        assert(false, "valid Base64 rejected");
+    }
+    ExpectBytes(result.data, expected);
+}
+
+ExpectError :: (data: u8[], error: Error?, expected_kind: int, expected_offset: int) {
+    assert(length(data) == 0, "malformed Base64 must not expose partial bytes");
+    if (error) {
+        assert(error.kind == expected_kind, "Base64 error kind");
+        assert(error.offset == expected_offset, "Base64 error byte offset");
+    } else {
+        assert(false, "malformed Base64 needs an error");
+    }
+}
+
+ExpectRejected :: (text: string, expected_kind: int, expected_offset: int, url: bool) {
+    if (url) {
+        result := DecodeUrl(text);
+        ExpectError(result.data, result.error, expected_kind, expected_offset);
+        return;
+    }
+    result := Decode(text);
+    ExpectError(result.data, result.error, expected_kind, expected_offset);
+}
+
+@test
+Rfc4648Vectors :: () {
+    inputs := ["", "f", "fo", "foo", "foob", "fooba", "foobar"];
+    encoded := ["", "Zg==", "Zm8=", "Zm9v", "Zm9vYg==", "Zm9vYmE=", "Zm9vYmFy"];
+    raw := ["", "Zg", "Zm8", "Zm9v", "Zm9vYg", "Zm9vYmE", "Zm9vYmFy"];
+    for (index in 0..<length(inputs)) {
+        data := bytes.FromString(inputs[index]);
+        ExpectEncoded(data, encoded[index], false);
+        ExpectDecoded(encoded[index], data, false);
+        ExpectEncoded(data, raw[index], true);
+        ExpectDecoded(raw[index], data, true);
+    }
+    return;
+}
+
+@test
+BinaryAlphabetsAndOwnership :: () {
+    data: u8[] = [0, 128, 255, 251, 255, 255];
+    ExpectEncoded(data, "AID/+///", false);
+    ExpectEncoded(data, "AID_-___", true);
+    ExpectDecoded("AID/+///", data, false);
+    ExpectDecoded("AID_-___", data, true);
+    ExpectEncoded([251], "+w==", false);
+    ExpectEncoded([251], "-w", true);
+    ExpectEncoded([255, 255], "//8=", false);
+    ExpectEncoded([255, 255], "__8", true);
+    result := Decode("AA==");
+    if (result.error) {
+        assert(false);
+    }
+    original := result.data;
+    changed := result.data;
+    changed[0] = 255;
+    assert(changed[0] == 255);
+    assert(original[0] == 0, "decoded buffers have value semantics");
+    return;
+}
+
+@test
+StrictPaddingAndAlphabet :: () {
+    ExpectRejected("Zg", InvalidPadding, 2, false);
+    ExpectRejected("Zg=", InvalidPadding, 3, false);
+    ExpectRejected("Zg===", InvalidPadding, 4, false);
+    ExpectRejected("=Zg=", InvalidPadding, 0, false);
+    ExpectRejected("Z=g=", InvalidPadding, 1, false);
+    ExpectRejected("Zg=A", InvalidPadding, 3, false);
+    ExpectRejected("AAAA=", InvalidPadding, 4, false);
+    ExpectRejected("Zg==AA==", InvalidPadding, 4, false);
+    ExpectRejected("Zg==", InvalidPadding, 2, true);
+    ExpectRejected("A", InvalidLength, 1, true);
+    ExpectRejected("AAAAA", InvalidLength, 5, true);
+    ExpectRejected("-w==", InvalidCharacter, 0, false);
+    ExpectRejected("+w", InvalidCharacter, 0, true);
+    ExpectRejected("_w==", InvalidCharacter, 0, false);
+    ExpectRejected("/w", InvalidCharacter, 0, true);
+    ExpectRejected("Z g=", InvalidCharacter, 1, false);
+    ExpectRejected("Zg\n=", InvalidCharacter, 2, false);
+    ExpectRejected("Zg\r=", InvalidCharacter, 2, false);
+    ExpectRejected("Zg\u0000=", InvalidCharacter, 2, false);
+    ExpectRejected("Zg?=", InvalidCharacter, 2, false);
+    ExpectRejected("Zgé", InvalidCharacter, 2, false);
+    return;
+}
+
+@test
+CanonicalTrailingBits :: () {
+    ExpectRejected("Zh==", NonCanonical, 1, false);
+    ExpectRejected("Zm9=", NonCanonical, 2, false);
+    ExpectRejected("Zh", NonCanonical, 1, true);
+    ExpectRejected("Zm9", NonCanonical, 2, true);
+    ExpectDecoded("Zg==", [102], false);
+    ExpectDecoded("Zm8=", [102, 111], false);
+    ExpectDecoded("Zg", [102], true);
+    ExpectDecoded("Zm8", [102, 111], true);
+    return;
+}
+
+@test
+EveryByteAndFinalGroup :: () {
+    data: u8[] = [];
+    for (value in 0..<256) {
+        data.append(u8(value));
+    }
+    for (count in 0..<257) {
+        prefix := data.slice(0, count);
+        standard := Encode(prefix);
+        if (standard.error) {
+            assert(false);
+        }
+        ExpectDecoded(standard.text, prefix, false);
+        url := EncodeUrl(prefix);
+        if (url.error) {
+            assert(false);
+        }
+        ExpectDecoded(url.text, prefix, true);
+    }
+    return;
+}
+
+@test
+EncodedSizeBoundaries :: () {
+    assert(EncodedSize(-1, false) == -1);
+    assert(EncodedSize(0, false) == 0);
+    assert(EncodedSize(1, false) == 4);
+    assert(EncodedSize(2, false) == 4);
+    assert(EncodedSize(3, false) == 4);
+    assert(EncodedSize(1610612733, false) == 2147483644);
+    assert(EncodedSize(1610612734, false) == -1);
+    assert(EncodedSize(1610612735, true) == 2147483647);
+    assert(EncodedSize(1610612736, true) == -1);
+    assert(EncodedSize(2147483647, false) == -1);
+    return;
+}
+
+@test
+PublicBase64ReturnsNamedOutputsAndTypedErrors :: () {
+    encoded := Encode([u8(255)]);
+    if (encoded.error) {
+        assert(false, "small public Base64 encode must succeed");
+    }
+    assert(encoded.text == "/w==");
+    url := EncodeUrl([u8(255)]);
+    if (url.error) {
+        assert(false);
+    }
+    assert(url.text == "_w");
+    decoded := Decode("AA==");
+    if (decoded.error) {
+        assert(false, "valid public Base64 decode must succeed");
+    }
+    assert(length(decoded.data) == 1 && decoded.data[0] == 0);
+    decoded_url := DecodeUrl("_w");
+    if (decoded_url.error) {
+        assert(false);
+    }
+    assert(length(decoded_url.data) == 1 && decoded_url.data[0] == 255);
+    rejected := Decode("Zm9vZh==");
+    assert(length(rejected.data) == 0, "failure must not return a partial prefix");
+    failed := rejected.error;
+    if (failed) {
+        assert(failed.kind == NonCanonical && failed.offset == 5);
+    } else {
+        assert(false, "noncanonical Base64 needs a typed error");
+    }
+    rejected_url := DecodeUrl("Zg==");
+    assert(length(rejected_url.data) == 0);
+    url_error := rejected_url.error;
+    if (url_error) {
+        assert(url_error.kind == InvalidPadding && url_error.offset == 2);
+    } else {
+        assert(false);
+    }
+    empty := Decode("");
+    if (empty.error) {
+        assert(false, "empty decode is successful");
+    }
+    assert(length(empty.data) == 0);
+    return;
+}

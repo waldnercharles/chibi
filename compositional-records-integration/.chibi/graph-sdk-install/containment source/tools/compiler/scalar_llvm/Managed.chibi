@@ -1,0 +1,105 @@
+package scalar_llvm
+
+import facts "project:scalar_facts"
+import native "project:llvm_native"
+
+// Promotion is a variable property. Repeated addresses share its original
+// cell and complete semantic identity, including negative i64 bit patterns.
+ManagedBoxes :: struct {
+    boxed: bool[];
+    tags: i64[];
+    records: int[];
+    error: string;
+}
+ManagedVariables :: (rows: facts.Row[], head: int, last: int) -> ManagedBoxes {
+    maximum := -1;
+    for (at in head + 1..<last) {
+        if (rows[at].kind != facts.ManagedAddressRow) { continue; }
+        value := rows[at].value;
+        if (value < 0 || value > last - head || rows[at].literal == 0) {
+            return {boxed: [], tags: [], records: [], error: "invalid managed variable identity"};
+        }
+        if (value > maximum) { maximum = value; }
+    }
+    if (maximum < 0) { return {boxed: [], tags: [], records: [], error: ""}; }
+    found: ManagedBoxes = {boxed: resize([false], maximum + 1),
+        tags: resize([i64(0)], maximum + 1), records: resize([int(0)], maximum + 1), error: ""};
+    for (at in head + 1..<last) {
+        row := rows[at];
+        if (row.kind != facts.ManagedAddressRow) { continue; }
+        if (found.boxed[row.value] && (found.tags[row.value] != row.literal || found.records[row.value] != row.count)) {
+            found.error = "managed variable has conflicting pointee identities";
+            return found;
+        }
+        found.boxed[row.value] = true;
+        found.tags[row.value] = row.literal;
+        found.records[row.value] = row.count;
+    }
+    return found;
+}
+ManagedVariable :: (boxed: bool[], variable: int) -> bool {
+    return variable >= 0 && variable < length(boxed) && boxed[variable];
+}
+ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
+    if (Scalar(type) || type == facts.PointerType) { return tag != 0; }
+    if (type >= facts.ArrayType && type < facts.MapType && Scalar(type - facts.ArrayType)) { return tag != 0; }
+    if (type < facts.RecordType || type >= facts.ArrayType || type - facts.RecordType >= length(records)) { return false; }
+    head := records[type - facts.RecordType];
+    return rows[head].kind == facts.RecordRow && rows[head].literal != 0 && rows[head].literal == tag;
+}
+
+ManagedPins :: struct {
+    before: native.Instruction[];
+    after: native.Instruction[];
+    types: int[];
+    next: int;
+}
+// Pin current owners, never borrowed array Read slots. A canonical root uses
+// the descriptor's stable address, so replacement through a scoped call is
+// observed. Fresh owners are stable slots until this collecting call returns.
+ManagedPinOwners :: (vars: int[], owned: int[], places: int[], locals: int[], first_local: int,
+                     fresh: int[], slots: int[], first_slot: int, frames: Frame[], next_slot: int, next_root: int) -> ManagedPins {
+    output: ManagedPins = {before: [], after: [], types: [], next: next_root};
+    roots: int[] = [];
+    modes: int[] = [];
+    array := native.ArrayType + native.PointerType;
+    reference := native.RefType + array;
+    for (index in 0..<length(vars)) {
+        if (owned[index] != array) { continue; }
+        place := places[vars[index]];
+        held := locals[first_local + place];
+        assert(held == array || held == reference);
+        address := next_slot + length(output.types);
+        output.types.append(reference);
+        op := native.LocalAddress;
+        if (held == reference) { op = native.Local; }
+        output.before.append(Op(op, reference, address, place, 0, 0));
+        roots.append(address);
+        modes.append(1);
+    }
+    // A traversal owns its historical container after the source variable
+    // changes. Its hidden frame place must remain a root until loop exit.
+    for (frame in frames) {
+        if (frame.held < 0 || frame.held_type != array) { continue; }
+        address := next_slot + length(output.types);
+        output.types.append(reference);
+        output.before.append(Op(native.LocalAddress, reference, address, frame.held, 0, 0));
+        roots.append(address);
+        modes.append(1);
+    }
+    for (slot in fresh) {
+        if (slots[first_slot + slot] == array) { roots.append(slot); modes.append(0); }
+    }
+    for (index in 0..<length(roots)) {
+        type := array;
+        if (modes[index] == 1) { type = reference; }
+        output.before.append(Op(native.ManagedPin, type, 0, roots[index], next_root + index, modes[index]));
+    }
+    index := length(roots) - 1;
+    while (index >= 0) {
+        output.after.append(Op(native.ManagedUnpin, 0, 0, 0, next_root + index, 0));
+        index -= 1;
+    }
+    output.next += length(roots);
+    return output;
+}

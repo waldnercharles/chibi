@@ -1,0 +1,101 @@
+{
+  "expectations": [
+    {
+      "text": "The review identifies that the change reshapes the parser to fit the VM's call-depth limit and treats it as an architecture issue, with a number (the limit, a depth count or the remaining headroom).",
+      "passed": true,
+      "evidence": "Finding 1, '(design, should follow up)': 'The depth reductions work around the 64-call limit in authored code instead of addressing it'. It quotes 'SCRIPT_CALL_DEPTH_LIMIT is 64 (src/language/semantic.h:12)' and shows the call-argument chain shrinking from 7 calls to 3."
+    },
+    {
+      "text": "The review proposes a concrete alternative or target shape for that workaround (for example raising the limit, a different iteration structure, or restoring the removed procedures after a limit change).",
+      "passed": true,
+      "evidence": "Finding 1 recommendation: 'Decide whether to raise the limit, or to count frame bytes as the entry suggests. Once the parser no longer needs it, restore ParseExpression, ParsePostfix and ParseArgument.'"
+    },
+    {
+      "text": "The review flags avoidable work in the change (such as the per-if array allocation in the ParseIf end fixup, or the rescans in the new error message) with a count or estimate.",
+      "passed": false,
+      "evidence": "The avoidable work is flagged but not quantified. Finding 3: 'allocates an int[] for every if statement, including ones without else'. Finding 4: 'Opener scans backwards from the end of the file, which can mean every token row, once per unwinding Expect ... The cost is bounded by the call depth'. Neither gives a count of if statements, allocations, scans or token reads, nor any magnitude estimate."
+    },
+    {
+      "text": "Architecture and performance findings come before correctness, test or commit-message findings in the review's ordering.",
+      "passed": false,
+      "evidence": "Findings order: 1 design/architecture, 2 'No regression tests ... (testing, should fix)', 3 ParseIf fixup allocation, 4 Opener rescans (performance), 5 duplication, 6 commit message. The test finding (2) comes before both performance findings (3, 4). The Verdict and the 'What the commit actually does' table also lead with test and commit-message gaps."
+    },
+    {
+      "text": "Every architecture or performance finding includes a count, estimate or measurement.",
+      "passed": false,
+      "evidence": "Finding 1 (architecture) has numbers (64, 51 sites). The two performance findings don't. Finding 3's int[] per if has no count, and Finding 4's rescans are only 'bounded by the call depth, so it isn't a budget risk'."
+    },
+    {
+      "text": "The review does not recommend splitting functions for length or adding defensive checks.",
+      "passed": false,
+      "evidence": "The review argues from function size. Finding 5: 'The loop body is also four levels deep, which conflicts with the small-functions rule. If the depth budget really requires this, say so in a comment. Otherwise call ParseIndexValue.' Finding 1 lists 'to keep functions small' among the reasons to restore ParseExpression, ParsePostfix and ParseArgument. Size is a secondary reason both times, after duplication and the depth limit, but it is still used to justify splitting."
+    }
+  ],
+  "summary": {
+    "passed": 2,
+    "failed": 4,
+    "total": 6,
+    "pass_rate": 0.33
+  },
+  "claims": [
+    {
+      "claim": "Deleting ParseExpression turns 49 call sites into ParseBinary(c, n, OrPower), and the parser now spells it at 51 sites",
+      "type": "factual",
+      "verified": true,
+      "evidence": "The parent bb45c3db7 has 49 ParseExpression(c, n) calls in Declarations/Expressions/Statements. At 2797053cb there are 51 ParseBinary(c, n, OrPower) sites: 49 replacements plus 2 in the inlined ParseArguments range branch."
+    },
+    {
+      "claim": "Neither language-source-parser-chibi nor language-source-tokenizer-chibi appears in any group in tools/test_policy.py (GROUPS, lines 580-622)",
+      "type": "factual",
+      "verified": true,
+      "evidence": "At 2797053cb both selectors are defined at test_policy.py:353-356. They are absent from the GROUPS dict (580-622) and from the later additions (language-asset-compiler-host, render, language-scalar-native, compiler = 'language-package-compiler-chibi*' prefix, benchmarks)."
+    },
+    {
+      "claim": "The corpus is 234 .chibi files and 2,888,323 bytes",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git ls-tree -r -l 2797053cb packages test tools: 234 .chibi files, 2,888,323 bytes."
+    },
+    {
+      "claim": "Steps.chibi is 313,206 bytes at the parent (about 306 KiB), over the old 262,144-byte cap",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git cat-file -s bb45c3db7:tools/compiler/package_compiler/Steps.chibi = 313206 (305.9 KiB). Parent source_tokenizer_chibi.c:33 has 'MAX_SOURCE = 256 * 1024'."
+    },
+    {
+      "claim": "docs/language-friction.md:642 records 'Calls nest at most 64 deep' as friction",
+      "type": "factual",
+      "verified": true,
+      "evidence": "docs/language-friction.md at 2797053cb has the heading '## Calls nest at most 64 deep' at about line 642, followed by 'Every authored function shares a call-depth budget of 64 (#420)'."
+    }
+  ],
+  "timing": {
+    "total_tokens": 174791,
+    "duration_ms": 796772,
+    "total_duration_seconds": 796.8,
+    "executor_duration_seconds": 796.8
+  },
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "assertion": "The review identifies that the change reshapes the parser to fit the VM's call-depth limit and treats it as an architecture issue, with a number (the limit, a depth count or the remaining headroom).",
+        "reason": "Quoting the limit (64) satisfies this, and the commit's own context makes it easy to find, so both configurations pass. Ask for the measured or estimated headroom or the per-level frame cost to make it discriminate."
+      },
+      {
+        "assertion": "The review proposes a concrete alternative or target shape for that workaround (for example raising the limit, a different iteration structure, or restoring the removed procedures after a limit change).",
+        "reason": "Both runs pass. 'Raise the limit and restore the procedures' is the obvious answer once the limit is identified, so this adds little beyond the previous assertion."
+      },
+      {
+        "assertion": "The review does not recommend splitting functions for length or adding defensive checks.",
+        "reason": "Both runs recommend 'if (c.failed) { return -1; }' at the top of Expect, a work-skipping early-out that a grader could read as a defensive check. The baseline fails here only because it cites the small-functions rule. Define 'defensive check' (a guard against an invalid state that should be an assert) so the outcome doesn't depend on reading that guard."
+      },
+      {
+        "reason": "No assertion covers either of the two configuration-unique correctness findings. Only the with-skill run found the int overflow in 'int budget = (int)(size * STEPS_PER_BYTE) + 100000' (source_parser_chibi.c:85, overflows above 357,897 bytes while MAX_SOURCE is 524,288). Only the baseline found that language-source-parser-chibi and language-source-tokenizer-chibi are in no tools/test_policy.py group. Add assertions for both."
+      },
+      {
+        "reason": "Neither the pre-existing Differ double Build (SourceParserDiff.chibi:10,21) nor the commit silently fixing a red parent is asserted. Both runs noticed the red parent, so that one wouldn't discriminate, but the double Build is a with-skill-only perf finding."
+      }
+    ],
+    "overall": "The quantification (A3, A5) and ordering (A4) assertions discriminate well. A1 and A2 pass for both and mostly re-test the same insight. A6 hinges on an interpretation of 'defensive checks' and 'for length' that should be made explicit."
+  }
+}

@@ -1,0 +1,2990 @@
+diff --git a/packages/core/math/Math.chibi b/packages/core/math/Math.chibi
+new file mode 100644
+index 0000000000000000000000000000000000000000..3879c44c2692bda87f14689b83cc2753bae2fba8
+--- /dev/null
++++ b/packages/core/math/Math.chibi
+@@ -0,0 +1,135 @@
++package math
++
++// Scalar number/f32 math. The recovered candidate remains held from SDK
++// shipping pending the current compiler, package and installed-SDK checks.
++// See docs/core-math.md. These functions use scalar values and retain no state.
++//
++// Interpolation and angle conventions reference Odin core:math at
++// 7e313bd6f1fa9ae887c7b522611481cbf2da4cac. This is an altered implementation.
++// Copyright (c) 2016-2025 Ginger Bill. All rights reserved.
++//
++// This software is provided 'as-is', without any express or implied
++// warranty. In no event will the authors be held liable for any damages
++// arising from the use of this software.
++//
++// Permission is granted to anyone to use this software for any purpose,
++// including commercial applications, and to alter it and redistribute it
++// freely, subject to the following restrictions:
++// 1. The origin of this software must not be misrepresented; you must not
++//    claim that you wrote the original software. If you use this software
++//    in a product, an acknowledgment in the product documentation would be
++//    appreciated but is not required.
++// 2. Altered source versions must be plainly marked as such, and must not be
++//    misrepresented as being the original software.
++// 3. This notice may not be removed or altered from any source distribution.
++
++// NaN and both infinities return false. Signed zero and subnormals are finite.
++pub IsFinite :: (value: number) -> bool {
++    return value >= -3.40282346638528859811704183484516925440e38 &&
++           value <= 3.40282346638528859811704183484516925440e38;
++}
++
++// Unclamped interpolation. Each operation rounds to number/f32 separately;
++// subtraction overflow and nonfinite operands follow floating arithmetic.
++pub Lerp :: (start: number, end: number, fraction: number) -> number {
++    span := end - start;
++    offset := span * fraction;
++    return start + offset;
++}
++
++// Returns the unclamped fraction of the range from start to end at value.
++// Every operation uses number/f32, including subtraction overflow.
++// Equal endpoints and nonfinite inputs follow ordinary floating arithmetic.
++pub InverseLerp :: (start: number, end: number, value: number) -> number {
++    return (value - start) / (end - start);
++}
++
++// Maps one range into another without clamping or a degenerate-range fallback.
++pub Remap :: (value: number, old_min: number, old_max: number, new_min: number, new_max: number) -> number {
++    return Lerp(new_min, new_max, InverseLerp(old_min, old_max, value));
++}
++
++// Value precedes edge, matching the retired behavior native's input order.
++// The result is 0 below the edge and 1 otherwise, including an unordered NaN.
++pub Step :: (value: number, edge: number) -> number {
++    if (value < edge) {
++        return 0;
++    }
++    return 1;
++}
++
++// Cubic progress easing, clamped to 0..1. Nonfinite input is invalid.
++pub SmoothStep :: (value: number) -> number {
++    assert(IsFinite(value), "SmoothStep needs a finite value");
++    if (value <= 0) {
++        return 0;
++    }
++    if (value >= 1) {
++        return 1;
++    }
++    return value * value * (3 - 2 * value);
++}
++
++// Rounds to a multiple of step, with half steps rounded away from zero.
++// Both operands and the result must be finite, and step must be nonzero.
++pub QuantizeAngle :: (angle: number, step: number) -> number {
++    assert(IsFinite(angle) && IsFinite(step) && step != 0,
++           "QuantizeAngle needs a finite angle and a finite nonzero step");
++    result := round(angle / step) * step;
++    assert(IsFinite(result), "QuantizeAngle produced nonfinite output");
++    return result;
++}
++
++// Interpolates through the shortest angular difference in radians. At a
++// half turn the negative direction wins. The result remains near start;
++// it is not normalized, and fraction may extrapolate beyond 0..1.
++// f64 intermediates keep the subtraction of finite number angles finite.
++pub AngleLerp :: (start: number, end: number, fraction: number) -> number {
++    assert(IsFinite(start) && IsFinite(end) && IsFinite(fraction),
++           "AngleLerp needs finite inputs");
++    if (fraction == 0) {
++        return start;
++    }
++    pi: f64 = 3.14159265358979323846264338327950288;
++    tau := 2 * pi;
++    distance := fmod(f64(end) - f64(start), tau);
++    if (distance < 0) {
++        distance += tau;
++    }
++    if (distance >= pi) {
++        distance -= tau;
++    }
++    result := number(f64(start) + distance * f64(fraction));
++    assert(IsFinite(result), "AngleLerp produced nonfinite output");
++    return result;
++}
++
++// 1-exp(-x) for nonnegative x. The polynomial avoids cancellation near zero;
++// its omitted term is below 9e-18 at the branch boundary.
++DecayFraction :: (x: f64) -> f64 {
++    if (x < 0.001) {
++        return x * (1 - x * (0.5 - x * (0.16666666666666666667 - x * 0.04166666666666666667)));
++    }
++    return 1 - exp(-x);
++}
++
++// First-order exponential following, using elapsed seconds and a decay rate
++// per second. Nonpositive rate or elapsed time leaves current unchanged.
++// A fixed target's distance decays exponentially; no velocity is retained.
++// This is the relation used by Bevy StableInterpolate::smooth_nudge, computed
++// here with f64 intermediates to retain small steps and avoid span overflow.
++pub Damp :: (current: number, target: number, decay_rate: number, elapsed: number) -> number {
++    assert(IsFinite(current) && IsFinite(target) && IsFinite(decay_rate) && IsFinite(elapsed),
++           "Damp needs finite inputs");
++    if (decay_rate <= 0 || elapsed <= 0 || current == target) {
++        return current;
++    }
++    decay := f64(decay_rate) * f64(elapsed);
++    if (decay < 0.693147180559945309417232121458176568) {
++        fraction := DecayFraction(decay);
++        return number(f64(current) + (f64(target) - f64(current)) * fraction);
++    }
++    // Reconstruct from the nearer endpoint. Subtracting exp(-decay) from 1
++    // can round to 1 while a large initial distance still has a finite tail.
++    return number(f64(target) + (f64(current) - f64(target)) * exp(-decay));
++}
+diff --git a/packages/core/math/MathTests.chibi b/packages/core/math/MathTests.chibi
+new file mode 100644
+index 0000000000000000000000000000000000000000..dfa233917279169222e7738d9e458e619a9ae65f
+--- /dev/null
++++ b/packages/core/math/MathTests.chibi
+@@ -0,0 +1,144 @@
++package math
++
++MathClose :: (actual: number, expected: number, tolerance: number) -> bool {
++    return actual >= expected - tolerance && actual <= expected + tolerance;
++}
++
++@test
++RangeFractionsPreserveOrientationAndExtrapolation :: () {
++    assert(InverseLerp(2, 6, 2) == 0, "range start");
++    assert(InverseLerp(2, 6, 3) == 0.25, "quarter of the range");
++    assert(InverseLerp(2, 6, 6) == 1, "range end");
++    assert(InverseLerp(6, 2, 3) == 0.75, "reversed range orientation");
++    assert(InverseLerp(2, 6, 0) == -0.5, "below range");
++    assert(InverseLerp(2, 6, 8) == 1.5, "above range");
++    assert(InverseLerp(-1, 16777216, 16777215) == 1,
++           "range arithmetic stays single precision");
++}
++
++@test
++InterpolationAndRemappingUseUnclampedFractions :: () {
++    assert(Lerp(2, 6, 0) == 2, "start fraction");
++    assert(Lerp(2, 6, 0.25) == 3, "quarter interpolation");
++    assert(Lerp(6, 2, 0.75) == 3, "reversed interpolation");
++    assert(Lerp(2, 6, -0.5) == 0, "negative fraction extrapolates");
++    assert(Lerp(2, 6, 1.5) == 8, "fraction past one extrapolates");
++    assert(Remap(25, 0, 100, 10, 30) == 15, "quarter of a shifted output range");
++    assert(Remap(25, 100, 0, 10, 30) == 25, "reversed input range");
++    assert(Remap(125, 0, 100, 10, 30) == 35, "mapping extrapolates");
++}
++
++@test
++StepIncludesItsEdge :: () {
++    assert(Step(0.5, 1) == 0, "below edge");
++    assert(Step(1, 1) == 1, "edge belongs to the upper side");
++    assert(Step(1.5, 1) == 1, "above edge");
++    assert(Step(-1, 0) == 0 && Step(0, -1) == 1, "value precedes edge");
++}
++
++@test
++SmoothStepClampsAndEasesProgress :: () {
++    assert(SmoothStep(-1) == 0 && SmoothStep(0) == 0, "lower endpoint clamp");
++    assert(SmoothStep(1) == 1 && SmoothStep(2) == 1, "upper endpoint clamp");
++    assert(SmoothStep(0.5) == 0.5, "symmetric midpoint");
++    assert(SmoothStep(0.25) == 0.15625, "known cubic quarter");
++    assert(SmoothStep(0.75) == 0.84375, "known cubic three quarters");
++    assert(SmoothStep(0.125) < 0.125 && SmoothStep(0.875) > 0.875,
++           "endpoints ease more slowly than linear progress");
++    prior: number = 0;
++    index: int = 1;
++    while (index <= 16) {
++        value := SmoothStep(number(index) / 16);
++        assert(value >= prior, "smooth progress never goes backwards");
++        prior = value;
++        index += 1;
++    }
++}
++
++@test
++AngleQuantizationRoundsHalfStepsAwayFromZero :: () {
++    assert(QuantizeAngle(0.75, 0.5) == 1, "positive half step");
++    assert(QuantizeAngle(-0.75, 0.5) == -1, "negative half step");
++    assert(QuantizeAngle(3, -2) == 4, "negative step keeps its multiples");
++    assert(QuantizeAngle(0, 0.5) == 0, "zero is already quantized");
++    assert(QuantizeAngle(1.1, 0.5) == 1, "nearest multiple");
++}
++
++@test
++AngleInterpolationCrossesTheNearbyWrap :: () {
++    assert(MathClose(AngleLerp(3, -3, 0.5), 3.141592653589793, 0.000001),
++           "positive wrap midpoint is pi");
++    assert(MathClose(AngleLerp(-3, 3, 0.5), -3.141592653589793, 0.000001),
++           "negative wrap midpoint is minus pi");
++    assert(AngleLerp(2, -1, 0) == 2, "zero progress is identity");
++    assert(AngleLerp(1, 2, 2) == 3, "angular fractions extrapolate");
++    assert(MathClose(AngleLerp(0, 3.141592653589793, 0.5), -1.570796326794897, 0.000001),
++           "the half-turn tie takes the negative direction");
++}
++
++@test
++FiniteClassificationIncludesTheRepresentableBoundaries :: () {
++    assert(IsFinite(0) && IsFinite(-0.0), "both zero signs are finite");
++    assert(IsFinite(3.40282346638528859811704183484516925440e38), "largest finite number");
++    assert(IsFinite(-3.40282346638528859811704183484516925440e38), "lowest finite number");
++    assert(IsFinite(1.401298464324817070923729583289916131280e-45), "smallest positive subnormal");
++}
++
++@test
++ExponentialDampingHasElapsedTimeAndRateIdentity :: () {
++    assert(Damp(2, 8, 3, 0) == 2, "zero elapsed time");
++    assert(Damp(2, 8, 0, 1) == 2, "zero decay rate");
++    assert(Damp(2, 8, 3, -1) == 2, "negative elapsed time clamps to zero");
++    assert(Damp(2, 8, -1, 1) == 2, "negative rate clamps to zero");
++    assert(Damp(2, 2, 3, 1) == 2, "target equilibrium");
++}
++
++@test
++ExponentialDampingUsesThePhysicalHalfLife :: () {
++    // A rate of ln(2) halves the remaining distance in one second.
++    rate: number = 0.693147180559945309417232121458176568;
++    assert(MathClose(Damp(0, 8, rate, 1), 4, 0.000001), "one half life");
++    assert(MathClose(Damp(0, 8, rate, 2), 6, 0.000001), "two half lives");
++    once := Damp(0, 8, rate, 1);
++    half := Damp(0, 8, rate, 0.5);
++    twice := Damp(half, 8, rate, 0.5);
++    assert(MathClose(twice, once, 0.000001), "fixed-target time subdivision");
++    assert(MathClose(Damp(half, 0, rate, 0.5), 1.6568542494923802, 0.000001),
++           "retargeting starts at the current value");
++}
++
++@test
++ExponentialDampingKeepsTinyStepsAndExtremeFiniteRanges :: () {
++    tiny := Damp(0, 1, 1, 0.00000001);
++    assert(tiny > 0 && MathClose(tiny, 0.00000001, 0.00000000000001),
++           "small exponential differences do not round to zero early");
++    limit: number = 3.40282346638528859811704183484516925440e38;
++    middle := Damp(-limit, limit, 0.6931471805599453, 1);
++    assert(IsFinite(middle), "finite endpoints do not overflow their interpolation span");
++    assert(middle > -limit && middle < limit, "the result stays between the endpoints");
++    assert(Damp(-limit, limit, limit, limit) == limit, "complete decay reaches the target");
++    assert(MathClose(Damp(1e20, 0, 1, 40), 424.835434, 0.0001),
++           "large distances keep a finite exponential tail after the blend fraction rounds to one");
++}
++
++@test
++PreciseMathKernelsKeepDoubleArgumentsAndHugeFinitePhases :: () {
++    sine := sin_precise(f64(1e20));
++    cosine := cos_precise(f64(1e20));
++    // Independent high-precision phase reduction and Taylor-series values.
++    assert(sine > -0.645251285265782 && sine < -0.645251285265779,
++           "f64 sine uses the full finite phase");
++    assert(cosine > 0.763970404441727 && cosine < 0.763970404441730,
++           "f64 cosine uses the full finite phase");
++    remainder := fmod(f64(1e20), f64(6.283185307179586476925286766559));
++    // Exact decimal remainder of the binary64 input operands.
++    assert(remainder > 1.895589910316636 && remainder < 1.895589910316639,
++           "floating remainder preserves low phase bits beyond the quotient's integer precision");
++    assert(fmod(-7.0, 2.5) == -2, "number remainder follows the dividend sign");
++    assert(fmod(number(7.5)) == 0.5, "number remainder defaults to a unit divisor");
++    assert(fmod(f64(7.5)) == f64(0.5), "f64 remainder has the same unit divisor default");
++    assert(MathClose(sin_precise(1.0), 0.8414709848078965, 0.0000001),
++           "number sine calls its native precision");
++    assert(MathClose(cos_precise(1.0), 0.5403023058681397, 0.0000001),
++           "number cosine calls its native precision");
++}
+diff --git a/packages/core/math/Spring.chibi b/packages/core/math/Spring.chibi
+new file mode 100644
+index 0000000000000000000000000000000000000000..d3bc9752f7fb7fceb92d7aaef167bae87c615699
+--- /dev/null
++++ b/packages/core/math/Spring.chibi
+@@ -0,0 +1,123 @@
++package math
++
++// The spring is a value. Changing a target does not reset either field.
++pub Spring :: struct {
++    position: number;
++    velocity: number;
++}
++
++// sin(x)/x without division by a tiny phase near critical damping or dt=0.
++SpringSinc :: (phase: f64) -> f64 {
++    if phase > -0.0001 && phase < 0.0001 {
++        square := phase * phase;
++        return 1 - square / 6 + square * square / 120;
++    }
++    return sin_precise(phase) / phase;
++}
++
++SpringSincLoss :: (phase: f64) -> f64 {
++    if phase > -0.001 && phase < 0.001 {
++        square := phase * phase;
++        return square * (0.16666666666666666667 - square / 120 + square * square / 5040);
++    }
++    return 1 - SpringSinc(phase);
++}
++
++// (1-exp(-x))/x. The series preserves tiny overdamped time steps.
++SpringDecayRatio :: (value: f64) -> f64 {
++    if value < 0.0001 {
++        return 1 - value / 2 + value * value / 6 - value * value * value / 24;
++    }
++    return (1 - exp(-value)) / value;
++}
++
++SpringDecayRatioLoss :: (value: f64) -> f64 {
++    if value < 0.001 {
++        return value * (0.5 - value / 6 + value * value / 24 - value * value * value / 120);
++    }
++    return 1 - SpringDecayRatio(value);
++}
++
++// 1-(1+x)*exp(-x), kept accurate even when a tiny movement of a distant
++// target is large enough to affect a number. Computing 1-A loses it then.
++SpringCriticalChange :: (value: f64) -> f64 {
++    if value < 0.001 {
++        return value * value * (0.5 - value / 3 + value * value / 8 -
++                                value * value * value / 30 + value * value * value * value / 144);
++    }
++    return DecayFraction(value) - value * exp(-value);
++}
++
++SpringResult :: (spring: Spring, target: number, position_factor: f64,
++                 position_change: f64, position_velocity: f64, velocity_position: f64,
++                 velocity_factor: f64) -> Spring {
++    offset := f64(spring.position) - f64(target);
++    next_position := f64(spring.position) - position_change * offset;
++    if position_change >= 0.5 {
++        next_position = f64(target) + position_factor * offset;
++    }
++    position := number(next_position + position_velocity * f64(spring.velocity));
++    velocity := number(velocity_position * offset + velocity_factor * f64(spring.velocity));
++    assert(IsFinite(position) && IsFinite(velocity), "AdvanceSpring produced nonfinite output");
++    return {position: position, velocity: velocity};
++}
++
++// Analytic solution of x'' + 2*zeta*omega*x' + omega^2*(x-target) = 0.
++// Frequency is cycles/second, damping is its dimensionless ratio, elapsed is seconds.
++// As in the retired native operation, frequency is at least .01 and damping
++// and elapsed are nonnegative. The target is constant during this interval.
++// Equations are derived independently from Ryan Juckett, Damped Springs:
++// https://www.ryanjuckett.com/damped-springs/ . No settling snap is applied.
++pub AdvanceSpring :: (spring: Spring, target: number, frequency: number,
++                      damping: number, elapsed: number) -> Spring {
++    assert(IsFinite(spring.position) && IsFinite(spring.velocity) && IsFinite(target) &&
++           IsFinite(frequency) && IsFinite(damping) && IsFinite(elapsed),
++           "AdvanceSpring needs finite inputs");
++    if elapsed <= 0 || (spring.position == target && spring.velocity == 0) {
++        return spring;
++    }
++    hz := f64(frequency);
++    if hz < 0.01 {
++        hz = 0.01;
++    }
++    ratio := f64(damping);
++    if ratio < 0 {
++        ratio = 0;
++    }
++    dt := f64(elapsed);
++    omega := hz * 6.283185307179586476925286766559;
++    square := omega * omega;
++    decay_rate := ratio * omega;
++    if ratio < 1 {
++        phase := omega * sqrt((1 - ratio) * (1 + ratio)) * dt;
++        decay := exp(-decay_rate * dt);
++        off_diagonal := decay * dt * SpringSinc(phase);
++        diagonal := decay * cos_precise(phase);
++        half_sine := sin_precise(phase / 2);
++        change := SpringCriticalChange(decay_rate * dt) +
++                  decay * (2 * half_sine * half_sine + decay_rate * dt * SpringSincLoss(phase));
++        return SpringResult(spring, target, diagonal + decay_rate * off_diagonal,
++                            change, off_diagonal, -square * off_diagonal,
++                            diagonal - decay_rate * off_diagonal);
++    }
++    if ratio == 1 {
++        decay := exp(-omega * dt);
++        off_diagonal := decay * dt;
++        return SpringResult(spring, target, decay + omega * off_diagonal,
++                            SpringCriticalChange(omega * dt), off_diagonal, -square * off_diagonal,
++                            decay - omega * off_diagonal);
++    }
++    // Rationalizing the slow root avoids cancellation at large damping.
++    sum := ratio + sqrt((ratio - 1) * (ratio + 1));
++    slow := -omega / sum;
++    fast := -omega * sum;
++    gap := slow - fast;
++    slow_decay := exp(slow * dt);
++    fast_decay := exp(fast * dt);
++    off_diagonal := slow_decay * dt * SpringDecayRatio(gap * dt);
++    change := SpringCriticalChange(-slow * dt) +
++              (-slow * dt) * slow_decay * SpringDecayRatioLoss(gap * dt);
++    return SpringResult(spring, target, slow_decay - slow * off_diagonal,
++                        change, off_diagonal, -square * off_diagonal,
++                        fast_decay + slow * off_diagonal);
++}
+diff --git a/packages/core/math/SpringTests.chibi b/packages/core/math/SpringTests.chibi
+new file mode 100644
+index 0000000000000000000000000000000000000000..9c8b535177ad290b01ba457c3affe82ae7d36e5f
+--- /dev/null
++++ b/packages/core/math/SpringTests.chibi
+@@ -0,0 +1,82 @@
++package math
++
++SpringNear :: (actual: number, expected: number, tolerance: number) -> bool {
++    return actual >= expected - tolerance && actual <= expected + tolerance;
++}
++
++@test
++SpringZeroTimeAndEquilibrium :: () {
++    spring: Spring = {position: 3, velocity: -7};
++    zero := AdvanceSpring(spring, -20, 2, 0.5, 0);
++    negative := AdvanceSpring(spring, -20, 2, 0.5, -1);
++    assert(zero.position == 3 && zero.velocity == -7);
++    assert(negative.position == 3 && negative.velocity == -7);
++    equilibrium := AdvanceSpring({position: 3, velocity: 0}, 3, 1000, 2, 1000);
++    assert(equilibrium.position == 3 && equilibrium.velocity == 0);
++}
++
++@test
++SpringCriticalAnalyticReference :: () {
++    // Unit displacement, zero velocity, omega=2*pi after 1/8 second.
++    // Independent high-precision evaluation: x=(1+pi/4)*exp(-pi/4).
++    result := AdvanceSpring({position: 1, velocity: 0}, 0, 1, 1, 0.125);
++    assert(SpringNear(result.position, 0.8140312, 0.0000002));
++    assert(SpringNear(result.velocity, -2.2499645, 0.000001));
++}
++
++@test
++SpringUndampedQuarterPeriod :: () {
++    result := AdvanceSpring({position: 1, velocity: 0}, 0, 1, 0, 0.25);
++    assert(SpringNear(result.position, 0, 0.0000001));
++    assert(SpringNear(result.velocity, -6.2831853, 0.000001));
++}
++
++@test
++SpringSubdivisionAndRetargeting :: () {
++    ratios: number[] = [0, 0.5, 0.99999994, 1, 1.00000012, 2, 1000000];
++    for ratio in ratios {
++        initial: Spring = {position: -2, velocity: 3};
++        whole := AdvanceSpring(initial, 5, 2, ratio, 0.25);
++        first := AdvanceSpring(initial, 5, 2, ratio, 0.125);
++        halves := AdvanceSpring(first, 5, 2, ratio, 0.125);
++        assert(SpringNear(halves.position, whole.position, 0.000002));
++        assert(SpringNear(halves.velocity, whole.velocity, 0.00001));
++        retargeted := AdvanceSpring(first, -8, 2, ratio, 0);
++        assert(retargeted.position == first.position && retargeted.velocity == first.velocity);
++        continued := AdvanceSpring(first, -8, 2, ratio, 0.03125);
++        assert(IsFinite(continued.position) && IsFinite(continued.velocity));
++    }
++}
++
++@test
++SpringExtremeDampingAndSmallSteps :: () {
++    spring: Spring = {position: 1, velocity: 0};
++    slow := AdvanceSpring(spring, 0, 1, 100000000, 1);
++    assert(slow.position > 0.9999 && slow.position <= 1);
++    assert(slow.velocity < 0 && slow.velocity > -0.0001);
++    tiny := AdvanceSpring({position: 0, velocity: 1}, 0, 1, 2, 0.0000000001);
++    assert(tiny.position > 0 && tiny.position <= 0.0000000001);
++    assert(tiny.velocity > 0.99999 && tiny.velocity <= 1);
++    long := AdvanceSpring(spring, 0, 1, 1, 1000);
++    assert(long.position == 0 && long.velocity == 0);
++}
++
++@test
++SpringTinyMovementTowardADistantTarget :: () {
++    ratios: number[] = [0, 0.5, 1, 2, 1000000];
++    for ratio in ratios {
++        result := AdvanceSpring({position: 1, velocity: 0}, 1e20, 1, ratio, 1e-12);
++        assert(SpringNear(result.position, 1.0019739, 0.0000002));
++    }
++    settled := AdvanceSpring({position: 1e20, velocity: 0}, 1, 1, 1, 1000);
++    assert(settled.position == 1 && settled.velocity == 0);
++}
++
++@test
++SpringRetargetingContinuesItsExistingMomentum :: () {
++    first := AdvanceSpring({position: -2, velocity: 3}, 5, 2, 0.5, 0.125);
++    next := AdvanceSpring(first, -8, 2, 0.5, 0.03125);
++    // Independent complex-root evaluation, rounding the intermediate state to f32.
++    assert(SpringNear(next.position, 3.067892074584961, 0.000002));
++    assert(SpringNear(next.velocity, -14.758637428283691, 0.00001));
++}
+diff --git a/packages/core/math/ease/Ease.chibi b/packages/core/math/ease/Ease.chibi
+new file mode 100644
+index 0000000000000000000000000000000000000000..c27e654b7525a8957ff501324ff7edb560844556
+--- /dev/null
++++ b/packages/core/math/ease/Ease.chibi
+@@ -0,0 +1,271 @@
++package ease
++
++// Stateless progress curves. Pass progress in [0, 1]; inputs are not clamped.
++// Back and Elastic can exceed [0, 1]. These curves store no time or velocity.
++// Endpoints are exact, including where trigonometric rounding would change them.
++//
++// Adapted for Chibi from Odin core:math/ease, with explicit endpoint guards:
++// https://github.com/odin-lang/Odin/blob/7e313bd6f1fa9ae887c7b522611481cbf2da4cac/core/math/ease/ease.odin
++// Odin's equations originate in Warren Moore's public-domain AHEasing:
++// https://github.com/warrenm/AHEasing
++//
++// Copyright (c) 2016-2025 Ginger Bill. All rights reserved.
++//
++// This software is provided 'as-is', without any express or implied
++// warranty. In no event will the authors be held liable for any damages
++// arising from the use of this software.
++//
++// Permission is granted to anyone to use this software for any purpose,
++// including commercial applications, and to alter it and redistribute it
++// freely, subject to the following restrictions:
++//
++// 1. The origin of this software must not be misrepresented; you must not
++//    claim that you wrote the original software. If you use this software
++//    in a product, an acknowledgment in the product documentation would be
++//    appreciated but is not required.
++// 2. Altered source versions must be plainly marked as such, and must not be
++//    misrepresented as being the original software.
++// 3. This notice may not be removed or altered from any source distribution.
++//
++// AHEasing's original notice:
++// This is free and unencumbered software released into the public domain.
++//
++// Anyone is free to copy, modify, publish, use, compile, sell, or
++// distribute this software, either in source code form or as a compiled
++// binary, for any purpose, commercial or non-commercial, and by any
++// means.
++//
++// In jurisdictions that recognize copyright laws, the author or authors
++// of this software dedicate any and all copyright interest in the
++// software to the public domain. We make this dedication for the benefit
++// of the public at large and to the detriment of our heirs and
++// successors. We intend this dedication to be an overt act of
++// relinquishment in perpetuity of all present and future rights to this
++// software under copyright law.
++//
++// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
++// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
++// IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
++// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
++// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
++// OTHER DEALINGS IN THE SOFTWARE.
++//
++// For more information, please refer to <https://unlicense.org>
++
++Pi: number : 3.14159265358979323846;
++HalfPi: number : 1.57079632679489661923;
++
++pub Linear :: (progress: number) -> number {
++    return progress;
++}
++
++pub QuadraticIn :: (progress: number) -> number {
++    return progress * progress;
++}
++
++pub QuadraticOut :: (progress: number) -> number {
++    return -progress * (progress - 2);
++}
++
++pub QuadraticInOut :: (progress: number) -> number {
++    if (progress < 0.5) {
++        return 2 * progress * progress;
++    }
++    return -2 * progress * progress + 4 * progress - 1;
++}
++
++pub CubicIn :: (progress: number) -> number {
++    return progress * progress * progress;
++}
++
++pub CubicOut :: (progress: number) -> number {
++    tail := progress - 1;
++    return tail * tail * tail + 1;
++}
++
++pub CubicInOut :: (progress: number) -> number {
++    if (progress < 0.5) {
++        return 4 * progress * progress * progress;
++    }
++    tail := 2 * progress - 2;
++    return 0.5 * tail * tail * tail + 1;
++}
++
++pub QuarticIn :: (progress: number) -> number {
++    return progress * progress * progress * progress;
++}
++
++pub QuarticOut :: (progress: number) -> number {
++    tail := progress - 1;
++    return tail * tail * tail * (1 - progress) + 1;
++}
++
++pub QuarticInOut :: (progress: number) -> number {
++    if (progress < 0.5) {
++        return 8 * progress * progress * progress * progress;
++    }
++    tail := progress - 1;
++    return -8 * tail * tail * tail * tail + 1;
++}
++
++pub QuinticIn :: (progress: number) -> number {
++    return progress * progress * progress * progress * progress;
++}
++
++pub QuinticOut :: (progress: number) -> number {
++    tail := progress - 1;
++    return tail * tail * tail * tail * tail + 1;
++}
++
++pub QuinticInOut :: (progress: number) -> number {
++    if (progress < 0.5) {
++        return 16 * progress * progress * progress * progress * progress;
++    }
++    tail := 2 * progress - 2;
++    return 0.5 * tail * tail * tail * tail * tail + 1;
++}
++
++pub SineIn :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    return sin_precise((progress - 1) * HalfPi) + 1;
++}
++
++pub SineOut :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    return sin_precise(progress * HalfPi);
++}
++
++pub SineInOut :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    return 0.5 * (1 - cos_precise(progress * Pi));
++}
++
++pub CircularIn :: (progress: number) -> number {
++    return 1 - sqrt(1 - progress * progress);
++}
++
++pub CircularOut :: (progress: number) -> number {
++    return sqrt((2 - progress) * progress);
++}
++
++pub CircularInOut :: (progress: number) -> number {
++    if (progress < 0.5) {
++        return 0.5 * (1 - sqrt(1 - 4 * progress * progress));
++    }
++    return 0.5 * (sqrt(-(2 * progress - 3) * (2 * progress - 1)) + 1);
++}
++
++pub ExponentialIn :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    return pow(2.0, 10 * (progress - 1));
++}
++
++pub ExponentialOut :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    return 1 - pow(2.0, -10 * progress);
++}
++
++pub ExponentialInOut :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    if (progress < 0.5) {
++        return 0.5 * pow(2.0, 20 * progress - 10);
++    }
++    return -0.5 * pow(2.0, -20 * progress + 10) + 1;
++}
++
++pub ElasticIn :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    return sin_precise(13 * HalfPi * progress) * pow(2.0, 10 * (progress - 1));
++}
++
++pub ElasticOut :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    return sin_precise(-13 * HalfPi * (progress + 1)) * pow(2.0, -10 * progress) + 1;
++}
++
++pub ElasticInOut :: (progress: number) -> number {
++    if (progress == 0 || progress == 1 || progress == 0.5) {
++        return progress;
++    }
++    if (progress < 0.5) {
++        return 0.5 * sin_precise(13 * HalfPi * (2 * progress)) * pow(2.0, 10 * (2 * progress - 1));
++    }
++    return 0.5 * (sin_precise(-13 * HalfPi * (2 * progress)) * pow(2.0, -10 * (2 * progress - 1)) + 2);
++}
++
++pub BackIn :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    return progress * progress * progress - progress * sin_precise(progress * Pi);
++}
++
++pub BackOut :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    tail := 1 - progress;
++    return 1 - (tail * tail * tail - tail * sin_precise(tail * Pi));
++}
++
++pub BackInOut :: (progress: number) -> number {
++    if (progress == 0 || progress == 1 || progress == 0.5) {
++        return progress;
++    }
++    if (progress < 0.5) {
++        head := 2 * progress;
++        return 0.5 * (head * head * head - head * sin_precise(head * Pi));
++    }
++    tail := 2 - 2 * progress;
++    return 0.5 * (1 - (tail * tail * tail - tail * sin_precise(tail * Pi))) + 0.5;
++}
++
++pub BounceIn :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    return 1 - BounceOut(1 - progress);
++}
++
++pub BounceOut :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    if (progress < number(4.0) / 11.0) {
++        return 121 * progress * progress / 16.0;
++    }
++    if (progress < number(8.0) / 11.0) {
++        return number(363.0) / 40.0 * progress * progress - number(99.0) / 10.0 * progress + number(17.0) / 5.0;
++    }
++    if (progress < number(9.0) / 10.0) {
++        return number(4356.0) / 361.0 * progress * progress - number(35442.0) / 1805.0 * progress + number(16061.0) / 1805.0;
++    }
++    return number(54.0) / 5.0 * progress * progress - number(513.0) / 25.0 * progress + number(268.0) / 25.0;
++}
++
++pub BounceInOut :: (progress: number) -> number {
++    if (progress == 0 || progress == 1) {
++        return progress;
++    }
++    if (progress < 0.5) {
++        return 0.5 * BounceIn(2 * progress);
++    }
++    return 0.5 * BounceOut(2 * progress - 1) + 0.5;
++}
+diff --git a/packages/core/math/ease/EaseTests.chibi b/packages/core/math/ease/EaseTests.chibi
+new file mode 100644
+index 0000000000000000000000000000000000000000..fbad376832de99f3abb048d4b5e4ca5a4e63223d
+--- /dev/null
++++ b/packages/core/math/ease/EaseTests.chibi
+@@ -0,0 +1,193 @@
++package ease
++
++EaseClose :: (actual: number, expected: number) {
++    assert(actual >= expected - 0.000004 && actual <= expected + 0.000004);
++}
++
++@test
++EveryEasingKeepsItsEndpoints :: () {
++    assert(Linear(0) == 0 && Linear(1) == 1);
++    assert(QuadraticIn(0) == 0 && QuadraticIn(1) == 1);
++    assert(QuadraticOut(0) == 0 && QuadraticOut(1) == 1);
++    assert(QuadraticInOut(0) == 0 && QuadraticInOut(1) == 1);
++    assert(CubicIn(0) == 0 && CubicIn(1) == 1);
++    assert(CubicOut(0) == 0 && CubicOut(1) == 1);
++    assert(CubicInOut(0) == 0 && CubicInOut(1) == 1);
++    assert(QuarticIn(0) == 0 && QuarticIn(1) == 1);
++    assert(QuarticOut(0) == 0 && QuarticOut(1) == 1);
++    assert(QuarticInOut(0) == 0 && QuarticInOut(1) == 1);
++    assert(QuinticIn(0) == 0 && QuinticIn(1) == 1);
++    assert(QuinticOut(0) == 0 && QuinticOut(1) == 1);
++    assert(QuinticInOut(0) == 0 && QuinticInOut(1) == 1);
++    assert(SineIn(0) == 0 && SineIn(1) == 1);
++    assert(SineOut(0) == 0 && SineOut(1) == 1);
++    assert(SineInOut(0) == 0 && SineInOut(1) == 1);
++    assert(CircularIn(0) == 0 && CircularIn(1) == 1);
++    assert(CircularOut(0) == 0 && CircularOut(1) == 1);
++    assert(CircularInOut(0) == 0 && CircularInOut(1) == 1);
++    assert(ExponentialIn(0) == 0 && ExponentialIn(1) == 1);
++    assert(ExponentialOut(0) == 0 && ExponentialOut(1) == 1);
++    assert(ExponentialInOut(0) == 0 && ExponentialInOut(1) == 1);
++    assert(ElasticIn(0) == 0 && ElasticIn(1) == 1);
++    assert(ElasticOut(0) == 0 && ElasticOut(1) == 1);
++    assert(ElasticInOut(0) == 0 && ElasticInOut(1) == 1);
++    assert(BackIn(0) == 0 && BackIn(1) == 1);
++    assert(BackOut(0) == 0 && BackOut(1) == 1);
++    assert(BackInOut(0) == 0 && BackInOut(1) == 1);
++    assert(BounceIn(0) == 0 && BounceIn(1) == 1);
++    assert(BounceOut(0) == 0 && BounceOut(1) == 1);
++    assert(BounceInOut(0) == 0 && BounceInOut(1) == 1);
++}
++
++@test
++EveryInOutPassesThroughTheMiddle :: () {
++    assert(Linear(0.5) == 0.5);
++    assert(QuadraticInOut(0.5) == 0.5);
++    assert(CubicInOut(0.5) == 0.5);
++    assert(QuarticInOut(0.5) == 0.5);
++    assert(QuinticInOut(0.5) == 0.5);
++    EaseClose(SineInOut(0.5), 0.5);
++    assert(CircularInOut(0.5) == 0.5);
++    assert(ExponentialInOut(0.5) == 0.5);
++    assert(ElasticInOut(0.5) == 0.5);
++    assert(BackInOut(0.5) == 0.5);
++    assert(BounceInOut(0.5) == 0.5);
++}
++
++@test
++PolynomialFamiliesHaveTheirDistinctRates :: () {
++    assert(Linear(0.25) == 0.25);
++    assert(QuadraticIn(0.5) == 0.25);
++    assert(QuadraticOut(0.5) == 0.75);
++    assert(QuadraticInOut(0.25) == 0.125);
++    assert(CubicIn(0.5) == 0.125);
++    assert(CubicOut(0.5) == 0.875);
++    assert(CubicInOut(0.25) == 0.0625);
++    assert(QuarticIn(0.5) == 0.0625);
++    assert(QuarticOut(0.5) == 0.9375);
++    assert(QuarticInOut(0.25) == 0.03125);
++    assert(QuinticIn(0.5) == 0.03125);
++    assert(QuinticOut(0.5) == 0.96875);
++    assert(QuinticInOut(0.25) == 0.015625);
++}
++
++@test
++TrigonometricAndExponentialFamiliesHaveKnownSamples :: () {
++    EaseClose(SineIn(0.5), 0.2928932188);
++    EaseClose(SineOut(0.5), 0.7071067812);
++    EaseClose(SineInOut(0.25), 0.1464466094);
++    EaseClose(CircularIn(0.5), 0.1339745962);
++    EaseClose(CircularOut(0.5), 0.8660254038);
++    EaseClose(CircularInOut(0.25), 0.0669872981);
++    assert(ExponentialIn(0.5) == 0.03125);
++    assert(ExponentialOut(0.5) == 0.96875);
++    assert(ExponentialInOut(0.25) == 0.015625);
++}
++
++@test
++OutCurvesReverseInCurves :: () {
++    index: int = 0;
++    while (index <= 32) {
++        progress: number = number(index) / 32;
++        reverse := 1 - progress;
++        EaseClose(QuadraticOut(progress) + QuadraticIn(reverse), 1);
++        EaseClose(CubicOut(progress) + CubicIn(reverse), 1);
++        EaseClose(QuarticOut(progress) + QuarticIn(reverse), 1);
++        EaseClose(QuinticOut(progress) + QuinticIn(reverse), 1);
++        EaseClose(SineOut(progress) + SineIn(reverse), 1);
++        EaseClose(CircularOut(progress) + CircularIn(reverse), 1);
++        EaseClose(ExponentialOut(progress) + ExponentialIn(reverse), 1);
++        EaseClose(ElasticOut(progress) + ElasticIn(reverse), 1);
++        EaseClose(BackOut(progress) + BackIn(reverse), 1);
++        EaseClose(BounceOut(progress) + BounceIn(reverse), 1);
++        index += 1;
++    }
++}
++
++@test
++InOutCurvesAreSymmetric :: () {
++    index: int = 0;
++    while (index <= 32) {
++        progress: number = number(index) / 32;
++        reverse := 1 - progress;
++        EaseClose(QuadraticInOut(progress) + QuadraticInOut(reverse), 1);
++        EaseClose(CubicInOut(progress) + CubicInOut(reverse), 1);
++        EaseClose(QuarticInOut(progress) + QuarticInOut(reverse), 1);
++        EaseClose(QuinticInOut(progress) + QuinticInOut(reverse), 1);
++        EaseClose(SineInOut(progress) + SineInOut(reverse), 1);
++        EaseClose(CircularInOut(progress) + CircularInOut(reverse), 1);
++        EaseClose(ExponentialInOut(progress) + ExponentialInOut(reverse), 1);
++        EaseClose(ElasticInOut(progress) + ElasticInOut(reverse), 1);
++        EaseClose(BackInOut(progress) + BackInOut(reverse), 1);
++        EaseClose(BounceInOut(progress) + BounceInOut(reverse), 1);
++        index += 1;
++    }
++}
++
++@test
++NonOvershootingFamiliesMoveForward :: () {
++    index: int = 1;
++    while (index <= 64) {
++        progress: number = number(index) / 64;
++        previous: number = number(index - 1) / 64;
++        assert(Linear(previous) <= Linear(progress));
++        assert(QuadraticIn(previous) <= QuadraticIn(progress));
++        assert(QuadraticOut(previous) <= QuadraticOut(progress));
++        assert(QuadraticInOut(previous) <= QuadraticInOut(progress));
++        assert(CubicIn(previous) <= CubicIn(progress));
++        assert(CubicOut(previous) <= CubicOut(progress));
++        assert(CubicInOut(previous) <= CubicInOut(progress));
++        assert(QuarticIn(previous) <= QuarticIn(progress));
++        assert(QuarticOut(previous) <= QuarticOut(progress));
++        assert(QuarticInOut(previous) <= QuarticInOut(progress));
++        assert(QuinticIn(previous) <= QuinticIn(progress));
++        assert(QuinticOut(previous) <= QuinticOut(progress));
++        assert(QuinticInOut(previous) <= QuinticInOut(progress));
++        assert(SineIn(previous) <= SineIn(progress));
++        assert(SineOut(previous) <= SineOut(progress));
++        assert(SineInOut(previous) <= SineInOut(progress));
++        assert(CircularIn(previous) <= CircularIn(progress));
++        assert(CircularOut(previous) <= CircularOut(progress));
++        assert(CircularInOut(previous) <= CircularInOut(progress));
++        assert(ExponentialIn(previous) <= ExponentialIn(progress));
++        assert(ExponentialOut(previous) <= ExponentialOut(progress));
++        assert(ExponentialInOut(previous) <= ExponentialInOut(progress));
++        index += 1;
++    }
++}
++
++@test
++BackCurvesAnticipateAndOvershoot :: () {
++    EaseClose(BackIn(0.5), -0.375);
++    EaseClose(BackOut(0.5), 1.375);
++    assert(BackInOut(0.25) < 0);
++    assert(BackInOut(0.75) > 1);
++}
++
++@test
++ElasticCurvesOscillateAcrossTheirTargets :: () {
++    assert(ElasticIn(0.5) < 0);
++    assert(ElasticIn(0.75) > 0);
++    assert(ElasticOut(0.25) < 1);
++    assert(ElasticOut(0.5) > 1);
++    assert(ElasticInOut(0.25) < 0);
++    assert(ElasticInOut(0.75) > 1);
++}
++
++@test
++BounceCurvesHaveSeparateRebounds :: () {
++    EaseClose(BounceOut(4.0 / 11.0), 1);
++    EaseClose(BounceOut(8.0 / 11.0), 1);
++    EaseClose(BounceOut(0.9), 1);
++    EaseClose(BounceOut(6.0 / 11.0), 0.7);
++    assert(BounceOut(0.45) < BounceOut(0.4));
++    assert(BounceOut(0.65) > BounceOut(0.6));
++    assert(BounceIn(0.55) > BounceIn(0.6));
++}
++
++@test
++ProgressIsNotSilentlyClamped :: () {
++    assert(Linear(-0.5) == -0.5 && Linear(1.5) == 1.5);
++    assert(QuadraticIn(-0.5) == 0.25);
++    assert(CubicOut(1.5) == 1.125);
++}
+diff --git a/src/graph/nodes/const_nodes.c b/src/graph/nodes/const_nodes.c
+index 5ca112d835b925948469670e63786a8aa7ad69f3..c05045b2bd036b4f7a1864ef24578989cd5aba11 100644
+--- a/src/graph/nodes/const_nodes.c
++++ b/src/graph/nodes/const_nodes.c
+@@ -190,9 +190,6 @@ LITERAL_DESC(String, NATIVE_ARITHMETIC_String_NAME, "Returns Value as a constant
+ static node_desc *const EXTRA_NODES[] = {
+ #define MATH_NODE_ENTRY(name) &NODE_##name,
+     MATH_EXPRESSION_NODES(MATH_NODE_ENTRY)
+-#undef MATH_NODE_ENTRY
+-#define MATH_NODE_ENTRY(name) &NODE_##name,
+-            MATH_OPERATION_NODES(MATH_NODE_ENTRY)
+ #undef MATH_NODE_ENTRY
+         & NODE_Greater_Or_Equal,
+     &NODE_Integer_Greater_Or_Equal,
+diff --git a/src/graph/nodes/math_expression.c b/src/graph/nodes/math_expression.c
+index c2abad1a0f0a4e2ec4cc914c29bf0ae4ef6b6fad..30be5b09113d907ac1c7f7391a717fb6ba081cc2 100644
+--- a/src/graph/nodes/math_expression.c
++++ b/src/graph/nodes/math_expression.c
+@@ -122,8 +122,8 @@ static const math_function functions[] = {
+     { .name = "max", .arity = 2, .nodes = { "Max", "Shader Max", "Field Max" } },
+     { .name = "clamp", .arity = 3, .nodes = { "Clamp", "Shader Clamp", "Field Clamp" } },
+     { .name = "saturate", .arity = 1, .nodes = { NULL, "Shader Saturate" } },
+-    { .name = "mix", .arity = 3, .nodes = { "Mix", "Shader Mix" } },
+-    { .name = "step", .arity = 2, .nodes = { "Step", "Shader Step" }, .order = { 1, 0 } },
++    { .name = "mix", .arity = 3, .nodes = { NULL, "Shader Mix" } },
++    { .name = "step", .arity = 2, .nodes = { NULL, "Shader Step" }, .order = { 1, 0 } },
+     { .name = "smoothstep",
+       .arity = 3,
+       .nodes = { NULL, "Shader Smoothstep" },
+diff --git a/src/graph/nodes/math_nodes.c b/src/graph/nodes/math_nodes.c
+index 5cced377fc9e1db75e2119da936bd53d03155115..642a342aa21fdbae8908773fcc5d928a81a8e317 100644
+--- a/src/graph/nodes/math_nodes.c
++++ b/src/graph/nodes/math_nodes.c
+@@ -41,41 +41,6 @@ NATIVE_MATH_UNARIES(UNARY)
+ NATIVE_MATH_BINARIES(BINARY)
+ #undef BINARY
+ 
+-/* step(edge, x): 0 below the edge, 1 from it on (GLSL). */
+-static pin_spec step_inputs[] = { NATIVE_MATH_STEP_INPUTS(GRAPH_NATIVE_PORT) };
+-node_desc NODE_Step = {
+-    .name = NATIVE_MATH_Step_NAME,
+-    .inputs = step_inputs,
+-    .input_count = 2,
+-    .outputs = result,
+-    .output_count = 1,
+-    .pure_kind = NODE_PURE_CALL,
+-    .fn = native_math_Step,
+-    .execution_call = &NATIVE_MATH_Step_CALL,
+-    .access = &NATIVE_MATH_ACCESS,
+-    .category = "Math/Functions",
+-    .keywords = "step edge threshold",
+-    .description = "Returns 0 when Value is below Edge, otherwise 1.",
+-    .foldable = true
+-};
+-
+-/* mix(a, b, alpha): a at 0, b at 1 (GLSL; Unreal's Lerp). */
+-static pin_spec mix_inputs[] = { NATIVE_MATH_MIX_INPUTS(GRAPH_NATIVE_PORT) };
+-node_desc NODE_Mix = { .name = NATIVE_MATH_Mix_NAME,
+-                       .inputs = mix_inputs,
+-                       .input_count = 3,
+-                       .outputs = result,
+-                       .output_count = 1,
+-                       .pure_kind = NODE_PURE_CALL,
+-                       .fn = native_math_Mix,
+-                       .execution_call = &NATIVE_MATH_Mix_CALL,
+-                       .access = &NATIVE_MATH_ACCESS,
+-                       .category = "Math/Functions",
+-                       .keywords = "mix lerp interpolate blend",
+-                       .description = "Blends from A at Alpha 0 to B at Alpha "
+-                                      "1; Alpha outside 0 to 1 extrapolates.",
+-                       .foldable = true };
+-
+ static const char *random_value(const eval_context *, arena *, pin_value *out)
+ {
+     *out = native_math_RandomReal(NULL, 0, NULL);
+@@ -113,69 +78,3 @@ node_desc NODE_RandomRangeReal = {
+     .description = "Returns a random number between Min and Max, which default "
+                    "to 0 and 1; reversed bounds swap."
+ };
+-
+-static pin_spec damped_spring_inputs[] = { NATIVE_MATH_SPRING_INPUTS(GRAPH_NATIVE_PORT) };
+-static pin_spec damped_spring_outputs[] = { NATIVE_MATH_SPRING_OUTPUTS(GRAPH_NATIVE_PORT) };
+-
+-static const char *advance_damped_spring(
+-    const eval_context *,
+-    const pin_value *inputs,
+-    arena *,
+-    pin_value *out
+-)
+-{
+-    return native_math_spring(inputs, out);
+-}
+-
+-node_desc NODE_Advance_Damped_Spring = {
+-    .name = NATIVE_MATH_Advance_Damped_Spring_NAME,
+-    .input_count = 6,
+-    .output_count = 2,
+-    .inputs = damped_spring_inputs,
+-    .outputs = damped_spring_outputs,
+-    .pure_kind = NODE_PURE_READ,
+-    .read_inputs = advance_damped_spring,
+-    .execution_call = &NATIVE_MATH_Advance_Damped_Spring_CALL,
+-    .access = &NATIVE_MATH_ACCESS,
+-    .category = "Math/Motion",
+-    .keywords = "spring damped response settle position velocity target "
+-                "frequency damping delta",
+-    .description = "Steps Position and Velocity toward Target by Delta "
+-                   "seconds; Frequency is in Hz and Damping 1 is critical.",
+-};
+-
+-static pin_spec quantize_angle_inputs[] = { NATIVE_MATH_QUANTIZE_INPUTS(GRAPH_NATIVE_PORT) };
+-
+-node_desc NODE_Quantize_Angle = {
+-    .name = NATIVE_MATH_Quantize_Angle_NAME,
+-    .input_count = 2,
+-    .output_count = 1,
+-    .inputs = quantize_angle_inputs,
+-    .outputs = result,
+-    .pure_kind = NODE_PURE_CALL,
+-    .fn = native_math_Quantize_Angle,
+-    .execution_call = &NATIVE_MATH_Quantize_Angle_CALL,
+-    .access = &NATIVE_MATH_ACCESS,
+-    .category = "Math/Angles",
+-    .keywords = "angle quantize snap step radians rotation",
+-    .description = "Rounds Angle to the nearest multiple of Step, in radians; "
+-                   "Step defaults to a quarter turn.",
+-};
+-
+-static pin_spec smooth_step_inputs[] = { NATIVE_MATH_UNARY_INPUTS(GRAPH_NATIVE_PORT) };
+-
+-node_desc NODE_Smooth_Step = {
+-    .name = NATIVE_MATH_Smooth_Step_NAME,
+-    .input_count = 1,
+-    .output_count = 1,
+-    .inputs = smooth_step_inputs,
+-    .outputs = result,
+-    .pure_kind = NODE_PURE_CALL,
+-    .fn = native_math_Smooth_Step,
+-    .execution_call = &NATIVE_MATH_Smooth_Step_CALL,
+-    .access = &NATIVE_MATH_ACCESS,
+-    .category = "Math/Easing",
+-    .keywords = "smooth step ease interpolate normalized clamp",
+-    .description = "Clamps Value to 0 to 1, then eases it along an S-curve "
+-                   "that is flat at both ends.",
+-};
+diff --git a/src/graph/nodes/math_nodes.h b/src/graph/nodes/math_nodes.h
+index 366fcd03154409b97d445b9c5456d2276731fb9a..ec9f97f1539881db0df5c456a1763e8cd027362f 100644
+--- a/src/graph/nodes/math_nodes.h
++++ b/src/graph/nodes/math_nodes.h
+@@ -19,14 +19,9 @@
+     X(Round)                                                                   \
+     X(Fract)                                                                   \
+     X(Sign)                                                                    \
+-    X(Step) X(Mix) X(Power) X(Atan2) X(RandomReal) X(RandomRangeReal)
+-#define MATH_OPERATION_NODES(X)                                                \
+-    X(Advance_Damped_Spring)                                                   \
+-    X(Quantize_Angle)                                                          \
+-    X(Smooth_Step)
++    X(Power) X(Atan2) X(RandomReal) X(RandomRangeReal)
+ #define MATH_DECLARE(name) extern node_desc NODE_##name;
+ MATH_EXPRESSION_NODES(MATH_DECLARE)
+-MATH_OPERATION_NODES(MATH_DECLARE)
+ #undef MATH_DECLARE
+ 
+ #endif
+diff --git a/src/runtime/math.c b/src/runtime/math.c
+index 47b173e32dce567a74c4b82877a5282d5592a168..3fb364350cb1ae1bbb9c8e6a85ea5f5168f3cf81 100644
+--- a/src/runtime/math.c
++++ b/src/runtime/math.c
+@@ -45,67 +45,6 @@ NATIVE_MATH_BINARIES(BINARY)
+ NATIVE_MATH_BINARIES(BINARY)
+ #undef BINARY
+ 
+-pin_value native_math_F32_Step(const pin_value *inputs, int count, arena *)
+-{
+-    assert(count == 2 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32);
+-    (void)count;
+-    return (pin_value){ .type = PIN_F32, .f = inputs[0].f < inputs[1].f ? 0 : 1 };
+-}
+-pin_value native_math_F32_Mix(const pin_value *inputs, int count, arena *)
+-{
+-    assert(
+-        count == 3 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32 &&
+-        inputs[2].type == PIN_F32
+-    );
+-    (void)count;
+-    float span = inputs[1].f - inputs[0].f;
+-    float offset = span * inputs[2].f;
+-    return (pin_value){ .type = PIN_F32, .f = inputs[0].f + offset };
+-}
+-pin_value native_math_F32_Quantize_Angle(const pin_value *inputs, int count, arena *)
+-{
+-    assert(count == 2 && inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32);
+-    (void)count;
+-    float angle = inputs[0].f, step = inputs[1].f;
+-    if (!isfinite(angle) || !isfinite(step) || step == 0) {
+-        return (pin_value){ .type = PIN_FLOW };
+-    }
+-    float result = roundf(angle / step) * step;
+-    return isfinite(result) ? (pin_value){ .type = PIN_F32, .f = result }
+-                            : (pin_value){ .type = PIN_FLOW };
+-}
+-pin_value native_math_F32_Smooth_Step(const pin_value *inputs, int count, arena *)
+-{
+-    assert(count == 1 && inputs[0].type == PIN_F32);
+-    (void)count;
+-    float value = inputs[0].f;
+-    if (!isfinite(value)) {
+-        return (pin_value){ .type = PIN_FLOW };
+-    }
+-    value = fminf(fmaxf(value, 0), 1);
+-    return (pin_value){ .type = PIN_F32, .f = value * value * (3 - 2 * value) };
+-}
+-
+-pin_value native_math_Step(const pin_value *inputs, int count, arena *)
+-{
+-    assert(count == 2 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64);
+-    (void)count;
+-    return (pin_value){ .type = PIN_F64, .d = inputs[0].d < inputs[1].d ? 0 : 1 };
+-}
+-
+-pin_value native_math_Mix(const pin_value *inputs, int count, arena *)
+-{
+-    assert(
+-        count == 3 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64 &&
+-        inputs[2].type == PIN_F64
+-    );
+-    (void)count;
+-    /* Separate steps, as every backend computes it, never a fused multiply-add. */
+-    double span = inputs[1].d - inputs[0].d;
+-    double offset = span * inputs[2].d;
+-    return (pin_value){ .type = PIN_F64, .d = inputs[0].d + offset };
+-}
+-
+ pin_value native_math_RandomReal(const pin_value *, int count, arena *)
+ {
+     assert(count == 0);
+@@ -152,76 +91,6 @@ pin_value native_math_F32_RandomRangeReal(const pin_value *inputs, int count, ar
+     return (pin_value){ .type = PIN_F32, .f = (float)behavior_random_range(min, max) };
+ }
+ 
+-pin_value native_math_Quantize_Angle(const pin_value *inputs, int count, arena *)
+-{
+-    assert(count == 2 && inputs[0].type == PIN_F64 && inputs[1].type == PIN_F64);
+-    (void)count;
+-    double angle = inputs[0].d;
+-    double step = inputs[1].d;
+-    if (!isfinite(angle) || !isfinite(step) || step == 0) {
+-        return (pin_value){ .type = PIN_FLOW };
+-    }
+-    double result = round(angle / step) * step;
+-    return isfinite(result)
+-             ? (pin_value){ .type = PIN_F64, .type_name = "f64", .d = result }
+-             : (pin_value){ .type = PIN_FLOW };
+-}
+-
+-pin_value native_math_Smooth_Step(const pin_value *inputs, int count, arena *)
+-{
+-    assert(count == 1 && inputs[0].type == PIN_F64);
+-    (void)count;
+-    double value = inputs[0].d;
+-    if (!isfinite(value)) {
+-        return (pin_value){ .type = PIN_FLOW };
+-    }
+-    value = fmin(fmax(value, 0), 1);
+-    return (pin_value){ .type = PIN_F64,
+-                        .type_name = "f64",
+-                        .d = value * value * (3 - 2 * value) };
+-}
+-
+-const char *native_math_spring(const pin_value *inputs, pin_value *out)
+-{
+-    assert(
+-        inputs[0].type == PIN_F32 && inputs[1].type == PIN_F32 &&
+-        inputs[2].type == PIN_F32 && inputs[3].type == PIN_F32 &&
+-        inputs[4].type == PIN_F32 && inputs[5].type == PIN_F32
+-    );
+-    double position = inputs[0].f;
+-    double velocity = inputs[1].f;
+-    double target = inputs[2].f;
+-    double frequency = inputs[3].f;
+-    double damping = inputs[4].f;
+-    double delta = inputs[5].f;
+-    if (!isfinite(position) || !isfinite(velocity) || !isfinite(target) ||
+-        !isfinite(frequency) || !isfinite(damping) || !isfinite(delta)) {
+-        return "Advance Damped Spring needs finite inputs";
+-    }
+-    delta = fmax(delta, 0);
+-    frequency = fmax(frequency, .01);
+-    damping = fmax(damping, 0);
+-    double omega = frequency * 6.2831853071795864769;
+-    double omega_squared = omega * omega;
+-    double damping_term = 2 * delta * damping * omega;
+-    double delta_term = delta * delta * omega_squared;
+-    double denominator = 1 + damping_term + delta_term;
+-    double inverse = 1 / denominator;
+-    double next_position = ((1 + damping_term) * position + delta * velocity +
+-                            delta_term * target) *
+-                           inverse;
+-    double next_velocity = (velocity + delta * omega_squared * (target - position)) *
+-                           inverse;
+-    float next_position_f = (float)next_position;
+-    float next_velocity_f = (float)next_velocity;
+-    if (!isfinite(next_position_f) || !isfinite(next_velocity_f)) {
+-        return "Advance Damped Spring produced nonfinite output";
+-    }
+-    out[0] = (pin_value){ .type = PIN_F32, .type_name = "number", .f = next_position_f };
+-    out[1] = (pin_value){ .type = PIN_F32, .type_name = "number", .f = next_velocity_f };
+-    return NULL;
+-}
+-
+ #define ADAPTER(KEY)                                                                              \
+     static const char *KEY##_call(arena *storage, const pin_value *in, int count, pin_value *out) \
+     {                                                                                             \
+@@ -248,17 +117,6 @@ ADAPTER(RandomReal)
+ #undef BINARY
+ #undef VALUE
+ #undef ADAPTER
+-static const char *spring_call(void *, const pin_value *in, pin_value *out)
+-{
+-    pin_value values[2];
+-    const char *error = native_math_spring(in, values);
+-    if (!error) {
+-        out[0].f = values[0].f;
+-        out[1].f = values[1].f;
+-    }
+-    return error;
+-}
+-const node_host_call NATIVE_MATH_Advance_Damped_Spring_CALL = { .invoke = spring_call };
+ const node_access NATIVE_MATH_ACCESS = { .flags = NODE_EFFECT_PURE };
+ const node_access NATIVE_MATH_RANDOM_ACCESS = { .flags = NODE_EFFECT_HOST_SINK |
+                                                          NODE_EFFECT_RANDOM };
+diff --git a/src/runtime/math_definition.c b/src/runtime/math_definition.c
+index ae32b629b93e068177d1c56a1e0c6cee0a7d576c..a311c88bcc23de15dc10fe9189154d27cae0eb35 100644
+--- a/src/runtime/math_definition.c
++++ b/src/runtime/math_definition.c
+@@ -12,12 +12,6 @@ static const native_parameter_definition FLOAT_OUTPUTS[] = {
+     NATIVE_MATH_F32_OUTPUTS(NATIVE_PORT)
+ };
+ static const native_parameter_definition RANDOM_REAL_INPUTS[] = {};
+-static const native_parameter_definition SPRING_INPUTS[] = {
+-    NATIVE_MATH_SPRING_INPUTS(NATIVE_PORT)
+-};
+-static const native_parameter_definition SPRING_OUTPUTS[] = {
+-    NATIVE_MATH_SPRING_OUTPUTS(NATIVE_PORT)
+-};
+ #define BINARY(KEY, NAME, SOURCE, FN, INPUTS, KEYWORDS, DESCRIPTION)                   \
+     static const native_parameter_definition KEY##_inputs[] = { INPUTS(NATIVE_PORT) }; \
+     static const native_parameter_definition F32_##KEY##_inputs[] = {                  \
+@@ -56,17 +50,9 @@ static const native_capability_definition DEFINITIONS[] = {
+     NATIVE_MATH_UNARIES(UNARY) NATIVE_MATH_BINARIES(BINARY) NATIVE_MATH_VALUES(VALUE)
+     /* rand has no f64 form: no argument could choose it. */
+     DEFINITION(RandomReal, NATIVE_MATH_RandomReal_NAME, NATIVE_MATH_RandomReal_SOURCE, RANDOM_REAL_INPUTS, FLOAT_OUTPUTS, true)
+-        DEFINITION(
+-            Advance_Damped_Spring,
+-            NATIVE_MATH_Advance_Damped_Spring_NAME,
+-            NATIVE_MATH_Advance_Damped_Spring_SOURCE,
+-            SPRING_INPUTS,
+-            SPRING_OUTPUTS,
+-            false
+-        )
+ #define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM)                         \
+     DEFINITION(F32_##KEY, NAME " Float", SOURCE, F32_##KEY##_inputs, FLOAT_OUTPUTS, RANDOM)
+-            NATIVE_MATH_F32_VALUES(FLOAT_VALUE)
++        NATIVE_MATH_F32_VALUES(FLOAT_VALUE)
+ #undef FLOAT_VALUE
+ };
+ #undef UNARY
+@@ -86,10 +72,9 @@ static const native_capability_definition DEFINITIONS[] = {
+ static const native_definition_binding BINDINGS[] = {
+     NATIVE_MATH_UNARIES(UNARY) NATIVE_MATH_BINARIES(BINARY) NATIVE_MATH_VALUES(VALUE)
+         BINDING(RandomReal, NATIVE_MATH_RandomReal_NAME, true)
+-            BINDING(Advance_Damped_Spring, NATIVE_MATH_Advance_Damped_Spring_NAME, false)
+ #define FLOAT_VALUE(KEY, NAME, SOURCE, INPUTS, RANDOM)                         \
+     BINDING(F32_##KEY, NAME " Float", RANDOM)
+-                NATIVE_MATH_F32_VALUES(FLOAT_VALUE)
++            NATIVE_MATH_F32_VALUES(FLOAT_VALUE)
+ #undef FLOAT_VALUE
+ };
+ #undef UNARY
+diff --git a/src/runtime/math_definition.h b/src/runtime/math_definition.h
+index 711349afd1f45f50614111deb07f23731d74db92..7bbc81ae5863b78ed55acb8485ecef8886844281 100644
+--- a/src/runtime/math_definition.h
++++ b/src/runtime/math_definition.h
+@@ -13,17 +13,12 @@
+     NATIVE_MATH_DOUBLE(X, "Base") NATIVE_MATH_DOUBLE(X, "Exponent")
+ #define NATIVE_MATH_ATAN2_INPUTS(X)                                            \
+     NATIVE_MATH_DOUBLE(X, "Y") NATIVE_MATH_DOUBLE(X, "X")
+-#define NATIVE_MATH_STEP_INPUTS(X)                                             \
+-    NATIVE_MATH_DOUBLE(X, "Value") NATIVE_MATH_DOUBLE(X, "Edge")
+-#define NATIVE_MATH_MIX_INPUTS(X)                                              \
+-    NATIVE_MATH_DOUBLE(X, "A")                                                 \
+-    NATIVE_MATH_DOUBLE(X, "B") NATIVE_MATH_DOUBLE(X, "Alpha")
++#define NATIVE_MATH_FMOD_INPUTS(X)                                             \
++    NATIVE_MATH_DOUBLE(X, "Value")                                             \
++    NATIVE_MATH_PORT(X, "Divisor", PIN_F64, "f64", ((pin_value){ .type = PIN_F64, .d = 1 }))
+ #define NATIVE_MATH_RANGE_INPUTS(X)                                                      \
+     NATIVE_MATH_PORT(X, "Min", PIN_F64, "f64", ((pin_value){ .type = PIN_F64, .d = 0 })) \
+     NATIVE_MATH_PORT(X, "Max", PIN_F64, "f64", ((pin_value){ .type = PIN_F64, .d = 1 }))
+-#define NATIVE_MATH_QUANTIZE_INPUTS(X)                                                     \
+-    NATIVE_MATH_PORT(X, "Angle", PIN_F64, "f64", ((pin_value){ .type = PIN_F64, .d = 0 })) \
+-    NATIVE_MATH_PORT(X, "Step", PIN_F64, "f64", ((pin_value){ .type = PIN_F64, .d = 1.5707963267948966 }))
+ #define NATIVE_MATH_FLOAT(X, NAME, VALUE)                                      \
+     NATIVE_MATH_PORT(X, NAME, PIN_F32, "number", ((pin_value){ .type = PIN_F32, .f = VALUE }))
+ #define NATIVE_MATH_F32_UNARY_INPUTS(X) NATIVE_MATH_FLOAT(X, "Value", 0)
+@@ -32,31 +27,19 @@
+     NATIVE_MATH_FLOAT(X, "Base", 0) NATIVE_MATH_FLOAT(X, "Exponent", 0)
+ #define NATIVE_MATH_F32_Atan2_INPUTS(X)                                        \
+     NATIVE_MATH_FLOAT(X, "Y", 0) NATIVE_MATH_FLOAT(X, "X", 0)
+-#define NATIVE_MATH_F32_Step_INPUTS(X)                                         \
+-    NATIVE_MATH_FLOAT(X, "Value", 0) NATIVE_MATH_FLOAT(X, "Edge", 0)
+-#define NATIVE_MATH_F32_Mix_INPUTS(X)                                          \
+-    NATIVE_MATH_FLOAT(X, "A", 0)                                               \
+-    NATIVE_MATH_FLOAT(X, "B", 0) NATIVE_MATH_FLOAT(X, "Alpha", 0)
+-#define NATIVE_MATH_F32_Quantize_Angle_INPUTS(X)                               \
+-    NATIVE_MATH_FLOAT(X, "Angle", 0)                                           \
+-    NATIVE_MATH_FLOAT(X, "Step", 1.5707963267948966f)
+-#define NATIVE_MATH_F32_Smooth_Step_INPUTS(X) NATIVE_MATH_F32_UNARY_INPUTS(X)
++#define NATIVE_MATH_F32_Fmod_INPUTS(X)                                         \
++    NATIVE_MATH_FLOAT(X, "Value", 0) NATIVE_MATH_FLOAT(X, "Divisor", 1)
+ #define NATIVE_MATH_F32_RANGE_INPUTS(X)                                        \
+     NATIVE_MATH_FLOAT(X, "Min", 0) NATIVE_MATH_FLOAT(X, "Max", 1)
+-#define NATIVE_MATH_SPRING_INPUTS(X)                                           \
+-    NATIVE_MATH_FLOAT(X, "Position", 0)                                        \
+-    NATIVE_MATH_FLOAT(X, "Velocity", 0)                                        \
+-    NATIVE_MATH_FLOAT(X, "Target", 0)                                          \
+-    NATIVE_MATH_FLOAT(X, "Frequency", 1)                                       \
+-    NATIVE_MATH_FLOAT(X, "Damping", 1) NATIVE_MATH_FLOAT(X, "Delta", 0)
+-#define NATIVE_MATH_SPRING_OUTPUTS(X)                                          \
+-    NATIVE_MATH_PORT(X, "Position", PIN_F32, "number", ((pin_value){ 0 }))     \
+-    NATIVE_MATH_PORT(X, "Velocity", PIN_F32, "number", ((pin_value){ 0 }))
+ 
+ #define NATIVE_MATH_Sine_NAME "Sine"
+ #define NATIVE_MATH_Sine_SOURCE "sin"
+ #define NATIVE_MATH_Cosine_NAME "Cosine"
+ #define NATIVE_MATH_Cosine_SOURCE "cos"
++#define NATIVE_MATH_PreciseSine_NAME "Precise Sine"
++#define NATIVE_MATH_PreciseSine_SOURCE "sin_precise"
++#define NATIVE_MATH_PreciseCosine_NAME "Precise Cosine"
++#define NATIVE_MATH_PreciseCosine_SOURCE "cos_precise"
+ #define NATIVE_MATH_Tangent_NAME "Tangent"
+ #define NATIVE_MATH_Tangent_SOURCE "tan"
+ #define NATIVE_MATH_ArcSine_NAME "Arc Sine"
+@@ -87,68 +70,62 @@
+ #define NATIVE_MATH_Power_SOURCE "pow"
+ #define NATIVE_MATH_Atan2_NAME "Atan2"
+ #define NATIVE_MATH_Atan2_SOURCE "atan2"
+-#define NATIVE_MATH_Step_NAME "Step"
+-#define NATIVE_MATH_Step_SOURCE "step"
+-#define NATIVE_MATH_Mix_NAME "Mix"
+-#define NATIVE_MATH_Mix_SOURCE "mix"
++#define NATIVE_MATH_Fmod_NAME "Floating Remainder"
++#define NATIVE_MATH_Fmod_SOURCE "fmod"
+ #define NATIVE_MATH_RandomReal_NAME "Random Real"
+ #define NATIVE_MATH_RandomReal_SOURCE "rand"
+ #define NATIVE_MATH_RandomRangeReal_NAME "Random Range"
+ #define NATIVE_MATH_RandomRangeReal_SOURCE "random_range"
+-#define NATIVE_MATH_Quantize_Angle_NAME "Quantize Angle"
+-#define NATIVE_MATH_Quantize_Angle_SOURCE "quantize_angle"
+-#define NATIVE_MATH_Smooth_Step_NAME "Smooth Step"
+-#define NATIVE_MATH_Smooth_Step_SOURCE "smooth_step"
+-#define NATIVE_MATH_Advance_Damped_Spring_NAME "Advance Damped Spring"
+-#define NATIVE_MATH_Advance_Damped_Spring_SOURCE "advance_damped_spring"
+ 
+-#define NATIVE_MATH_UNARIES(X)                                                                                                                                              \
+-    X(Sine,                                                                                                                                                                 \
+-      NATIVE_MATH_Sine_NAME,                                                                                                                                                \
+-      NATIVE_MATH_Sine_SOURCE,                                                                                                                                              \
+-      cos_sin_sine,                                                                                                                                                         \
+-      "Returns the sine of Value, an angle in radians.")                                                                                                                    \
+-    X(Cosine,                                                                                                                                                               \
+-      NATIVE_MATH_Cosine_NAME,                                                                                                                                              \
+-      NATIVE_MATH_Cosine_SOURCE,                                                                                                                                            \
+-      cos_sin_cosine,                                                                                                                                                       \
+-      "Returns the cosine of Value, an angle in radians.")                                                                                                                  \
+-    X(Tangent,                                                                                                                                                              \
+-      NATIVE_MATH_Tangent_NAME,                                                                                                                                             \
+-      NATIVE_MATH_Tangent_SOURCE,                                                                                                                                           \
+-      tan,                                                                                                                                                                  \
+-      "Returns the tangent of Value, an angle in radians.")                                                                                                                 \
+-    X(ArcSine, NATIVE_MATH_ArcSine_NAME, NATIVE_MATH_ArcSine_SOURCE, asin, "Returns the angle in radians, from -pi/2 to pi/2, whose sine is Value; NaN outside -1 to 1.")   \
+-    X(ArcCosine, NATIVE_MATH_ArcCosine_NAME, NATIVE_MATH_ArcCosine_SOURCE, acos, "Returns the angle in radians, from 0 to pi, whose cosine is Value; NaN outside -1 to 1.") \
+-    X(ArcTangent, NATIVE_MATH_ArcTangent_NAME, NATIVE_MATH_ArcTangent_SOURCE, atan, "Returns the angle in radians, from -pi/2 to pi/2, whose tangent is Value.")            \
+-    X(SquareRoot,                                                                                                                                                           \
+-      NATIVE_MATH_SquareRoot_NAME,                                                                                                                                          \
+-      NATIVE_MATH_SquareRoot_SOURCE,                                                                                                                                        \
+-      sqrt,                                                                                                                                                                 \
+-      "Returns the non-negative square root of Value; NaN for negative Value.")                                                                                             \
+-    X(Exponential,                                                                                                                                                          \
+-      NATIVE_MATH_Exponential_NAME,                                                                                                                                         \
+-      NATIVE_MATH_Exponential_SOURCE,                                                                                                                                       \
+-      exp,                                                                                                                                                                  \
+-      "Returns e raised to the power of Value.")                                                                                                                            \
+-    X(Logarithm, NATIVE_MATH_Logarithm_NAME, NATIVE_MATH_Logarithm_SOURCE, log, "Returns the natural (base e) logarithm of Value; 0 gives -infinity and negatives NaN.")    \
+-    X(Logarithm10, NATIVE_MATH_Logarithm10_NAME, NATIVE_MATH_Logarithm10_SOURCE, log10, "Returns the base-10 logarithm of Value; 0 gives -infinity and negatives NaN.")     \
+-    X(Floor, NATIVE_MATH_Floor_NAME, NATIVE_MATH_Floor_SOURCE, floor, "Rounds Value down to the nearest whole number.")                                                     \
+-    X(Ceiling, NATIVE_MATH_Ceiling_NAME, NATIVE_MATH_Ceiling_SOURCE, ceil, "Rounds Value up to the nearest whole number.")                                                  \
+-    X(Round,                                                                                                                                                                \
+-      NATIVE_MATH_Round_NAME,                                                                                                                                               \
+-      NATIVE_MATH_Round_SOURCE,                                                                                                                                             \
+-      round,                                                                                                                                                                \
+-      "Rounds Value to the nearest whole number, with halves away from zero.")                                                                                              \
+-    X(Fract,                                                                                                                                                                \
+-      NATIVE_MATH_Fract_NAME,                                                                                                                                               \
+-      NATIVE_MATH_Fract_SOURCE,                                                                                                                                             \
+-      behavior_fract,                                                                                                                                                       \
+-      "Returns Value minus its floor, from 0 up to 1, so -0.25 gives 0.75.")                                                                                                \
+-    X(Sign,                                                                                                                                                                 \
+-      NATIVE_MATH_Sign_NAME,                                                                                                                                                \
+-      NATIVE_MATH_Sign_SOURCE,                                                                                                                                              \
+-      behavior_sign,                                                                                                                                                        \
++#define NATIVE_MATH_UNARIES(X)                                                                                                                                                  \
++    X(Sine,                                                                                                                                                                     \
++      NATIVE_MATH_Sine_NAME,                                                                                                                                                    \
++      NATIVE_MATH_Sine_SOURCE,                                                                                                                                                  \
++      cos_sin_sine,                                                                                                                                                             \
++      "Returns the sine of Value, an angle in radians.")                                                                                                                        \
++    X(Cosine,                                                                                                                                                                   \
++      NATIVE_MATH_Cosine_NAME,                                                                                                                                                  \
++      NATIVE_MATH_Cosine_SOURCE,                                                                                                                                                \
++      cos_sin_cosine,                                                                                                                                                           \
++      "Returns the cosine of Value, an angle in radians.")                                                                                                                      \
++    X(PreciseSine, NATIVE_MATH_PreciseSine_NAME, NATIVE_MATH_PreciseSine_SOURCE, sin, "Returns the platform libm sine of Value in radians at the operand's precision.")         \
++    X(PreciseCosine, NATIVE_MATH_PreciseCosine_NAME, NATIVE_MATH_PreciseCosine_SOURCE, cos, "Returns the platform libm cosine of Value in radians at the operand's precision.") \
++    X(Tangent,                                                                                                                                                                  \
++      NATIVE_MATH_Tangent_NAME,                                                                                                                                                 \
++      NATIVE_MATH_Tangent_SOURCE,                                                                                                                                               \
++      tan,                                                                                                                                                                      \
++      "Returns the tangent of Value, an angle in radians.")                                                                                                                     \
++    X(ArcSine, NATIVE_MATH_ArcSine_NAME, NATIVE_MATH_ArcSine_SOURCE, asin, "Returns the angle in radians, from -pi/2 to pi/2, whose sine is Value; NaN outside -1 to 1.")       \
++    X(ArcCosine, NATIVE_MATH_ArcCosine_NAME, NATIVE_MATH_ArcCosine_SOURCE, acos, "Returns the angle in radians, from 0 to pi, whose cosine is Value; NaN outside -1 to 1.")     \
++    X(ArcTangent, NATIVE_MATH_ArcTangent_NAME, NATIVE_MATH_ArcTangent_SOURCE, atan, "Returns the angle in radians, from -pi/2 to pi/2, whose tangent is Value.")                \
++    X(SquareRoot,                                                                                                                                                               \
++      NATIVE_MATH_SquareRoot_NAME,                                                                                                                                              \
++      NATIVE_MATH_SquareRoot_SOURCE,                                                                                                                                            \
++      sqrt,                                                                                                                                                                     \
++      "Returns the non-negative square root of Value; NaN for negative Value.")                                                                                                 \
++    X(Exponential,                                                                                                                                                              \
++      NATIVE_MATH_Exponential_NAME,                                                                                                                                             \
++      NATIVE_MATH_Exponential_SOURCE,                                                                                                                                           \
++      exp,                                                                                                                                                                      \
++      "Returns e raised to the power of Value.")                                                                                                                                \
++    X(Logarithm, NATIVE_MATH_Logarithm_NAME, NATIVE_MATH_Logarithm_SOURCE, log, "Returns the natural (base e) logarithm of Value; 0 gives -infinity and negatives NaN.")        \
++    X(Logarithm10, NATIVE_MATH_Logarithm10_NAME, NATIVE_MATH_Logarithm10_SOURCE, log10, "Returns the base-10 logarithm of Value; 0 gives -infinity and negatives NaN.")         \
++    X(Floor, NATIVE_MATH_Floor_NAME, NATIVE_MATH_Floor_SOURCE, floor, "Rounds Value down to the nearest whole number.")                                                         \
++    X(Ceiling, NATIVE_MATH_Ceiling_NAME, NATIVE_MATH_Ceiling_SOURCE, ceil, "Rounds Value up to the nearest whole number.")                                                      \
++    X(Round,                                                                                                                                                                    \
++      NATIVE_MATH_Round_NAME,                                                                                                                                                   \
++      NATIVE_MATH_Round_SOURCE,                                                                                                                                                 \
++      round,                                                                                                                                                                    \
++      "Rounds Value to the nearest whole number, with halves away from zero.")                                                                                                  \
++    X(Fract,                                                                                                                                                                    \
++      NATIVE_MATH_Fract_NAME,                                                                                                                                                   \
++      NATIVE_MATH_Fract_SOURCE,                                                                                                                                                 \
++      behavior_fract,                                                                                                                                                           \
++      "Returns Value minus its floor, from 0 up to 1, so -0.25 gives 0.75.")                                                                                                    \
++    X(Sign,                                                                                                                                                                     \
++      NATIVE_MATH_Sign_NAME,                                                                                                                                                    \
++      NATIVE_MATH_Sign_SOURCE,                                                                                                                                                  \
++      behavior_sign,                                                                                                                                                            \
+       "Returns -1, 0 or 1 as Value is negative, zero or positive.")
+ 
+ #define NATIVE_MATH_BINARIES(X)                                                \
+@@ -166,44 +143,28 @@
+       NATIVE_MATH_ATAN2_INPUTS,                                                \
+       "arc tangent angle direction radians",                                   \
+       "Returns the angle in radians, from -pi to pi, of the point (X, Y) "     \
+-      "from the positive x axis.")
++      "from the positive x axis.")                                             \
++    X(Fmod,                                                                    \
++      NATIVE_MATH_Fmod_NAME,                                                   \
++      NATIVE_MATH_Fmod_SOURCE,                                                 \
++      fmod,                                                                    \
++      NATIVE_MATH_FMOD_INPUTS,                                                 \
++      "floating remainder modulo",                                             \
++      "Returns the floating remainder of Value divided by Divisor, with "      \
++      "Value's sign; NaN for a zero Divisor or infinite Value.")
+ 
+-#define NATIVE_MATH_VALUES(X)                                                               \
+-    X(Step, NATIVE_MATH_Step_NAME, NATIVE_MATH_Step_SOURCE, NATIVE_MATH_STEP_INPUTS, false) \
+-    X(Mix, NATIVE_MATH_Mix_NAME, NATIVE_MATH_Mix_SOURCE, NATIVE_MATH_MIX_INPUTS, false)     \
+-    X(RandomRangeReal,                                                                      \
+-      NATIVE_MATH_RandomRangeReal_NAME,                                                     \
+-      NATIVE_MATH_RandomRangeReal_SOURCE,                                                   \
+-      NATIVE_MATH_RANGE_INPUTS,                                                             \
+-      true)                                                                                 \
+-    X(Quantize_Angle,                                                                       \
+-      NATIVE_MATH_Quantize_Angle_NAME,                                                      \
+-      NATIVE_MATH_Quantize_Angle_SOURCE,                                                    \
+-      NATIVE_MATH_QUANTIZE_INPUTS,                                                          \
+-      false)                                                                                \
+-    X(Smooth_Step,                                                                          \
+-      NATIVE_MATH_Smooth_Step_NAME,                                                         \
+-      NATIVE_MATH_Smooth_Step_SOURCE,                                                       \
+-      NATIVE_MATH_UNARY_INPUTS,                                                             \
+-      false)
++#define NATIVE_MATH_VALUES(X)                                                  \
++    X(RandomRangeReal,                                                         \
++      NATIVE_MATH_RandomRangeReal_NAME,                                        \
++      NATIVE_MATH_RandomRangeReal_SOURCE,                                      \
++      NATIVE_MATH_RANGE_INPUTS,                                                \
++      true)
+ 
+ extern const native_definition_pack NATIVE_MATH_DEFINITION_PACK;
+-#define NATIVE_MATH_F32_VALUES(X)                                                               \
+-    X(Step, NATIVE_MATH_Step_NAME, NATIVE_MATH_Step_SOURCE, NATIVE_MATH_F32_Step_INPUTS, false) \
+-    X(Mix, NATIVE_MATH_Mix_NAME, NATIVE_MATH_Mix_SOURCE, NATIVE_MATH_F32_Mix_INPUTS, false)     \
+-    X(RandomRangeReal,                                                                          \
+-      NATIVE_MATH_RandomRangeReal_NAME,                                                         \
+-      NATIVE_MATH_RandomRangeReal_SOURCE,                                                       \
+-      NATIVE_MATH_F32_RANGE_INPUTS,                                                             \
+-      true)                                                                                     \
+-    X(Quantize_Angle,                                                                           \
+-      NATIVE_MATH_Quantize_Angle_NAME,                                                          \
+-      NATIVE_MATH_Quantize_Angle_SOURCE,                                                        \
+-      NATIVE_MATH_F32_Quantize_Angle_INPUTS,                                                    \
+-      false)                                                                                    \
+-    X(Smooth_Step,                                                                              \
+-      NATIVE_MATH_Smooth_Step_NAME,                                                             \
+-      NATIVE_MATH_Smooth_Step_SOURCE,                                                           \
+-      NATIVE_MATH_F32_Smooth_Step_INPUTS,                                                       \
+-      false)
++#define NATIVE_MATH_F32_VALUES(X)                                              \
++    X(RandomRangeReal,                                                         \
++      NATIVE_MATH_RandomRangeReal_NAME,                                        \
++      NATIVE_MATH_RandomRangeReal_SOURCE,                                      \
++      NATIVE_MATH_F32_RANGE_INPUTS,                                            \
++      true)
+ #endif
+diff --git a/src/runtime/math_native.h b/src/runtime/math_native.h
+index 47135ce6756e4a1784730df3b8f3dea9bb518484..8d1860f04658ab2555176323723a2bc30c5e3a69 100644
+--- a/src/runtime/math_native.h
++++ b/src/runtime/math_native.h
+@@ -21,7 +21,5 @@ DECLARE(RandomReal)
+ #undef BINARY
+ #undef VALUE
+ #undef DECLARE
+-const char *native_math_spring(const pin_value *, pin_value *);
+-extern const node_host_call NATIVE_MATH_Advance_Damped_Spring_CALL;
+ extern const node_access NATIVE_MATH_ACCESS, NATIVE_MATH_RANDOM_ACCESS;
+ #endif
+diff --git a/test/fixtures/feature-coverage/coverage-gaps.txt b/test/fixtures/feature-coverage/coverage-gaps.txt
+index b771b0ffb7b49de95e4c27da5b267e218b0cdd6a..1fed9eb272a2159fd65d3bcfdface994189a0b7f 100644
+--- a/test/fixtures/feature-coverage/coverage-gaps.txt
++++ b/test/fixtures/feature-coverage/coverage-gaps.txt
+@@ -9,6 +9,10 @@
+ # Bytes are exercised by the package-core language fixture. Their uncategorized pure
+ # declarations are excluded by feature_function, so no function gaps apply here.
+ 
++# Precise Sine, Precise Cosine and Floating Remainder are narrow libm helpers
++# exercised by core:math's authored tests and the package-math boundary fixture.
++# Their uncategorized language declarations are excluded by feature_function.
++
+ # Material simulation: fluids, destruction worlds, heat and combustion need a
+ # material field and solver scene.
+ component MaterialFluidWorld
+diff --git a/test/language/CMakeLists.txt b/test/language/CMakeLists.txt
+index 3145b97ec491b239dc9bfbd1b313257bfbd22177..9b846fae2fe235f05e433aa6cb3ec5c0da6662b0 100644
+--- a/test/language/CMakeLists.txt
++++ b/test/language/CMakeLists.txt
+@@ -263,7 +263,7 @@ target_compile_options(test_behavior_consumer PRIVATE -Wall -Wextra -Werror -UND
+ set_source_files_properties(binding_benchmark.c inferred_string_arrays.c record_publication.c outliner_projection.c row_array.c record_state.c record_prepared_runtime.c record_runtime.c record_semantic.c record_prepared.c runtime_attribution.c wasm.c execution.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c query_boundary.c query_values.c query_migration.c program.c capture.c maps.c PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+ add_executable(test_language main.c inferred_string_arrays.c build_workflow.c record_publication.c outliner_projection.c row_array.c record_compatibility.c record_state.c record_document.c record_producer.c record_prepared_runtime.c record_runtime.c record_semantic.c record_values.c record_prepared.c runtime_attribution.c syntax.c semantic.c execution.c program.c retention.c capture.c query_boundary.c query_values.c query_migration.c incremental.c operations.c modules.c native_calls.c ranges.c scalarize.c component_write.c component_write_source.c component_write_ir.c borrow.c reductions.c benchmark.c activation_cache.c activation_benchmark.c binding_benchmark.c borrow_benchmark.c incremental_benchmark.c wasm.c headless.c prepared.c format.c navigation.c publication.c field_runtime.c prototype.c ui.c text_format.c graph_model.c graph_authoring.c ../authoring/model_runtime.c)
+ # Package tests consume the owning SDK implementation; extraction stays private.
+-target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_tests.c package_graph_chibi.c docs_markdown.c)
++target_sources(test_language PRIVATE packages.c package_syntax.c package_execution.c package_resolution.c package_imports.c package_files.c package_core.c package_math.c package_tests.c package_graph_chibi.c docs_markdown.c)
+ target_link_libraries(test_language PRIVATE Chibi::tasks)
+ if(TARGET Chibi::task_pool_runtime)
+     target_link_libraries(test_language PRIVATE Chibi::task_pool_runtime Chibi::conversion_capabilities)
+@@ -339,6 +339,28 @@ set_source_files_properties(scalar_lowering_chibi.c
+ target_sources(test_language PRIVATE constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c)
+ set_source_files_properties(constant_proof_chibi.c constant_scalar_chibi.c lexical_binding_chibi.c nominal_binding_chibi.c named_binding_chibi.c type_constructors_chibi.c type_relations_chibi.c unit_algebra_chibi.c signature_fixture.c signature_reader_chibi.c callable_headers_chibi.c unit_analysis_chibi.c union_members_chibi.c effect_analysis_chibi.c record_members_chibi.c
+     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
++set_source_files_properties(package_math.c PROPERTIES
++    COMPILE_DEFINITIONS "CHIBI_SOURCE_ROOT=\"${CHIBI_LANGUAGE_TEST_ROOT}\"")
++if(CHIBI_INSTALLED_SDK)
++    set(core_math_source_root "${Chibi_CORE_SOURCE_DIR}/math")
++else()
++    set(core_math_source_root "${CHIBI_LANGUAGE_TEST_ROOT}/packages/core/math")
++endif()
++set(core_math_fixture_root "${core_math_source_root}")
++if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
++    # Only the six shipped math sources enter this fixture filesystem.
++    # Installed consumers embed their installed bytes, not this checkout's.
++    set(core_math_fixture_root "/chibi-fixtures/core/math")
++    foreach(source Math.chibi Spring.chibi MathTests.chibi SpringTests.chibi
++                   ease/Ease.chibi ease/EaseTests.chibi)
++        set(math_source "${core_math_source_root}/${source}")
++        set_property(TARGET test_language APPEND PROPERTY LINK_DEPENDS "${math_source}")
++        target_link_options(test_language PRIVATE
++            "SHELL:--embed-file \"${math_source}@${core_math_fixture_root}/${source}\"")
++    endforeach()
++endif()
++set_property(SOURCE package_math.c package_compiler_chibi.c APPEND PROPERTY
++    COMPILE_DEFINITIONS "CHIBI_CORE_MATH_ROOT=\"${core_math_fixture_root}\"")
+ target_sources(test_language PRIVATE numeric.c)
+ set_source_files_properties(numeric.c
+     PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+diff --git a/test/language/main.c b/test/language/main.c
+index 920d8874207981abae727cb200fdaf5ae58b65cb..ed8c6c16200f52699557851014e505b80daf22ae 100644
+--- a/test/language/main.c
++++ b/test/language/main.c
+@@ -98,6 +98,8 @@ void test_language_package_resolution();
+ void test_language_package_imports();
+ void test_language_package_files();
+ void test_language_package_core();
++void test_language_package_math();
++void test_language_package_math_benchmark();
+ void test_language_package_tests();
+ void test_language_docs_markdown();
+ void test_language_scalarize();
+@@ -316,6 +318,9 @@ int main(int argc, char **argv)
+     bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
+     bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
+     bool package_core = argc == 2 && !strcmp(argv[1], "--package-core");
++    bool package_math = argc == 2 && !strcmp(argv[1], "--package-math");
++    bool package_math_benchmark = argc == 2 &&
++                                  !strcmp(argv[1], "--package-math-benchmark");
+     bool package_tests = argc == 2 && !strcmp(argv[1], "--package-tests");
+     bool docs_markdown = argc == 2 && !strcmp(argv[1], "--docs-markdown");
+     bool package_files = argc == 2 && !strcmp(argv[1], "--package-files");
+@@ -377,11 +382,11 @@ int main(int argc, char **argv)
+          !package_compiler_chibi_native_arguments_oracle && !lexical_binding_chibi &&
+          !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
+          !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
+-         !snapshot_reader_chibi && !callable_headers_chibi &&
+-         !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
+-         !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
+-         !package_execution && !package_resolution && !package_imports &&
+-         !package_files && !package_core && !package_tests && !docs_markdown &&
++         !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
++         !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
++         !effect_analysis_chibi && !record_members_chibi && !package_execution &&
++         !package_resolution && !package_imports && !package_files && !package_core &&
++         !package_math && !package_math_benchmark && !package_tests && !docs_markdown &&
+          !component_write && !component_write_layout && !scalarize && !borrow &&
+          !reductions && !binding_schedule && !activation_cache && !headless &&
+          !build_workflow && !navigation && !publication && !field_runtime &&
+@@ -442,7 +447,8 @@ int main(int argc, char **argv)
+             "--package-syntax | --package-syntax-chibi | --package-execution | "
+             "--package-resolution | "
+             "--package-imports | --package-files | --package-core | "
+-            "--package-tests | --docs-markdown | "
++            "--package-math | --package-math-benchmark | --package-tests | "
++            "--docs-markdown | "
+             "--component-write | --component-write-layout | --scalarize | "
+             "--borrow | --reductions | "
+             "--binding-schedule | "
+@@ -715,6 +721,10 @@ int main(int argc, char **argv)
+         test_language_package_imports();
+     } else if (package_core) {
+         test_language_package_core();
++    } else if (package_math) {
++        test_language_package_math();
++    } else if (package_math_benchmark) {
++        test_language_package_math_benchmark();
+     } else if (package_tests) {
+         test_language_package_tests();
+     } else if (docs_markdown) {
+diff --git a/test/language/package_compiler_chibi.c b/test/language/package_compiler_chibi.c
+index f79e6094d698b97b24bc1e6900c5102259371609..de8bd31607079ffbe15c4243e0ac10245dfdb685 100644
+--- a/test/language/package_compiler_chibi.c
++++ b/test/language/package_compiler_chibi.c
+@@ -17,6 +17,7 @@
+ #include "package_compiler_chibi_source.h"
+ #include "runtime/arrays_definition.h"
+ #include "runtime/core_definition.h"
++#include "runtime/math_definition.h"
+ #include "runtime/native_capabilities.h"
+ #include "runtime/native_prepared.h"
+ #include "runtime/text_definition.h"
+@@ -63,6 +64,10 @@
+ extern char **environ;
+ #endif
+ 
++#ifndef CHIBI_CORE_MATH_ROOT
++#define CHIBI_CORE_MATH_ROOT "packages/core/math"
++#endif
++
+ /* The authored package compiler, prepared by stage zero, compiles each sample
+  * package, with the packages it imports, to a closure against the natives the
+  * compiler host links. A fresh runtime host loads it and calls every function
+@@ -130,9 +135,9 @@ typedef struct
+ {
+     const char *name, *source, *more, *library;
+     sample_group group;
+-    bool core, updates, boxed, game, moves, aliases, variants, built, lends,
+-        drops, same_rejection, c_string_probe, host_effects, update_order,
+-        debug_metadata, traced;
++    bool core, math, updates, boxed, game, moves, aliases, variants, built,
++        lends, drops, same_rejection, c_string_probe, host_effects,
++        update_order, debug_metadata, traced;
+     /* Its calls run with the probe natives linked, take no arguments and
+      * return one int. */
+     bool probe_calls;
+@@ -907,6 +912,37 @@ static const native_definition_pack ACTION_PACK = {
+     .global_binding_count = NATIVE_COUNT(ACTION_GLOBAL_BINDINGS),
+ };
+ static const sample samples[] = {
++    { .name = "core-math-imported-values",
++      .group = IMPORT_SAMPLES,
++      .math = true,
++      .game = true,
++      .source =
++          "package facts\nimport math \"core:math\"\nimport ease "
++          "\"core:math/ease\"\n"
++          "pub Check :: () -> bool { x: number = 16777215; "
++          "return math.InverseLerp(-1, 16777216, x) == 1 && "
++          "math.InverseLerp(6, 2, 3) == 0.75 && math.Lerp(2, 6, 0.25) == 3 && "
++          "ease.QuadraticInOut(0.5) == 0.5; }\n"
++          "pub Spring :: () -> bool { spring: math.Spring = {position: 1, "
++          "velocity: 0}; "
++          "next := math.AdvanceSpring(spring, 0, 1, 1, 0.125); "
++          "return next.position > 0.8140309 && next.position < 0.8140313 && "
++          "next.velocity > -2.2499655 && next.velocity < -2.2499635; }\n"
++          "pub Narrow :: () -> bool { wide: f64 = 16777217; "
++          "return math.InverseLerp(16777216, 16777218, number(wide)) == 0; }\n",
++      .calls = { { .function = "Check", .arguments = "[]", .expected = "[true]" },
++                 { .function = "Spring", .arguments = "[]", .expected = "[true]" },
++                 { .function = "Narrow", .arguments = "[]", .expected = "[true]" } } },
++    { .name = "core-math-rejects-implicit-f64-narrowing",
++      .group = IMPORT_SAMPLES,
++      .math = true,
++      .game = true,
++      .source = "package facts\nimport math \"core:math\"\n"
++                "pub Narrow :: (value: f64) -> number { return "
++                "math.InverseLerp(16777216, 16777218, value); }\n",
++      .message = "argument differs from its parameter type",
++      .line = 3,
++      .column = 47 },
+     { .name = "array update debug order",
+       .group = COLLECTION_SAMPLES,
+       .update_order = true,
+@@ -4234,11 +4270,12 @@ static bool natives(int b, bool game, bool probe, pin_value *out)
+             CORE_DEFINITION_PACK,          CSTRING_PACK
+         };
+         char error[256];
+-        native_definition_pack selected[6];
++        native_definition_pack selected[7];
+         int count = 4;
+         memcpy(selected, packs, (size_t)count * sizeof *selected);
+         if (game) {
+             selected[count++] = CORE_DEFINITION_PACK;
++            selected[count++] = NATIVE_MATH_DEFINITION_PACK;
+         }
+         if (probe) {
+             selected[count++] = CSTRING_PACK;
+@@ -4345,6 +4382,30 @@ static int sample_inputs(const sample *s, source_package_input inputs[SAMPLE_INP
+             sizeof CORE_STRINGS_SOURCE - 1
+         };
+     }
++    if (s->math) {
++        static char sources[3][32768];
++        static const char *const names[] = { "Math.chibi", "Spring.chibi", "ease/Ease.chibi" };
++        static const char *const paths[] = { "/sdk/core/math/Math.chibi",
++                                             "/sdk/core/math/Spring.chibi",
++                                             "/sdk/core/math/ease/Ease.chibi" };
++        const char *root = getenv("CHIBI_CORE_MATH_ROOT");
++        if (!root || !root[0]) {
++            root = CHIBI_CORE_MATH_ROOT;
++        }
++        for (int i = 0; i < 3; i++) {
++            char path[4096];
++            int n = snprintf(path, sizeof path, "%s/%s", root, names[i]);
++            assert(n > 0 && (size_t)n < sizeof path && count < SAMPLE_INPUTS);
++            FILE *file = fopen(path, "rb");
++            assert(file);
++            size_t length = fread(sources[i], 1, sizeof sources[i] - 1, file);
++            bool read = !ferror(file) && feof(file);
++            fclose(file);
++            assert(read);
++            sources[i][length] = 0;
++            inputs[count++] = (source_package_input){ paths[i], sources[i], length };
++        }
++    }
+     return count;
+ }
+ static pin_value files(const source_package_input *inputs, int count, bool sources)
+@@ -4483,6 +4544,89 @@ static uint64_t function_id(const char *name)
+     snprintf(text, sizeof text, "project:facts:1:%s:callable", name);
+     return script_catalog_id("package-symbol", text);
+ }
++/* Math packages link the ordinary native libm pack, outside the compiler
++ * host's intentionally restricted JSON/text/array execution profile. */
++static bool run_math(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
++{
++    REQUIRE(!strcmp(call->arguments, "[]") && !strcmp(call->expected, "[true]"));
++    native_prepared_context native = { .native = linked[1][0] };
++    execution_prepared_linker linker = native_capabilities_prepared_linker(&native);
++    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
++    uint64_t root;
++    char error[256];
++    behavior_backend mode = backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE;
++    package_collection *collection = compiler_artifact_read(
++        bytes,
++        length,
++        &linker,
++        mode,
++        &remaining,
++        &root,
++        error,
++        sizeof error
++    );
++    if (!collection) {
++        fprintf(stderr, "math artifact: %s\n", error);
++    }
++    REQUIRE(collection);
++    const behavior_function *body = NULL;
++    for (int i = 0; i < package_collection_count(collection); i++) {
++        execution_module *module = package_collection_module(collection, i);
++        if (execution_module_id(module) != root) {
++            continue;
++        }
++        for (int j = 0; j < execution_module_function_count(module); j++) {
++            execution_module_function_info info = execution_module_function_at(module, j);
++            if (info.id == function_id(call->function)) {
++                body = info.body;
++            }
++        }
++    }
++    REQUIRE(body);
++    arena memory = { 0 };
++    behavior_managed_heap heap = { 0 };
++    behavior_managed_heap_init(&heap);
++    behavior_function_activation activation = { 0 };
++    if (behavior_function_resumable(body)) {
++        behavior_function_activation_init(body, &activation);
++    }
++    pin_value answer = { .type = PIN_BOOL };
++    behavior_function_context context = {
++        .results = &answer,
++        .activation = behavior_function_resumable(body) ? &activation : NULL,
++        .managed_heap = &heap,
++        .budget = TARGET_BUDGET
++    };
++    behavior_function_bind_storage(&context, &memory);
++    REQUIRE(behavior_function_bind(body, &context, NULL, 0));
++    behavior_run_scope counts = { 0 };
++    behavior_run_scope_begin(&counts);
++    int status = behavior_function_run(body, &context, backend != 0);
++    behavior_run_scope_end(&counts);
++    bool passed = status == FLOW_OK && context.returned && answer.type == PIN_BOOL &&
++                  answer.b && !counts.counts.inspection_bytecode_fallbacks &&
++                  (!backend || ((TEST_COMPILED_BACKEND == BEHAVIOR_WASM
++                                     ? counts.counts.wasm_entries > 0
++                                     : counts.counts.sljit_entries > 0) &&
++                                !counts.counts.bytecode_entries));
++    if (!passed) {
++        fprintf(
++            stderr,
++            "math artifact %s backend=%d status=%d: %s\n",
++            call->function,
++            backend,
++            status,
++            context.error_message ? context.error_message : "wrong result"
++        );
++    }
++    behavior_function_release_host(&context);
++    behavior_function_activation_free(&activation);
++    behavior_managed_heap_free(&heap);
++    arena_free(&memory);
++    package_collection_free(collection);
++    REQUIRE(passed);
++    return true;
++}
+ static bool run(const unsigned char *bytes, size_t length, const sample_call *call, int backend)
+ {
+     char error[256];
+@@ -4702,7 +4846,8 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
+     native_definition_pack packs[] = { COMPILER_JSON_DEFINITION_PACK,
+                                        COMPILER_SYNTAX_DEFINITION_PACK,
+                                        CSTRING_PACK,
+-                                       CORE_DEFINITION_PACK };
++                                       CORE_DEFINITION_PACK,
++                                       NATIVE_MATH_DEFINITION_PACK };
+     /* Only this bytecode owner is serialized and compared below. Each
+      * caller still chooses its original target execution backends. */
+     REQUIRE(compiler_fixture_prepare_backends(
+@@ -4711,7 +4856,9 @@ static bool oracle_closure(const sample *s, unsigned char **closure, size_t *len
+         inputs,
+         count,
+         packs,
+-        s->game ? 4 : 3
++        s->math   ? 5
++        : s->game ? 4
++                  : 3
+     ));
+     const authoring_packages *owner = oracle.owners[0];
+     package_module rows[3];
+@@ -5546,6 +5693,9 @@ static bool call_sample(
+     int backend
+ )
+ {
++    if (s->math) {
++        return run_math(bytes, length, call, backend);
++    }
+     return s->probe_calls ? run_probe(bytes, length, call, backend)
+                           : run(bytes, length, call, backend);
+ }
+@@ -6217,7 +6367,7 @@ static bool run_samples(sample_group group, int b)
+                    (!s->drops || drops_only_collections(bytes, length)) &&
+                    ((b && !s->host_effects && !s->debug_metadata) ||
+                     (oracle_closure(s, &expected, &expected_length) &&
+-                     points_like_oracle(bytes, length, s->host_effects)));
++                     (s->math || points_like_oracle(bytes, length, s->host_effects))));
+         bool hosted = !s->traced || !s->c_string_probe;
+         for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
+             for (int backend = 0; ran && backend < 2; backend++) {
+diff --git a/test/language/package_math.c b/test/language/package_math.c
+new file mode 100644
+index 0000000000000000000000000000000000000000..8aa8c151db1c3adf8095e5e54395e4da77da3340
+--- /dev/null
++++ b/test/language/package_math.c
+@@ -0,0 +1,764 @@
++#include "authoring/native_bindings.h"
++#include "authoring/package_tests.h"
++#include "authoring/source_package_prepare.h"
++#include "backend.h"
++#include "execution/function.h"
++#include "execution/module.h"
++#include "execution/status.h"
++#include "runtime/core_definition.h"
++#include "runtime/math_definition.h"
++#include "support/array.h"
++#include "support/xalloc.h"
++#include "third_party/pico_headers/pico_unit.h"
++
++#include <assert.h>
++#include <float.h>
++#include <math.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <time.h>
++
++#ifndef CHIBI_SOURCE_ROOT
++#define CHIBI_SOURCE_ROOT "."
++#endif
++#ifndef CHIBI_CORE_MATH_ROOT
++#define CHIBI_CORE_MATH_ROOT CHIBI_SOURCE_ROOT "/packages/core/math"
++#endif
++
++/* Read the source being shipped, including when an installed-SDK run overrides
++ * its directory. The C cases cover IEEE values and native/compiler boundaries;
++ * the package's own @tests own ordinary mathematical behavior. */
++static const char *const source_names[] = {
++    "Math.chibi",        "Spring.chibi",    "MathTests.chibi",
++    "SpringTests.chibi", "ease/Ease.chibi", "ease/EaseTests.chibi"
++};
++static const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++static char *source_text[6];
++static authoring_packages *packages;
++static native_capabilities *natives;
++static package_test *tests;
++static const behavior_function *active_function;
++static behavior_function_activation activation;
++static behavior_function_context context;
++static behavior_managed_heap managed;
++static arena storage;
++static pin_value output;
++static char failure[256];
++static double preparation_seconds;
++
++static const char APP[] =
++    "package app\nimport math \"core:math\"\nimport ease \"core:math/ease\"\n"
++    "pub Inverse :: (a: number, b: number, value: number) -> number { "
++    " return math.InverseLerp(a, b, value); }\n"
++    "pub Interpolate :: (a: number, b: number, value: number) -> number { "
++    " return math.Lerp(a, b, value); }\n"
++    "pub Threshold :: (value: number, edge: number) -> number { "
++    " return math.Step(value, edge); }\n"
++    "pub Finite :: (value: number) -> bool { return math.IsFinite(value); }\n"
++    "pub Smooth :: (value: number) -> number { return math.SmoothStep(value); "
++    "}\n"
++    "pub Quantize :: (value: number, step: number) -> number { "
++    " return math.QuantizeAngle(value, step); }\n"
++    "pub Angle :: (a: number, b: number, fraction: number) -> number { "
++    " return math.AngleLerp(a, b, fraction); }\n"
++    "pub Follow :: (value: number, target: number, rate: number, elapsed: "
++    "number) -> number { "
++    " return math.Damp(value, target, rate, elapsed); }\n"
++    "pub SpringField :: (field: int, position: number, velocity: number, "
++    "target: number, "
++    " frequency: number, damping: number, elapsed: number) -> number { "
++    " spring: math.Spring = {position: position, velocity: velocity}; "
++    " next := math.AdvanceSpring(spring, target, frequency, damping, elapsed); "
++    " if field == 0 { return next.position; } return next.velocity; }\n"
++    "pub Ease :: (value: number) -> number { return ease.Linear(value); }\n"
++    "pub ImportedLerp :: (count: int) -> number { value: number = 0; index: "
++    "int = 0; "
++    " while index < count { value = math.Lerp(value, 8, 0.001); index += 1; } "
++    "return value; }\n"
++    "pub InlineLerp :: (count: int) -> number { value: number = 0; index: int "
++    "= 0; "
++    " while index < count { span := 8 - value; offset := span * 0.001; "
++    " value = value + offset; index += 1; } return value; }\n"
++    "pub SpringValue :: (count: int) -> number { "
++    " spring: math.Spring = {position: 1, velocity: 0}; index: int = 0; "
++    " while index < count { spring = math.AdvanceSpring(spring, 0, 1, 1, 1.0 / "
++    "120); "
++    " index += 1; } return spring.position + spring.velocity; }\n"
++    "pub SpringFields :: (count: int) -> number { "
++    " position: number = 1; velocity: number = 0; index: int = 0; "
++    " while index < count { spring: math.Spring = {position: position, "
++    "velocity: velocity}; "
++    " next := math.AdvanceSpring(spring, 0, 1, 1, 1.0 / 120); "
++    " position = next.position; velocity = next.velocity; index += 1; } "
++    " return position + velocity; }\n";
++
++static double now()
++{
++    struct timespec value;
++    int status = clock_gettime(CLOCK_MONOTONIC, &value);
++    assert(!status);
++    return value.tv_sec + value.tv_nsec * 1e-9;
++}
++static void finish_call()
++{
++    behavior_function_release_host(&context);
++    behavior_function_activation_free(&activation);
++    behavior_managed_heap_free(&managed);
++    arena_free(&storage);
++    active_function = NULL;
++    context = (behavior_function_context){ 0 };
++    activation = (behavior_function_activation){ 0 };
++    managed = (behavior_managed_heap){ 0 };
++}
++static void cleanup()
++{
++    finish_call();
++    afree(tests);
++    tests = NULL;
++    authoring_packages_free(packages);
++    packages = NULL;
++    native_capabilities_free(natives);
++    natives = NULL;
++    for (int i = 0; i < 6; i++) {
++        free(source_text[i]);
++        source_text[i] = NULL;
++    }
++}
++static char *read_source(const char *relative)
++{
++    const char *directory = getenv("CHIBI_CORE_MATH_ROOT");
++    if (!directory || !directory[0]) {
++        directory = CHIBI_CORE_MATH_ROOT;
++    }
++    char path[4096];
++    int length = snprintf(path, sizeof path, "%s/%s", directory, relative);
++    if (length < 0 || (size_t)length >= sizeof path) {
++        return NULL;
++    }
++    FILE *file = fopen(path, "rb");
++    if (!file) {
++        fprintf(stderr, "package math cannot read %s\n", path);
++        return NULL;
++    }
++    bool ok = !fseek(file, 0, SEEK_END);
++    long size = ok ? ftell(file) : -1;
++    ok = size >= 0 && size <= 512 * 1024 && !fseek(file, 0, SEEK_SET);
++    char *text = ok ? xmalloc((size_t)size + 1) : NULL;
++    if (ok) {
++        ok = fread(text, 1, (size_t)size, file) == (size_t)size;
++        text[size] = 0;
++    }
++    fclose(file);
++    if (!ok) {
++        fprintf(stderr, "package math cannot read source bytes from %s\n", path);
++        free(text);
++        return NULL;
++    }
++    return text;
++}
++static void diagnostics()
++{
++    const char *error = authoring_packages_error(packages);
++    if (error) {
++        fprintf(stderr, "package math: %s\n", error);
++    }
++    for (int i = 0; i < authoring_packages_count(packages); i++) {
++        const authoring_package *item = authoring_packages_at(packages, i);
++        for (int j = 0; j < item->diagnostic_count; j++) {
++            const script_diagnostic *d = &item->diagnostics[j];
++            fprintf(
++                stderr,
++                "%s:%d:%d: %s\n",
++                item->identity,
++                d->range.line,
++                d->range.column,
++                d->message
++            );
++        }
++    }
++}
++static bool prepare(const char *app, behavior_backend backend, bool valid)
++{
++    cleanup();
++    double start = now();
++    native_definition_pack packs[] = { CORE_DEFINITION_PACK,
++                                       NATIVE_MATH_DEFINITION_PACK };
++    char error[256];
++    natives = native_capabilities_from_definition_packs(NULL, 0, packs, 2, error, sizeof error);
++    if (!natives) {
++        fprintf(stderr, "package math native catalog: %s\n", error);
++    }
++    REQUIRE(natives);
++    source_package_input files[7];
++    char paths[6][128];
++    for (int i = 0; i < 6; i++) {
++        source_text[i] = read_source(source_names[i]);
++        REQUIRE(source_text[i]);
++        int length = snprintf(
++            paths[i],
++            sizeof paths[i],
++            "%s/math/%s",
++            app ? "/math-sdk/core" : "/math-tests",
++            source_names[i]
++        );
++        REQUIRE(length > 0 && (size_t)length < sizeof paths[i]);
++        files[i] = (source_package_input){ paths[i],
++                                           source_text[i],
++                                           strlen(source_text[i]) };
++    }
++    files[6] = (source_package_input){ "app/App.chibi", app, app ? strlen(app) : 0 };
++    source_package_collection core = { "core", "/math-sdk/core" };
++    source_package_snapshot_options options = {
++        .project_root = app ? "/math-consumer" : "/math-tests",
++        .files = files,
++        .file_count = app ? 7 : 6,
++        .collections = app ? &core : NULL,
++        .collection_count = app ? 1 : 0,
++    };
++    source_package_snapshot *snapshot = source_package_snapshot_new(&options);
++    REQUIRE(snapshot && !source_package_snapshot_error_at(snapshot));
++    script_lower_bindings bindings = authoring_native_bindings(natives);
++    packages = authoring_packages_prepare(
++        snapshot,
++        native_capabilities_catalog(natives),
++        &bindings,
++        backend,
++        NULL
++    );
++    preparation_seconds = now() - start;
++    REQUIRE(packages);
++    if (valid && !authoring_packages_valid(packages)) {
++        diagnostics();
++    }
++    REQUIRE(authoring_packages_valid(packages) == valid);
++    return true;
++}
++static const authoring_package *package(const char *identity)
++{
++    for (int i = 0; i < authoring_packages_count(packages); i++) {
++        const authoring_package *item = authoring_packages_at(packages, i);
++        if (!strcmp(item->identity, identity)) {
++            return item;
++        }
++    }
++    return NULL;
++}
++static const behavior_function *function(const char *name)
++{
++    const authoring_package *app = package("project:app");
++    uint64_t id = 0;
++    for (int i = 0; app && i < app->exports->member_count; i++) {
++        const script_package_export *member = &app->exports->members[i];
++        if (!strcmp(member->name, name)) {
++            id = member->id;
++        }
++    }
++    for (int i = 0; app && id && i < execution_module_function_count(app->module); i++) {
++        execution_module_function_info info = execution_module_function_at(app->module, i);
++        if (info.id == id) {
++            return info.body;
++        }
++    }
++    return NULL;
++}
++static void observe(const behavior_function *, const behavior_function_context *call, int)
++{
++    if (!failure[0]) {
++        snprintf(
++            failure,
++            sizeof failure,
++            "%s",
++            call->error_message ? call->error_message
++                                : behavior_function_failure_text(call->failure)
++        );
++    }
++}
++static bool bind_call(
++    const behavior_function *body,
++    const pin_value *arguments,
++    int count,
++    pin_type type,
++    uintptr_t budget
++)
++{
++    REQUIRE(body);
++    if (active_function != body) {
++        finish_call();
++        active_function = body;
++        behavior_managed_heap_init(&managed);
++        if (behavior_function_resumable(body)) {
++            behavior_function_activation_init(body, &activation);
++        }
++    } else {
++        behavior_function_reset_host(&context);
++        behavior_function_reset_activation(body, &activation);
++        arena_reset(&storage);
++    }
++    failure[0] = 0;
++    output = (pin_value){ .type = type };
++    context.activation = behavior_function_resumable(body) ? &activation : NULL;
++    context.managed_heap = &managed;
++    context.arguments = arguments;
++    context.argument_count = count;
++    context.results = &output;
++    context.budget = budget;
++    context.failure_observer = observe;
++    behavior_function_bind_storage(&context, &storage);
++    REQUIRE(behavior_function_bind(body, &context, NULL, 0));
++    behavior_function_prepare_host(body, &context);
++    return true;
++}
++static bool call(
++    const char *name,
++    const pin_value *arguments,
++    int count,
++    pin_type type,
++    behavior_backend backend,
++    const char *rejected
++)
++{
++    const behavior_function *body = function(name);
++    /* Failed invocations do not qualify for successful-activation reuse. */
++    finish_call();
++    REQUIRE(bind_call(body, arguments, count, type, 100000));
++    behavior_run_scope runs = { 0 };
++    behavior_run_scope_begin(&runs);
++    int status = behavior_function_run(body, &context, backend != BEHAVIOR_BYTECODE);
++    behavior_run_scope_end(&runs);
++    if (rejected) {
++        REQUIRE(status == FLOW_ERR_INVALID_GRAPH);
++        REQUIRE(strstr(failure, "Assertion failed: ") && strstr(failure, rejected));
++        return true;
++    }
++    if (status != FLOW_OK) {
++        fprintf(stderr, "package math %s status=%d: %s\n", name, status, failure);
++    }
++    REQUIRE(status == FLOW_OK && context.returned && output.type == type);
++    REQUIRE(!runs.counts.overflow && !runs.counts.inspection_bytecode_fallbacks);
++    REQUIRE(
++        backend == BEHAVIOR_BYTECODE ? runs.counts.bytecode_entries > 0
++                                     : !runs.counts.bytecode_entries
++    );
++    REQUIRE(backend != BEHAVIOR_SLJIT || runs.counts.sljit_entries > 0);
++    REQUIRE(backend != BEHAVIOR_WASM || runs.counts.wasm_entries > 0);
++    return true;
++}
++static pin_value real(float value)
++{
++    return (pin_value){ .type = PIN_F32, .f = value };
++}
++static bool same(float actual, float expected)
++{
++    REQUIRE(isnan(expected) ? isnan(actual) : actual == expected);
++    REQUIRE(expected != 0 || !!signbit(actual) == !!signbit(expected));
++    return true;
++}
++TEST_CASE(package_math_runs_shipped_authored_tests)
++{
++    for (int b = 0; b < 2; b++) {
++        REQUIRE(prepare(NULL, backends[b], true));
++        tests = package_tests_find(packages);
++        REQUIRE(acount(tests) > 0);
++        bool math = false, ease = false;
++        for (int i = 0; i < acount(tests); i++) {
++            math |= !strcmp(tests[i].package, "math");
++            ease |= !strcmp(tests[i].package, "ease");
++            package_test_failure reason;
++            bool passed = package_test_run(&tests[i], backends[b], PACKAGE_TEST_BUDGET, &reason);
++            if (!passed) {
++                fprintf(
++                    stderr,
++                    "%s:%d:%d %s.%s: %s\n",
++                    reason.path ? reason.path : tests[i].path,
++                    reason.line,
++                    reason.column,
++                    tests[i].package,
++                    tests[i].name,
++                    reason.message
++                );
++            }
++            REQUIRE(passed);
++        }
++        REQUIRE(math && ease);
++        printf(
++            "MATH_TESTS backend=%s tests=%d prepare_ms=%.3f\n",
++            behavior_backend_name(backends[b]),
++            acount(tests),
++            preparation_seconds * 1e3
++        );
++    }
++    return true;
++}
++TEST_CASE(package_math_imports_preserve_ieee_and_number_precision)
++{
++    static const struct
++    {
++        const char *name;
++        float a, b, c, expected;
++    } cases[] = {
++        { "Inverse", 2, 6, 3, .25f },
++        { "Inverse", 6, 2, 3, .75f },
++        { "Inverse", 3, 3, 3, NAN },
++        { "Inverse", 3, 3, 4, INFINITY },
++        { "Inverse", 3, 3, 2, -INFINITY },
++        { "Inverse", 0, 1, -0.0f, -0.0f },
++        { "Inverse", 1, 0, 1, -0.0f },
++        { "Inverse", -FLT_MAX, FLT_MAX, 0, 0 },
++        { "Inverse", -FLT_MAX, FLT_MAX, FLT_MAX, NAN },
++        { "Inverse", -1, 16777216, 16777215, 1 },
++        { "Inverse", NAN, 1, 0, NAN },
++        { "Inverse", 0, INFINITY, 1, 0 },
++        { "Interpolate", 2, 6, 1.5f, 8 },
++        { "Interpolate", 2, 6, -.5f, 0 },
++        { "Interpolate", -1, 16777216, 1, 16777215 },
++        { "Interpolate", 16777216, 16777218, .5f, 16777216 },
++        { "Interpolate", -0.0f, -1, 0, -0.0f },
++        { "Interpolate", -FLT_MAX, FLT_MAX, 0, NAN },
++        { "Interpolate", -FLT_MAX, FLT_MAX, 1, INFINITY },
++        { "Interpolate", 0, 1, NAN, NAN },
++        { "Interpolate", INFINITY, INFINITY, 0, NAN },
++    };
++    static const float special[] = { -0.0f,         0,        FLT_TRUE_MIN,
++                                     -FLT_TRUE_MIN, -FLT_MAX, FLT_MAX,
++                                     NAN,           INFINITY, -INFINITY };
++    for (int b = 0; b < 2; b++) {
++        REQUIRE(prepare(APP, backends[b], true));
++        REQUIRE(package("core:math") && package("core:math/ease"));
++        for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
++            pin_value args[] = { real(cases[i].a),
++                                 real(cases[i].b),
++                                 real(cases[i].c) };
++            REQUIRE(call(cases[i].name, args, 3, PIN_F32, backends[b], NULL));
++            REQUIRE(same(output.f, cases[i].expected));
++        }
++        for (int i = 0; i < (int)(sizeof special / sizeof *special); i++) {
++            pin_value value = real(special[i]);
++            REQUIRE(call("Finite", &value, 1, PIN_BOOL, backends[b], NULL));
++            REQUIRE(output.b == !!isfinite(special[i]));
++            REQUIRE(call("Ease", &value, 1, PIN_F32, backends[b], NULL));
++            REQUIRE(same(output.f, special[i]));
++            pin_value args[] = { value, real(0) };
++            REQUIRE(call("Threshold", args, 2, PIN_F32, backends[b], NULL));
++            REQUIRE(output.f == (special[i] < 0 ? 0 : 1));
++        }
++    }
++    return true;
++}
++static bool rejected_inputs(
++    const char *name,
++    const float *values,
++    int count,
++    int first,
++    int end,
++    const char *message,
++    behavior_backend backend
++)
++{
++    const float invalid[] = { NAN, INFINITY, -INFINITY };
++    for (int input = first; input < end; input++) {
++        for (int sample = 0; sample < 3; sample++) {
++            pin_value args[7];
++            REQUIRE(count <= 7);
++            for (int i = 0; i < count; i++) {
++                args[i] = real(values[i]);
++            }
++            if (first) {
++                args[0] = (pin_value){ .type = PIN_I32, .i = 0 };
++            }
++            args[input] = real(invalid[sample]);
++            REQUIRE(call(name, args, count, PIN_F32, backend, message));
++        }
++    }
++    return true;
++}
++TEST_CASE(package_math_imports_reject_invalid_domains)
++{
++    const float smooth[] = { .5f }, quantize[] = { 1, .5f },
++                angle[] = { 0, 1, .5f }, damp[] = { 0, 1, 1, .125f },
++                spring[] = { 0, 1, 0, 0, 1, 1, .125f };
++    for (int b = 0; b < 2; b++) {
++        REQUIRE(prepare(APP, backends[b], true));
++        REQUIRE(rejected_inputs("Smooth", smooth, 1, 0, 1, "SmoothStep needs", backends[b]));
++        REQUIRE(
++            rejected_inputs("Quantize", quantize, 2, 0, 2, "QuantizeAngle needs", backends[b])
++        );
++        REQUIRE(rejected_inputs("Angle", angle, 3, 0, 3, "AngleLerp needs", backends[b]));
++        REQUIRE(rejected_inputs("Follow", damp, 4, 0, 4, "Damp needs", backends[b]));
++        REQUIRE(
++            rejected_inputs("SpringField", spring, 7, 1, 7, "AdvanceSpring needs", backends[b])
++        );
++        pin_value zero_step[] = { real(1), real(0) };
++        REQUIRE(call("Quantize", zero_step, 2, PIN_F32, backends[b], "QuantizeAngle needs"));
++        zero_step[1] = real(-0.0f);
++        REQUIRE(call("Quantize", zero_step, 2, PIN_F32, backends[b], "QuantizeAngle needs"));
++        pin_value overflow_quantize[] = { real(FLT_MAX), real(FLT_MIN) };
++        REQUIRE(call("Quantize", overflow_quantize, 2, PIN_F32, backends[b], "QuantizeAngle produced"));
++        pin_value overflow_angle[] = { real(0), real(2), real(FLT_MAX) };
++        REQUIRE(call("Angle", overflow_angle, 3, PIN_F32, backends[b], "AngleLerp produced"));
++        pin_value overflow_spring[] = { { .type = PIN_I32, .i = 0 },
++                                        real(-FLT_MAX),
++                                        real(0),
++                                        real(FLT_MAX),
++                                        real(1),
++                                        real(0),
++                                        real(.25f) };
++        REQUIRE(call("SpringField", overflow_spring, 7, PIN_F32, backends[b], "AdvanceSpring produced"));
++    }
++    return true;
++}
++TEST_CASE(package_math_imports_keep_identity_and_extreme_finite_state)
++{
++    for (int b = 0; b < 2; b++) {
++        REQUIRE(prepare(APP, backends[b], true));
++        pin_value args[] = { { .type = PIN_I32, .i = 0 },
++                             real(-0.0f),
++                             real(-FLT_TRUE_MIN),
++                             real(FLT_MAX),
++                             real(FLT_MAX),
++                             real(FLT_MAX),
++                             real(0) };
++        REQUIRE(call("SpringField", args, 7, PIN_F32, backends[b], NULL));
++        REQUIRE(same(output.f, -0.0f));
++        args[0].i = 1;
++        REQUIRE(call("SpringField", args, 7, PIN_F32, backends[b], NULL));
++        REQUIRE(same(output.f, -FLT_TRUE_MIN));
++        pin_value equilibrium[] = { { .type = PIN_I32, .i = 0 },
++                                    real(FLT_MAX),
++                                    real(-0.0f),
++                                    real(FLT_MAX),
++                                    real(FLT_MAX),
++                                    real(FLT_MAX),
++                                    real(FLT_MAX) };
++        REQUIRE(call("SpringField", equilibrium, 7, PIN_F32, backends[b], NULL));
++        REQUIRE(same(output.f, FLT_MAX));
++        equilibrium[0].i = 1;
++        REQUIRE(call("SpringField", equilibrium, 7, PIN_F32, backends[b], NULL));
++        REQUIRE(same(output.f, -0.0f));
++        pin_value damp[] = { real(-FLT_MAX), real(FLT_MAX), real(FLT_MAX), real(FLT_MAX) };
++        REQUIRE(call("Follow", damp, 4, PIN_F32, backends[b], NULL));
++        REQUIRE(same(output.f, FLT_MAX));
++        damp[0] = real(-0.0f);
++        damp[3] = real(0);
++        REQUIRE(call("Follow", damp, 4, PIN_F32, backends[b], NULL));
++        REQUIRE(same(output.f, -0.0f));
++        pin_value angle[] = { real(-0.0f), real(FLT_MAX), real(0) };
++        REQUIRE(call("Angle", angle, 3, PIN_F32, backends[b], NULL));
++        REQUIRE(same(output.f, -0.0f));
++    }
++    return true;
++}
++TEST_CASE(package_math_number_api_requires_explicit_f64_narrowing)
++{
++    static const char *const names[] = { "InverseLerp", "Lerp" };
++    for (int operation = 0; operation < 2; operation++) {
++        char rejected[256], admitted[256];
++        snprintf(
++            rejected,
++            sizeof rejected,
++            "package app\nimport math \"core:math\"\n"
++            "pub Narrow :: (value: f64) -> number { return math.%s(value, 1, "
++            "0.5); }\n",
++            names[operation]
++        );
++        snprintf(
++            admitted,
++            sizeof admitted,
++            "package app\nimport math \"core:math\"\n"
++            "pub Narrow :: (value: f64) -> number { return "
++            "math.%s(number(value), 1, 0.5); }\n",
++            names[operation]
++        );
++        REQUIRE(prepare(rejected, BEHAVIOR_BYTECODE, false));
++        const authoring_package *app = package("project:app");
++        REQUIRE(app && !app->valid && app->diagnostic_count > 0);
++        bool mismatch = false;
++        for (int i = 0; i < app->diagnostic_count; i++) {
++            const script_diagnostic *d = &app->diagnostics[i];
++            mismatch |= strstr(d->message, "f64") && strstr(d->message, "number") &&
++                        strstr(d->message, "convert with") && d->range.line == 3;
++        }
++        if (!mismatch) {
++            diagnostics();
++        }
++        REQUIRE(mismatch);
++        for (int b = 0; b < 2; b++) {
++            REQUIRE(prepare(admitted, backends[b], true));
++            pin_value value = { .type = PIN_F64, .d = 2.5 };
++            REQUIRE(call("Narrow", &value, 1, PIN_F32, backends[b], NULL));
++            REQUIRE(same(output.f, operation ? 1.75f : 4.f / 3));
++            if (operation) {
++                value.d = 16777217;
++                REQUIRE(call("Narrow", &value, 1, PIN_F32, backends[b], NULL));
++                REQUIRE(same(output.f, 8388608));
++            }
++        }
++    }
++    return true;
++}
++TEST_CASE(package_math_catalog_retires_high_level_native_names)
++{
++    REQUIRE(prepare(APP, BEHAVIOR_BYTECODE, true));
++    static const char *const removed[] = { "Step",
++                                           "Step Float",
++                                           "Mix",
++                                           "Mix Float",
++                                           "Smooth Step",
++                                           "Smooth Step Float",
++                                           "Quantize Angle",
++                                           "Quantize Angle Float",
++                                           "Advance Damped Spring",
++                                           "step",
++                                           "mix",
++                                           "smooth_step",
++                                           "quantize_angle",
++                                           "advance_damped_spring" };
++    const script_catalog *catalog = native_capabilities_catalog(natives);
++    for (int i = 0; i < catalog->capability_count; i++) {
++        const script_catalog_capability *capability = &catalog->capabilities[i];
++        for (int j = 0; j < (int)(sizeof removed / sizeof *removed); j++) {
++            REQUIRE(strcmp(capability->name, removed[j]));
++            REQUIRE(
++                !capability->qualified_name ||
++                strcmp(capability->qualified_name, removed[j])
++            );
++        }
++    }
++    static const char *const kept[] = { "Sine",
++                                        "Sine Float",
++                                        "Square Root",
++                                        "Square Root Float",
++                                        "Exponential",
++                                        "Exponential Float",
++                                        "Power",
++                                        "Power Float",
++                                        "Random Real",
++                                        "Random Range",
++                                        "Random Range Float" };
++    for (int i = 0; i < (int)(sizeof kept / sizeof *kept); i++) {
++        REQUIRE(script_catalog_find_capability(catalog, kept[i], SCRIPT_CAPABILITY_FUNCTION) >= 0);
++    }
++    return true;
++}
++
++static bool benchmark_setting(const char *name, int fallback, int maximum, int *out)
++{
++    const char *text = getenv(name);
++    if (!text || !text[0]) {
++        *out = fallback;
++        return true;
++    }
++    char *end;
++    long value = strtol(text, &end, 10);
++    REQUIRE(!*end && value > 0 && value <= maximum);
++    *out = (int)value;
++    return true;
++}
++static bool measure(
++    const char *name,
++    behavior_backend backend,
++    int loops,
++    int invocations,
++    int trials,
++    float *value
++)
++{
++    finish_call();
++    const behavior_function *body = function(name);
++    pin_value count = { .type = PIN_I32, .i = loops };
++    uintptr_t budget = (uintptr_t)loops * 5000 + 100000;
++    REQUIRE(bind_call(body, &count, 1, PIN_F32, budget));
++    REQUIRE(behavior_function_run(body, &context, backend != BEHAVIOR_BYTECODE) == FLOW_OK);
++    REQUIRE(context.returned && isfinite(output.f));
++    float expected = output.f;
++    for (int trial = 0; trial < trials; trial++) {
++        xalloc_stats before, after;
++        xalloc_stats_get(&before);
++        uint64_t blocks = arena_block_allocations();
++        double start = now();
++        for (int i = 0; i < invocations; i++) {
++            REQUIRE(bind_call(body, &count, 1, PIN_F32, budget));
++            REQUIRE(behavior_function_run(body, &context, backend != BEHAVIOR_BYTECODE) == FLOW_OK);
++            REQUIRE(context.returned && output.f == expected);
++        }
++        double elapsed = now() - start;
++        xalloc_stats_get(&after);
++        blocks = arena_block_allocations() - blocks;
++        size_t used, capacity;
++        arena_usage(&storage, &used, &capacity);
++        printf(
++            "MATH_BENCH backend=%s body=%s trial=%d loops=%d invocations=%d "
++            "ns_per_step=%.3f us_per_invocation=%.3f xalloc_calls=%llu "
++            "requested_bytes=%llu "
++            "arena_blocks=%llu arena_used=%zu arena_capacity=%zu "
++            "activation_bytes=%zu "
++            "host_bytes=%zu managed_bytes=%zu\n",
++            behavior_backend_name(backend),
++            name,
++            trial,
++            loops,
++            invocations,
++            elapsed * 1e9 / ((double)loops * invocations),
++            elapsed * 1e6 / invocations,
++            (unsigned long long)(after.calls - before.calls),
++            (unsigned long long)(after.requested_bytes - before.requested_bytes),
++            (unsigned long long)blocks,
++            used,
++            capacity,
++            behavior_function_activation_storage_bytes(body, &activation),
++            behavior_function_host_storage_bytes(&context),
++            arena_storage_bytes(&managed.storage)
++        );
++    }
++    *value = expected;
++    return true;
++}
++TEST_CASE(package_math_invocation_and_record_value_benchmark)
++{
++    int loops, invocations, trials;
++    REQUIRE(benchmark_setting("CHIBI_MATH_BENCH_LOOPS", 128, 100000, &loops));
++    REQUIRE(benchmark_setting("CHIBI_MATH_BENCH_INVOCATIONS", 16, 1000, &invocations));
++    REQUIRE(benchmark_setting("CHIBI_MATH_BENCH_TRIALS", 3, 20, &trials));
++    for (int b = 0; b < 2; b++) {
++        REQUIRE(prepare(APP, backends[b], true));
++        printf(
++            "MATH_PREPARE backend=%s milliseconds=%.3f source_files=6 "
++            "invocation_includes=reusable_storage_reset_and_binding "
++            "allocation_scope=xalloc_wrappers_and_arena_blocks\n",
++            behavior_backend_name(backends[b]),
++            preparation_seconds * 1e3
++        );
++        float imported, inline_value, record, fields;
++        REQUIRE(measure("ImportedLerp", backends[b], loops, invocations, trials, &imported));
++        REQUIRE(measure("InlineLerp", backends[b], loops, invocations, trials, &inline_value));
++        REQUIRE(same(imported, inline_value));
++        double ideal_lerp = 8 * (1 - pow(1 - (double).001f, loops));
++        REQUIRE(fabs(imported - ideal_lerp) <= .001);
++        REQUIRE(measure("SpringValue", backends[b], loops, invocations, trials, &record));
++        REQUIRE(measure("SpringFields", backends[b], loops, invocations, trials, &fields));
++        REQUIRE(same(record, fields));
++        double omega = 6.283185307179586476925286766559;
++        double time = loops * (double)(1.f / 120);
++        double ideal_spring = exp(-omega * time) *
++                              (1 + omega * time - omega * omega * time);
++        REQUIRE(fabs(record - ideal_spring) <= .00001);
++    }
++    return true;
++}
++void test_language_package_math()
++{
++    pu_setup(NULL, cleanup);
++    RUN_TEST_CASE(package_math_runs_shipped_authored_tests);
++    RUN_TEST_CASE(package_math_imports_preserve_ieee_and_number_precision);
++    RUN_TEST_CASE(package_math_imports_reject_invalid_domains);
++    RUN_TEST_CASE(package_math_imports_keep_identity_and_extreme_finite_state);
++    RUN_TEST_CASE(package_math_number_api_requires_explicit_f64_narrowing);
++    RUN_TEST_CASE(package_math_catalog_retires_high_level_native_names);
++    pu_clear_setup();
++}
++void test_language_package_math_benchmark()
++{
++    pu_setup(NULL, cleanup);
++    RUN_TEST_CASE(package_math_invocation_and_record_value_benchmark);
++    pu_clear_setup();
++}
+diff --git a/test/language/packed.c b/test/language/packed.c
+index b0ab167aff01d31f24eedff388500b73b0b1e0e8..c1b8310688c1581b2f387bcdf645409faec569b1 100644
+--- a/test/language/packed.c
++++ b/test/language/packed.c
+@@ -687,14 +687,13 @@ TEST_CASE(float_math_stays_float_and_f64_math_stays_f64)
+                 narrow
+                     ? "Packed :: library { Math :: (value:number) -> number { "
+                       "return "
+-                      "sqrt(value)+sin(value)+pow(value,2)+mix(value,value,"
+-                      "0.5); } }"
++                      "sqrt(value)+sin(value)+pow(value,2); } }"
+                     : "Packed :: library { Math :: () -> f64 { return "
+                       "sqrt(f64(2)); } }",
+                 backends[b]
+             );
+             REQUIRE(function);
+-            REQUIRE(kernel_calls(narrow ? PIN_F32 : PIN_F64) == (narrow ? 4 : 1));
++            REQUIRE(kernel_calls(narrow ? PIN_F32 : PIN_F64) == (narrow ? 3 : 1));
+             pin_value value = { .type = PIN_F32, .f = 2 },
+                       result = { .type = narrow ? PIN_F32 : PIN_F64 };
+             context = (behavior_function_context){ .arguments = narrow ? &value : NULL,
+@@ -709,7 +708,6 @@ TEST_CASE(float_math_stays_float_and_f64_math_stays_f64)
+             if (narrow) {
+                 float expected = sqrtf(2) + cos_sin_compute(2).s;
+                 expected += powf(2, 2);
+-                expected += 2;
+                 REQUIRE(result.type == PIN_F32 && result.f == expected);
+             } else {
+                 REQUIRE(result.type == PIN_F64 && result.d == sqrt(2));
+diff --git a/test/runtime/source_features.c b/test/runtime/source_features.c
+index 10c3ccd64c5c44982c202f1c2f565b60861b1770..472738989a8263f59db2754b4cbc84a97d64a085 100644
+--- a/test/runtime/source_features.c
++++ b/test/runtime/source_features.c
+@@ -428,41 +428,31 @@ TEST_CASE(source_native_particles_preserve_nested_wait_and_exact_emission)
+     }
+     return true;
+ }
+-TEST_CASE(source_native_motion_retains_numeric_outputs)
++TEST_CASE(source_native_math_retains_numeric_outputs)
+ {
+-    const char *text =
+-        "Motion :: behavior { input:retain f64=0; angle:retain f64=0; "
+-        "smooth:retain f64=0; root:retain f64=0; low:retain f64=0; "
+-        "high:retain f64=0; nearest:retain f64=0; position:retain "
+-        "number=0; velocity:retain number=0; Calculate :: "
+-        "(Value:f64)->(Angle:f64,Smooth:f64,Root:f64,Low:f64,"
+-        "High:f64,Nearest:f64){ "
+-        "return(Angle:quantize_angle(Angle:Value,Step:1.5707963267948966),"
+-        "Smooth:smooth_step(Value:Value),Root:sqrt(Value:Value),Low:floor("
+-        "Value:Value),High:ceil(Value:Value),Nearest:round(Value:Value)); } on "
+-        "Tick :: () { r:=Calculate(Value:input); angle=r.Angle; "
+-        "smooth=r.Smooth; "
+-        "root=r.Root; low=r.Low; high=r.High; nearest=r.Nearest; "
+-        "spring:=advance_damped_spring(Position:0.0,Velocity:0.0,Target:1.0,"
+-        "Frequency:1.0,Damping:1.0,Delta:0.125); position=spring.Position; "
+-        "velocity=spring.Velocity; } }";
+-    const char *names[] = { "angle", "smooth",  "root",     "low",
+-                            "high",  "nearest", "position", "velocity" };
++    const char
++        *text = "Math :: behavior { input:retain f64=0; root:retain f64=0; "
++                "low:retain f64=0; high:retain f64=0; nearest:retain f64=0; "
++                "on Tick :: () { root=sqrt(input); low=floor(input); "
++                "high=ceil(input); "
++                "nearest=round(input); } }";
++    const char *names[] = { "root", "low", "high", "nearest" };
+     const double samples[] = {
+         NAN, INFINITY,         -INFINITY,         -0.0, 0.0, -.5, .5, -1.5,
+         1.5, nextafter(.5, 0), nextafter(-.5, 0), .125
+     };
+     pin_value (*const kernels[])(const pin_value *, int, arena *) = {
+-        native_math_Quantize_Angle, native_math_Smooth_Step,
+-        native_math_SquareRoot,     native_math_Floor,
+-        native_math_Ceiling,        native_math_Round
++        native_math_SquareRoot,
++        native_math_Floor,
++        native_math_Ceiling,
++        native_math_Round
+     };
+     for (int backend = 0; backend < 2; backend++) {
+         REQUIRE(prepare(text, backend ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE));
+         uint64_t tick = execution_module_event(prepared->module, "Tick"),
+-                 input = state_id("input"), ids[8];
++                 input = state_id("input"), ids[4];
+         REQUIRE(tick && input);
+-        for (int i = 0; i < 8; i++) {
++        for (int i = 0; i < 4; i++) {
+             ids[i] = state_id(names[i]);
+             REQUIRE(ids[i]);
+         }
+@@ -470,35 +460,12 @@ TEST_CASE(source_native_motion_retains_numeric_outputs)
+         REQUIRE(instance);
+         retire_producer();
+         for (int sample = 0; sample < 12; sample++) {
+-            REQUIRE(
+-                execution_instance_set_state(
+-                    instance,
+-                    input,
+-                    (pin_value){ .type = PIN_F64, .d = samples[sample] }
+-                ) == 0
+-            );
+-            if (!isfinite(samples[sample])) {
+-                pin_value inputs[] = { { .type = PIN_F64, .d = samples[sample] },
+-                                       { .type = PIN_F64, .d = 1.5707963267948966 } };
+-                REQUIRE(native_math_Quantize_Angle(inputs, 2, NULL).type == PIN_FLOW);
+-                REQUIRE(dispatch(tick, 1024) == FLOW_ERR_INVALID_GRAPH);
+-                const execution_program_failure *failure = execution_program_error(program);
+-                REQUIRE(failure && failure->status == FLOW_ERR_INVALID_GRAPH);
+-                REQUIRE(!strcmp(failure->message, "Native value operation failed"));
+-                REQUIRE(execution_instance_pending(instance) == 0);
+-                for (int i = 0; i < 8; i++) {
+-                    const pin_value *value = execution_instance_state(instance, ids[i]);
+-                    REQUIRE(value && (i < 6 ? value->d == 0 : value->f == 0));
+-                }
+-                execution_program_clear_error(program);
+-                continue;
+-            }
++            pin_value argument = { .type = PIN_F64, .d = samples[sample] };
++            REQUIRE(!execution_instance_set_state(instance, input, argument));
+             REQUIRE(dispatch(tick, 1024) >= 0);
+             REQUIRE(execution_instance_pending(instance) == 0);
+-            for (int i = 0; i < 6; i++) {
+-                pin_value args[] = { { .type = PIN_F64, .d = samples[sample] },
+-                                     { .type = PIN_F64, .d = 1.5707963267948966 } };
+-                pin_value expected = kernels[i](args, i ? 1 : 2, NULL);
++            for (int i = 0; i < 4; i++) {
++                pin_value expected = kernels[i](&argument, 1, NULL);
+                 const pin_value *actual = execution_instance_state(instance, ids[i]);
+                 REQUIRE(actual && actual->type == PIN_F64);
+                 REQUIRE(
+@@ -508,17 +475,6 @@ TEST_CASE(source_native_motion_retains_numeric_outputs)
+                     REQUIRE(signbit(actual->d) == signbit(expected.d));
+                 }
+             }
+-            pin_value spring[] = { { .type = PIN_F32, .f = 0 },
+-                                   { .type = PIN_F32, .f = 0 },
+-                                   { .type = PIN_F32, .f = 1 },
+-                                   { .type = PIN_F32, .f = 1 },
+-                                   { .type = PIN_F32, .f = 1 },
+-                                   { .type = PIN_F32, .f = .125f } },
+-                      result[2] = { { 0 } };
+-            REQUIRE(!native_math_spring(spring, result));
+-            REQUIRE(execution_instance_state(instance, ids[6])->f == result[0].f);
+-            REQUIRE(execution_instance_state(instance, ids[7])->f == result[1].f);
+-            REQUIRE(result[0].f > 0 && result[0].f < 1 && result[1].f > 0);
+         }
+         cleanup();
+     }
+@@ -1364,7 +1320,7 @@ TEST_CASE(source_numeric_ranges_clamp_storage_and_survive_program_replacement)
+ void test_source_native_numeric_queries()
+ {
+     pu_setup(NULL, cleanup);
+-    RUN_TEST_CASE(source_native_motion_retains_numeric_outputs);
++    RUN_TEST_CASE(source_native_math_retains_numeric_outputs);
+     RUN_TEST_CASE(source_native_number_random_range_checks_both_bounds);
+     RUN_TEST_CASE(source_int_wire_into_f64_keeps_every_digit);
+     RUN_TEST_CASE(source_native_query_retains_nested_iteration_and_membership);
+diff --git a/tools/graph/engine/Targets.chibi b/tools/graph/engine/Targets.chibi
+index 09667da09c90cc85108e76158123cca81b968a8e..81c765ddeba20912b75c3c808f500b350f67ee18 100644
+--- a/tools/graph/engine/Targets.chibi
++++ b/tools/graph/engine/Targets.chibi
+@@ -736,7 +736,7 @@ Files :: (target: string) -> string[] {
+             "test/language/packages.c", "test/language/package_syntax.c",
+             "test/language/package_execution.c", "test/language/package_resolution.c",
+             "test/language/package_imports.c", "test/language/package_files.c",
+-            "test/language/package_core.c", "test/language/package_tests.c",
++            "test/language/package_core.c", "test/language/package_math.c", "test/language/package_tests.c",
+             "test/language/package_graph_chibi.c", "test/language/docs_markdown.c",
+             "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
+             "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",
+@@ -3516,6 +3516,9 @@ LanguageTestsOverSource :: () -> string[] {
+ // source property adds them; Expand fills {source_root}, {build_type},
+ // {sha256:PATH} and {program:NAME}.
+ pub SourceDefines :: (target: string, file: string) -> string[] {
++    if (target == "test_language" && file == "test/language/package_compiler_chibi.c") {
++        return ["CHIBI_CORE_MATH_ROOT=\"{source_root}/packages/core/math\""];
++    }
+     if (target == "test_language" && file == "test/language/runtime_attribution.c") {
+         return [
+             "CHIBI_ATTRIBUTION_BASE=\"3c65bb60b6f3443aef6ccf4ab15acbe09b04b191\"",
+@@ -3525,7 +3528,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
+     }
+     if (target == "test_language" &&
+         (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/asset_packaging_chibi.c" ||
+-         file == "test/language/integer_semantics.c")) {
++         file == "test/language/integer_semantics.c" || file == "test/language/package_math.c")) {
+         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
+     }
+     return [];
+diff --git a/tools/test_policy.py b/tools/test_policy.py
+index ab52352ba4c04022f5c5917a4cbb07dc9055b4ce..51cee2f2599cc02f67460273a76889d62eab76bf 100644
+--- a/tools/test_policy.py
++++ b/tools/test_policy.py
+@@ -452,6 +452,8 @@ TOOLS = {
+                               '--package-core'],
+     'language-docs-markdown': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                '--docs-markdown'],
++    'language-package-math': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--package-math'],
++    'language-package-math-benchmark': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--package-math-benchmark'],
+     'language-package-tests': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                '--package-tests'],
+     'language-component-write-layout': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--component-write-layout'],
+@@ -505,7 +507,7 @@ for selector in ('binding-schedule', 'borrow', 'activation-cache', 'reductions')
+     TOOLS['language-' + selector] = [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'), '--' + selector]
+ 
+ wasm_build = ROOT / os.environ.get('CHIBI_WASM_BUILD_DIR', 'build-wasm-language')
+-for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection'):
++for selector in ('wasm', 'execution', 'program', 'headless', 'format', 'root-state', 'publication', 'script-benchmark', 'query-program', 'ranges', 'component-write', 'scalarize', 'activation-benchmark', 'binding-benchmark', 'borrow-benchmark', 'incremental-benchmark', 'binding-schedule', 'borrow', 'activation-cache', 'reductions', 'operations', 'modules', 'runtime-attribution', 'runtime-attribution-benchmark', 'query-binding-benchmark', 'scalar-read-benchmark', 'packed-benchmark', 'record-values', 'record-semantic', 'record-runtime', 'record-prepared', 'record-document', 'record-state', 'record-compatibility', 'row-array', 'outliner-projection', 'package-math'):
+     TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
+ for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '-collections-compiled',
+                  '-imports', '-imports-compiled', '-behaviors',
+@@ -567,7 +569,7 @@ GROUPS = {
+     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
+              'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
+              'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection',
+-             'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
++             'wasm-package-math', 'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
+     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
+                'player-url', 'player-clock',
+                'physics', 'physics3d',
+@@ -598,7 +600,7 @@ GROUPS = {
+                   'material-simulation', 'material-ecs', 'material-render'],
+     'language': ['language-test-parallel', 'execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-query-program', 'language-query-values', 'language-query-migration', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write',
+                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
+-                 'language-headless', 'language-format', 'language-package-tests', 'language-package-core', 'language-docs-markdown', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
++                 'language-headless', 'language-format', 'language-package-math', 'language-package-tests', 'language-package-core', 'language-docs-markdown', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
+                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
+                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
+                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-package-compiler-chibi-scalar',

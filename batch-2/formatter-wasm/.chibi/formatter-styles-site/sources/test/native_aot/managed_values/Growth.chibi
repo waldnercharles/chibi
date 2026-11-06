@@ -1,0 +1,28 @@
+package managed_growth
+
+foreign { chibi_value_test_allocations :: () -> u64 }
+Buffer :: struct { values: int[]; }
+Main :: () -> int {
+    initial_allocations := chibi_value_test_allocations();
+    count := BuildLocal();
+    final_allocations := chibi_value_test_allocations();
+    local_allocations := final_allocations - initial_allocations;
+    assert(count == 4096 && local_allocations <= 16, "record field growth is amortized");
+    buffer: Buffer = {values: []};
+    initial_allocations = chibi_value_test_allocations();
+    BuildReference(&buffer);
+    final_allocations = chibi_value_test_allocations();
+    scoped_allocations := final_allocations - initial_allocations;
+    assert(length(buffer.values) == 4096 && scoped_allocations <= 16, "scoped record field growth is amortized");
+    buffer.values.resize(0);
+    assert(length(buffer.values) == 0);
+    return 0;
+}
+BuildLocal :: () -> int {
+    buffer: Buffer = {values: []};
+    for i in 0..<4096 { buffer.values.append(i); }
+    return length(buffer.values);
+}
+BuildReference :: (buffer: ^Buffer) {
+    for i in 0..<4096 { buffer.values.append(i); }
+}

@@ -1,0 +1,11 @@
+package facts
+Squares :: (count: int) -> int[] {
+    values: int[] = [];
+    for i in 0..<count {
+        values.append(i * i);
+    }
+    return values;
+}
+Beyond :: Squares(3)[5];
+Main :: () -> int { return Beyond; }
+// error: 9:11: array index out of range

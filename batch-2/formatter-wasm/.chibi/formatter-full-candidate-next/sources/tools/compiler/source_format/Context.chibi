@@ -1,0 +1,71 @@
+package source_format
+
+import type_style "project:source_type_style"
+import strings "core:strings"
+
+// Logical paths and immutable dependency documents. The editable source is
+// always document zero; semantic passes substitute the current text there.
+pub Context :: struct {
+    project: string;
+    collection_names: string[];
+    collection_paths: string[];
+    paths: string[];
+    sources: string[];
+}
+
+pub EmptyContext :: () -> Context {
+    return {project: "", collection_names: [], collection_paths: [], paths: [], sources: []};
+}
+
+ContextProblem :: (context: Context) -> string {
+    if (length(context.paths) != length(context.sources) ||
+        length(context.collection_names) != length(context.collection_paths)) {
+        return "Formatter project context requires matching paths, sources and collections";
+    }
+    if (length(context.paths) > 256) { return "Formatter project context exceeds 256 documents"; }
+    if (length(context.paths) > 0 && context.project == "") { return "Formatter project context requires a project root"; }
+    bytes: int = 0;
+    for (source in context.sources) { bytes += strings.ByteLength(source); }
+    if (bytes > 16777216) { return "Formatter project context exceeds 16 MiB"; }
+    return "";
+}
+
+ProveOneStyle :: (original: string, proposed: string, context: Context, target: int) -> (same: bool, notes: string) {
+    if (length(context.paths) == 0) {
+        proof := type_style.ProveFor(original, proposed, target);
+        return (proof.same, proof.notes);
+    }
+    proof := type_style.ProveProjectFor(original, proposed, context.project, context.collection_names,
+                                        context.collection_paths, context.paths, context.sources, target);
+    return (proof.same, proof.notes);
+}
+
+TargetName :: (target: int) -> string {
+    if (target == 0) { return "Linux x86-64"; }
+    if (target == 1) { return "macOS arm64"; }
+    if (target == 2) { return "Windows x86-64"; }
+    return "WebAssembly 32-bit";
+}
+
+// A repository source file can be compiled on several targets. The selected
+// target chooses candidate spellings; the default proof also covers every
+// other supported configuration before a semantic edit may reach the output.
+ProveOtherTargets :: (original: string, proposed: string, context: Context, options: Options) -> (same: bool, notes: string) {
+    if (options.semantic_targets == 1 || original == proposed) { return (true, ""); }
+    for (target in 0..<4) {
+        if (target == options.analysis_target) { continue; }
+        proof := ProveOneStyle(original, proposed, context, target);
+        if (!proof.same) {
+            return (false, strings.Concatenate(["Cross-platform validation for ", TargetName(target), ": ", proof.notes,
+                        " Choose selected-target validation only for intentionally platform-specific formatting."]));
+        }
+    }
+    return (true, "");
+}
+
+ProveStyle :: (original: string, proposed: string, context: Context, options: Options) -> (same: bool, notes: string) {
+    proof := ProveOneStyle(original, proposed, context, options.analysis_target);
+    if (!proof.same) { return (false, proof.notes); }
+    others := ProveOtherTargets(original, proposed, context, options);
+    return (others.same, others.notes);
+}

@@ -1,0 +1,143 @@
+package asset_compiler_stage
+
+import os "core:os"
+import strings "core:strings"
+
+// The asset compiler's products are kept per machine, not per checkout, so
+// every worktree shares them. A directory of at most Budget bytes holds one
+// file per product, named by its key; the oldest are removed first.
+
+// 2 GiB.
+pub Budget: i64 : 2147483648;
+
+// A hit older than this is rewritten, so entries a build keeps using stay
+// newer than ones nothing reads.
+RefreshSeconds: i64 : 86400;
+
+// Where products are kept, "" when caching is off. `override` is
+// CHIBI_ASSET_COMPILER_CACHE ("off" turns caching off), then `xdg` is
+// XDG_CACHE_HOME, then `home` is HOME; `root` is the checkout, used when the
+// environment names no place.
+pub Location :: (override: string, xdg: string, home: string, root: string) -> string {
+    if (override == "off") {
+        return "";
+    }
+    if (override != "") {
+        return override;
+    }
+    if (xdg != "") {
+        return format_text("{}/chibi/asset-compiler-cache", xdg);
+    }
+    if (home != "") {
+        return format_text("{}/.cache/chibi/asset-compiler-cache", home);
+    }
+    return format_text("{}/.chibi/asset-compiler-cache", root);
+}
+
+// A non-negative decimal number; digits only, else 0.
+Number :: (text: string) -> i64 {
+    value: i64 = 0;
+    for (index in 0..<strings.ByteLength(text)) {
+        digit := strings.ByteAt(text, index) - 48;
+        if (digit < 0 || digit > 9) {
+            return 0;
+        }
+        value = value * 10 + i64(digit);
+    }
+    return value;
+}
+
+// An os.Stamp is "device:inode:size:mode:seconds.nanoseconds:...".
+pub StampSize :: (stamp: string) -> i64 {
+    fields := strings.Split(stamp, ":");
+    if (length(fields) < 5) {
+        return 0;
+    }
+    return Number(fields[2]);
+}
+
+// Nanoseconds since the epoch of the last modification; fits 64 bits until 2262.
+pub StampModified :: (stamp: string) -> i64 {
+    fields := strings.Split(stamp, ":");
+    if (length(fields) < 5) {
+        return 0;
+    }
+    time := strings.Split(fields[4], ".");
+    if (length(time) < 2) {
+        return 0;
+    }
+    return Number(time[0]) * 1000000000 + Number(time[1]);
+}
+
+// Rewrites a product that has not been written for a day, so its time is now.
+pub Refresh :: (path: string, now_seconds: i64) {
+    stamp := os.Stamp(path);
+    if (stamp == "" || now_seconds - StampModified(stamp) / 1000000000 < RefreshSeconds) {
+        return;
+    }
+    fresh := format_text("{}.refresh", path);
+    if (os.Copy(path, fresh) != nil) {
+        return;
+    }
+    if (os.Rename(fresh, path) != nil && os.Remove(fresh) != nil) {
+        os.Print(format_text("asset compiler: removing {} failed", fresh));
+    }
+}
+
+// Removes the oldest products until the directory holds at most `budget`
+// bytes, never one named in `keep` (the products this build used). Files that
+// are not products, such as a half-written ".new" file, are neither counted
+// nor removed. Returns the bytes left.
+pub Evict :: (cache: string, budget: i64, keep: string[]) -> i64 {
+    listing := os.List(cache);
+    if (listing.error != nil) {
+        return 0;
+    }
+    names: string[] = [];
+    sizes: i64[] = [];
+    times: i64[] = [];
+    total: i64 = 0;
+    for (name in listing.names) {
+        if (strings.HasSuffix(name, ".new") || strings.HasSuffix(name, ".refresh") || strings.HasSuffix(name, ".tmp")) {
+            continue;
+        }
+        stamp := os.Stamp(format_text("{}/{}", cache, name));
+        if (stamp == "") {
+            continue;
+        }
+        names.append(name);
+        sizes.append(StampSize(stamp));
+        times.append(StampModified(stamp));
+        total += StampSize(stamp);
+    }
+    while (total > budget) {
+        oldest := -1;
+        for (index in 0..<length(names)) {
+            if (names[index] == "" || Kept(keep, names[index])) {
+                continue;
+            }
+            if (oldest < 0 || times[index] < times[oldest]) {
+                oldest = index;
+            }
+        }
+        if (oldest < 0) {
+            break;
+        }
+        if (os.Remove(format_text("{}/{}", cache, names[oldest])) == nil) {
+            total -= sizes[oldest];
+        } else {
+            os.Print(format_text("asset compiler: removing cache entry failed: {}", names[oldest]));
+        }
+        names[oldest] = "";
+    }
+    return total;
+}
+
+Kept :: (keep: string[], name: string) -> bool {
+    for (item in keep) {
+        if (item == name) {
+            return true;
+        }
+    }
+    return false;
+}

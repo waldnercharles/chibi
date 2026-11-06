@@ -1,0 +1,20 @@
+{
+  "command": [
+    "cmake",
+    "-S",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/canonical-validation/test/language",
+    "-B",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/canonical-build",
+    "-G",
+    "Ninja",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+    "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+    "-DCHIBI_LANGUAGE_TEST_ASSET_COMPILER_HOST=OFF",
+    "-DCHIBI_ENABLE_SANITIZERS=OFF"
+  ],
+  "status": 0,
+  "wall_seconds": 4.044895166065544
+}

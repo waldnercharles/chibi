@@ -1,0 +1,452 @@
+{
+  "head": "dea59917c76d665a3a117690b77a6b0717a798b0",
+  "tree": "e5cef072dfc749ab4bd6653b917714e33c4aa97b",
+  "clean_before": true,
+  "source_status_before": "",
+  "normal_prefix": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/s795i",
+  "relocated_prefix": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795",
+  "hidden_prefix": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/h795",
+  "consumer_build": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/n795",
+  "sdk_source": {
+    "dirty": false,
+    "revision": "dea59917c76d665a3a117690b77a6b0717a798b0",
+    "snapshot_sha256": "240b7dd7d745906e883336cc3c8717eb2210ae55022d7eef8be62c38a0e0930b"
+  },
+  "sdk_pin": "5d7a95c55372920a5a3ec03562301dffeedf560b6d933f62b6b0939d51428709",
+  "prepared_format": 26,
+  "sdk_build_log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-sdk-build.log",
+  "sdk_build_log_sha256": "2d12297344945b10a9c5254ce64fa1b3f5ddec79da61e2680e85bb1c25de0c5a",
+  "environment": {
+    "HOME": "/Users/cwaldner",
+    "LANG": "C.UTF-8",
+    "LC_ALL": "C.UTF-8",
+    "LC_CTYPE": "C.UTF-8",
+    "LOGNAME": "cwaldner",
+    "PATH": "/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/cwaldner/.codex/tmp/arg0-macos/codex-arg0slGigu:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/cwaldner/.rd/bin:/Users/cwaldner/.bun/bin:/Users/cwaldner/.antigravity/antigravity/bin:/Users/cwaldner/.nvm/versions/node/v24.15.0/bin:/Users/cwaldner/.codeium/windsurf/bin:/Users/cwaldner/.sdkman/candidates/java/current/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/sbin:/Users/cwaldner/.lmstudio/bin:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:/Users/cwaldner/.local/bin",
+    "SHELL": "/bin/zsh",
+    "TMPDIR": "/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/",
+    "USER": "cwaldner"
+  },
+  "script_sha256": "89a5edf4f9d72013a73b6f1b86b5c559f77b06c11072fe08e8fb5c0c7b8f7995",
+  "old_evidence_sha256": {
+    "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/relocation-proof.py": "9390d8773c2986acc064208a9eff0e7118651e20b21a4bd16eb78429296250b3",
+    "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/relocation-proof-receipt.json": "93c01266be6da77e5f4125a8e16fa1ed29284918633ac2e6c37984fe3ab701f2",
+    "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/relocation-clone-receipt.json": "104efc99e590c68a866f9d7dd59b17e8f0a7b87442e03a7247c22db1e6564ec7"
+  },
+  "steps": [
+    {
+      "name": "clone",
+      "argv": [
+        "/bin/cp",
+        "-cR",
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/s795i",
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi",
+      "environment": {
+        "HOME": "/Users/cwaldner",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "LC_CTYPE": "C.UTF-8",
+        "LOGNAME": "cwaldner",
+        "PATH": "/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/cwaldner/.codex/tmp/arg0-macos/codex-arg0slGigu:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/cwaldner/.rd/bin:/Users/cwaldner/.bun/bin:/Users/cwaldner/.antigravity/antigravity/bin:/Users/cwaldner/.nvm/versions/node/v24.15.0/bin:/Users/cwaldner/.codeium/windsurf/bin:/Users/cwaldner/.sdkman/candidates/java/current/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/sbin:/Users/cwaldner/.lmstudio/bin:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:/Users/cwaldner/.local/bin",
+        "SHELL": "/bin/zsh",
+        "TMPDIR": "/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/",
+        "USER": "cwaldner"
+      },
+      "executable": "/bin/cp",
+      "executable_sha256": "d2b314592c43bb0f2e4ae25d473e7b3e5a24db68c21b175aeeba64001388a1fd",
+      "phase": "preparation",
+      "seconds": 1.0149406250566244,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-relocation-clone.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "original_unavailable": false,
+      "hidden_available": false
+    },
+    {
+      "name": "configure",
+      "argv": [
+        "cmake",
+        "-S",
+        "test/language",
+        "-B",
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/n795",
+        "-G",
+        "Ninja",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+        "-DCHIBI_INSTALLED_SDK=ON",
+        "-DChibi_DIR=/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795/lib/cmake/Chibi",
+        "--trace-expand",
+        "--trace-source=/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795/lib/cmake/Chibi/ChibiConfig.cmake"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi",
+      "environment": {
+        "HOME": "/Users/cwaldner",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "LC_CTYPE": "C.UTF-8",
+        "LOGNAME": "cwaldner",
+        "PATH": "/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/cwaldner/.codex/tmp/arg0-macos/codex-arg0slGigu:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/cwaldner/.rd/bin:/Users/cwaldner/.bun/bin:/Users/cwaldner/.antigravity/antigravity/bin:/Users/cwaldner/.nvm/versions/node/v24.15.0/bin:/Users/cwaldner/.codeium/windsurf/bin:/Users/cwaldner/.sdkman/candidates/java/current/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/sbin:/Users/cwaldner/.lmstudio/bin:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:/Users/cwaldner/.local/bin",
+        "SHELL": "/bin/zsh",
+        "TMPDIR": "/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/",
+        "USER": "cwaldner"
+      },
+      "executable": "/opt/homebrew/bin/cmake",
+      "executable_sha256": "1964d6a722d2784e85f99f87e8135020278aedf6b4ef6f3ab42dee650dd5b817",
+      "phase": "configuration",
+      "seconds": 8.839136958122253,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-relocation-configure.log",
+      "log_sha256": "edb096191d7329ce1018a06d12c0d2406247f1076115b83dbbe6cd4bb0b17a9c",
+      "original_unavailable": true,
+      "hidden_available": true
+    },
+    {
+      "name": "build",
+      "argv": [
+        "cmake",
+        "--build",
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/n795",
+        "--target",
+        "test_language",
+        "--parallel",
+        "3"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi",
+      "environment": {
+        "HOME": "/Users/cwaldner",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "LC_CTYPE": "C.UTF-8",
+        "LOGNAME": "cwaldner",
+        "PATH": "/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/cwaldner/.codex/tmp/arg0-macos/codex-arg0slGigu:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/cwaldner/.rd/bin:/Users/cwaldner/.bun/bin:/Users/cwaldner/.antigravity/antigravity/bin:/Users/cwaldner/.nvm/versions/node/v24.15.0/bin:/Users/cwaldner/.codeium/windsurf/bin:/Users/cwaldner/.sdkman/candidates/java/current/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/sbin:/Users/cwaldner/.lmstudio/bin:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:/Users/cwaldner/.local/bin",
+        "SHELL": "/bin/zsh",
+        "TMPDIR": "/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/",
+        "USER": "cwaldner"
+      },
+      "executable": "/opt/homebrew/bin/cmake",
+      "executable_sha256": "1964d6a722d2784e85f99f87e8135020278aedf6b4ef6f3ab42dee650dd5b817",
+      "phase": "build",
+      "seconds": 17.25492350012064,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-relocation-build.log",
+      "log_sha256": "b860147413a2b8519311b186c059ad3c9fd0c51f4504be3faed2a8132c94cf2d",
+      "original_unavailable": true,
+      "hidden_available": true
+    },
+    {
+      "name": "portable",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-portable"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi",
+      "environment": {
+        "HOME": "/Users/cwaldner",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "LC_CTYPE": "C.UTF-8",
+        "LOGNAME": "cwaldner",
+        "PATH": "/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/cwaldner/.codex/tmp/arg0-macos/codex-arg0slGigu:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/cwaldner/.rd/bin:/Users/cwaldner/.bun/bin:/Users/cwaldner/.antigravity/antigravity/bin:/Users/cwaldner/.nvm/versions/node/v24.15.0/bin:/Users/cwaldner/.codeium/windsurf/bin:/Users/cwaldner/.sdkman/candidates/java/current/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/sbin:/Users/cwaldner/.lmstudio/bin:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:/Users/cwaldner/.local/bin",
+        "SHELL": "/bin/zsh",
+        "TMPDIR": "/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/",
+        "USER": "cwaldner",
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/n795"
+      },
+      "executable": "/opt/homebrew/opt/python@3.13/libexec/bin/python3",
+      "executable_sha256": "78a3250092bdf8ada3eb0b34afeda821a7da96c67fdfa885f7fc362866c957d4",
+      "phase": "test",
+      "seconds": 1.353044374845922,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-relocation-portable.log",
+      "log_sha256": "39d20b7c3e3d97c527b2345e37e2c1e6f1c3569efe0b2622459f718ed1249b0d",
+      "original_unavailable": true,
+      "hidden_available": true,
+      "summaries": [
+        "Summary: Passed: 5 Failed: 0 Total: 5 Suites: 0 Asserts: 1798",
+        "Test command wall time: 1.189s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "compiler",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-portable-compiler"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi",
+      "environment": {
+        "HOME": "/Users/cwaldner",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "LC_CTYPE": "C.UTF-8",
+        "LOGNAME": "cwaldner",
+        "PATH": "/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/cwaldner/.codex/tmp/arg0-macos/codex-arg0slGigu:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/cwaldner/.rd/bin:/Users/cwaldner/.bun/bin:/Users/cwaldner/.antigravity/antigravity/bin:/Users/cwaldner/.nvm/versions/node/v24.15.0/bin:/Users/cwaldner/.codeium/windsurf/bin:/Users/cwaldner/.sdkman/candidates/java/current/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/sbin:/Users/cwaldner/.lmstudio/bin:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:/Users/cwaldner/.local/bin",
+        "SHELL": "/bin/zsh",
+        "TMPDIR": "/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/",
+        "USER": "cwaldner",
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/n795"
+      },
+      "executable": "/opt/homebrew/opt/python@3.13/libexec/bin/python3",
+      "executable_sha256": "78a3250092bdf8ada3eb0b34afeda821a7da96c67fdfa885f7fc362866c957d4",
+      "phase": "test",
+      "seconds": 49.00450658402406,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-relocation-compiler.log",
+      "log_sha256": "147ea28aaf0eeca534da5da122c08fca853b8522cb8d94c5fc75ea65be1c79cd",
+      "original_unavailable": true,
+      "hidden_available": true,
+      "summaries": [
+        "Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 4928",
+        "Test command wall time: 48.914s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "asset-host",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-asset-compiler-host"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi",
+      "environment": {
+        "HOME": "/Users/cwaldner",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "LC_CTYPE": "C.UTF-8",
+        "LOGNAME": "cwaldner",
+        "PATH": "/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/cwaldner/.codex/tmp/arg0-macos/codex-arg0slGigu:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/cwaldner/.rd/bin:/Users/cwaldner/.bun/bin:/Users/cwaldner/.antigravity/antigravity/bin:/Users/cwaldner/.nvm/versions/node/v24.15.0/bin:/Users/cwaldner/.codeium/windsurf/bin:/Users/cwaldner/.sdkman/candidates/java/current/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/sbin:/Users/cwaldner/.lmstudio/bin:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:/Users/cwaldner/.local/bin",
+        "SHELL": "/bin/zsh",
+        "TMPDIR": "/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/",
+        "USER": "cwaldner",
+        "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/n795"
+      },
+      "executable": "/opt/homebrew/opt/python@3.13/libexec/bin/python3",
+      "executable_sha256": "78a3250092bdf8ada3eb0b34afeda821a7da96c67fdfa885f7fc362866c957d4",
+      "phase": "test",
+      "seconds": 109.88568504201248,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-relocation-asset-host.log",
+      "log_sha256": "ae39d6a07e3e527b6c9745f51a97a8f9fe3c09209197b890f50cc0c11af8bd09",
+      "original_unavailable": true,
+      "hidden_available": true,
+      "summaries": [
+        "Summary: Passed: 12 Failed: 0 Total: 12 Suites: 0 Asserts: 110",
+        "Test command wall time: 109.745s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "cli-version",
+      "argv": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795/bin/chibi",
+        "version"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi",
+      "environment": {
+        "HOME": "/Users/cwaldner",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "LC_CTYPE": "C.UTF-8",
+        "LOGNAME": "cwaldner",
+        "PATH": "/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/cwaldner/.codex/tmp/arg0-macos/codex-arg0slGigu:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/cwaldner/.rd/bin:/Users/cwaldner/.bun/bin:/Users/cwaldner/.antigravity/antigravity/bin:/Users/cwaldner/.nvm/versions/node/v24.15.0/bin:/Users/cwaldner/.codeium/windsurf/bin:/Users/cwaldner/.sdkman/candidates/java/current/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/sbin:/Users/cwaldner/.lmstudio/bin:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:/Users/cwaldner/.local/bin",
+        "SHELL": "/bin/zsh",
+        "TMPDIR": "/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/",
+        "USER": "cwaldner"
+      },
+      "executable": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795/bin/chibi",
+      "executable_sha256": "e14d277e12a63a57a04d0a529e9d1a1dbb2050f20c694ec5691f2c620a1a21dd",
+      "phase": "test",
+      "seconds": 0.43700387491844594,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-relocation-cli-version.log",
+      "log_sha256": "9c68938f6b99fab4be316d633272ba8109ca7a27854ac5ea1907649e840fa402",
+      "original_unavailable": true,
+      "hidden_available": true
+    },
+    {
+      "name": "cli-test",
+      "argv": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795/bin/chibi",
+        "test",
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/n795/external-consumer"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/n795/external-consumer",
+      "environment": {
+        "HOME": "/Users/cwaldner",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "LC_CTYPE": "C.UTF-8",
+        "LOGNAME": "cwaldner",
+        "PATH": "/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/cwaldner/.codex/tmp/arg0-macos/codex-arg0slGigu:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/cwaldner/.rd/bin:/Users/cwaldner/.bun/bin:/Users/cwaldner/.antigravity/antigravity/bin:/Users/cwaldner/.nvm/versions/node/v24.15.0/bin:/Users/cwaldner/.codeium/windsurf/bin:/Users/cwaldner/.sdkman/candidates/java/current/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/sbin:/Users/cwaldner/.lmstudio/bin:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:/Users/cwaldner/.local/bin",
+        "SHELL": "/bin/zsh",
+        "TMPDIR": "/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/",
+        "USER": "cwaldner"
+      },
+      "executable": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795/bin/chibi",
+      "executable_sha256": "e14d277e12a63a57a04d0a529e9d1a1dbb2050f20c694ec5691f2c620a1a21dd",
+      "phase": "test",
+      "seconds": 1.264295666012913,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-relocation-cli-test.log",
+      "log_sha256": "5cc11203ecdd8068310d7f561a2e6d7bae224581904a2fb99e6ff499d507595e",
+      "original_unavailable": true,
+      "hidden_available": true
+    },
+    {
+      "name": "cli-doc",
+      "argv": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795/bin/chibi",
+        "doc",
+        "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/n795/docs-probe"
+      ],
+      "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/n795/docs-probe",
+      "environment": {
+        "HOME": "/Users/cwaldner",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "LC_CTYPE": "C.UTF-8",
+        "LOGNAME": "cwaldner",
+        "PATH": "/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/pkg/env/global/bin:/Library/Apple/usr/bin:/usr/local/share/dotnet:~/.dotnet/tools:/opt/homebrew/bin:/Applications/ChatGPT.app/Contents/Resources/codex-cli/codex-path:/Users/cwaldner/.codex/tmp/arg0-macos/codex-arg0slGigu:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/override:/Users/cwaldner/.rd/bin:/Users/cwaldner/.bun/bin:/Users/cwaldner/.antigravity/antigravity/bin:/Users/cwaldner/.nvm/versions/node/v24.15.0/bin:/Users/cwaldner/.codeium/windsurf/bin:/Users/cwaldner/.sdkman/candidates/java/current/bin:/opt/homebrew/opt/python@3.13/libexec/bin:/Users/cwaldner/.local/bin:/opt/homebrew/sbin:/Users/cwaldner/.lmstudio/bin:/Users/cwaldner/.cache/codex-runtimes/codex-primary-runtime/dependencies/bin/fallback:/Applications/ChatGPT.app/Contents/Resources:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS:/Users/cwaldner/.local/bin",
+        "SHELL": "/bin/zsh",
+        "TMPDIR": "/var/folders/zv/rbdh24d539j43v_4qgv4qydc0000gp/T/",
+        "USER": "cwaldner"
+      },
+      "executable": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795/bin/chibi",
+      "executable_sha256": "e14d277e12a63a57a04d0a529e9d1a1dbb2050f20c694ec5691f2c620a1a21dd",
+      "phase": "test",
+      "seconds": 0.3051861252170056,
+      "exit_code": 0,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-relocation-cli-doc.log",
+      "log_sha256": "076d95ebcc547f46bf78d38a40d6d17a8db78bd04ba4dda5d61ec1454e30cb30",
+      "original_unavailable": true,
+      "hidden_available": true
+    }
+  ],
+  "passed": true,
+  "original_restored": true,
+  "inventory_entries": 1690,
+  "inventory_sha256": "f611a5054dfcb41f614fdc0f55fef35523860235d1042fb1246d29b1b6257094",
+  "clone_equals_normal": true,
+  "original_hidden": true,
+  "resolved_core_source_dir": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795/share/chibi/core",
+  "cache_and_build_use_relocated_sdk": true,
+  "cmake_cache_sha256": "40b13bde5fb52193999bf5c8304ed73def7fd03af7fbc7f387def80019ead8d1",
+  "ninja_sha256": "4937145e52ce836537c03791aa97f0ae9ef73227fc74b2bb1c3c59671f1f2def",
+  "cache_build_configuration": [
+    "CHIBI_INSTALLED_SDK:BOOL=ON",
+    "CMAKE_BUILD_TYPE:STRING=Release",
+    "CMAKE_C_COMPILER:STRING=/opt/homebrew/opt/llvm@22/bin/clang",
+    "CMAKE_C_COMPILER_AR:FILEPATH=/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llvm-ar",
+    "CMAKE_C_COMPILER_CLANG_SCAN_DEPS:FILEPATH=/opt/homebrew/Cellar/llvm@22/22.1.8/bin/clang-scan-deps",
+    "CMAKE_C_COMPILER_RANLIB:FILEPATH=/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llvm-ranlib",
+    "CMAKE_C_FLAGS:STRING=",
+    "CMAKE_C_FLAGS_DEBUG:STRING=-g",
+    "CMAKE_C_FLAGS_MINSIZEREL:STRING=-Os -DNDEBUG",
+    "CMAKE_C_FLAGS_RELEASE:STRING=-O3 -DNDEBUG",
+    "CMAKE_C_FLAGS_RELWITHDEBINFO:STRING=-O2 -g -DNDEBUG",
+    "Chibi_DIR:UNINITIALIZED=/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/x795/lib/cmake/Chibi",
+    "CMAKE_C_COMPILER-ADVANCED:INTERNAL=1",
+    "CMAKE_C_COMPILER_AR-ADVANCED:INTERNAL=1",
+    "CMAKE_C_COMPILER_CLANG_SCAN_DEPS-ADVANCED:INTERNAL=1",
+    "CMAKE_C_COMPILER_RANLIB-ADVANCED:INTERNAL=1",
+    "CMAKE_C_FLAGS-ADVANCED:INTERNAL=1",
+    "CMAKE_C_FLAGS_DEBUG-ADVANCED:INTERNAL=1",
+    "CMAKE_C_FLAGS_MINSIZEREL-ADVANCED:INTERNAL=1",
+    "CMAKE_C_FLAGS_RELEASE-ADVANCED:INTERNAL=1",
+    "CMAKE_C_FLAGS_RELWITHDEBINFO-ADVANCED:INTERNAL=1"
+  ],
+  "test_language_sha256": "4f12760eb494b54203879300e9a07f5dc73b248f7f62fcd82116fbc408fc89b1",
+  "authored_test_matrix": [
+    [
+      "BYTECODE",
+      "BYTECODE"
+    ],
+    [
+      "BYTECODE",
+      "SLJIT"
+    ],
+    [
+      "SLJIT",
+      "BYTECODE"
+    ],
+    [
+      "SLJIT",
+      "SLJIT"
+    ]
+  ],
+  "tests_per_matrix_combination": 23,
+  "target_backend_no_fallback_assertions_passed": true,
+  "external_consumer_sha256": "bde7427fca9f1b5b9e437f60c2b0511862fe032cbf5486a4fd990e91c0e40cf0",
+  "external_consumer_public_apis": {
+    "bytes": [
+      "FromString",
+      "ToString",
+      "Compare",
+      "Equal",
+      "IndexByte",
+      "LastIndexByte",
+      "Index",
+      "LastIndex",
+      "Contains",
+      "HasPrefix",
+      "HasSuffix"
+    ],
+    "math/bits": [
+      "CountOnes32",
+      "CountOnes64",
+      "LeadingZeros32",
+      "LeadingZeros64",
+      "TrailingZeros32",
+      "TrailingZeros64",
+      "ByteSwap16",
+      "ByteSwap32",
+      "ByteSwap64",
+      "Reverse32",
+      "Reverse64",
+      "RotateLeft32",
+      "RotateRight32",
+      "RotateLeft64",
+      "RotateRight64"
+    ],
+    "hash/fnv": [
+      "Update32",
+      "Update64",
+      "Fnv1a32",
+      "Fnv1a64"
+    ],
+    "hash/adler32": [
+      "Update",
+      "Sum"
+    ],
+    "hash/crc32": [
+      "Ieee",
+      "UpdateIeee"
+    ]
+  },
+  "external_consumer_public_api_count": 34,
+  "external_public_import_tests": 1,
+  "docs_probe": {
+    "readme_sha256": "238171cce5920de396eef843a63ccc4bbfcdfd52521ace56bb7a2e06abde5db9",
+    "manifest_sha256": "0f142860c2afc60046c218d148e28de0ec2a00aff2e4d21f5d390668ef19aef0",
+    "html_sha256": "1679f72eca5d2d63ceb80e6876f82724cf9289991bb83e497e97596947615e0d",
+    "css_sha256": "d8a95af5888ce6de9e160ccccdfdec4825a96f4641a3b6da37a92c67385254d3",
+    "rendered_plain_markdown": true
+  },
+  "sdk_executable_sha256": {
+    "bin/chibi": "e14d277e12a63a57a04d0a529e9d1a1dbb2050f20c694ec5691f2c620a1a21dd",
+    "bin/chibi-compile": "d6587cf2dfce1fd9eb8d76265e03f769b68da8c166d205f74e54de4169fb1a27",
+    "bin/chibi-player": "eb12079a17964f38975af68ebcc0c2944a86db2c1581c1f8f25880530e4f09dc"
+  },
+  "sdk_inventories_unchanged_after_execution": true,
+  "clean_after": true,
+  "source_status_after": "",
+  "old_evidence_unchanged": true,
+  "source_head_after": "dea59917c76d665a3a117690b77a6b0717a798b0",
+  "total_seconds": 193.8597012499813
+}

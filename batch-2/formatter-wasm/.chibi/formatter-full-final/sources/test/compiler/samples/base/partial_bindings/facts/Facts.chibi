@@ -1,0 +1,5 @@
+package facts
+U :: union { A(x: int, y: int) }
+One :: (u: U) -> int { switch u { case .A(x): return x; } return 0; }
+
+// error: 3:40: A union payload pattern must bind every field

@@ -1,0 +1,5 @@
+package inline_gc_owners
+@test
+Acceptance :: () { if false { pending := Main(); } }
+@test
+Synchronous :: () { value := Build(7); saved := value; value = Build(11); Churn(); assert(saved.values[0]^ ==7 && saved.marker^ ==8 && saved.label=="batch7"); assert(value.values[0]^ ==11 && value.marker^ ==12); }

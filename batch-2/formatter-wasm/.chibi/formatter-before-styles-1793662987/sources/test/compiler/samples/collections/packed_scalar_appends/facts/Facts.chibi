@@ -1,0 +1,96 @@
+package facts
+Holder :: struct { bytes: u8[]; count: int; }
+Push :: (out: ^(u8[]), value: int) { out.append(u8(wrap: value)); }
+PushInt :: (out: ^(int[]), value: int) { out.append(value); }
+PushField :: (h: ^Holder, value: int) { h.bytes.append(u8(wrap: value)); }
+// Each packed scalar type keeps its own bits, one bit of the result per type.
+Kinds :: () -> int {
+    found: int = 0;
+    flags: bool[] = [];
+    flags.append(false);
+    flags.append(true);
+    if (!flags[0] && flags[1]) { found += 1; }
+    a: i8[] = [];
+    a.append(-3);
+    if (a[0] == -3) { found += 2; }
+    b: u8[] = [];
+    b.append(250);
+    if (b[0] == 250) { found += 4; }
+    c: i16[] = [];
+    c.append(-300);
+    if (c[0] == -300) { found += 8; }
+    d: u16[] = [];
+    d.append(65000);
+    if (d[0] == 65000) { found += 16; }
+    e: int[] = [];
+    e.append(-70000);
+    if (e[0] == -70000) { found += 32; }
+    f: u32[] = [];
+    f.append(4000000000);
+    if (f[0] == 4000000000) { found += 64; }
+    g: i64[] = [];
+    g.append(-5000000000);
+    if (g[0] == -5000000000) { found += 128; }
+    h: u64[] = [];
+    h.append(9000000000);
+    if (h[0] == 9000000000) { found += 256; }
+    x: number[] = [];
+    x.append(1.5);
+    if (x[0] == 1.5) { found += 512; }
+    y: f64[] = [];
+    y.append(2.25);
+    if (y[0] == 2.25) { found += 1024; }
+    return found;
+}
+// Copies taken between appends keep their items: each append, local or
+// through a pointer, detaches the shared items first, then keeps growing.
+Shared :: () -> int {
+    bytes: u8[] = [1, 2];
+    kept := bytes;
+    bytes.append(3);
+    more := bytes;
+    Push(&bytes, 4);
+    i: int = 0;
+    while (i < 40) { bytes.append(u8(wrap: i)); i += 1; }
+    return length(kept) * 10000 + length(more) * 100 + length(bytes);
+}
+SharedItems :: () -> int {
+    bytes: u8[] = [1, 2];
+    kept := bytes;
+    bytes.append(3);
+    more := bytes;
+    Push(&bytes, 4);
+    bytes.append(5);
+    return int(kept[1]) * 1000 + int(more[2]) * 100 + int(bytes[3]) * 10 + int(bytes[4]);
+}
+// Appends, local and through a pointer, match index stores into sized
+// arrays across several growths.
+Matches :: (n: int) -> bool {
+    appended: u8[] = [];
+    through: int[] = [];
+    stored := resize([u8(0)], n);
+    wide := resize([int(0)], n);
+    i: int = 0;
+    while (i < n) {
+        appended.append(u8(wrap: i * 7));
+        PushInt(&through, i * 7 - 1000);
+        stored[i] = u8(wrap: i * 7);
+        wide[i] = i * 7 - 1000;
+        i += 1;
+    }
+    if (length(appended) != n || length(through) != n) { return false; }
+    i = 0;
+    while (i < n) {
+        if (appended[i] != stored[i] || through[i] != wide[i]) { return false; }
+        i += 1;
+    }
+    return true;
+}
+// Appends to a record's field leave a copy of the record as it was.
+Field :: () -> int {
+    holder: Holder = {bytes: [9], count: 0};
+    kept := holder;
+    holder.bytes.append(3);
+    PushField(&holder, 4);
+    return length(kept.bytes) * 100 + length(holder.bytes) * 10 + int(holder.bytes[2]);
+}

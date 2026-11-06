@@ -1,0 +1,146 @@
+--- a/test/language/CMakeLists.txt
++++ b/test/language/CMakeLists.txt
+@@ -363,7 +363,8 @@
+     target_compile_definitions(test_language PRIVATE CHIBI_TEST_SOURCE_ASSETS)
+ endif()
+ target_link_libraries(test_language PRIVATE Chibi::value_document Chibi::array_capabilities Chibi::authoring Chibi::source_catalog Chibi::input_map Chibi::source_presentation Chibi::behavior_runtime Chibi::field_catalog Chibi::field_capabilities Chibi::project_document Chibi::prototype_document Chibi::scene_document Chibi::ui_authoring Chibi::ui_document Chibi::text_capabilities Chibi::state_capabilities Chibi::arithmetic_capabilities Chibi::core_capabilities Chibi::graph_model Chibi::graph_authoring Chibi::graph_compilation Chibi::mesh_runtime Chibi::ui_documents test_behavior_consumer)
+-target_compile_options(test_language PRIVATE -Wall -Wextra -Werror -UNDEBUG)
++target_compile_options(test_language PRIVATE -Wall -Wextra -Werror -UNDEBUG
++    -Wno-error=missing-field-initializers)
+ if(TARGET Chibi::entity_runtime AND TARGET Chibi::ui_runtime)
+     target_sources(test_language PRIVATE record_services.c)
+     target_link_libraries(test_language PRIVATE Chibi::entity_runtime Chibi::ui_runtime)
+--- a/test/language/package_compiler_chibi.c
++++ b/test/language/package_compiler_chibi.c
+@@ -13991,10 +13991,16 @@
+ static const int CALL_ARGUMENTS[] = { 0, 1, 2 };
+ static native_module call_module(const native_code *code, const int *arguments, int argument_count)
+ {
+-    return (native_module){
+-        CALL_FUNCTIONS, 2,         CALL_PARAMETERS, 3, CALL_SLOTS, 5, code,
+-        CALL_CODE,      arguments, argument_count
+-    };
++    return (native_module){ .functions = CALL_FUNCTIONS,
++                            .function_count = 2,
++                            .parameters = CALL_PARAMETERS,
++                            .parameter_count = 3,
++                            .slots = CALL_SLOTS,
++                            .slot_count = 5,
++                            .code = code,
++                            .code_count = CALL_CODE,
++                            .arguments = arguments,
++                            .argument_count = argument_count };
+ }
+ static bool contains(pin_string haystack, const char *needle)
+ {
+@@ -20451,8 +20457,8 @@
+ {
+     static const char *const sources[] = {
+         "Fixed :: system(point: Spot) { point.x = 2 }",
+-        "Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
+-        "row.point.x = 2 } } }",
++        ("Fixed :: behavior { on Tick :: () { for row in query(point: Spot) { "
++         "row.point.x = 2 } } }"),
+         "Fixed :: system(point: ^Spot, amount := 2) { amount = 3 }",
+         "Fixed :: system(point: ^Spot) { point = null }",
+         "Fixed :: system(point: ^Spot) { point.w = 3 }",
+@@ -20817,35 +20823,51 @@
+         const char *message;
+         int column;
+     } cases[] = {
+-        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32 },
++        { "package facts\nRun :: () -> int { return native.overload(2); }", PIN_I32, NULL, 0 },
+         { "package facts\nRun :: () -> int { return "
+           "native.overload((-(2))); }",
+-          PIN_I32 },
++          PIN_I32,
++          NULL,
++          0 },
+         { "package facts\nRun :: () -> int { return native.overload(2.0); "
+           "}",
+-          PIN_I32 },
++          PIN_I32,
++          NULL,
++          0 },
+         { "package facts\nRun :: () -> int { return native.overload(1e0); "
+           "}",
+-          PIN_I32 },
+-        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32 },
++          PIN_I32,
++          NULL,
++          0 },
++        { "package facts\nRun :: () -> int { return native.kernel(2); }", PIN_F32, NULL, 0 },
+         { "package facts\nRun :: (v: int) -> int { return native.kernel(v "
+           "* "
+           "2); }",
+-          PIN_F32 },
++          PIN_F32,
++          NULL,
++          0 },
+         { "package facts\nRun :: (v: i64) -> int { return native.kernel(v "
+           "* "
+           "2); }",
+-          PIN_F64 },
++          PIN_F64,
++          NULL,
++          0 },
+         { "package facts\nRun :: (v: f64) -> int { return "
+           "native.kernel(v); }",
+-          PIN_F64 },
++          PIN_F64,
++          NULL,
++          0 },
+         { "package facts\nRun :: (v: int) -> int { return "
+           "native.overload(v); "
+           "}",
+-          PIN_I32 },
++          PIN_I32,
++          NULL,
++          0 },
+         { "package facts\nRun :: () -> int { return "
+           "native.overload(\"three\"); }",
+-          PIN_STR },
++          PIN_STR,
++          NULL,
++          0 },
+         { "package facts\nRun :: () -> int { return native.overload(2.5); "
+           "}",
+           PIN_FLOW,
+--- a/test/language/semantic.c
++++ b/test/language/semantic.c
+@@ -662,8 +662,8 @@
+     const char *invalid_targets[] = {
+         "Motion :: system() { total := 0; reduce total += 1; }",
+         "Motion :: system() { if true { total := 0; reduce total += 1; } }",
+-        "Motion :: system(position: ^Position) { reduce position^ += "
+-        "position^; }",
++        ("Motion :: system(position: ^Position) { reduce position^ += "
++         "position^; }"),
+         "Motion :: system(position: ^Placement) { reduce position.x += 1; }",
+         "Motion :: system(position: ^Position?) { reduce position.x += 1; }",
+     };
+@@ -1204,8 +1204,9 @@
+                                     .entity_type = 40 };
+     const char *valid[] = {
+         "L :: library { F :: (other: entity) { emit other.Damage(3) } }",
+-        "L :: library { F :: (other: entity) { emit Damage(other, Amount: 3) } "
+-        "}",
++        ("L :: library { F :: (other: entity) { emit Damage(other, Amount: 3) "
++         "} "
++         "}"),
+         /* An event send never calls the function its event shares a name with. */
+         "L :: library { Damage :: (other: entity) { emit Damage(other, 3) } }",
+     };
+--- a/test/language/syntax.c
++++ b/test/language/syntax.c
+@@ -207,8 +207,8 @@
+         "Motion :: system(p: Position) join target in self.Targets {}",
+         "Demo :: behavior { query components(); }",
+         "Motion :: system(p: Position split self) {}",
+-        "Demo :: behavior { on Tick :: () { rows := query(p: Position split "
+-        "self); } }",
++        ("Demo :: behavior { on Tick :: () { rows := query(p: Position split "
++         "self); } }"),
+     };
+     for (size_t i = 0; i < sizeof removed / sizeof *removed; i++) {
+         parse(removed[i]);

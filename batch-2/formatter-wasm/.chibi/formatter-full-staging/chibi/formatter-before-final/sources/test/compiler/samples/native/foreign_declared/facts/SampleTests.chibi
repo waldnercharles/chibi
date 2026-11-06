@@ -1,0 +1,12 @@
+package facts
+
+foreign import libc "system:c"
+
+foreign libc {
+    abs :: (value: i32) -> i32
+}
+
+@test
+Calls :: () {
+    assert(abs(i32(-3)) == i32(3), "abs")
+}

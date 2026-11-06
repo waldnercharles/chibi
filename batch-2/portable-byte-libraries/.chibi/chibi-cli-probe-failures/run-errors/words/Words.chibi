@@ -1,0 +1,3 @@
+package words
+pub Value :: 1
+Main :: () { print_string("wrong entry") }

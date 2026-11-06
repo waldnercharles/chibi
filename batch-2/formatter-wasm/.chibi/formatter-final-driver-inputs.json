@@ -1,0 +1,218 @@
+{
+  "packages": [
+    [
+      "core",
+      "bytes"
+    ],
+    [
+      "core",
+      "encoding/json"
+    ],
+    [
+      "core",
+      "hash/sha256"
+    ],
+    [
+      "core",
+      "os"
+    ],
+    [
+      "core",
+      "strings"
+    ],
+    [
+      "core",
+      "target"
+    ],
+    [
+      "project",
+      "compiler_catalog"
+    ],
+    [
+      "project",
+      "compiler_syntax"
+    ],
+    [
+      "project",
+      "driver_paths"
+    ],
+    [
+      "project",
+      "json_string"
+    ],
+    [
+      "project",
+      "lexical_binding"
+    ],
+    [
+      "project",
+      "llvm_native"
+    ],
+    [
+      "project",
+      "math_types"
+    ],
+    [
+      "project",
+      "native_abi"
+    ],
+    [
+      "project",
+      "native_driver"
+    ],
+    [
+      "project",
+      "native_link"
+    ],
+    [
+      "project",
+      "native_link_host"
+    ],
+    [
+      "project",
+      "package_compiler"
+    ],
+    [
+      "project",
+      "package_graph"
+    ],
+    [
+      "project",
+      "package_paths"
+    ],
+    [
+      "project",
+      "package_routes"
+    ],
+    [
+      "project",
+      "package_syntax"
+    ],
+    [
+      "project",
+      "prepared_writer"
+    ],
+    [
+      "project",
+      "scalar_facts"
+    ],
+    [
+      "project",
+      "scalar_llvm"
+    ],
+    [
+      "project",
+      "source_directives"
+    ],
+    [
+      "project",
+      "source_parser"
+    ],
+    [
+      "project",
+      "source_snapshot"
+    ],
+    [
+      "project",
+      "source_tokenizer"
+    ],
+    [
+      "project",
+      "syntax_diagnostics"
+    ]
+  ],
+  "files": {
+    "tools/compiler/native_driver/Assertions.chibi": "444b7713c8b56ac3415fdc2bc157d48c85638807898c4397f1c64670b5f2bdd3",
+    "tools/compiler/native_driver/Cache.chibi": "da7789816d59b118e6d073feba8801d92156c5224dc2ff94e718e3305c6c489c",
+    "tools/compiler/native_driver/Cli.chibi": "8b10a9f22c6d76117b12a0132c7d6cd54edc5f0d6a455399b3716aa2859873fa",
+    "tools/compiler/native_driver/Compile.chibi": "e2fb02a5189c5eadf5cb6590d6f8fa3e97ff543a1e65dbbb20100f60dd65d4f0",
+    "tools/compiler/native_driver/Identity.chibi": "869870e802ac99b2c5ce94ce5a5a6ee50b350c0f98d5a139a699bf85ba55443e",
+    "tools/compiler/native_driver/Llvm.chibi": "63ec2e2dd77fdbfc92b67330ec6c1047470ae5a611c677ff38881c9a15d1f636",
+    "tools/compiler/native_driver/Main.chibi": "3d201e93a1a612e8b79436a731f0ec095992b719ab9c3ff7224f58b3cb9e0ebe",
+    "tools/compiler/native_driver/Test.chibi": "c1e2c7c04c3164a16194111a05752f9e5c953866b522fa909f8fc9fbef3a8ebb",
+    "tools/compiler/native_driver/TestAssertions.chibi": "1556733695c4cec722ebd53b2d38bfc44e8bf24831b7995f807d697f67bc8ae8",
+    "tools/compiler/native_driver/TestProgram.chibi": "f75a005b69442b287056fdad75241b79cdb89bb085308006ed135f306db7ce27",
+    "tools/compiler/native_driver/TestWorkers.chibi": "a740441dd99840944beb7baaf00afdf25d108fbb2aaa1603995039f14ec1ccc9",
+    "tools/compiler/native_driver/Watch.chibi": "f3bce48362295a457034e11b91a78c843591cd3da3dd5e48ebfeba1b0cad54ba",
+    "packages/core/target/Target.chibi": "9c53c8eed58c028f7c575dea4e91978daaa4f996ba37605527caa19b6c151a93",
+    "packages/core/strings/Strings.chibi": "6fc25eedd2eee12631d2e22c8d075b82d7ee7561ef329e4c76846add13d44586",
+    "packages/core/os/Os.chibi": "c0836432420fec027666c2ab5e3334f5c68474d08410db47a1eefbaa1df4c07d",
+    "tools/compiler/scalar_facts/Facts.chibi": "5207c58801fcd741b942a886580e7384fe1e57951dd108ce105b73ad6995d368",
+    "tools/compiler/package_compiler/Behavior.chibi": "2baea28e993f399363eaf06a63956120a6423e154839fa679d2b6a30d3eebddb",
+    "tools/compiler/package_compiler/Body.chibi": "ca1c24a0a7d52a4d856cce75ba032824a80abeadbadc7da66290d4c030e18acb",
+    "tools/compiler/package_compiler/Compile.chibi": "674bbe561d74f5dc5e6ef83000160c22c7fd6967fcedc6833fe0139c9e9cbddf",
+    "tools/compiler/package_compiler/Comptime.chibi": "97df3221a554ef53b715e92b0eb3d9015d4f96b9ebaa291cbebe5e6950df0968",
+    "tools/compiler/package_compiler/Fallible.chibi": "854dda357549c243c52bf915c3edbc9e8f3ee69af165392c1021e5a2f52663dd",
+    "tools/compiler/package_compiler/Generics.chibi": "3634a6d3e130864b3d1c2aeb9d2d9e111c8db08c92696f3672dcde79bd56ec80",
+    "tools/compiler/package_compiler/Maps.chibi": "52726d3253af4b7be4649394b0219aaaac6b37148f2d4435ff3578790fb73674",
+    "tools/compiler/package_compiler/Math.chibi": "e0f45348437c30a9d522f8157db3561cf9d6258764268047faf3eaae85920303",
+    "tools/compiler/package_compiler/Number.chibi": "aee2863c20251f7eaef8f88f8c30fab30d63ad3a9771bd561f6d08f60f879fdf",
+    "tools/compiler/package_compiler/Optional.chibi": "e27a6f4d024f45a323d14b1ce7b7e33778709e04d27926ede241399dc2af2411",
+    "tools/compiler/package_compiler/Pointers.chibi": "4b14ed3bf8b0ed2159c31bf16223c2efe3d17c30f4fcca4841e880466af4b224",
+    "tools/compiler/package_compiler/References.chibi": "e6fe6a12169df2817523f6b04ccf59d48cb7c4cd3afb514cf422342d6144f48e",
+    "tools/compiler/package_compiler/Scalar.chibi": "97eea15582ccdad4abd6c88e36cf1ab25c21a4ebd666909e42c5c89cc55f2477",
+    "tools/compiler/package_compiler/ScalarArrays.chibi": "17aa83bb4754060cc0f1435bf8777e777cf92b65002bb754f6fa4a59f164b2a3",
+    "tools/compiler/package_compiler/ScalarEffects.chibi": "1cf8a7177df5ef8aaa53d40b3e5c9a03c687e4328bf4374b1a061af191aab4c4",
+    "tools/compiler/package_compiler/ScalarForeign.chibi": "db337a70c7fb04e93458c250fea428fd47cd32c83d8f4cc5d5ad57f0d6ee5053",
+    "tools/compiler/package_compiler/ScalarGenerations.chibi": "7964eabe11423c62314250413a9a2ac09904d9cfecd951266c562eb299d06c6a",
+    "tools/compiler/package_compiler/ScalarMaps.chibi": "e597be00c8ee271d0174b754eac911fbaa8f5eac2e5b9adb4cbced1bc3d82d7d",
+    "tools/compiler/package_compiler/ScalarMath.chibi": "60443514416eb21ffbea1aa4acded888ea594cbf1d0d0128dd8d5de0fc080419",
+    "tools/compiler/package_compiler/ScalarWasmABI.chibi": "8f5d0eb2250e824bd79689fe60e06730b2c2f9c8e19289504589766fd018cfac",
+    "tools/compiler/package_compiler/Sequences.chibi": "231f8b808c503da9b726fc42b0bda229bb89513651fe5cdf90c37ca1f4100730",
+    "tools/compiler/package_compiler/SourceAnalysis.chibi": "964bbf52ce1f305e6033497e113c4609090b283f3134321e1f9f9e5f643c520c",
+    "tools/compiler/package_compiler/SourceCallCycles.chibi": "f3dc3d0c6d7dc8645be433a07846dee1e75db8efaeeb823d6f1508ad1698215e",
+    "tools/compiler/package_compiler/SourceEquivalence.chibi": "2cdb9f969aa04d7ca936ff8a2e582701899f76fe806f0096f1753e05e3428098",
+    "tools/compiler/package_compiler/Steps.chibi": "8ee4a2f23d89a8146d55a0db31960f7aadce71bb1c48376aae4def1a32b448df",
+    "tools/compiler/package_compiler/TaskResults.chibi": "1ee293ff894c827af14e9393ef6b24346240126041dc648470295996d581a9d6",
+    "tools/compiler/package_compiler/Tasks.chibi": "03e70cc55f38e8452ebdad281a81de4d2e66e6cbdfe22629c6a80bb10c939a1b",
+    "tools/compiler/package_compiler/Tree.chibi": "ef1afcb34e44daca594acc90c3863418810043dfd216a3a8a2f39327e8857262",
+    "tools/compiler/syntax_diagnostics/Diagnostics.chibi": "381d054bf4dc939c2dde091acd30d810a383b936b6f573988d4eac29015bd7c1",
+    "tools/compiler/source_snapshot/Snapshot.chibi": "8531bb72026a60588fb20e40dca1aee4c5a1c7fb1f46059675d67064167031fa",
+    "tools/compiler/compiler_syntax/Syntax.chibi": "8a3470371cd46328114272c010cdf3c6942c83d921d48f98924f09fae0d275b9",
+    "tools/compiler/source_parser/Declarations.chibi": "54c69d438c18e168e199909e1cc5b16d1d9e6c3a15412cb6bb30442ef519855c",
+    "tools/compiler/source_parser/Expressions.chibi": "bc1da6b5a584388bd418cbfaaca615181471915608f6cf954fe687e7a3a063e0",
+    "tools/compiler/source_parser/Parser.chibi": "6bcf35fc78143b66d09b092d07cb72a19d8f5b39914e60c383e946607732dd64",
+    "tools/compiler/source_parser/Statements.chibi": "2b612b99267ccb5a351e9c250f3f2443171e4208a88207da01c0a88ad2098f25",
+    "tools/compiler/source_parser/Tree.chibi": "eab14b818a037349b04cfa045220fa9df669470306773795a9a4b61647efb80c",
+    "tools/compiler/source_parser/Types.chibi": "05eca2e83b3f1635a699c42953bbc7b4e8381e4dd20876fd258dfe85122df397",
+    "tools/compiler/source_tokenizer/Tokenizer.chibi": "b595f215c4b578853bc7300615141f53d4fb8365b412b477fec128ab3b25cecf",
+    "tools/compiler/package_graph/Graph.chibi": "c1fbae5b37b4667e1972a6a4685d37e7385623e643cf4402ebb0c6c8e7ff18e0",
+    "tools/compiler/package_syntax/Extract.chibi": "46b1271b7e144a3169363f88e1a61bfa216b04fb90599ba4aef2370919cf0857",
+    "tools/compiler/package_paths/Paths.chibi": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30",
+    "tools/compiler/package_routes/Routes.chibi": "1148a339db780ba5a63e14fea3eadd2634197ce8d0925baf048248e4b4f44d5a",
+    "tools/compiler/json_string/JsonString.chibi": "3a57f8b5b66ec6f3f067e5e8613eadf8f7a2010dc76638744ae854e61de36b06",
+    "tools/compiler/lexical_binding/Binding.chibi": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1",
+    "tools/compiler/source_directives/Directives.chibi": "2c2e9a27001de1fc06e9a3a6f9cbdecd1a447364a3bd7ea29db8aa4f31405c41",
+    "tools/compiler/prepared_writer/Writer.chibi": "b4c8d6bbf652c9416def9dbee2a2d8d3ab9c2a389e7cb386ceef9cb21868659d",
+    "tools/compiler/math_types/Functions.chibi": "b7ecff14bffd8dcf00c44b9e28daa5fd22a3b05f14981be9b9ff4b92b50fb9cf",
+    "tools/compiler/math_types/Types.chibi": "5b12167940c4ced9bf0a7871be2c178b394571597cdbeddc8238f58a4002c90d",
+    "tools/compiler/driver_paths/Paths.chibi": "2ebef708e3a089e35d7c902908280d1c43d494caa11bb01537e6596bb67b8ebb",
+    "tools/compiler/compiler_catalog/Catalog.chibi": "22e3d39ecabf9cdf2db779292e95e8b2666186fee16ba9100dc3ba6cabc0a0d9",
+    "tools/compiler/native_link_host/Host.chibi": "a7beed215250d6fe8d567b59b88b354c561c3463001df01f49ea38028e2dd0b2",
+    "tools/compiler/native_link/Failures.chibi": "ffcf5fe8d081bf5ea313a11c13e366443ea1f716932c2ee7cf7c4d8298d9a9bb",
+    "tools/compiler/native_link/Format.chibi": "4fe0380bc8d16c3c957914bfc59b9ff0197193246abc9872b2a21192bb766419",
+    "tools/compiler/native_link/Link.chibi": "82409fc6a4efd813d9a1d2a75d395553015185657fea18a8f84ac8ea2ed3abba",
+    "tools/compiler/native_link/Output.chibi": "9d40715384b83dabe9444dcaf7c359d642bbcbea419574ac97a713e2993cb0ea",
+    "tools/compiler/native_link/Start.chibi": "f913badc8269c289df4758244e34f7b424b62e2994b075c6fd10423332d71875",
+    "tools/compiler/native_link/WebAssembly.chibi": "773eff405e6d4d971a77808ba75b5c467986e7ce3e4d7ad32f25c6e93ec15cca",
+    "tools/compiler/native_abi/Abi.chibi": "31f42341c45cae52dcb74a87df3ef4fb9091a8407ab6fd70f87fa9fa59d13c8d",
+    "packages/core/encoding/json/Json.chibi": "b1186574ef9a37ce8790345bee503e143a0aa948b6d1fc900f034b3302533dab",
+    "tools/compiler/scalar_llvm/Emit.chibi": "1d1da59b64ba94124faaeb910e592aaa72cc3259b210c92ca0df0e79570a2db3",
+    "tools/compiler/llvm_native/Arrays.chibi": "13b58215a61b7c7270f817c07c0855dd40beb2f49aedf23f6144aac37950963a",
+    "tools/compiler/llvm_native/Emit.chibi": "2aea3d390930b63024603ec3a3017dc23b1742b8d3b886370ed60ad128689aff",
+    "tools/compiler/llvm_native/ForeignArrays.chibi": "9488a7dc20cab9036ec2c309603fa9d96f67fbbe3b2c87ce53600436dc16d9c1",
+    "tools/compiler/llvm_native/Managed.chibi": "5bb2c08a2ff99ef91d9bce5d35173f74eeef2bb12251f5e60682cc736e9b67ba",
+    "tools/compiler/llvm_native/TaskResults.chibi": "61c066545ae7a960950eb6a434219972aa877c9ab68dac6edb0456b8f68d944f",
+    "tools/compiler/llvm_native/TaskTiming.chibi": "057aad90817b5c7c6c8ecc3ab0210405141f79820b6ab0c40b95457ebd193eac",
+    "tools/compiler/llvm_native/Tasks.chibi": "8d7a5adf5555638d35397e8860d6ac388d395f822e917696d221c87eea61e85a",
+    "tools/compiler/llvm_native/Values.chibi": "dc5fa7f57ed7757375f37ce978e2170ec88e4388d52252b7199c044fe6cd845c",
+    "packages/core/hash/sha256/Sha256.chibi": "6b326bc51d6886a0f12c13c3662a6ec9f60da831b8bd80a024a5e20a43b84746",
+    "packages/core/bytes/Bytes.chibi": "3face4437c9ebd31073da5c8e2996f956dd1fa0105eefc1fe458c3f17f20bb4b",
+    "tools/compiler/package_compiler/SourceVoidCalls.chibi": "0116ca78e386048d06de2c9234d6e6ca1873309e836032ae242edd53f69ea5da"
+  },
+  "post_build_inputs_unchanged": true,
+  "changed_after_build": [],
+  "artifact": ".chibi/formatter-final-void-driver",
+  "artifact_sha256": "ca55770532ba76ce037809149e04e7e908afd477c3245ea8473c22a2ef7c5b27",
+  "artifact_bytes": 6682640
+}

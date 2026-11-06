@@ -1,0 +1,24 @@
+package facts
+
+// generic collection and optional values preserve ownership
+@test
+Calls :: () {
+    r1: int = Nested();
+    e1: int = 1283;
+    assert(r1 == e1, "Nested call 1");
+    r2: int = Whole();
+    e2: int = 124;
+    assert(r2 == e2, "Whole call 2");
+    r3: int = Present();
+    e3: int = 382;
+    assert(r3 == e3, "Present call 3");
+    r4: int = Absent();
+    e4: int = 3;
+    assert(r4 == e4, "Absent call 4");
+    r5: int = Empty();
+    e5: int = 1;
+    assert(r5 == e5, "Empty call 5");
+    r6: int = Fallback();
+    e6: int = 397;
+    assert(r6 == e6, "Fallback call 6");
+}

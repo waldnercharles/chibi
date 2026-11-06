@@ -1,0 +1,3 @@
+package facts
+Even :: (n: int) -> bool { return !(n % 2 != 0) && n >= 0; }
+Both :: (a: int, b: int) -> bool { return Even(a) && Even(b) || a == b; }

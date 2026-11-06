@@ -1,0 +1,27 @@
+{
+  "feature": "Protect boxed collector-owned arguments until cell publication",
+  "base": "f8fb1a4eb12790e217e0fad51b363754ae37f011",
+  "production": "scalar_llvm/Emit registers every boxed collector-owned Argument slot before any deferred constructor, then clears it after Pointer publication and before moved argument release. Waiting entry copies skip already-boxed parameters.",
+  "actual_negative": {
+    "fresh_written": "/private/tmp/chibi-pointer-views-fresh-input-moved.log",
+    "waiting_ordinary": "/private/tmp/chibi-pointer-views-waiting-input.ordinary.log",
+    "waiting_native": "/private/tmp/chibi-pointer-views-waiting-input.native.log"
+  },
+  "matching_candidate": "/private/tmp/chibi-pointer-views-v4",
+  "candidate_build_seconds": 34.87,
+  "runtime": {
+    "runs": 40,
+    "seconds": 22.31,
+    "live": 0,
+    "log": "/private/tmp/chibi-pointer-views-proof-v4.log",
+    "fixture": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/test/native_aot/managed_pointers/source/PointerViews.chibi",
+    "cases": [
+      "fresh moved written PArray parameter",
+      "earlier scalar constructor before later moved PArray",
+      "borrowed boxed waiting parameter",
+      "normal/forced/callback O0/O2 and failure cleanup",
+      "existing view regressions"
+    ]
+  },
+  "review": "Root source review clear. Two existing tracking events per affected parameter; O(parameters) code and metadata, no new layouts, root registry, ownership model or opcode. Independent view owner owns canonical regression registration and admission commit; integrate both atomically."
+}

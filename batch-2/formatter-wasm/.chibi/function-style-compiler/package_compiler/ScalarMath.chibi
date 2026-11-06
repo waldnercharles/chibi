@@ -1,0 +1,164 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+import binding "project:lexical_binding"
+
+// The runtime's two fmod overloads, including their actual native defaults.
+// Only the native producer needs these private catalog rows: an ordinary game
+// compilation receives the same definitions from its runtime catalog.
+ScalarMathCatalog :: (natives: ^(ResolvedNative[]), ports: ^(ResolvedPort[]), identities: ^(u64[])) {
+    if (FindNative(natives^, "fmod") != -1) {
+        if (!ScalarMathCanonical(natives^, ports^)) {
+            // Keep unrelated source and authored shadowing valid. The ordinary
+            // binder rejects a use of this unsupported catalog signature.
+            for (native in natives^) {
+                if (!NativeNameMatches(native, "fmod")) { continue; }
+                for (index in native.first..<native.first + native.parameters + native.results) {
+                    port := ports^[index];
+                    port.storage = UnsupportedPort;
+                    ports^[index] = port;
+                }
+            }
+        }
+        return;
+    }
+    for (storage in [DoubleStorage, FloatStorage]) {
+        native: ResolvedNative = {name: "fmod", first: length(ports^), parameters: 2, results: 1, variadic: false,
+                                  direct: true, qualified_name: "fmod", kind: NativeFunctionKind, intrinsic: 0,
+                                  effects: 0, source: false};
+        natives.append(native);
+        for (index in 0..<3) {
+            name := "Value";
+            bits: u64 = 0;
+            if (index == 1) {
+                name = "Divisor";
+                bits = 4607182418800017408;
+                if (storage == FloatStorage) { bits = 1065353216; }
+            } else if (index == 2) { name = "Result"; }
+            port: ResolvedPort = {name: name, storage: storage, container: 0, c_string: false, record: -1,
+                                 has_default: index < 2, default_owner: false, default_supported: index < 2,
+                                 default_bits: bits, default_text: ""};
+            ports.append(port);
+        }
+        identities.append(binding.ID("native-scalar-math", format_text("fmod:{}", storage)));
+        identities.append(binding.ID("native-scalar-math-signature", format_text("fmod:{}", storage)));
+    }
+}
+
+// Projection below implements the owning runtime's two forms. A caller's
+// different capability remains unsupported, rather than gaining another
+// overload or having its signature/default silently changed.
+ScalarMathCanonical :: (natives: ResolvedNative[], ports: ResolvedPort[]) -> bool {
+    single := false;
+    wide := false;
+    for (native in natives) {
+        if (!NativeNameMatches(native, "fmod")) { continue; }
+        if (native.name != "fmod" || native.parameters != 2 || native.results != 1 || native.variadic ||
+            !native.direct || native.intrinsic != 0 || native.kind != NativeFunctionKind || native.effects != 0) { return false; }
+        storage := ports[native.first].storage;
+        if (storage == FloatStorage && !single) { single = true; } else if (storage == DoubleStorage && !wide) { wide = true; } else { return false; }
+        for (index in 0..<3) {
+            port := ports[native.first + index];
+            name := "Value";
+            bits: u64 = 0;
+            if (index == 1) {
+                name = "Divisor";
+                bits = 4607182418800017408;
+                if (storage == FloatStorage) { bits = 1065353216; }
+            } else if (index == 2) { name = "Result"; }
+            if (port.storage != storage || port.container != 0 || port.record >= 0 || port.c_string ||
+                !NameMatches(name, port.name)) { return false; }
+            if (index < 2 && port.has_default && (!port.default_supported || port.default_owner ||
+                port.default_bits != bits || port.default_text != "")) { return false; }
+        }
+    }
+    return single && wide;
+}
+
+ScalarMathCall :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    callee := Field(forest, node, syntax.FieldFunction);
+    return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "fmod";
+}
+
+// EmitBody has already bound and validated the two ports. Preserve their source
+// order here; the postfix operation can reverse them without evaluating twice.
+ScalarMathArguments :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> NativeArgument[] {
+    arguments: NativeArgument[] = [];
+    for (source, ordinal in Members(forest, Field(forest, node, syntax.FieldArguments))) {
+        value := source;
+        parameter := ordinal;
+        if (Is(forest, source, syntax.NamedArgument)) {
+            name := Text(forest, text, Field(forest, source, syntax.FieldName));
+            parameter = 0;
+            if (NameMatches("Divisor", name)) { parameter = 1; }
+            value = Field(forest, source, syntax.FieldValue);
+            if (value < 0) { value = Field(forest, source, syntax.FieldSource); }
+        }
+        arguments.append({node: value, parameter: parameter});
+    }
+    return arguments;
+}
+
+// Reuse the ordinary overload ranking on the two canonical numeric signatures.
+// There are at most two supplied ports and two candidates; no source-sized
+// catalog or lookup table is allocated for an expression.
+ScalarMathStorage :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                      callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                      constants: ConstDecl[], node: int) -> int {
+    supplied := ScalarMathArguments(forest, text, node);
+    best := 0;
+    best_cost := 2147483647;
+    best_literals := 2147483647;
+    for (candidate in [DoubleStorage, FloatStorage]) {
+        cost := 0;
+        literals := 0;
+        takes := true;
+        for (argument in supplied) {
+            storage := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
+                                            argument.node, 0);
+            if (storage == 0 || storage == NumberStorage) {
+                literals += LiteralCost(forest, text, argument.node, candidate);
+            } else if (storage != candidate) {
+                if (!Numeric(storage) || !Converts(storage, candidate)) { takes = false; } else { cost += TypedCost(storage, candidate); }
+            }
+        }
+        if (takes && (cost < best_cost || (cost == best_cost && literals <= best_literals))) {
+            if (cost == best_cost && literals == best_literals) { best = 0; } else { best = candidate; best_cost = cost; best_literals = literals; }
+        }
+    }
+    return best;
+}
+
+ScalarMathOperands :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                       callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                       constants: ConstDecl[], node: int, rows: facts.Row[]) -> ScalarOperands {
+    storage := ScalarMathStorage(forest, text, callables, params, callable, names, types, members, constants, node);
+    if (storage == 0) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native fmod requires its standard numeric overloads"));
+    }
+    supplied := ScalarMathArguments(forest, text, node);
+    output := rows;
+    for (argument in supplied) {
+        own := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants, argument.node, storage);
+        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                             argument.node, argument.node, own, storage, facts.Clamp, output) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+    }
+    reversed := length(supplied) > 0 && supplied[0].parameter == 1;
+    if (length(supplied) == 1) {
+        bits: u64 = 0;
+        if (!reversed) {
+            bits = 4607182418800017408;
+            if (storage == FloatStorage) { bits = 1065353216; }
+        }
+        output.append(ScalarLiteral(forest, node, ScalarTypeOf(storage), bits));
+    }
+    operator := facts.Remainder;
+    if (reversed) { operator = facts.ReversedRemainder; }
+    output.append(ScalarAt(forest, node, facts.ArithmeticRow, ScalarTypeOf(storage), operator, 2, ""));
+    return ScalarOperands.Built(output);
+}

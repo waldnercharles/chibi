@@ -1,0 +1,56 @@
+package asset_cache
+
+import bytes "core:bytes"
+
+@test
+ClosureKeysMatchTheExistingStreamingCFraming :: () {
+    identity := "e996bb0ea465fae70d3e3c66b3b6e02d33d2f1eb76d5958720578b6cf359cc2e";
+    expected := "closure-63de44bc71dc96f9e0ed9c6ccba29ef8cf02f194ab7091e308a34609cace2d54";
+    assert(ClosureKey(identity, bytes.FromString("options-v1"), bytes.FromString("{}")) == expected);
+    embedded := bytes.FromString("options-v1");
+    embedded.append(u8(0));
+    embedded.extend(bytes.FromString("ignored"));
+    assert(ClosureKey(identity, embedded, bytes.FromString("{}")) == expected,
+           "a borrowed C salt stops at its first NUL");
+    assert(ClosureKey("unavailable", [], []) == "");
+}
+
+@test
+CacheHeaderMatchesTheExistingBinaryCacheFormat :: () {
+    key := "closure-63de44bc71dc96f9e0ed9c6ccba29ef8cf02f194ab7091e308a34609cace2d54";
+    payload: u8[] = [0, 255, 128, 1, 2];
+    header := CacheHeader(key, payload);
+    assert(length(header) == 144);
+    assert(bytes.ToString(header.slice(0, 8)) == "CHIBIC01");
+    assert(header[8] == u8(5));
+    for (index in 9..<16) { assert(header[index] == u8(0)); }
+    assert(bytes.ToString(header.slice(16, 64)) == "186fa6ac32cdb187e71843591a1ae7723fffa0b2afda342109f8ccc66afad6d7");
+    assert(bytes.ToString(header.slice(80, 64)) == "e1017891a8dc2b5398c02204fb0280bcb139a3b31da234b1b38ac3e86a3f39ad");
+    assert(CachePayloadSize(key, header, 149) == 5 && CachePayloadMatches(header, payload));
+    for (index in 0..<144) {
+        changed := header;
+        changed[index] ^= u8(1);
+        assert(CachePayloadSize(key, changed, 149) == -1 || !CachePayloadMatches(changed, payload),
+               "each header byte is authenticated or framed");
+    }
+    for (index in 0..<length(payload)) {
+        changed := payload;
+        changed[index] ^= u8(1);
+        assert(!CachePayloadMatches(header, changed));
+    }
+    assert(CachePayloadSize("another-key", header, 149) == -1);
+    assert(CachePayloadSize(key, header, 148) == -1);
+    assert(CachePayloadSize(key, header.slice(0, 143), 149) == -1);
+}
+
+@test
+EmptyCachedPayloadIsDistinctFromInvalidFraming :: () {
+    payload: u8[] = [];
+    header := CacheHeader("empty", payload);
+    assert(CachePayloadSize("empty", header, 144) == 0 && CachePayloadMatches(header, payload));
+    assert(CachePayloadSize("empty", header, 143) == -1);
+    assert(CachePayloadSize("empty", header, 145) == -1);
+    assert(length(CacheHeader("../outside", payload)) == 0);
+    assert(!ValidKey("") && !ValidKey("a/b") && !ValidKey(bytes.ToString([u8(97), 0, 98])));
+    assert(ValidKey("closure-Az_19"));
+}

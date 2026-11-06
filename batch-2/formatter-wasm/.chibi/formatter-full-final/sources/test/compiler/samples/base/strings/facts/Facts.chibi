@@ -1,0 +1,8 @@
+package facts
+Name :: (name: string) -> string {
+    if (name == "") { return "nobody"; }
+    return name;
+}
+Same :: (a: string, b: string) -> bool { return a == b && !(a != b); }
+Differ :: (a: string, b: string) -> bool { return a != b; }
+Quoted :: () -> string { text: string = "a\"b\u0041"; return text; }

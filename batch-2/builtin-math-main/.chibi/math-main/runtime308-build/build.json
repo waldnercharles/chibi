@@ -1,0 +1,36 @@
+{
+  "command": [
+    "cmake",
+    "--build",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build",
+    "--target",
+    "test_language",
+    "chibi-build-host",
+    "chibi-compiler-host",
+    "--parallel",
+    "4"
+  ],
+  "status": 0,
+  "wall_seconds": 33.168961958028376,
+  "fresh_build": true,
+  "copied_old_native_objects": false,
+  "compiler_cache_launcher": "",
+  "helper_patches": [],
+  "binaries": {
+    "test_language": {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/test_language",
+      "bytes": 15479088,
+      "sha256": "ea8c848adee80c6284d70d25570e7c3580af12caef58bfa0f026a81e9ff34835"
+    },
+    "chibi-build-host": {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-build-host",
+      "bytes": 1969120,
+      "sha256": "670096ae8a352164f3571815deba00bddaaa2b4764118012b76361587032043e"
+    },
+    "chibi-compiler-host": {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-compiler-host",
+      "bytes": 1350592,
+      "sha256": "813f3162e4ea1facf0854832c528a085f88f4f83e61be438afc85c52f0b89b67"
+    }
+  }
+}

@@ -1,0 +1,42 @@
+// Spawns a bounded wave beside the Player at regular intervals, alternating
+// left and right.
+WaveBehavior :: behavior {
+    // The last frame step, for actions and functions.
+    Step: number = 0
+    // Wave
+    CountLimit := 8
+    Interval := 1.5
+    SpawnDistance := 260.0
+    // State
+    Elapsed := 0.0
+    Spawned := 0
+    Side := -1.0
+    on Tick :: (dt: number s) {
+        Step = dt
+        if find_nearest_entity(self.Transform, 1000000.0, 1, self).Found {
+            Elapsed = Elapsed + Step
+            await Spawn_Within_Wave_Limit(find_nearest_entity(self.Transform, 1000000.0, 1, self).Position)
+        }
+    }
+    Spawn_Within_Wave_Limit :: (Player_Position: vec2 = null) {
+        while Elapsed >= max(Interval, 0.01) {
+            if Spawned >= CountLimit {
+                return
+            } else {
+                Elapsed = Elapsed - max(Interval, 0.01)
+                await Spawn_Enemy(Player_Position)
+                Spawned = add(Spawned, 1)
+                Side = Side * -1.0
+            }
+        }
+        return
+    }
+    Spawn_Enemy :: (Player_Position: vec2 = null) {
+        action spawn_prototype_action = spawn_prototype(Enemy)
+        spawn_prototype_action()
+        after spawn_prototype_action {
+            spawn_prototype_action.Entity.Transform = make_transform(Player_Position.x + Side * SpawnDistance, Player_Position.y)
+            return
+        }
+    }
+}

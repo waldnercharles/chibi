@@ -1,0 +1,6 @@
+package facts
+import lib "project:callable_invocation_cannot_inherit_target_defaults/lib"
+Pair :: (a: int = 1, b: int = 2) -> int { return a + b; }
+Main :: () -> int { return lib.Apply(Pair); }
+
+// error: lib/Lib.chibi:2:68: call has the wrong number of arguments

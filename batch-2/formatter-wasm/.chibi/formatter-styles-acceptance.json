@@ -1,0 +1,36 @@
+{
+  "url": "http://127.0.0.1:8766/chibi/formatter/",
+  "site": "/Users/cwaldner/Personal/chibi/.worktrees/formatter-wasm/chibi/.chibi/formatter-styles-final",
+  "rollback": "/Users/cwaldner/Personal/chibi/.worktrees/formatter-wasm/chibi/.chibi/formatter-before-styles-1793662987",
+  "rollback_wasm_sha256": "333e78e91486838a90a1cd783c192a6cdbb832b18ea4dbff79cdbf5ea17776f9",
+  "wasm_bytes": 3705668,
+  "wasm_sha256": "a6bfe3e7813a0ce78d6d9a35a33a2ad808fe7082103bf632262886713987df84",
+  "compiler_sha256": "e1125b19a49cfab3f5e9ec3ab0e34b30bbb70a18854dbe713fc02624ce5be79f",
+  "inputs_sha256": "316e24b8ad20ab32ecf6b9bd897f974eeae57b05320e14eb227a0fedb898a5f4",
+  "checks": {
+    "compiler_tests": 502,
+    "compiler_seconds_approx_from_log_times": 49.39,
+    "formatter_tests": 47,
+    "type_style_tests": 19,
+    "type_style_seconds": 21.42,
+    "native_control_tests_each_level": 7,
+    "native_control_O0_seconds": 0.72,
+    "native_control_O2_seconds": 0.93,
+    "javascript_protocol_tests": 10,
+    "real_wasm_tests": 10,
+    "wasm_tests_wall_seconds": 1.47,
+    "final_build_seconds": 103.84
+  },
+  "browser_checks": [
+    "combined type and brace styles",
+    "inferred types preserve numeric context",
+    "fmt-off regions preserved byte for byte",
+    "invalid draft and correction",
+    "missing imports show notes",
+    "final notes warning status",
+    "Unicode source/highlighting",
+    "no browser console errors",
+    "final 8766/chibi/formatter tracked-file load verified"
+  ],
+  "publication": "local, uncommitted, not deployed"
+}

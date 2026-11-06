@@ -1,0 +1,30 @@
+package facts
+Note :: struct { text: string; count: int; }
+Point :: struct { x: int; y: int; }
+Shape :: union { Circle(radius: int) | Empty }
+BoxedWord :: (words: string[], i: int) -> string { return words[i]; }
+BoxedWords :: (words: string[]) -> int {
+    total: int = 0;
+    for (word in words) { if (word == "b") { total += 1; } }
+    return total;
+}
+BoxedNotes :: (notes: Note[], i: int) -> int {
+    total: int = 0;
+    for (note in notes) { total += note.count; }
+    return total + notes[i].count * 100;
+}
+BoxedShapes :: (i: int) -> int {
+    shapes: Shape[] = [Shape.Circle(2), Shape.Empty, Shape.Circle(5)];
+    total: int = 0;
+    for (shape in shapes) {
+        switch shape { case .Circle(radius): total += radius; case .Empty: total += 10; }
+    }
+    picked := shapes[i];
+    switch picked { case .Circle(radius): return total + radius * 100; case .Empty: return total; }
+    return -1;
+}
+PackedPoints :: (points: Point[], i: int) -> int {
+    total: int = 0;
+    for (point in points) { total += point.y; }
+    return total + points[i].x * 100;
+}

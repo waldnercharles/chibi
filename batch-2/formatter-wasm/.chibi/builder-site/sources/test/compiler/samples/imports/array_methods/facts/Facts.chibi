@@ -1,0 +1,18 @@
+package facts
+Build :: (n: int) -> int[] {
+    xs: int[] = [];
+    i: int = 0;
+    while (i < n) { xs.append(Item: i); i += 1; }
+    ys: int[] = [100, 200];
+    xs.extend(other_array: ys);
+    seven: int = 7;
+    xs.insert(0, seven);
+    xs.reverse();
+    return xs;
+}
+Count :: (xs: int[]) -> int { return xs.length() * 10 + Build(2).length(); }
+Has :: (xs: int[], x: int) -> bool { return xs.contains(x); }
+Sliced :: (xs: int[]) -> int[] { part := xs.slice(1, 2); return part; }
+Separate :: () -> int { xs: int[] = [1, 2]; ys := xs; ys.append(3); return xs.length(); }
+Grow :: (xs: int[]) -> int[] { xs.append(1); return xs; }
+Named :: () -> int[] { xs: int[] = []; xs = append(Array: xs, Item: 7); return xs; }

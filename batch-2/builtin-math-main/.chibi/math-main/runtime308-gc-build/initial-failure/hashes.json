@@ -1,0 +1,9 @@
+{
+  "receipt.json": "01a31deaeff6cbd26ef0cfbea1059fe2398df5eb3d4d689b115314dbaf57131a",
+  "capture.json": "fdfcf0ca14da5e83cae636d57dd08788878f9a4990e6bebce5ee8abdaffe7156",
+  "build.json": "cc513115f6c33ba8313b937aad9eb29e23f941d282eff5b616a2063bde37c84b",
+  "configure.json": "c6352e90262e9e21e0c71e3b8745f27c816cb4ea8361fba14678086536b359fd",
+  "math-native.log": "0d20f5099d8c2b4b7c88f3044aade20075718b3a85d7daf055b0db25e7a847ae",
+  "test_language": "74f01c55fb3b145339be348c55d3a265545b1c397c2324eb19e1207801948ca8",
+  "package_compiler_chibi.c": "404f48acb258b11705d2ecc8441771c17950aa1fe13c3758a32f2721555394bc"
+}

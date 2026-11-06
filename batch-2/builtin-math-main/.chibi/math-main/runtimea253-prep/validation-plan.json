@@ -1,0 +1,50 @@
+{
+  "base": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+  "source_tree": "b4dbc77d99590a823361cddce8f81f08fddadb9e",
+  "private_overlay": null,
+  "f1a_reuse": false,
+  "affected_light_checks": [
+    "--compiler-fixture",
+    "--package-imports",
+    "--package-tests"
+  ],
+  "combined_source_checks_pending": [
+    "imports on both authored compiler VMs, all nine accepted import cases and compact closure checks",
+    "42 math source samples, constructors/operators/swizzles/nested collection locations",
+    "shared scoped-reference WRITE and hidden-box purity controls after owner selects source",
+    "native math original and managed-GC pressure with both compiler and target VMs; effects/declarations/points/watches/backend/no fallback",
+    "prepared nominal/native/retained-schema and array roundtrips"
+  ],
+  "coordinator_producers_pending": [
+    "matching full compiler artifact and recovery",
+    "combined function budgets and two-stage fixed point",
+    "math asset source inventory",
+    "installed math SDK and backend acceptance"
+  ],
+  "heavy_producer_allocation": null,
+  "main_cli_owner": "existing user chat",
+  "affected_light_checks_status": "passed",
+  "affected_light_check_proof": {
+    "receipt": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/validation-receipt.json",
+    "receipt_sha256": "c878af777337cf8fbf6d520950da8e4bae1559b6bf1cd167290f30ff6d89c9fa",
+    "final_source_admission": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/final-source-admission.json",
+    "final_source_admission_sha256": "f88e5fb0acd328e923e99162df778d5f5c83f7cdeda4487a629bab80131dab16",
+    "validated_source_tree": "b4dbc77d99590a823361cddce8f81f08fddadb9e",
+    "selectors": [
+      "--compiler-fixture",
+      "--package-imports",
+      "--package-tests"
+    ],
+    "native_cases": 33,
+    "native_assertions": 2282,
+    "authored_math_module_cases_per_vm": {
+      "BYTECODE": 44,
+      "SLJIT": 44
+    },
+    "configure_seconds": 3.4935817080549896,
+    "build_seconds": 23.55669291689992,
+    "serial_policy_checks_seconds": 2.7846458749845624,
+    "binary_sha256": "b0e512acdc1797a98d9eeb65bcc9c4ac0f5e6560b708ddeb920276ccaf0b3863",
+    "root_audit": "receipt hash, executable hash, final index tree and doc-only admission verified"
+  }
+}

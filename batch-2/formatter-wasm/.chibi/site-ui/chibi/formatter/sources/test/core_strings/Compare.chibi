@@ -1,0 +1,95 @@
+package core_strings
+
+import strings "core:strings"
+
+// Fixed comparison, identifier and basename oracles from package_core.c.
+@test
+CompareEmptyStringsEqual :: () {
+    assert(strings.Compare("", "") == 0);
+    return;
+}
+@test
+CompareEqualAsciiStringsEqual :: () {
+    assert(strings.Compare("abc", "abc") == 0);
+    return;
+}
+@test
+ComparePrefixSortsBeforeLongerString :: () {
+    assert(strings.Compare("ab", "abc") == -1);
+    return;
+}
+@test
+CompareGreaterAsciiByteSortsAfterSmaller :: () {
+    assert(strings.Compare("b", "a") == 1);
+    return;
+}
+@test
+CompareFFSortsAfter80 :: () {
+    assert(strings.Compare(RawByte(255), RawByte(128)) == 1);
+    return;
+}
+@test
+Compare80SortsBeforeFF :: () {
+    assert(strings.Compare(RawByte(128), RawByte(255)) == -1);
+    return;
+}
+@test
+IdentifierEmptyRejected :: () {
+    assert(!strings.IsIdentifier(""));
+    return;
+}
+@test
+IdentifierSingleLetterAccepted :: () {
+    assert(strings.IsIdentifier("a"));
+    return;
+}
+@test
+IdentifierUnderscoreAndTrailingDigitAccepted :: () {
+    assert(strings.IsIdentifier("_A9"));
+    return;
+}
+@test
+IdentifierLeadingDigitRejected :: () {
+    assert(!strings.IsIdentifier("9a"));
+    return;
+}
+@test
+IdentifierHyphenRejected :: () {
+    assert(!strings.IsIdentifier("a-b"));
+    return;
+}
+@test
+IdentifierRawFFRejected :: () {
+    assert(!strings.IsIdentifier(RawByte(255)));
+    return;
+}
+@test
+BaseNameEmptyPath :: () {
+    assert(strings.BaseName("") == "");
+    return;
+}
+@test
+BaseNamePlainFile :: () {
+    assert(strings.BaseName("file") == "file");
+    return;
+}
+@test
+BaseNameRootSlash :: () {
+    assert(strings.BaseName("/") == "");
+    return;
+}
+@test
+BaseNameTrailingSlash :: () {
+    assert(strings.BaseName("a/b/") == "");
+    return;
+}
+@test
+BaseNameFinalSegment :: () {
+    assert(strings.BaseName("a/b") == "b");
+    return;
+}
+@test
+BaseNameBackslashRemainsLiteral :: () {
+    assert(strings.BaseName("a\\b") == "a\\b");
+    return;
+}

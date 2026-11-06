@@ -1,0 +1,9 @@
+package facts
+
+// error arrays remain ordinary report data
+@test
+Calls :: () {
+    r1: int = Use();
+    e1: int = 9;
+    assert(r1 == e1, "Use call 1");
+}

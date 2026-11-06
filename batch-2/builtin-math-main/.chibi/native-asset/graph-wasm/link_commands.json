@@ -1,0 +1,3 @@
+[
+{"output": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/native-asset/graph-wasm/sdk/wasm32/libchibi_asset_compiler.a", "arguments": ["/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/build-runner/97694bf6e2bf651cf337830a3517f309da030b1ad06c1049c54822d0b353a1c7/Build-Main", "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi", "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/build-runner/ba292bccb93a1c4bd0126b10c75361fb755ce29f08b47dea57c6ea3ac1d03e19/chibi", "/opt/homebrew/bin/emcc", "/opt/homebrew/Cellar/emscripten/6.0.9/libexec/llvm/bin", "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/native-asset/graph-wasm/sdk/wasm32"]}
+]

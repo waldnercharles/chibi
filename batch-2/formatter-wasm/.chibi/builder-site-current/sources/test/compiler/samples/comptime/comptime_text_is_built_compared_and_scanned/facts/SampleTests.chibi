@@ -1,0 +1,29 @@
+package facts
+import strings "core:strings"
+
+// compile-time text is built, compared and scanned
+@test
+Calls :: () {
+    length: int = Length;
+    expected_length: int = strings.ByteLength(Greeting("Ada"));
+    assert(length == expected_length, "format_text with an escape");
+    assert(length == 12, "Hello, Ada!\n is twelve bytes");
+    counted: int = Counted;
+    expected_counted: int = Vowels("education");
+    assert(counted == expected_counted, "slices compared with ==");
+    assert(counted == 5, "five vowels");
+    joined: int = JoinedLength;
+    expected_joined: int = strings.ByteLength(Joined(["a", "bc", "def"]));
+    assert(joined == expected_joined, "format_text builds text from text");
+    hashed: int = Hashed;
+    expected_hashed: int = Hash("chibi");
+    assert(hashed == expected_hashed, "bytes of a string");
+    unequal: int = Unequal;
+    assert(unequal == 1, "!= on text");
+    image: int = Image;
+    assert(image == 10, "core:strings.HasSuffix runs at compile time");
+    position: int = Position;
+    assert(position == 1, "a search over text");
+    described: int = Described;
+    assert(described == 5, "a string field of a record");
+}

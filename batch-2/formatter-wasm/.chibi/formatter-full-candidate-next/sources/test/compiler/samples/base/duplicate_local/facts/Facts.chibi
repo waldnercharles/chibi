@@ -1,0 +1,4 @@
+package facts
+One :: () -> int { x: int = 1; x: int = 2; return x; }
+
+// error: 2:32: Duplicate declaration 'x'

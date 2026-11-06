@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-configure/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-sdk-configure/language/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

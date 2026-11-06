@@ -1,0 +1,13 @@
+Own native task handles and deliver scalar task results
+
+Separate observer ownership from active program execution. Preserve completed
+numeric/void promises for repeated await, reclaim them on the final observer,
+and release observers on normal and cancelled coroutine exits. Keep task
+parameters, containers, references and managed results closed at source, facts
+and native validation boundaries.
+
+Add scalar/void result, cancellation and ownership regression coverage at O0/O2,
+14 malformed facts and 6 direct native schema checks, allocator count/byte peaks
+across 4096 joins, and embedded source-catalog registration. Independent runtime,
+compiler and lifetime reviews passed. Final combined native task suite passed
+in 17.24s; Windows source cross-link passed in 0.51s.

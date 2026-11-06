@@ -1,0 +1,16 @@
+{
+  "command": [
+    "cmake",
+    "--build",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/inventory-build",
+    "--target",
+    "test_language",
+    "--parallel",
+    "4"
+  ],
+  "status": 0,
+  "wall_seconds": 34.76183837489225,
+  "binary": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/inventory-build/test_language",
+  "binary_sha256": "f91804e5ec81a3562bcf741da42d7957a78ad792b95238d4cf95b93d0da5c2c1",
+  "binary_bytes": 15479088
+}

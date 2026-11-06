@@ -1,0 +1,20 @@
+package body
+
+@test
+LocalInt :: () {
+    value: int? = nil;
+    assert(value == nil);
+    value = 42;
+    assert(value != nil);
+    value = nil;
+    assert(value == nil);
+}
+@test
+LocalBool :: () {
+    value: bool? = nil;
+    assert(value == nil);
+    value = false;
+    if (value) {} else { assert(false, "false payload still has a value"); }
+    value = nil;
+    assert(value == nil);
+}

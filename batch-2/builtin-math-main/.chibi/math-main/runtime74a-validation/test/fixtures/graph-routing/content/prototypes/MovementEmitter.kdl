@@ -1,0 +1,5 @@
+name "MovementEmitter"
+components {
+    (object)ParticleEmitter
+    (object)Transform
+}

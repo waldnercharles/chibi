@@ -1,0 +1,16 @@
+[
+  {
+    "source": "src/authoring/program.c",
+    "returncode": 0,
+    "wall_seconds": 0.286,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-accepted817-syntax.log",
+    "private_source_include": false
+  },
+  {
+    "source": "src/authoring/program_service.c",
+    "returncode": 0,
+    "wall_seconds": 0.058,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program_service-accepted817-syntax.log",
+    "private_source_include": false
+  }
+]

@@ -1,0 +1,4 @@
+package facts
+Bad :: () -> number { m := mat2(1); return m.c0r0; }
+
+// error: 2:44: matrix storage fields are internal; use matrix operations

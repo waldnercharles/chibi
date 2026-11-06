@@ -1,0 +1,223 @@
+{
+  "head": "dea59917c76d665a3a117690b77a6b0717a798b0",
+  "tree": "e5cef072dfc749ab4bd6653b917714e33c4aa97b",
+  "clean_before": true,
+  "environment": {
+    "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/b795/test/language",
+    "CHIBI_TOOLS_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/b795/test/tools",
+    "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/b795/sdk/chibi-compiler-host",
+    "CHIBI_RELEASE_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/b795/sdk/chibi-compiler-host",
+    "CHIBI_BUILD_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/b795/sdk/chibi-build-host",
+    "CHIBI_CLI": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/b795/sdk/chibi",
+    "CHIBI_COMPILE": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/b795/sdk/chibi-compile",
+    "CHIBI_CTL": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/b795/bin/chibi_ctl",
+    "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/b795/test/language"
+  },
+  "steps": [
+    {
+      "name": "language-package-portable",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-portable"
+      ],
+      "exit_code": 0,
+      "seconds": 4.270985875045881,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-language-package-portable.log",
+      "summary": [
+        "Summary: Passed: 5 Failed: 0 Total: 5 Suites: 0 Asserts: 1798",
+        "Test command wall time: 4.099s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "0228242d1d51f2ebf7a4ec929e72659fb450fca45239b52405bcf8f55d7fb642"
+    },
+    {
+      "name": "language-package-portable-compiler",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-portable-compiler"
+      ],
+      "exit_code": 0,
+      "seconds": 54.22803108394146,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-language-package-portable-compiler.log",
+      "summary": [
+        "Summary: Passed: 2 Failed: 0 Total: 2 Suites: 0 Asserts: 4928",
+        "Test command wall time: 54.085s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "90c6fab93f590f250b46cfb58b26f7133ba7a0f6c7ec149467bee8391ebd3b8f"
+    },
+    {
+      "name": "language-compiler-fixture",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-compiler-fixture"
+      ],
+      "exit_code": 0,
+      "seconds": 2.082513791974634,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-language-compiler-fixture.log",
+      "summary": [
+        "Summary: Passed: 9 Failed: 0 Total: 9 Suites: 0 Asserts: 414",
+        "Test command wall time: 1.945s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "88497da189d241e4c1c8fc18bd0e326cdc2f14b2a3d3c599b4d94825da408935"
+    },
+    {
+      "name": "language-package-tests",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-tests"
+      ],
+      "exit_code": 0,
+      "seconds": 0.3270226661115885,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-language-package-tests.log",
+      "summary": [
+        "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 339",
+        "Test command wall time: 0.271s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "3f63ca5fc88dad18241741de4ac3a7853b775245690d8e88999209fd533ecab8"
+    },
+    {
+      "name": "language-package-core",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-core"
+      ],
+      "exit_code": 0,
+      "seconds": 36.83347583306022,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-language-package-core.log",
+      "summary": [
+        "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 14846",
+        "Test command wall time: 36.767s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "4ddab68f7365c88d09812b6a1b9f1cc27f2028102de314656d0bdb39ab72b17e"
+    },
+    {
+      "name": "language-package-compiler-chibi-collections",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-collections"
+      ],
+      "exit_code": 0,
+      "seconds": 26.463682582834736,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-language-package-compiler-chibi-collections.log",
+      "summary": [
+        "Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 10511",
+        "Test command wall time: 26.304s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "f36ab744a160751e893e7a4e6a05a6bda2a7349f9ee895b4e6e95e55d81c4382"
+    },
+    {
+      "name": "language-package-compiler-chibi-sharing",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-sharing"
+      ],
+      "exit_code": 0,
+      "seconds": 19.874800459016114,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-language-package-compiler-chibi-sharing.log",
+      "summary": [
+        "Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 175",
+        "Test command wall time: 19.738s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "b95f66449dec8062f536301e5828854090f4305d4f472c9ae9e0f55fb26b4592"
+    },
+    {
+      "name": "language-native-calls",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-native-calls"
+      ],
+      "exit_code": 0,
+      "seconds": 1.3589217078406364,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-language-native-calls.log",
+      "summary": [
+        "Summary: Passed: \u001b[1;32m7\u001b[0m Failed: \u001b[1;31m0\u001b[0m Total: 7 Suites: 1 Asserts: 758",
+        "Summary: Passed: \u001b[1;32m7\u001b[0m Failed: \u001b[1;31m0\u001b[0m Total: 7 Suites: 1 Asserts: 758",
+        "Test command wall time: 0.750s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "72e9ed0c5b757776f2c6d11437b1e929b79069c89cb8366363beb6375873c333"
+    },
+    {
+      "name": "language-asset-compiler-host",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-asset-compiler-host"
+      ],
+      "exit_code": 0,
+      "seconds": 126.97217462491244,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-language-asset-compiler-host.log",
+      "summary": [
+        "Summary: Passed: 12 Failed: 0 Total: 12 Suites: 0 Asserts: 110",
+        "Test command wall time: 126.875s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "2db612a754e3cfda849ae38cf176384acef1826cf9707d69d6dab9833005862e"
+    },
+    {
+      "name": "language-asset-packaging-chibi",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-asset-packaging-chibi"
+      ],
+      "exit_code": 0,
+      "seconds": 6.2851188748609275,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-language-asset-packaging-chibi.log",
+      "summary": [
+        "Summary: Passed: 4 Failed: 0 Total: 4 Suites: 0 Asserts: 24874",
+        "Test command wall time: 6.133s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "b9c356b9bb3867515ad2579fe12ff350d2221954c60fc946669e89220a2f8017"
+    },
+    {
+      "name": "compiler-bootstrap",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "compiler-bootstrap"
+      ],
+      "exit_code": 0,
+      "seconds": 26.539041416952386,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-compiler-bootstrap.log",
+      "summary": [
+        "Summary: Passed: 18 Failed: 0 Total: 18 Suites: 0 Asserts: 202",
+        "Test command wall time: 26.424s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "1fd3cd1709b9d20fd945ca9802fd51b7cfd62208784f2be0ddf91e46612fd8df"
+    },
+    {
+      "name": "bootstrap-recovery",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "bootstrap-recovery"
+      ],
+      "exit_code": 1,
+      "seconds": 347.13279979210347,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-dea5-bootstrap-recovery.log",
+      "summary": [
+        "Summary: Passed: 1 Failed: 1 Total: 2 Suites: 0 Asserts: 15",
+        "Test command wall time: 346.948s; includes in-test fixture setup; external configuration/build excluded."
+      ],
+      "log_sha256": "93d0694522662e6876cbfe951b99085f96bc47d1aa980e676e340b47bbfc3160"
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+package scalar
+Main :: () -> int {
+    return 42;
+}

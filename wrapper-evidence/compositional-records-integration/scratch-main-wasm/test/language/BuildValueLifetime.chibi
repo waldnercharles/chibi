@@ -1,0 +1,47 @@
+package build_value_lifetime
+
+Build :: () -> int {
+    args := build.arguments();
+    if (length(args) != 2) {
+        return 1;
+    }
+    path := args[0];
+    token := args[1];
+    text := build.read_file(path);
+    lines := build.lines(text);
+    small := build.lines("left\nright");
+    other := build.lines("next\nvalue");
+    if (small[0] != "left" || small[1] != "right" ||
+        other[0] != "next" || other[1] != "value") {
+        return 7;
+    }
+    names := build.list_directory(".");
+    if (length(lines) != 2 || length(names) == 0) {
+        return 2;
+    }
+    name := names[0];
+    args[0] = "changed VM copy";
+    for (i in 0..<300) {
+        later := build.read_file(path);
+        if (text_byte_length(later) != 1048576 || text_byte_at(later, 1) != 0) {
+            return 3;
+        }
+    }
+    again := build.arguments();
+    if (again[0] != path || again[1] != token || args[0] != "changed VM copy") {
+        return 4;
+    }
+    if (build.platform() == "") {
+        return 8;
+    }
+    if (text_byte_length(text) != 1048576 || text_byte_at(text, 1) != 0 ||
+        text_byte_at(text, 1048575) != 115) {
+        return 5;
+    }
+    if (text_byte_length(lines[0]) != 3 || text_byte_at(lines[0], 1) != 0 ||
+        text_byte_at(lines[0], 2) != 98 || text_byte_length(lines[1]) != 1048572 ||
+        text_byte_at(lines[1], 1048571) != 115 || names[0] != name) {
+        return 6;
+    }
+    return 0;
+}

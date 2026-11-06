@@ -1,0 +1,19 @@
+package scalar
+foreign import libc "system:c"
+foreign libc {
+    thrd_create :: (thread: u8[], start: fn(argument: u64) -> i32, argument: u64) -> i32
+    thrd_join :: (thread: u64, result: u8[]) -> i32
+}
+Main :: () -> int {
+    thread: u8[] = [0, 0, 0, 0, 0, 0, 0, 0];
+    result: u8[] = [0, 0, 0, 0];
+    started := thrd_create(thread, Worker, 41);
+    id: u64 = u64(thread[0]) | (u64(thread[1]) << 8) | (u64(thread[2]) << 16) | (u64(thread[3]) << 24) |
+              (u64(thread[4]) << 32) | (u64(thread[5]) << 40) | (u64(thread[6]) << 48) | (u64(thread[7]) << 56);
+    joined := thrd_join(id, result);
+    return int(result[0]) + started + joined;
+}
+
+Worker :: (argument: u64) -> i32 {
+    return i32(argument) + 1;
+}

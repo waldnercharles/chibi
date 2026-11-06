@@ -1,0 +1,220 @@
+{
+  "bootstrap_manifest": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-bootstrap/bootstrap.json",
+  "bootstrap_manifest_sha256": "25e11f25b9c4cd71a48bdc4a907df76df3ddf2191d75eb1651862d5b3214f73c",
+  "bootstrap_closure_sha256": "f1a6bdffc9d8bec2de2b55f61bad48a2d8593c2a8ab1fc21cca42f46a6497c9c",
+  "seed_compile_json": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/seed/compile.json",
+  "seed_compile_json_sha256": "4558a92058e1cc2178dbe9d77e9516235acc7958a57901900ac2e47b4efb2271",
+  "source_paths_exact_order_match": true,
+  "sources": [
+    {
+      "path": "package_compiler/Compile.chibi",
+      "bytes": 150444,
+      "sha256": "360b53e36073e5355e817652d559d429a5414fe8f698965f1967f203fbdecf0d",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Body.chibi",
+      "bytes": 180925,
+      "sha256": "5a7f9dc60a56264fc55a98baa63c864150e80e5ce35055da726453a2fa405614",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Steps.chibi",
+      "bytes": 312902,
+      "sha256": "7f46d8000590d367884ba8bbf8162fd2fb099cab16cf3ceed5491a32da9d59f0",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Maps.chibi",
+      "bytes": 29459,
+      "sha256": "351d13270cdfffcda31f35026681b33933e9fde05babb221fc963976061add00",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/References.chibi",
+      "bytes": 40733,
+      "sha256": "d73825ac0b16dd082005650699e2bd6a35987592103a553f76fd0b5783414852",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Pointers.chibi",
+      "bytes": 52385,
+      "sha256": "b33a3530e4c4d3cc955d8e5332e4a0946c2b6aa3beeb7018d17e0f974fa34b48",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Tasks.chibi",
+      "bytes": 11882,
+      "sha256": "43c5ec60e6a9d87490dabe19a2ce379cc0a57c40c2d88d9ffeebaa60c0700970",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/TaskResults.chibi",
+      "bytes": 10463,
+      "sha256": "dfb8db278474f39ccec2c5066ae13137d885eca76c430b32dcfe0cc3b86bfef1",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Tree.chibi",
+      "bytes": 2578,
+      "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Number.chibi",
+      "bytes": 29513,
+      "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Optional.chibi",
+      "bytes": 20734,
+      "sha256": "7314b48d92d2daa35348c30ed467b8976189cc83ca36ba31c408678c2604f3a0",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Sequences.chibi",
+      "bytes": 61586,
+      "sha256": "d963c2f14a2350de551c17a71e758bccbab188b6d4b8ea1a929dedf157cafb97",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Queries.chibi",
+      "bytes": 93003,
+      "sha256": "772064ffa7540a34d1beb7070da58d208b5d51e6b5111e9bd23e6fb7648c1b28",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/QueryLoops.chibi",
+      "bytes": 12308,
+      "sha256": "6d731bf9a6a97533119dc83c186119f4ff9070a681bb5be890e9d432198be588",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Behavior.chibi",
+      "bytes": 57051,
+      "sha256": "18ee4b37aaf54288c4be665fecf1fff2bb95e4153dcad0821e82a21e91e30083",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Scalar.chibi",
+      "bytes": 115064,
+      "sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_compiler/Math.chibi",
+      "bytes": 75387,
+      "sha256": "7fa30b00f73316cef388177d0d8120419cd9648f5cb1e48c9ef05411eaf6d691",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "syntax_diagnostics/Diagnostics.chibi",
+      "bytes": 2282,
+      "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "/sdk/core/strings/Strings.chibi",
+      "bytes": 16404,
+      "sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "source_snapshot/Snapshot.chibi",
+      "bytes": 15871,
+      "sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "compiler_syntax/Syntax.chibi",
+      "bytes": 1529,
+      "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_routes/Routes.chibi",
+      "bytes": 7736,
+      "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_syntax/Extract.chibi",
+      "bytes": 4276,
+      "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_graph/Graph.chibi",
+      "bytes": 13271,
+      "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "package_paths/Paths.chibi",
+      "bytes": 2274,
+      "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "lexical_binding/Binding.chibi",
+      "bytes": 8673,
+      "sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "prepared_writer/Writer.chibi",
+      "bytes": 40444,
+      "sha256": "2dcc3d41a4feb3e95855d9de860eaf36b1347ae96bdab0d7bd3280720a838081",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "math_types/Types.chibi",
+      "bytes": 9036,
+      "sha256": "db0a52e91c89b97fa91d121d745c3b5607ecee7f76cf4cb6cda8d4173b592e68",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "math_types/Functions.chibi",
+      "bytes": 4634,
+      "sha256": "745e16490fa4c2fed8980a347a65a5a2debcac0699b8b3aad31bcccf54865d64",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    },
+    {
+      "path": "scalar_facts/Facts.chibi",
+      "bytes": 16982,
+      "sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50",
+      "manifest_exact": true,
+      "seed_text_exact": true
+    }
+  ]
+}

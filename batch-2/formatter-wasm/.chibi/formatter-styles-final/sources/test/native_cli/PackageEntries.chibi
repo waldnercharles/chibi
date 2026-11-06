@@ -1,0 +1,62 @@
+package native_package_entries
+
+import os "core:os"
+import strings "core:strings"
+
+Write :: (path: string, text: string) {
+    error := os.WriteText(path, text);
+    assert(error == nil, "write package entry fixture");
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    compiler := arguments[0];
+    llvm := arguments[1];
+    triple := "x86_64-unknown-linux-gnu";
+    if (os.Platform() == "Darwin") { triple = "aarch64-apple-darwin"; }
+    else if (os.Platform() == "Windows") { triple = "x86_64-pc-windows-msvc"; }
+    root := strings.Concatenate([arguments[2], "/package entries"]);
+    for (folder in [root, strings.Concatenate([root, "/other"])]) {
+        error := os.MakeDirectory(folder);
+        assert(error == nil, "make package entry fixture");
+    }
+    helper := strings.Concatenate([root, "/AHelper.chibi"]);
+    entry_path := strings.Concatenate([root, "/ZEntry.chibi"]);
+    Write(helper, "package root_entries\nIdentity :: (value: $T) -> T { return value; }\nLocal :: () -> int { return 20; }\n");
+    Write(entry_path, "package root_entries\nimport other \"project:other\"\nMain :: () -> int { return Identity(Local() + other.Value()); }\nRun :: () -> int { return Identity(42); }\n");
+    Write(strings.Concatenate([root, "/other/Other.chibi"]),
+        "package other\npub Value :: () -> int { return 22; }\nMain :: () -> int { print_string(\"wrong imported entry\"); return 99; }\n");
+    for (mode in ["-O0", "-O2"]) {
+        ran := os.Capture([compiler, "run", mode, "--llvm", llvm, root]);
+        if (ran.status != 42) { os.Print(ran.stderr); }
+        assert(ran.status == 42 && ran.stdout == "", "Main is selected across all root-package sources");
+        named := os.Capture([compiler, "run", mode, "--llvm", llvm, "--entry", "Run", root]);
+        assert(named.status == 42 && named.stdout == "", "a named entry retains generic callable owners after reordering");
+        alone := os.Capture([compiler, "run", mode, "--llvm", llvm, entry_path]);
+        assert(alone.status == 1 && alone.stdout == "" && strings.Contains(alone.stderr, "Identity"),
+            "a file target still excludes sibling source files");
+    }
+    Write(entry_path, "package root_entries\nimport other \"project:other\"\nRun :: () -> int { return Identity(other.Value() + 20); }\n");
+    missing := os.Capture([compiler, "run", "--llvm", llvm, root]);
+    assert(missing.status == 1 && missing.stdout == "" && strings.Contains(missing.stderr, "No runnable Main in the root package"),
+        "an imported Main cannot replace a missing root entry");
+    named := os.Capture([compiler, "run", "--llvm", llvm, "--entry", "Run", root]);
+    assert(named.status == 42 && named.stdout == "", "a package can select an entry without Main");
+    Write(helper, "package root_entries\nState :: struct { value: int; }\n");
+    Write(entry_path, "package root_entries\nimport other \"project:other\"\nRun :: () -> int { return other.Value() + 20; }\n");
+    Write(strings.Concatenate([root, "/Main.chibi"]), "package root_entries\nFirstState :: struct { value: int; }\n");
+    default_entry := os.Capture([compiler, "--compiler", root, "--core", os.Getenv("CHIBI_CORE"), "--llvm", llvm,
+        "--root", root, "--target", triple]);
+    if (default_entry.status != 1 || !strings.Contains(default_entry.stderr, "No runnable entry in the first file")) {
+        os.Print(default_entry.stderr);
+    }
+    assert(default_entry.status == 1 && default_entry.stdout == "" &&
+        strings.Contains(default_entry.stderr, "No runnable entry in the first file"),
+        "an unnamed low-level entry never falls through to sibling or imported functions");
+    Write(entry_path, "package root_entries\nimport other \"project:other\"\nOtherState :: struct { value: int; }\n");
+    empty_root := os.Capture([compiler, "run", "--llvm", llvm, root]);
+    assert(empty_root.status == 1 && empty_root.stdout == "", "a root with no functions never starts an imported Main");
+    os.Print("native package entries: sibling sources, generic owners and root isolation passed");
+    return 0;
+}

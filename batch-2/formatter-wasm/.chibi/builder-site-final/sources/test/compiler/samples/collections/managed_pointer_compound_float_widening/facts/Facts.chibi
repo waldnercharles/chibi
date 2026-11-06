@@ -1,0 +1,6 @@
+package facts
+R :: struct { v: f64; }
+Local :: () -> f64 { x: f64 = 1.0; y: number = 2.0; x += y; return x; }
+Through :: () -> f64 { x: f64 = 1.0; y: number = 2.0; p := &x; p^ += y; return x; }
+Addressed :: () -> f64 { x: f64 = 1.0; y: number = 2.0; p := &x; x += y; return p^; }
+Member :: () -> f64 { r: R = {v: 1.0}; y: number = 2.0; p := &r; p.v += y; return r.v; }

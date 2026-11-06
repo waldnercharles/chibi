@@ -1,0 +1,336 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+
+ScalarViewType :: (shape: ValueType) -> int {
+    if (shape.container != ViewContainer || shape.record != -1) { return 0; }
+    element := ScalarTypeOf(shape.storage);
+    if (element < facts.IntType || element > facts.StringType) { return 0; }
+    return facts.ViewType;
+}
+
+// One empty variant and one scalar/text view payload have the existing
+// {tag, window} layout. Only union projection uses this admission; authored
+// record fields still pass through ScalarMemberType's stricter gate.
+ScalarViewUnionPayload :: (types: TypeDecl[], members: TypeMember[], held: int) -> int {
+    if (held < 0 || held >= length(types)) { return -1; }
+    declared := types[held];
+    if (declared.kind != UnionDecl || declared.count != 2) { return -1; }
+    empty := 0;
+    field := -1;
+    for (index in declared.first..<declared.first + declared.count) {
+        variant := types[index];
+        if (variant.count == 0) { empty += 1; }
+        else if (variant.count != 1 || ScalarViewType(ScalarMemberShape(members, variant.first)) == 0) { return -1; }
+        else { field = variant.first; }
+    }
+    if (empty != 1) { return -1; }
+    return field;
+}
+ScalarViewUnionMemberType :: (types: TypeDecl[], members: TypeMember[], held: int, field: int) -> int {
+    view := ScalarViewType(ScalarMemberShape(members, field));
+    if (view == 0) { return ScalarMemberType(types, members, field); }
+    if (ScalarViewUnionPayload(types, members, held) != field) { return 0; }
+    return view;
+}
+
+// Reading a window observes its managed cell. The ordinary checker records
+// that effect on length, clone and element access even for a value parameter.
+ScalarViewEffects :: (types: TypeDecl[], members: TypeMember[], roots: Root[], cells: Cell[]) -> int {
+    for (root in roots) {
+        if (ScalarViewType({storage: root.storage, container: root.container, record: root.record}) != 0) {
+            return ReadEffect;
+        }
+        if (root.storage == UnionStorage && root.container == 0 &&
+            ScalarViewUnionPayload(types, members, root.record) >= 0) { return ReadEffect; }
+    }
+    // Union arguments/results can live only in the ordinary cell bank, not
+    // its stack-root list. Their window still reads the same managed owner.
+    for (cell in cells) {
+        if (cell.storage == UnionStorage && cell.container == 0 &&
+            ScalarViewUnionPayload(types, members, cell.record) >= 0) { return ReadEffect; }
+    }
+    return 0;
+}
+
+// Only a direct scalar/text view or a presence-checked optional view is a
+// window. Fields and views stored in other containers remain outside this slice.
+ScalarViewShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                    names: Name[], types: TypeDecl[], members: TypeMember[], package: int, operand: int) -> ValueType {
+    absent: ValueType = {storage: 0, container: 0, record: -1};
+    node := Unparenthesized(forest, operand);
+    if (Is(forest, node, syntax.Identifier)) {
+        found := Lookup(names, Text(forest, text, node));
+        if (found < 0) { return absent; }
+        binding := names[found];
+        shape: ValueType = {storage: binding.storage, container: binding.container, record: binding.record};
+        if (ScalarViewType(shape) != 0) { return shape; }
+        if (binding.container != 0 || binding.storage != UnionStorage || !ScalarOptional(types, binding.record)) {
+            return absent;
+        }
+        declared := types[binding.record];
+        payload: ValueType = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+        if (ScalarViewType(payload) != 0 && OptionalValuePresent(forest, text, names, node, shape)) { return payload; }
+        return absent;
+    }
+    if (Is(forest, node, syntax.ForceUnwrapExpression)) {
+        payload := ScalarUnwrappedType(forest, text, callables, params, names, types, members, package, node);
+        if (ScalarViewType(payload) != 0) { return payload; }
+    }
+    return absent;
+}
+
+ScalarViewCall :: struct { operation: int; object: int; range: int; shape: ValueType; }
+ScalarViewOperation :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                        names: Name[], types: TypeDecl[], members: TypeMember[], package: int, operand: int) -> ScalarViewCall {
+    none: ScalarViewCall = {operation: 0, object: -1, range: -1, shape: {storage: 0, container: 0, record: -1}};
+    node := Unparenthesized(forest, operand);
+    if (Is(forest, node, syntax.IndexExpression)) {
+        object := Field(forest, node, syntax.FieldObject);
+        shape := ScalarViewShape(forest, text, callables, params, names, types, members, package, object);
+        if (shape.storage == 0) { return none; }
+        index := Field(forest, node, syntax.FieldIndex);
+        operation := facts.ViewGet;
+        if (Is(forest, index, syntax.RangeExpression)) { operation = facts.ViewSlice; }
+        return {operation: operation, object: object, range: index, shape: shape};
+    }
+    if (!Is(forest, node, syntax.CallExpression)) { return none; }
+    function := Field(forest, node, syntax.FieldFunction);
+    if (!Is(forest, function, syntax.MemberExpression)) { return none; }
+    object := Unparenthesized(forest, Field(forest, function, syntax.FieldObject));
+    if (QualifierOf(forest, text, names, package, object) >= 0) { return none; }
+    method := Text(forest, text, Field(forest, function, syntax.FieldMember));
+    first := FirstMember(forest, Field(forest, node, syntax.FieldArguments));
+    if (method == "view") {
+        // A scoped reference is an address of a borrowed descriptor, not a
+        // managed cell identity that can be retained by a window.
+        if (Is(forest, object, syntax.Identifier)) {
+            found := Lookup(names, Text(forest, text, object));
+            if (found >= 0 && names[found].place == ReferencePlace) { return none; }
+        }
+        pointer := ScalarPointerRecord(forest, text, callables, params, names, types, members, package, object);
+        if (pointer < 0 || types[pointer].key != 0) { return none; }
+        shape := ScalarPointerElement(types, pointer);
+        if (shape.container != ArrayContainer) { return none; }
+        shape.container = ViewContainer;
+        if (ScalarViewType(shape) == 0) { return none; }
+        return {operation: facts.ViewMake, object: object, range: first, shape: shape};
+    }
+    if ((method != "length" && method != "clone") || first >= 0) { return none; }
+    shape := ScalarViewShape(forest, text, callables, params, names, types, members, package, object);
+    if (shape.storage == 0) { return none; }
+    operation := facts.ViewLength;
+    if (method == "clone") { operation = facts.ViewClone; }
+    return {operation: operation, object: object, range: -1, shape: shape};
+}
+
+ScalarViewOptional :: (types: TypeDecl[], call: ScalarViewCall) -> int {
+    shape := call.shape;
+    if (call.operation == facts.ViewSlice) { shape.container = ArrayContainer; }
+    else if (call.operation != facts.ViewMake) { return -1; }
+    return FindOptional(types, shape);
+}
+
+ScalarViewRow :: (forest: snapshot.SnapshotNode[], node: int, call: ScalarViewCall, result: int, count: int) -> facts.Row {
+    row := ScalarAt(forest, node, facts.ViewRow, result, call.operation * 16 + ScalarTypeOf(call.shape.storage), count, "");
+    return row;
+}
+
+ScalarViewValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                    callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                    operand: int, rows: facts.Row[]) -> ScalarOperands {
+    node := Unparenthesized(forest, operand);
+    shape := ScalarViewShape(forest, text, callables, params, names, types, members, callable.package, node);
+    if (ScalarViewType(shape) == 0) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native views require a checked scalar or string window"));
+    }
+    if (Is(forest, node, syntax.ForceUnwrapExpression)) {
+        switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                             Field(forest, node, syntax.FieldOperand), UnionStorage, rows) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built):
+                output := built;
+                output.append(ScalarAt(forest, node, facts.UnwrapRow, facts.ViewType, 0, 1, ""));
+                return ScalarOperands.Built(output);
+        }
+    }
+    found := Lookup(names, Text(forest, text, node));
+    assert(found >= 0, "a scalar view value is a checked binding");
+    binding := names[found];
+    output := rows;
+    type := facts.ViewType;
+    if (binding.container == 0) { type = ScalarRecordType(types, binding.record); }
+    output.append(ScalarAt(forest, node, facts.ReadRow, type, binding.index, 0, ""));
+    if (type != facts.ViewType) { output.append(ScalarAt(forest, node, facts.PayloadRow, facts.ViewType, 0, 1, "")); }
+    return ScalarOperands.Built(output);
+}
+
+ScalarViewRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                   node: int, call: ScalarViewCall, rows: facts.Row[]) -> ScalarOperands {
+    output := rows;
+    if (call.operation == facts.ViewMake) {
+        switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants,
+                             call.object, PointerStorage, output) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+    } else {
+        switch ScalarViewValue(forest, text, callables, params, callable, names, types, members, constants, call.object, output) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+    }
+    count := 1;
+    result := facts.IntType;
+    if (call.operation == facts.ViewMake || call.operation == facts.ViewSlice) {
+        range := call.range;
+        // ParseIndexValue/ParseArguments construct this node only for `..<`.
+        if (!Is(forest, range, syntax.RangeExpression)) {
+            return ScalarOperands.Failed(Diagnose(forest, node, 0, "native views require one half-open range"));
+        }
+        for (index in 0..<2) {
+            bound := Field(forest, range, syntax.FieldStart);
+            if (index == 1) { bound = Field(forest, range, syntax.FieldEnd); }
+            switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, bound, IntStorage, output) {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): output = built;
+            }
+        }
+        count = 3;
+        result = ScalarRecordType(types, ScalarViewOptional(types, call));
+    } else if (call.operation == facts.ViewGet) {
+        switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, call.range, IntStorage, output) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+        count = 2;
+        result = ScalarTypeOf(call.shape.storage);
+    } else if (call.operation == facts.ViewClone) {
+        result = facts.ArrayType + ScalarTypeOf(call.shape.storage);
+    }
+    row := ScalarViewRow(forest, node, call, result, count);
+    if (call.operation == facts.ViewMake) {
+        array := call.shape;
+        array.container = ArrayContainer;
+        row.literal = ScalarPointerTag(types, array);
+    }
+    output.append(row);
+    return ScalarOperands.Built(output);
+}
+
+// A place captures its descriptor and relative index before the RHS. Its
+// initial check has the ordinary unavailable-place failure, not expression
+// indexing's typed failure. The final write resolves the current cell again.
+ScalarViewAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                       callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                       statement: int, variables: ^int) -> ScalarOperands {
+    destination := Unparenthesized(forest, Field(forest, statement, syntax.FieldTarget));
+    if (!Is(forest, destination, syntax.IndexExpression)) { return ScalarOperands.Built([]); }
+    object := Field(forest, destination, syntax.FieldObject);
+    index := Field(forest, destination, syntax.FieldIndex);
+    shape := ScalarViewShape(forest, text, callables, params, names, types, members, callable.package, object);
+    if (shape.storage == 0 || Is(forest, index, syntax.RangeExpression)) { return ScalarOperands.Built([]); }
+    element := ScalarTypeOf(shape.storage);
+    output := [ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "")];
+    window := variables^;
+    switch ScalarViewValue(forest, text, callables, params, callable, names, types, members, constants, object, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            output.extend(ScalarCapture(forest, statement, facts.ViewType, window, built));
+    }
+    variables^ += 1;
+    relative := variables^;
+    switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, index, IntStorage, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            output.extend(ScalarCapture(forest, statement, facts.IntType, relative, built));
+    }
+    variables^ += 1;
+    previous := variables^;
+    call: ScalarViewCall = {operation: facts.ViewGet, object: object, range: index, shape: shape};
+    checked := ScalarViewRow(forest, destination, call, element, 2);
+    checked.literal = 1;
+    output.extend(ScalarCapture(forest, statement, element, previous,
+        [ScalarAt(forest, object, facts.ReadRow, facts.ViewType, window, 0, ""),
+         ScalarAt(forest, index, facts.ReadRow, facts.IntType, relative, 0, ""), checked]));
+    variables^ += 1;
+    operator := ScalarArithmetic(CompoundOperator(Operator(forest, statement)));
+    if (CompoundOperator(Operator(forest, statement)) != NoOperator && (operator == 0 || shape.storage == BoolStorage)) {
+        return ScalarOperands.Failed(Diagnose(forest, statement, 0, "native view compound assignment requires a numeric operator"));
+    }
+    incoming := [ScalarAt(forest, object, facts.ReadRow, facts.ViewType, window, 0, ""),
+                 ScalarAt(forest, index, facts.ReadRow, facts.IntType, relative, 0, "")];
+    if (operator != 0) { incoming.append(ScalarAt(forest, destination, facts.ReadRow, element, previous, 0, "")); }
+    value := Field(forest, statement, syntax.FieldValue);
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                         value, value, shape.storage, shape.storage, facts.Clamp, incoming) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): incoming = built;
+    }
+    if (operator != 0) { incoming.append(ScalarAt(forest, statement, facts.ArithmeticRow, element, operator, 2, "")); }
+    call.operation = facts.ViewSet;
+    changed := ScalarViewRow(forest, destination, call, facts.IntType, 3);
+    changed.literal = 1;
+    incoming.append(changed);
+    output.extend(ScalarCapture(forest, statement, facts.IntType, variables^, incoming));
+    output.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, ""));
+    variables^ += 1;
+    return ScalarOperands.Built(output);
+}
+
+// A pointer receiver denotes a stable managed cell. Capture it before the
+// incoming element, then borrow its current array only after that element ran.
+ScalarPointerAppend :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                       callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                       statement: int, variables: ^int) -> ScalarOperands {
+    if (!Is(forest, statement, syntax.ExpressionStatement)) { return ScalarOperands.Built([]); }
+    node := FirstMember(forest, statement);
+    if (!Is(forest, node, syntax.CallExpression)) { return ScalarOperands.Built([]); }
+    function := Field(forest, node, syntax.FieldFunction);
+    if (!Is(forest, function, syntax.MemberExpression) ||
+        Text(forest, text, Field(forest, function, syntax.FieldMember)) != "append") { return ScalarOperands.Built([]); }
+    object := Unparenthesized(forest, Field(forest, function, syntax.FieldObject));
+    pointer := ScalarPointerRecord(forest, text, callables, params, names, types, members, callable.package, object);
+    if (pointer < 0 || types[pointer].key != 0) { return ScalarOperands.Built([]); }
+    shape := ScalarPointerElement(types, pointer);
+    element := ScalarTypeOf(shape.storage);
+    if (shape.container != ArrayContainer || shape.record != -1 || element < facts.IntType || element > facts.StringType) {
+        return ScalarOperands.Built([]);
+    }
+    arguments := Members(forest, Field(forest, node, syntax.FieldArguments));
+    if (length(arguments) != 1) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native pointer append requires one scalar or string element"));
+    }
+    value := ScalarArrayArgumentNode(forest, arguments[0]);
+    output := [ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "")];
+    receiver := variables^;
+    switch ScalarOperand(forest, text, callables, params, callable, names, types, members, constants, object, PointerStorage, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            output.extend(ScalarCapture(forest, statement, facts.PointerType, receiver, built));
+    }
+    variables^ += 1;
+    incoming := variables^;
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                         value, value, shape.storage, shape.storage, facts.Clamp, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            output.extend(ScalarCapture(forest, statement, element, incoming, built));
+    }
+    variables^ += 1;
+    array := ScalarArrayType(types, shape.storage, shape.record);
+    borrow := ScalarAt(forest, object, facts.ManagedRow, array + facts.ReferenceType, facts.ManagedBorrow, 1, "");
+    borrow.literal = ScalarPointerTag(types, shape);
+    // The canonical cell slot is borrowed only after the RHS has finished.
+    // ArrayPush mutates/publishes there without acquiring a snapshot owner.
+    output.extend(ScalarCapture(forest, statement, array, variables^,
+        [ScalarAt(forest, object, facts.ReadRow, facts.PointerType, receiver, 0, ""), borrow,
+         ScalarAt(forest, value, facts.ReadRow, element, incoming, 0, ""),
+         ScalarAt(forest, node, facts.ArrayRow, array, facts.ArrayPush, 2, "")]));
+    output.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, ""));
+    variables^ += 1;
+    return ScalarOperands.Built(output);
+}

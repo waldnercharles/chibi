@@ -1,0 +1,28 @@
+{
+  "name": "configure",
+  "command": [
+    "cmake",
+    "-S",
+    "test/language",
+    "-B",
+    ".chibi/integration/native-math-308-language",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+    "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+    "-DCHIBI_SDK_BUILD_COMPILER=ON",
+    "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+    "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "--graphviz=/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/dependencies.dot"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+  "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+  "snapshot_revision": "b87afaea2-dirty",
+  "started_unix": 1793211714.018844,
+  "environment": {},
+  "wall_seconds": 5.369314040988684,
+  "exit_code": 0,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/configure.log",
+  "log_sha256": "f0b55f41ab2200ca895d2b40bec1803c3777874093f3f497c213e7c9993721f0",
+  "summaries": []
+}

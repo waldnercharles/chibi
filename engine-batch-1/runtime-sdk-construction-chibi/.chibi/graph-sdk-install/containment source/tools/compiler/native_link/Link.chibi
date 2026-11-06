@@ -1,0 +1,196 @@
+package native_link
+
+import strings "core:strings"
+
+// The native compiler's link step, without effects: what a program's object
+// files and the vendored archives it uses need to become an executable through
+// LLVM's lld, which is found in the LLVM folder by name (ld.lld on Linux,
+// ld64.lld on macOS, lld-link on Windows), never through PATH. No C compiler
+// or compiler driver takes part: the C runtime's start files come from the
+// system's development files on Linux, the dylibs a macOS program names are
+// small text stubs, and Windows links against the import libraries in the
+// `libpaths` and the LIB variable.
+//
+// Command is the exact argument vector for a plan, tested for every target.
+// native_link_host finds the tools, writes the stubs and runs these vectors.
+
+pub LinuxX64: int : 0;
+pub MacOSArm64: int : 1;
+pub WindowsX64: int : 2;
+
+// What went wrong, by kind; `code` is the failed tool's exit status.
+pub BadTriple: int : 1;
+pub MissingTool: int : 2;
+pub MissingLibc: int : 3;
+pub CannotWrite: int : 4;
+pub ToolFailed: int : 5;
+pub BadPlan: int : 6;
+
+@error
+pub Error :: struct {
+    kind: int;
+    code: int;
+}
+
+// The program to build. `objects` define the platform's entry: `main` when
+// the C library starts the program, `_start` (Windows: mainCRTStartup) when
+// `static` is set and nothing but the objects and archives runs. `archives`
+// are vendored libraries, linked after the objects. `libraries` name system
+// libraries without a prefix or suffix: `m` and `pthread` on Linux, `c++` or
+// `framework:Cocoa` on macOS, `user32.lib` on Windows. `libpaths` add folders
+// the Windows linker searches. `work` is a folder this plan may write stubs
+// into; `libc` and `interpreter` (Linux, not static) come from Discover.
+pub Plan :: struct {
+    triple: string;
+    llvm: string;
+    objects: string[];
+    archives: string[];
+    libraries: string[];
+    libpaths: string[];
+    output: string;
+    work: string;
+    libc: string;
+    interpreter: string;
+    static: bool;
+}
+
+// A plan for the program of these objects and archives: dynamically linked
+// against the system's C library unless `static`. The C library's location is
+// found when the plan is linked.
+pub Program :: (triple: string, llvm: string, objects: string[], archives: string[], libraries: string[],
+                libpaths: string[], output: string, work: string, static: bool) -> Plan {
+    plan: Plan = {triple: triple, llvm: llvm, objects: objects, archives: archives, libraries: libraries,
+                  libpaths: libpaths, output: output, work: work, libc: "", interpreter: "", static: static};
+    return plan;
+}
+
+// The target a triple names, -1 for any this link step does not know.
+pub TargetOf :: (triple: string) -> int {
+    if (triple == "x86_64-unknown-linux-gnu") {
+        return LinuxX64;
+    }
+    if (triple == "arm64-apple-macosx11.0.0" || strings.HasPrefix(triple, "aarch64-apple-")) {
+        return MacOSArm64;
+    }
+    if (triple == "x86_64-pc-windows-msvc") {
+        return WindowsX64;
+    }
+    return -1;
+}
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+pub Linker :: (target: int) -> string {
+    if (target == MacOSArm64) {
+        return "ld64.lld";
+    }
+    if (target == WindowsX64) {
+        return "lld-link";
+    }
+    return "ld.lld";
+}
+
+// llc's object for a module: position independent, so it links into a
+// program and a shared library alike. The module names its triple and layout.
+pub ObjectCommand :: (llc: string, module: string, object: string, level: int) -> string[] {
+    optimize := "-O=0";
+    if (level != 0) {
+        optimize = "-O=2";
+    }
+    return [llc, "-filetype=obj", optimize, "-relocation-model=pic", "-o", object, module];
+}
+
+// A macOS dylib's stub for lld: a text file naming the library the program
+// loads and, for libSystem, the binder dyld's lazy stubs call. Symbols the
+// program takes from a library are looked up when it runs, so a stub lists no
+// others; this is how a link needs no SDK of its own.
+pub Stub :: (install: string, binder: bool) -> string {
+    symbols := "";
+    if (binder) {
+        symbols = "dyld_stub_binder";
+    }
+    return Join(["--- !tapi-tbd\ntbd-version: 4\ntargets: [ arm64-macos ]\ninstall-name: '", install,
+                 "'\nexports:\n  - targets: [ arm64-macos ]\n    symbols: [ ", symbols, " ]\n...\n"]);
+}
+
+// Where the dylib a library name stands for lives on a Mac.
+pub InstallName :: (dependency: string) -> string {
+    if (strings.HasPrefix(dependency, "framework:")) {
+        name := strings.TrimPrefix(dependency, "framework:");
+        return Join(["/System/Library/Frameworks/", name, ".framework/", name]);
+    }
+    if (dependency == "c++") {
+        return "/usr/lib/libc++.1.dylib";
+    }
+    if (dependency == "System") {
+        return "/usr/lib/libSystem.B.dylib";
+    }
+    return Join(["/usr/lib/lib", dependency, ".dylib"]);
+}
+
+// The stub file for a library, in the plan's work folder.
+pub StubPath :: (work: string, dependency: string) -> string {
+    return Join([work, "/", strings.ReplaceAll(strings.ReplaceAll(dependency, ":", "-"), "+", "p"), ".tbd"]);
+}
+
+// Windows programs that run without the C runtime import kernel32 through a
+// library written from a definition file, as rustc's raw-dylib writes them.
+pub Kernel32Definition :: () -> string {
+    return "LIBRARY kernel32.dll\nEXPORTS\n    ExitProcess\n    GetCommandLineW\n    GetProcessHeap\n    HeapAlloc\n    GetStdHandle\n    WriteFile\n";
+}
+
+// The argument vector that links the plan's program to `to`: the file the
+// linker writes, which Link publishes as the plan's output.
+pub Command :: (plan: Plan, to: string) -> string[] {
+    target := TargetOf(plan.triple);
+    linker := Join([plan.llvm, "/", Linker(target)]);
+    if (target == MacOSArm64) {
+        command := [linker, "-arch", "arm64", "-platform_version", "macos", "11.0.0", "11.0.0", "-dead_strip",
+                    "-undefined", "dynamic_lookup", "-e", "_main", "-o", to];
+        command.extend(plan.objects);
+        command.extend(plan.archives);
+        command.append(StubPath(plan.work, "System"));
+        for (dependency in plan.libraries) {
+            command.append(StubPath(plan.work, dependency));
+        }
+        return command;
+    }
+    if (target == WindowsX64) {
+        command := [linker, "/nologo", "/subsystem:console", "/machine:x64", "/opt:ref", "/Brepro", Join(["/out:", to])];
+        if (plan.static) {
+            command.extend(["/nodefaultlib", "/entry:mainCRTStartup"]);
+        }
+        for (folder in plan.libpaths) {
+            command.append(Join(["/libpath:", folder]));
+        }
+        command.extend(plan.objects);
+        command.extend(plan.archives);
+        if (plan.static) {
+            command.append(Join([plan.work, "/kernel32.lib"]));
+        }
+        command.extend(plan.libraries);
+        return command;
+    }
+    if (plan.static) {
+        command := [linker, "-static", "--gc-sections", "-e", "_start", "-o", to];
+        command.extend(plan.objects);
+        command.extend(plan.archives);
+        for (dependency in plan.libraries) {
+            command.append(Join(["-l", dependency]));
+        }
+        return command;
+    }
+    command := [linker, "--dynamic-linker", plan.interpreter, "--gc-sections", "-o", to,
+                Join([plan.libc, "/crt1.o"]), Join([plan.libc, "/crti.o"])];
+    command.extend(plan.objects);
+    command.extend(plan.archives);
+    command.extend(["-L", plan.libc]);
+    for (dependency in plan.libraries) {
+        command.append(Join(["-l", dependency]));
+    }
+    command.extend(["-lc", Join([plan.libc, "/crtn.o"])]);
+    return command;
+}
+

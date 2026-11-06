@@ -1,0 +1,11 @@
+package scoped_alias
+Main :: () -> int {
+    value := 1;
+    read := ReadAfter(&value, &value);
+    if read != 9 { return 1; }
+    return 0;
+}
+ReadAfter :: (read: ^int, changed: ^int) -> int {
+    changed^ = 9;
+    return read^;
+}

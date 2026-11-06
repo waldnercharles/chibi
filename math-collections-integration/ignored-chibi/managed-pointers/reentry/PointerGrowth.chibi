@@ -1,0 +1,9 @@
+package allocation_reentry
+Main :: () -> int {
+    values := Make();
+    for index in 0..<8 { values.append(Owner(index)); }
+    assert(values[0]^ == 7 && values[8]^ == 7);
+    return 0;
+}
+Owner :: (value: int) -> ^int { return &value; }
+Make :: () -> ^int[] { value := 7; return [&value]; }

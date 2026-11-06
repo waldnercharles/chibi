@@ -1,0 +1,4 @@
+package facts
+pub Fold :: (value: f64) -> number { result: number = 0.0; result = value; return result; }
+
+// error: 2:60: assigned value differs from its local

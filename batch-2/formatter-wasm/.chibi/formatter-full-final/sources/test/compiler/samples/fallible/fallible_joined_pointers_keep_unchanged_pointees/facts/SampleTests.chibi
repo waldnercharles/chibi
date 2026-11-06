@@ -1,0 +1,38 @@
+package facts
+
+// fallible joined pointers keep unchanged pointees
+@test
+Calls :: () {
+    a1_0: bool = false;
+    r1: int = Use(a1_0);
+    e1: int = 8;
+    assert(r1 == e1, "Use call 1");
+    a2_0: bool = true;
+    r2: int = Use(a2_0);
+    e2: int = 8;
+    assert(r2 == e2, "Use call 2");
+    a3_0: bool = false;
+    r3: int = Rebound(a3_0);
+    e3: int = 9;
+    assert(r3 == e3, "Rebound call 3");
+    a4_0: bool = true;
+    r4: int = Rebound(a4_0);
+    e4: int = 9;
+    assert(r4 == e4, "Rebound call 4");
+    a5_0: bool = false;
+    r5: int = Survivor(a5_0);
+    e5: int = 10;
+    assert(r5 == e5, "Survivor call 5");
+    a6_0: bool = true;
+    r6: int = Survivor(a6_0);
+    e6: int = 10;
+    assert(r6 == e6, "Survivor call 6");
+    a7_0: bool = false;
+    r7: int = Checked(a7_0);
+    e7: int = 11;
+    assert(r7 == e7, "Checked call 7");
+    a8_0: bool = true;
+    r8: int = Checked(a8_0);
+    e8: int = 11;
+    assert(r8 == e8, "Checked call 8");
+}

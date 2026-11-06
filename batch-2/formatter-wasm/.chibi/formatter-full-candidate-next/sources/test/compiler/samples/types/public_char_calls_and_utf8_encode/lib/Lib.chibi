@@ -1,0 +1,3 @@
+package lib
+pub Result :: (value: char) -> (scalar: char) { scalar = value; return; }
+pub Encode :: (value: char) -> u8[] { scalar := int(value); if (scalar <= 127) { return [u8(scalar)]; } if (scalar <= 2047) { return [u8(192 | (scalar >> 6)), u8(128 | (scalar & 63))]; } if (scalar <= 65535) { return [u8(224 | (scalar >> 12)), u8(128 | ((scalar >> 6) & 63)), u8(128 | (scalar & 63))]; } return [u8(240 | (scalar >> 18)), u8(128 | ((scalar >> 12) & 63)), u8(128 | ((scalar >> 6) & 63)), u8(128 | (scalar & 63))]; }

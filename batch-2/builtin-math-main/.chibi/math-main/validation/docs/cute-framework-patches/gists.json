@@ -1,0 +1,167 @@
+{
+  "audited_on": "2026-10-06",
+  "upstream_repository": "https://github.com/RandyGaul/cute_framework",
+  "previous_commit": "a13f4661f5ba27e8d45027b52f121c1704786425",
+  "upstream_commit": "7c4e7a3aed3b2f9526a49b7ed3bfa6db18aa5c5d",
+  "visibility": "unlisted",
+  "patches": [
+    {
+      "name": "cute-installed-sdl",
+      "prerequisites": [],
+      "sha256": "0cb81936ce2d65fe2a06f3b9dc25f23dd9d08d4459100364a950e28923bb44da",
+      "title": "Use an installed SDL3 package",
+      "url": "https://gist.github.com/waldnercharles/69885ff04ff601e04c67658722d81713",
+      "readme_sha256": "b32471c8fc7d72445c77b5111a1b33b509f60f3057a5f0518c0b635c7a7b34c6",
+      "gist_revision": "ca46fc660cba62b7b1d587f40851242a1446eec9"
+    },
+    {
+      "name": "cute-interior-border",
+      "prerequisites": [],
+      "sha256": "8cdfbfd97cf33e744eff27e3cccf7ff757335bf0c82594b8d3922fa37858045c",
+      "title": "Draw a border inside an SDF shape",
+      "url": "https://gist.github.com/waldnercharles/ce46b51fd93a3472ecfbc89fbeedf34a",
+      "readme_sha256": "495bb0a9c6047d853ba67c7b030c10c5538e1d87674bc349f69fe93bd8f73507",
+      "gist_revision": "663006872c6457bf6c9bee8c4f7fd1ed84b82f17"
+    },
+    {
+      "name": "cute-custom-coverage",
+      "prerequisites": [],
+      "sha256": "a25399671e969e0c69ca8f1094b66a7746c2493fb1a03d25064f1ad4d1fa6228",
+      "title": "Render warped custom fields without unsafe distance culling",
+      "url": "https://gist.github.com/waldnercharles/d43c4946532037526135b7ea258e422d",
+      "readme_sha256": "ca6f5c60a0e5c7242b5caf4968e0331f939afbe7d093405ba6b921e87a4c151d",
+      "gist_revision": "bcf9be93f439d82b2da945f691922b227cb29082"
+    },
+    {
+      "name": "cute-custom-shape-cache",
+      "prerequisites": [
+        "cute-custom-coverage"
+      ],
+      "sha256": "7be06921af478057e892ac83dafbe76ae0b09b9be209bb1c0ea7f18a52ec343f",
+      "title": "Reuse identical custom shape registrations",
+      "url": "https://gist.github.com/waldnercharles/97b6354625dd85fce1e3b5a12cff5651",
+      "readme_sha256": "fb3a1056c65e6a8eee4c88808c2ab76a503af4161712e05985c970f8e1765052",
+      "gist_revision": "6b4a64a3d8ee12086635c67abc23a091ee6c775a"
+    },
+    {
+      "name": "cute-imgui-render-target",
+      "prerequisites": [],
+      "sha256": "9efc4b0a150700e205da1cf2850e6bacd8e96607ee82f68dfd0485cd667b94cc",
+      "title": "Include Dear ImGui in canvas captures",
+      "url": "https://gist.github.com/waldnercharles/b1b973b262e2dd6c70875e79b057b8ce",
+      "readme_sha256": "49eebe9370f379b954563f36d0494e3aeb3169b97973034dfeab67e87d2962b2",
+      "gist_revision": "981fcf80f98d3b5c6cd01c3e4d4d178375ea63f6"
+    },
+    {
+      "name": "cute-gles-buffer-streaming",
+      "prerequisites": [],
+      "sha256": "57ddc97e2d0ff8dedecd2fb75cc04ba35d012c40c2eed67785f26c040451b7cc",
+      "title": "Append GLES uploads before reusing busy buffers",
+      "url": "https://gist.github.com/waldnercharles/0472941113287f7561f53199398c645d",
+      "readme_sha256": "915f7dfe2da6f59b8808b5ee1de1ecee21c8006d8c8e369c3d5b5e80e793e0ce",
+      "gist_revision": "5445297404fb2d395a6472d302b5b2341b868dc0"
+    },
+    {
+      "name": "cute-zero-size-window",
+      "prerequisites": [],
+      "sha256": "0b301e14ab694af08d070fc9834152e51412ca8da625a7e62972418eea4b3171",
+      "title": "Keep a valid canvas while the window has no area",
+      "url": "https://gist.github.com/waldnercharles/aaee4edae0cdb28bb666ff8a3b77501c",
+      "readme_sha256": "31b0970b1502ce64b34253c215652091dd4537c44dc3497f40dcbf3b4d61f070",
+      "gist_revision": "b872819cec18457d98eb3e99fb367173085187ef"
+    },
+    {
+      "name": "cute-gles-scissor-cache",
+      "prerequisites": [],
+      "sha256": "72b0d8277a6c6c31017c86d9eefe09a84c734cc5fad15ff4e62d495699aac7c9",
+      "title": "Keep the cached GLES scissor box equal to GL's box",
+      "url": "https://gist.github.com/waldnercharles/5620f89c7d0a286199066cc9eb7ae3df",
+      "readme_sha256": "c19e8ea3d04a1ccb7b6d713fbbf833869a6d13bdfa9b52929ba9a01856e9a640",
+      "gist_revision": "d18dffd864e75e59e3b9bf105166995b4af13409"
+    },
+    {
+      "name": "cute-gpu-submit",
+      "prerequisites": [],
+      "sha256": "726e59440b5f64e21c265995b5642d78475ba0bf579f6496d107d0d3e560147b",
+      "title": "Submit GPU work without a CPU wait",
+      "url": "https://gist.github.com/waldnercharles/9cd0885921a9c423de18eacb46e8969f",
+      "readme_sha256": "f3955bd98127229b8d82257892821ceece54820c0d214c1e1853673d86de4366",
+      "gist_revision": "780d8b684cbbc6b9d3e5335494ffe97e08f90133"
+    },
+    {
+      "name": "cute-eight-targets",
+      "prerequisites": [],
+      "sha256": "1a30b56adbfd4812aa8601223a3c5281884664102136ab765bd5ce5112ffe25d",
+      "title": "Allow up to eight canvas color targets",
+      "url": "https://gist.github.com/waldnercharles/f89bafbe4bd9dfc9920819d2e420cff8",
+      "readme_sha256": "e9908ab1bd4b011f2a551434e0a3d70586d62dfa85c526fe833f918e9bd5805e",
+      "gist_revision": "8673b2aa060244a83a0f06005c759906c23cb730"
+    },
+    {
+      "name": "cute-gles-float-readback",
+      "prerequisites": [],
+      "sha256": "2fac74ad52242831d3083018ae4aaf170bb439f943d460d041f87fd637353117",
+      "title": "Read RGBA16F canvases through the GLES float readback pair",
+      "url": "https://gist.github.com/waldnercharles/7d9220eb49f660019522cb13d338b503",
+      "readme_sha256": "646ce3c26d7485d2d5f1eb59851b1ea6b8ffd892cec74b2245b8f6db4acc7430",
+      "gist_revision": "e7c3e349cc4071eb5d6742b21678e15a6c3f91da"
+    },
+    {
+      "name": "cute-web-no-asyncify",
+      "prerequisites": [],
+      "sha256": "a1d8e222aed262605f923ec1d6c765f9e83eca9684337cd88be41c1129fc8cff",
+      "title": "Run Chibi's browser frames without Asyncify",
+      "url": "https://gist.github.com/waldnercharles/cc8dea574f7210c5ba74ad78f99b57f4",
+      "readme_sha256": "220d09ada1b4dc8ea94610d65e8d59d823d84d20eb27ee64e0e35987a584a731",
+      "gist_revision": "fcdf93a8b0e31f341a69240a320e78e0939671d6"
+    },
+    {
+      "name": "cute-fragment-depth",
+      "prerequisites": [],
+      "sha256": "8c3fd9203aa92c93152c14ba80f05432d364d19e1e24d9305f60bbd075220ed0",
+      "title": "Compile shaders that write fragment depth",
+      "url": "https://gist.github.com/waldnercharles/d1403f5d46ec2bcdebb21868ecbf2476",
+      "readme_sha256": "fd0f96e8003b12d08818cd8010660f10e13aa8c5c5dcf372161e2b4872c7ba44",
+      "gist_revision": "77c3cc238b931c445be36e5f543277e1402e0f41"
+    },
+    {
+      "name": "cute-gles-ubo-instance-scope",
+      "prerequisites": [],
+      "sha256": "f4a0893cb2fa9218b1c565e2849b3638895efab9fd3a6c2f2a8d2f55217422ed",
+      "title": "Give generated uniform block instances a shader-stage prefix",
+      "url": "https://gist.github.com/waldnercharles/f8e2691d98e157dc2a1fa5812818ea9b",
+      "readme_sha256": "7e5e62bdcc5ab61d43029562f040fe0318f925937d1e9063bca847d4cb1edb07",
+      "gist_revision": "5da31d23732372f4caa296f7a5bd54288d66b8a4"
+    },
+    {
+      "name": "cute-instance-buffer",
+      "prerequisites": [],
+      "sha256": "36450d9db54a5ac55c4a8365742be9a4627d0136fdd9c5bae7e8bcdc8023f8a3",
+      "title": "Expose shared instance staging through the public C header",
+      "url": "https://gist.github.com/waldnercharles/6d3532d8380b80ab5d6f8a304b10bc12",
+      "readme_sha256": "333e46e95951d36122104618ac3e60f13c0894119b231a49cbac757fe2dfbd4f",
+      "gist_revision": "d767186210528820c8236d990c82b2591df6affa"
+    },
+    {
+      "name": "cute-depth-snapshot",
+      "prerequisites": [],
+      "sha256": "159988bdd15f16a5c3e7fb8ac5248a62d3355a3a2cf538139cc33d83fa00535e",
+      "title": "Copy depth for later SDF visibility tests",
+      "url": "https://gist.github.com/waldnercharles/35405925d7c0b7f9a4b4645f35337b76",
+      "readme_sha256": "d497ec22429ed66fadf8eb797c0d6e9d0ef1404739606b888e8a846599b7288a",
+      "gist_revision": "c79f03528c3306c76e8862daa7d9bc2c4de8af99"
+    },
+    {
+      "name": "cute-sanitizer-cleanup",
+      "prerequisites": [],
+      "sha256": "54fb8f16d9b1899d3ac9ac04700733fd83abd3b90f3c7aa4147aa3e778c4545a",
+      "title": "Release shader, material and font allocations",
+      "url": "https://gist.github.com/waldnercharles/6e73081d5c96eed112d9ba64210d30a2",
+      "readme_sha256": "f4f6ecb4285ae239b7fa784ba7f628c0f2a9367ce4c6f18cb6ecd0a6c529b8bd",
+      "gist_revision": "7f41aa61d8cf1f05ef062ca7975b0bafbb1d47f0"
+    }
+  ],
+  "verified_patch_files": 34,
+  "index_url": "https://gist.github.com/waldnercharles/a42d4d077d88d09800d97895048bb31b",
+  "verified_index_files": 3
+}

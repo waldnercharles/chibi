@@ -1,0 +1,5 @@
+package hello
+Fail :: () {
+    assert(false, "nested program failure")
+}
+Main :: () { Fail() }

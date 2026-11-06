@@ -1,0 +1,22 @@
+--- a/tools/compiler/package_compiler/Steps.chibi
++++ b/tools/compiler/package_compiler/Steps.chibi
+@@ -4868,7 +4868,8 @@
+                                 retained, marks);
+     }
+ }
+-// A resolved store through external storage contributes WRITE to preparation.
++// A resolved store through external storage contributes WRITE to preparation
++// and the public effect summary.
+ // Local boxes and copy-on-write record/array stores do not.
+ WriteStep :: (step: Step, node: int, writes: bool) -> Step {
+     if (!writes) {
+@@ -4879,7 +4880,8 @@
+             return Step.Failed(diagnostic);
+         case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, value, retained, marks):
+             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound,
+-                                extend([RecordSemantic(node, WriteFact, 0)], next), popped, value, retained, marks);
++                                extend([RecordSemantic(node, WriteFact, 0), RecordEffects(WriteEffect)], next),
++                                popped, value, retained, marks);
+     }
+ }
+ // Publishes named locals after all return assignments. Records are copied

@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: medium-real-commit
+expected_outcome: |
+  An architecture- and performance-led review of the iterative else-if parser change: the call-depth workaround as an architecture issue with numbers, a target shape, sized waste, and correctness as a secondary concern.

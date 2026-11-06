@@ -1,0 +1,3 @@
+package rejected_character
+Read :: (value: f32) -> int { return int(char(value)); }
+Main :: () -> int { return Read(65); }

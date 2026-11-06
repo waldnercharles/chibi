@@ -1,0 +1,113 @@
+{
+  "state": "clean source-only checkpoint after accepted817 and prior811/815; heavy producer not granted",
+  "head": "3200134a8b7e35c22695c7f7e3527a85893da37f",
+  "tree": "bf72e3ee89918a030f5e5f11d305dbe1e41a01f3",
+  "accepted_base": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+  "previous": "3d72b51f0b034ab05c2951fcc9371fbba197abc2",
+  "feature_paths": 42,
+  "files": {
+    "CMakeLists.txt": "703f612c09fe0d4e4beba7e1ca36b67b371328cd649dd1011ec327bb360dcb67",
+    "docs/odin-package-inventory.md": "8a0eff4f56c109f73e39fb1d73bef06fcadf1ef0eca483c72529c70fb622b8c7",
+    "docs/package-byte-libraries.md": "e7bac338df0dbdde90e1c1215658a9d1ffc023e9bf009cfc1ef2221e3688002d",
+    "docs/package-foundations.md": "f619c07c67a618f77698c21cd0c42ac112a04bfa71df7a05229332e490823d60",
+    "docs/package-library-plan.md": "a2eece5bae4b44fd219422de936b3e9e72407cce393d95fa86cdd1ce5a6d206c",
+    "docs/testing.md": "89e0d424d4926b3561fa6eb67b4984216d0ac8e1d0fb2f06cbb69453e2f06ea9",
+    "packages/core/bytes/Bytes.chibi": "3face4437c9ebd31073da5c8e2996f956dd1fa0105eefc1fe458c3f17f20bb4b",
+    "packages/core/bytes/Tests.chibi": "e2504b560201ad56218ca5e4ceb2c152e4f45c1e3b8033aa69176eb1a45eeb70",
+    "packages/core/hash/adler32/Adler32.chibi": "fc449e6ad2a778e352ec0c873b75a20de06b444e69c15597fc9c7c1eb32f8846",
+    "packages/core/hash/adler32/Tests.chibi": "4587cef976e5d09d419896a367f3bce74d782a6b39c68e16c4417a4789ba7958",
+    "packages/core/hash/crc32/Crc32.chibi": "a49acfa04f38dfa95ce0a97eb105bca222b3b684b1f0439b9135205a18a29f75",
+    "packages/core/hash/crc32/Tests.chibi": "e31e484ba2ec1471542844a4dce4a93ee490f4b4ef2785a6a19e2e0546ecfe1d",
+    "packages/core/hash/fnv/Fnv.chibi": "5899f3519c0bff8100bef1054dab815daa7ca915e932ba071f366d4830f87a2a",
+    "packages/core/hash/fnv/Tests.chibi": "77b05fd20f57c6b4ce5e7b7c46b93b3d685e95e9db6f7c31a1418d1378008ba4",
+    "packages/core/math/bits/Bits.chibi": "16e09d4b6190530dc23307459e1bcb82bc9331e23959e45e2eeed120990266c8",
+    "packages/core/math/bits/Tests.chibi": "fc454caccead93029fafad168c7d2541bfa23d805907549c40a75737add86e34",
+    "sdk/CMakeLists.txt": "1b6f62e3447ed8d9449beadd1911f9ff398979cedf3acb7ebc1b13e869854309",
+    "sdk/README.md": "e06501dcfbf842833df0cb403b93910b2c281ea3e7fd8b6355381fbdbf2801e7",
+    "src/authoring/project_compile.c": "2219dd9f26c83acc1cbbd8096d76b30d3b51203e419c2defe673eb953cfe5efb",
+    "src/runtime/text_definition.c": "256ea2a18a76b36e64112bbb021e876e12b65242b3f2c6b23168b239384056a7",
+    "src/runtime/text_definition.h": "ec95ad9cafabadd5918f3c7b102c18c74394336586996233a45068a887388a6c",
+    "src/runtime/text_format.c": "100c05aa458cfd8abfaea9413654fcec29bd113968c4978654776b45794e7f60",
+    "src/runtime/text_format.h": "259353efeb3192dcf8977a745305f0610d15d1b60e1125ffa00873e63eaa86d5",
+    "src/toolchain/compiler_host.c": "3620dea7a62a7a8f552c84bc3f40ea54fe97c374143962605d99ab837e2783fb",
+    "test/fixtures/feature-coverage/coverage-gaps.txt": "89ccb480414e6fa13f73d6401e5e49eedac706cc40cad23163e8b643ab446872",
+    "test/fixtures/portable-byte-asset/Build.chibi": "98b285afc8618f72fb3d964a4b2cde6f93a07869c426daa90a5c377ee58360e2",
+    "test/language/CMakeLists.txt": "e5e13455599e039d695d25032255c70a84424537ba23150efba37ec00c9517b7",
+    "test/language/asset_compiler_host.c": "e61688eb7dab515e7f29a7983a7e64c034bcd8a3a4967e2992a4ef4dc366c6eb",
+    "test/language/main.c": "be148c2d90462bd8df7df22f982fdc4bf2bd18f9b96cb920cd59fbf32ecaa977",
+    "test/language/package_compiler_chibi.c": "7407d4d21b153a0ec1acd302be45928557e5353e82728324e01acb38af41d649",
+    "test/language/package_compiler_chibi.h": "65c5d293c1fbfaf9e353bf2d873ee177359f7a79265eea8343d59bdd5245f773",
+    "test/language/package_portable.c": "919b3ad03b8526b115fd3fdf54f774e0348391cf76a248972fc00e4aa7edea56",
+    "test/language/package_portable.cmake": "0da9a0049439d5dc46542c02f937a5c759bc4b1a6b4e07405cadb72399456dfd",
+    "test/language/package_portable_compiler.c": "f8a7cc6aee8ec565254450140fd1e17973700ff271c2546ced780c948cf798e8",
+    "test/language/package_portable_consumer.h.in": "08dfa192882a75307a8caef346792af254f8301d79327d9db4b6409999e06766",
+    "test/language/package_portable_source.h.in": "66fd382fcbffee44d9fc3f2d478134e243a3014a1ceb9659d8defd2d37f125a7",
+    "test/language/portable_asset_source.h.in": "ed4d01747c524923d44222d7ad70814fb6986c6437cea1533a835c8b2d35b1f7",
+    "test/packages/portable_consumer/Consumer.chibi": "bde7427fca9f1b5b9e437f60c2b0511862fe032cbf5486a4fd990e91c0e40cf0",
+    "tools/graph/asset_compiler/Generate.chibi": "d93127972169afde01acd80b4298baf142692a52ae246b05a14488fed2525249",
+    "tools/graph/engine/Targets.chibi": "6cd2f59be445c8a06cdd01d713604af0f8821336f4e60e10074c00af5a4801d6",
+    "tools/native_aot/Driver.chibi": "e52fc3ff0c8620866ead203df74c2f295ff72675e0c7aa86daa41df2e977a1ac",
+    "tools/test_policy.py": "05cb91db5f8e367310c0e58b07c5c604504cbf28df6e8ae97b0728500bb74cf8"
+  },
+  "patch_sha256": "93b8b26addeced1a210f5598ad285c1b100391d3238ab21251879b05d8613887",
+  "package_counts": {
+    "bytes": {
+      "apis": 11,
+      "tests": 6
+    },
+    "math/bits": {
+      "apis": 15,
+      "tests": 7
+    },
+    "hash/fnv": {
+      "apis": 4,
+      "tests": 3
+    },
+    "hash/adler32": {
+      "apis": 2,
+      "tests": 4
+    },
+    "hash/crc32": {
+      "apis": 2,
+      "tests": 3
+    }
+  },
+  "package_sources_identical_to": "dea59917c76d665a3a117690b77a6b0717a798b0",
+  "compiler": {
+    "file": "compiler.chibip",
+    "bytes": 20792064,
+    "sha256": "27d8f3d0568e442e1a70b167c04ba97c671ea0d0b1e85e3a7493d88fc59bb912"
+  },
+  "compiler_source_count": 27,
+  "runtime_E1_unchanged": "compiler-runtime-prepared26-43eec64f98e6fb288935dacfcbf86296dbc43b02",
+  "verification": "reachability-merge-verification.json",
+  "independent_review": {
+    "reviewer": "/root/bits_hash",
+    "head": "3200134a8b7e35c22695c7f7e3527a85893da37f",
+    "tree": "bf72e3ee89918a030f5e5f11d305dbe1e41a01f3",
+    "result": "Source-only approval; no findings",
+    "verified": [
+      "34APIs23testsandbothdiscoveryroots",
+      "43linehelperandacceptedcompilerfixtures",
+      "public7private6profiles",
+      "docsprivateparser/publicexamplecatalogandidentitylookup",
+      "SDKrecursivecoreinstallationandversionauthority",
+      "explicit27compilerinputsandfullpublicsnapshot",
+      "27d8closureandall27sources/unchangedprivate6target"
+    ],
+    "execution_claim": false
+  },
+  "validation_plan": {
+    "path": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/final-integration-validation-plan.json",
+    "sha256": "4e8b92be9b153417dffe32d7b951f5e6ea5c0112e33df676ea2ac3d2e478577c",
+    "status": "Reviewed matching-source plan; execution grant pending"
+  },
+  "pending_gates": [
+    "matching795objects/headers/hosts andnative/Wasm/SAN/SDKproof",
+    "803acceptancebeforecallbackpatch",
+    "801ABI/effectsandfeaturepublicationholds",
+    "unchanged120sCompilerToolswithtimings",
+    "ordinaryCIandfinalaudit"
+  ],
+  "no_build_test_regeneration_or_push": true
+}

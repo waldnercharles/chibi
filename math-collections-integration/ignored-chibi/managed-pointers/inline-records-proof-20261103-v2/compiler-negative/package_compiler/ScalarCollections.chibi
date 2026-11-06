@@ -1,0 +1,124 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+
+// This kind exists only in the native projection's copied type table. An
+// unused optional is excluded, never mistaken for an interned collection.
+ScalarExcludedDecl: int : -1;
+ScalarNestedCollection :: (declared: TypeDecl) -> bool {
+    return declared.kind == CollectionDecl && declared.value_container == ArrayContainer;
+}
+
+// An interned nested collection has one physical record field: its immediate
+// array descriptor. The existing counted record/array lifecycle owns it; no
+// heap wrapper or additional public type encoding is needed.
+ScalarCollectionRows :: (forest: snapshot.SnapshotNode[], types: TypeDecl[], declared: TypeDecl) -> facts.Row[] {
+    inner := ScalarValueType(types, declared.value_storage, declared.value_container, declared.value_record);
+    return [ScalarAt(forest, 0, facts.RecordRow, 0, facts.ZeroArrayGrowth, 1, declared.type_name),
+            ScalarAt(forest, 0, facts.MemberRow, inner, 0, 0, "value")];
+}
+ScalarMakeArray :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+                    package: int, node: int) -> bool {
+    if (!Is(forest, node, syntax.CallExpression)) { return false; }
+    callee := Field(forest, node, syntax.FieldFunction);
+    return Is(forest, callee, syntax.Identifier) && Text(forest, text, callee) == "make_array" &&
+           CalledFunction(forest, text, callables, [], names, package, node) < 0 &&
+           ScalarProcCallee(forest, text, names, node) < 0 && ScalarForeignDeclaration(forest, text, node) < 0;
+}
+ScalarMadeShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                    names: Name[], types: TypeDecl[], members: TypeMember[], package: int, node: int) -> ValueType {
+    none: ValueType = {storage: 0, container: 0, record: -1};
+    first := Unparenthesized(forest, FirstMember(forest, Field(forest, node, syntax.FieldArguments)));
+    if (first < 0 || Is(forest, first, syntax.NamedArgument)) { return none; }
+    element := ScalarArrayShape(forest, text, callables, params, names, types, members, package, first);
+    if (element.storage == 0) {
+        element = MathPlaceType(forest, text, types, members, callables, [], [], names, package, first);
+        if (Is(forest, first, syntax.Boolean)) { element.storage = BoolStorage; }
+        if (Is(forest, first, syntax.String)) { element.storage = TextStorage; }
+        if (Is(forest, first, syntax.CallExpression) && element.storage == 0) {
+            element.storage = NumberConversionType(forest, text, first);
+        }
+        if (element.storage == 0) { element.storage = ConstantExpressionStorage(forest, text, first); }
+    }
+    if (element.storage == 0) { return none; }
+    return SequenceArrayType(types, element);
+}
+
+// Store one source element in its physical array element type. A nested
+// collection wraps the already-owned immediate array descriptor once.
+ScalarArrayElementValue :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                            callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                            constants: ConstDecl[], node: int, array: ValueType, rows: facts.Row[]) -> ScalarOperands {
+    output := rows;
+    wrapped := array.record >= 0 && ScalarNestedCollection(types[array.record]);
+    if (wrapped) { output.append(ScalarAt(forest, node, facts.ZeroRow, ScalarRecordType(types, array.record), 0, 0, "")); }
+    switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                               node, SequenceElement(types, array), output) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built):
+            output = built;
+            if (wrapped) {
+                output.append(ScalarAt(forest, node, facts.UpdateRow, ScalarRecordType(types, array.record), 0, 2, ""));
+            }
+            return ScalarOperands.Built(output);
+    }
+}
+ScalarMadeRows :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                   callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                   constants: ConstDecl[], node: int, rows: facts.Row[]) -> ScalarOperands {
+    shape := ScalarMadeShape(forest, text, callables, params, names, types, members, callable.package, node);
+    type := ScalarArrayType(types, shape.storage, shape.record);
+    if (type == 0) {
+        return ScalarOperands.Failed(Diagnose(forest, node, 0, "native make_array needs known positional element types"));
+    }
+    output := rows;
+    arguments := Members(forest, Field(forest, node, syntax.FieldArguments));
+    for (argument in arguments) {
+        if (Is(forest, argument, syntax.NamedArgument) || Is(forest, argument, syntax.TypedArgument)) {
+            return ScalarOperands.Failed(Diagnose(forest, argument, 0, "native make_array passes values by position"));
+        }
+        switch ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                       argument, shape, output) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): output = built;
+        }
+    }
+    output.append(ScalarAt(forest, node, facts.ArrayRow, type, facts.ArrayNew, length(arguments), ""));
+    return ScalarOperands.Built(output);
+}
+
+// The projection implements the runtime's one variadic generic constructor.
+// A caller's different same-named capability keeps its real shape and is
+// rejected by ordinary binding when used, never silently reinterpreted here.
+ScalarCollectionCatalog :: (natives: ResolvedNative[], ports: ^(ResolvedPort[])) {
+    canonical := true;
+    count := 0;
+    for (native in natives) {
+        if (!NativeNameMatches(native, "make_array")) { continue; }
+        count += 1;
+        if (native.name != "make_array" || native.parameters != 1 || native.results != 1 || !native.variadic ||
+            !native.direct || native.intrinsic != 0 || native.kind != NativeFunctionKind || native.effects != 0) {
+            canonical = false;
+            continue;
+        }
+        for (index in 0..<2) {
+            port := ports^[native.first + index];
+            container := 0;
+            name := "Item";
+            if (index == 1) { container = ArrayContainer; name = "Array"; }
+            if (port.storage != 0 || port.container != container || port.record >= 0 || port.c_string ||
+                port.has_default || !NameMatches(name, port.name)) { canonical = false; }
+        }
+    }
+    if (count == 0 || (count == 1 && canonical)) { return; }
+    for (native in natives) {
+        if (!NativeNameMatches(native, "make_array")) { continue; }
+        for (index in native.first..<native.first + native.parameters + native.results) {
+            port := ports^[index];
+            port.storage = UnsupportedPort;
+            ports^[index] = port;
+        }
+    }
+}

@@ -1,0 +1,4 @@
+package facts
+One :: () -> u8 { return u8(round: 1); }
+
+// error: 2:29: A conversion argument may only be named wrap

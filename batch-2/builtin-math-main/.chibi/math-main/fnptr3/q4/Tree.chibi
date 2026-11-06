@@ -1,0 +1,4 @@
+package scalar
+Step :: (c: ^Cursor) {
+    c.pos += 1;
+}

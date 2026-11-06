@@ -1,0 +1,17 @@
+package facts
+Note :: struct { text: string; count: int; }
+MovedNote :: (n: int) -> Note { return {text: "a", count: n}; }
+MovedResults :: () -> int {
+    a := MovedNote(1);
+    b := MovedNote(1);
+    a.count = 10;
+    b = MovedNote(2);
+    return a.count + b.count;
+}
+MovedList :: (n: int) -> int[] { return [n, n + 1]; }
+MovedSecond :: (n: int) -> int { xs := MovedList(n); return xs[1]; }
+Copied :: (notes: Note[]) -> int {
+    note := notes[0];
+    note.count += 5;
+    return note.count + notes[0].count;
+}

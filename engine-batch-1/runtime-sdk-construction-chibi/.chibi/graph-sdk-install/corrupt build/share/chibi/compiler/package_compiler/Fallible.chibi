@@ -1,0 +1,1040 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+
+// Error category belongs to a declared type, independently of callable names.
+ErrorMarked :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> bool {
+    for child in Members(forest, node) {
+        if Is(forest, child, syntax.Attribute) && Text(forest, text, Field(forest, child, syntax.FieldName)) == "error" {
+            return true;
+        }
+    }
+    return false;
+}
+
+DeclarationAttributes :: (forest: snapshot.SnapshotNode[], text: string, file: int, node: int,
+                          allowed: string) -> syntax.Diagnostic[] {
+    seen: string[] = [];
+    for child in Members(forest, node) {
+        if Is(forest, child, syntax.Attribute) {
+            name := Text(forest, text, Field(forest, child, syntax.FieldName));
+            if name != allowed {
+                return [Diagnose(forest, child, file, format_text("Unknown attribute '@{}'", name))];
+            }
+            for previous in seen {
+                if previous == name {
+                    return [Diagnose(forest, child, file, format_text("Duplicate attribute '@{}'", name))];
+                }
+            }
+            seen.append(name);
+        }
+    }
+    return [];
+}
+
+// Optional descriptors and existing native aliases retain their value's
+// category. Owning a field or container of errors does not make a value an error.
+ErrorBearing :: (types: TypeDecl[], value: ValueType) -> bool {
+    current := value;
+    visited: int[] = [];
+    while current.container == 0 && (current.storage == StructStorage || current.storage == UnionStorage) &&
+          current.record >= 0 {
+        if visited.contains(current.record) {
+            return false;
+        }
+        visited.append(current.record);
+        declared := types[current.record];
+        if declared.error {
+            return true;
+        }
+        if declared.kind == OptionalDecl {
+            current = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+        } else if declared.kind == NativeDecl && declared.parent >= 0 {
+            current.record = declared.parent;
+        } else {
+            return false;
+        }
+    }
+    return false;
+}
+
+ErrorResult :: (types: TypeDecl[], params: Param[], callable: Callable) -> bool {
+    last: ValueType = {storage: callable.result, container: callable.result_container, record: callable.result_record};
+    if callable.results > 0 {
+        result := params[callable.first + callable.count + callable.results - 1];
+        last = {storage: result.storage, container: result.container, record: result.record};
+    }
+    return ErrorBearing(types, last);
+}
+
+FallibleBinding :: struct {
+    name: string;
+    node: int;
+    scope: int;
+    visible: int;
+    until: int;
+    returned: bool;
+}
+FallibleBind :: (name: string, node: int, scope: int, visible: int, until: int, returned: bool) -> FallibleBinding {
+    return {name: name, node: node, scope: scope, visible: visible, until: until, returned: returned};
+}
+
+FallibleWithin :: (forest: snapshot.SnapshotNode[], node: int, scope: int) -> bool {
+    at := node;
+    while (at >= 0) {
+        if (at == scope) {
+            return true;
+        }
+        at = forest[at].parent;
+    }
+    return false;
+}
+
+// Binding identities are declaration nodes, not spellings. A local is visible
+// after its initializer, and a loop binding only inside the loop's body.
+FallibleBindings :: (forest: snapshot.SnapshotNode[], text: string, callable: Callable) -> FallibleBinding[] {
+    bindings: FallibleBinding[] = [];
+    for (field in [syntax.FieldParameters, syntax.FieldResults]) {
+        list := Field(forest, callable.node, field);
+        if (Is(forest, list, syntax.ParameterList)) {
+            for (parameter in Members(forest, list)) {
+                name := Field(forest, parameter, syntax.FieldName);
+                if (name >= 0) {
+                    bindings.append(FallibleBind(Text(forest, text, name), name, callable.node,
+                                                 0, forest[callable.node].end, field == syntax.FieldResults));
+                }
+            }
+        }
+    }
+    body := Field(forest, callable.node, syntax.FieldBody);
+    work: int[] = [body];
+    while (length(work) > 0) {
+        node := work[length(work) - 1];
+        work = slice(work, 0, length(work) - 1);
+        if (Is(forest, node, syntax.LocalDeclaration)) {
+            name := Field(forest, node, syntax.FieldName);
+            bindings.append(FallibleBind(Text(forest, text, name), name, forest[node].parent,
+                                         forest[node].end, forest[forest[node].parent].end, false));
+        }
+        if (Is(forest, node, syntax.ForStatement)) {
+            for (field in [syntax.FieldName, syntax.FieldKey]) {
+                name := Field(forest, node, field);
+                if (name >= 0) {
+                    loop_body := Field(forest, node, syntax.FieldBody);
+                    bindings.append(FallibleBind(Text(forest, text, name), name, loop_body,
+                                                 forest[loop_body].start, forest[loop_body].end, false));
+                }
+            }
+        }
+        if (Is(forest, node, syntax.IfStatement) || Is(forest, node, syntax.WhileStatement)) {
+            condition := Field(forest, node, syntax.FieldCondition);
+            consequence := Field(forest, node, syntax.FieldConsequence);
+            if (consequence < 0) {
+                consequence = Field(forest, node, syntax.FieldBody);
+            }
+            patterns: int[] = [condition];
+            while (length(patterns) > 0) {
+                pattern := patterns[length(patterns) - 1];
+                patterns = slice(patterns, 0, length(patterns) - 1);
+                if (Is(forest, pattern, syntax.IsExpression)) {
+                    declared: int[] = [];
+                    name := Field(forest, pattern, syntax.FieldBinding);
+                    if (name >= 0) {
+                        declared.append(name);
+                    }
+                    variant := Field(forest, pattern, syntax.FieldType);
+                    if (Is(forest, variant, syntax.VariantPattern)) {
+                        declared.extend(Members(forest, Field(forest, variant, syntax.FieldBindings)));
+                    }
+                    for (bound_name in declared) {
+                        bindings.append(FallibleBind(Text(forest, text, bound_name), bound_name, consequence,
+                                                     forest[consequence].start, forest[consequence].end, false));
+                        bindings.append(FallibleBind(Text(forest, text, bound_name), bound_name, node,
+                                                     forest[pattern].end, forest[condition].end, false));
+                    }
+                }
+                patterns.extend(Members(forest, pattern));
+            }
+        }
+        if (Is(forest, node, syntax.SwitchArm)) {
+            pattern := Field(forest, node, syntax.FieldValue);
+            arm_body := Field(forest, node, syntax.FieldBody);
+            if (Is(forest, pattern, syntax.VariantPattern)) {
+                for (bound_name in Members(forest, Field(forest, pattern, syntax.FieldBindings))) {
+                    bindings.append(FallibleBind(Text(forest, text, bound_name), bound_name, arm_body,
+                                                 forest[arm_body].start, forest[arm_body].end, false));
+                }
+            }
+        }
+        // Nested callable bodies own independent obligations.
+        if (node >= 0 && !Is(forest, node, syntax.FunctionDeclaration)) {
+            work.extend(Members(forest, node));
+        }
+    }
+    return bindings;
+}
+
+FallibleFindBinding :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], node: int) -> int {
+    if (!Is(forest, node, syntax.Identifier)) {
+        return -1;
+    }
+    name := Text(forest, text, node);
+    scope := node;
+    while (scope >= 0) {
+        found: int = -1;
+        for (binding, index in bindings) {
+            if (binding.scope == scope && binding.name == name && binding.visible <= forest[node].start &&
+                forest[node].end <= binding.until &&
+                (found < 0 || bindings[found].visible < binding.visible)) {
+                found = index;
+            }
+        }
+        if (found >= 0) {
+            return found;
+        }
+        scope = forest[scope].parent;
+    }
+    return -1;
+}
+
+// The binding each identifier of a body names, by node index from `first`:
+// the walk asks for the same identifiers once per fallible call site, so they
+// are resolved once per body. -2 marks a node the body did not resolve.
+FallibleNames :: struct {
+    first: int;
+    bindings: int[];
+}
+FallibleResolveNames :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[],
+                         body: int) -> FallibleNames {
+    identifiers: int[] = [];
+    first: int = -1;
+    last: int = -1;
+    work: int[] = [body];
+    while (length(work) > 0) {
+        node := work[length(work) - 1];
+        work = slice(work, 0, length(work) - 1);
+        if (Is(forest, node, syntax.Identifier)) {
+            identifiers.append(node);
+            if (first < 0 || node < first) {
+                first = node;
+            }
+            if (node > last) {
+                last = node;
+            }
+        }
+        // Nested callable bodies own independent obligations.
+        if (node >= 0 && !Is(forest, node, syntax.FunctionDeclaration)) {
+            work.extend(Members(forest, node));
+        }
+    }
+    if (first < 0) {
+        return {first: 0, bindings: []};
+    }
+    resolved := resize([int(0)], last - first + 1);
+    for (index in 0..<length(resolved)) {
+        resolved[index] = -2;
+    }
+    for (node in identifiers) {
+        resolved[node - first] = FallibleFindBinding(forest, text, bindings, node);
+    }
+    return {first: first, bindings: resolved};
+}
+FallibleNamed :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames,
+                  node: int) -> int {
+    at := node - names.first;
+    if (at >= 0 && at < length(names.bindings) && names.bindings[at] != -2) {
+        return names.bindings[at];
+    }
+    return FallibleFindBinding(forest, text, bindings, node);
+}
+
+FallibleDeclarationBinding :: (bindings: FallibleBinding[], node: int) -> int {
+    for (binding, index in bindings) {
+        if (binding.node == node) {
+            return index;
+        }
+    }
+    return -1;
+}
+
+FallibleNode :: struct {
+    statement: int;
+    first: int;
+    second: int;
+    guard: bool;
+}
+FallibleNodeFor :: (statement: int, first: int, second: int, guard: bool) -> FallibleNode {
+    return {statement: statement, first: first, second: second, guard: guard};
+}
+FallibleLink :: (input: FallibleNode[], index: int, first: int, second: int) -> FallibleNode[] {
+    nodes := input;
+    row := nodes[index];
+    row.first = first;
+    row.second = second;
+    nodes[index] = row;
+    return nodes;
+}
+FallibleGraph :: union {
+    Built(nodes: FallibleNode[], start: int)
+}
+
+FallibleTruth :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> int {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.Boolean)) {
+        if (Text(forest, text, value) == "true") {
+            return 1;
+        }
+        return 0;
+    }
+    if (Is(forest, value, syntax.UnaryExpression) && Operator(forest, value) == tk.Not) {
+        truth := FallibleTruth(forest, text, Field(forest, value, syntax.FieldOperand));
+        if (truth >= 0) {
+            return 1 - truth;
+        }
+    }
+    return -1;
+}
+
+FallibleBuildGraph :: (forest: snapshot.SnapshotNode[], text: string, statement: int, next: int,
+                       leave: int, repeat: int, input: FallibleNode[]) -> FallibleGraph {
+    nodes := input;
+    if (statement < 0) {
+        return FallibleGraph.Built(nodes, next);
+    }
+    kind := forest[statement].kind;
+    if (kind == syntax.Block || kind == syntax.CallableBody || kind == syntax.SequenceStatement) {
+        members := Members(forest, statement);
+        start := next;
+        index := length(members);
+        while (index > 0) {
+            index -= 1;
+            switch FallibleBuildGraph(forest, text, members[index], start, leave, repeat, nodes) {
+                case .Built(changed, head):
+                    nodes = changed;
+                    start = head;
+            }
+        }
+        return FallibleGraph.Built(nodes, start);
+    }
+    if (kind == syntax.SwitchArm || kind == syntax.BranchStatement) {
+        return FallibleBuildGraph(forest, text, Field(forest, statement, syntax.FieldBody), next, leave, repeat, nodes);
+    }
+    current := length(nodes);
+    nodes.append(FallibleNodeFor(statement, next, -1, false));
+    if (kind == syntax.ReturnStatement || kind == syntax.GotoStatement) {
+        nodes = FallibleLink(nodes, current, -1, nodes[current].second);
+    } else if (kind == syntax.BreakStatement) {
+        nodes = FallibleLink(nodes, current, leave, nodes[current].second);
+    } else if (kind == syntax.ContinueStatement) {
+        nodes = FallibleLink(nodes, current, repeat, nodes[current].second);
+    } else if (kind == syntax.IfStatement || kind == syntax.WhileStatement) {
+        body := Field(forest, statement, syntax.FieldConsequence);
+        outgoing := next;
+        loop_leave := leave;
+        loop_repeat := repeat;
+        if (kind == syntax.WhileStatement) {
+            body = Field(forest, statement, syntax.FieldBody);
+            outgoing = current;
+            loop_leave = next;
+            loop_repeat = current;
+        }
+        switch FallibleBuildGraph(forest, text, body, outgoing, loop_leave, loop_repeat, nodes) {
+            case .Built(changed, head):
+                nodes = changed;
+                nodes = FallibleLink(nodes, current, head, nodes[current].second);
+        }
+        alternative := next;
+        if (kind == syntax.IfStatement) {
+            switch FallibleBuildGraph(forest, text, Field(forest, statement, syntax.FieldAlternative), next, leave, repeat, nodes) {
+                case .Built(changed, head):
+                    nodes = changed;
+                    alternative = head;
+            }
+        }
+        nodes = FallibleLink(nodes, current, nodes[current].first, alternative);
+        truth := FallibleTruth(forest, text, Field(forest, statement, syntax.FieldCondition));
+        if (truth == 0) {
+            nodes = FallibleLink(nodes, current, alternative, -1);
+        }
+        if (truth == 1) {
+            nodes = FallibleLink(nodes, current, nodes[current].first, -1);
+        }
+    } else if (kind == syntax.ForStatement) {
+        guard := length(nodes);
+        nodes.append(FallibleNodeFor(statement, next, -1, true));
+        switch FallibleBuildGraph(forest, text, Field(forest, statement, syntax.FieldBody), guard, next, guard, nodes) {
+            case .Built(changed, head):
+                nodes = changed;
+                nodes = FallibleLink(nodes, guard, nodes[guard].first, head);
+        }
+        nodes = FallibleLink(nodes, current, guard, nodes[current].second);
+    } else if (kind == syntax.SwitchStatement) {
+        dispatch := next;
+        arms := Members(forest, statement);
+        // The subject is cached once. Candidate expressions run in source
+        // order only while previous candidates have failed to match.
+        exhaustive := false;
+        has_default := false;
+        booleans: int = 0;
+        for (arm in arms) {
+            if (Is(forest, arm, syntax.SwitchArm)) {
+                pattern := Field(forest, arm, syntax.FieldValue);
+                exhaustive = exhaustive || Is(forest, pattern, syntax.VariantPattern);
+                truth := FallibleTruth(forest, text, pattern);
+                if (truth >= 0) {
+                    booleans = booleans | (truth + 1);
+                }
+                if (pattern < 0) {
+                    has_default = true;
+                    switch FallibleBuildGraph(forest, text, Field(forest, arm, syntax.FieldBody), next, leave, repeat, nodes) {
+                        case .Built(changed, head):
+                            nodes = changed;
+                            dispatch = head;
+                    }
+                }
+            }
+        }
+        exhaustive = exhaustive || booleans == 3;
+        last_case := true;
+        index := length(arms);
+        while (index > 0) {
+            index -= 1;
+            arm := arms[index];
+            if (Is(forest, arm, syntax.SwitchArm) && Field(forest, arm, syntax.FieldValue) >= 0) {
+                switch FallibleBuildGraph(forest, text, Field(forest, arm, syntax.FieldBody), next, leave, repeat, nodes) {
+                    case .Built(changed, head):
+                        nodes = changed;
+                        unmatched := dispatch;
+                        if (last_case && !has_default && exhaustive) {
+                            unmatched = -1;
+                        }
+                        link := length(nodes);
+                        nodes.append(FallibleNodeFor(arm, head, unmatched, false));
+                        dispatch = link;
+                        last_case = false;
+                }
+            }
+        }
+        nodes = FallibleLink(nodes, current, dispatch, nodes[current].second);
+    }
+    return FallibleGraph.Built(nodes, current);
+}
+
+// What a point of the walk knows about the bindings that hold, point at or
+// once held the outcome: rows of FallibleRowSize ints in increasing binding
+// order, (binding, alias, pointer target or -1, associated as 0 or 1). A
+// binding without a row holds no alias, points nowhere and was never
+// associated, which is true of most bindings, so a row exists only when a field
+// differs from that. Rows are ints, not records: on the VM a record row costs
+// about 1.5% more of a self-compile. The row count bounds every scan below; it
+// is the bindings that touch the outcome or an address.
+FallibleRowSize: int : 4;
+FallibleAliasAt: int : 1;
+FalliblePointerAt: int : 2;
+FallibleAssociatedAt: int : 3;
+FallibleRow :: (facts: int[], binding: int) -> int {
+    at: int = 0;
+    while (at < length(facts) && facts[at] <= binding) {
+        if (facts[at] == binding) {
+            return at;
+        }
+        at += FallibleRowSize;
+    }
+    return -1;
+}
+FallibleAliasOf :: (facts: int[], binding: int) -> int {
+    row := FallibleRow(facts, binding);
+    if (row < 0) {
+        return 0;
+    }
+    return facts[row + FallibleAliasAt];
+}
+FalliblePointerOf :: (facts: int[], binding: int) -> int {
+    row := FallibleRow(facts, binding);
+    if (row < 0) {
+        return -1;
+    }
+    return facts[row + FalliblePointerAt];
+}
+FallibleAssociated :: (facts: int[], binding: int) -> bool {
+    row := FallibleRow(facts, binding);
+    return row >= 0 && facts[row + FallibleAssociatedAt] != 0;
+}
+// Appends a binding's row unless every field has its default.
+FallibleAppendRow :: (facts: ^(int[]), binding: int, alias: int, pointer: int, associated: bool) {
+    if (alias != 0 || pointer >= 0 || associated) {
+        flag: int = 0;
+        if (associated) {
+            flag = 1;
+        }
+        facts.extend([binding, alias, pointer, flag]);
+    }
+}
+FallibleSame :: (left: int[], right: int[]) -> bool {
+    if (length(left) != length(right)) {
+        return false;
+    }
+    for (value, index in left) {
+        if (value != right[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+// Every alias reads as none; pointer targets stay, and associations too unless
+// `associations` is false.
+FallibleForget :: (facts: int[], associations: bool) -> int[] {
+    result: int[] = [];
+    at: int = 0;
+    while (at < length(facts)) {
+        FallibleAppendRow(&result, facts[at], 0, facts[at + FalliblePointerAt],
+                          associations && facts[at + FallibleAssociatedAt] != 0);
+        at += FallibleRowSize;
+    }
+    return result;
+}
+
+// Only pending incoming paths contribute aliases. Intersecting them prevents
+// a read that names the error on one branch from hiding loss on another.
+FallibleEval :: union {
+    Evaluated(pending: bool, lost: bool, value: int, facts: int[])
+}
+FallibleJoin :: (left_pending: bool, left: int[], right_pending: bool, right: int[]) -> FallibleEval {
+    // Bindings without a row on either side join to the default, so the rows
+    // of both, merged in binding order, are all that can differ from it.
+    facts: int[] = [];
+    at: int = 0;
+    other: int = 0;
+    while (at < length(left) || other < length(right)) {
+        binding := 0;
+        if (other >= length(right) || (at < length(left) && left[at] <= right[other])) {
+            binding = left[at];
+        } else {
+            binding = right[other];
+        }
+        // Read through each predecessor's intact pointer map before a join
+        // discards differing targets. Cached address aliases can be stale.
+        first: int = 0;
+        first_pointer: int = -1;
+        first_associated := false;
+        if (at < length(left) && left[at] == binding) {
+            first = left[at + FallibleAliasAt];
+            first_pointer = left[at + FalliblePointerAt];
+            first_associated = left[at + FallibleAssociatedAt] != 0;
+            if (first_pointer >= 0) {
+                first = FallibleAlias(left, binding);
+            }
+            at += FallibleRowSize;
+        }
+        second: int = 0;
+        second_pointer: int = -1;
+        second_associated := false;
+        if (other < length(right) && right[other] == binding) {
+            second = right[other + FallibleAliasAt];
+            second_pointer = right[other + FalliblePointerAt];
+            second_associated = right[other + FallibleAssociatedAt] != 0;
+            if (second_pointer >= 0) {
+                second = FallibleAlias(right, binding);
+            }
+            other += FallibleRowSize;
+        }
+        alias := first;
+        if (right_pending && !left_pending) {
+            alias = second;
+        } else if (right_pending && left_pending) {
+            alias = first & second;
+        }
+        pointer := first_pointer;
+        if (pointer != second_pointer) {
+            pointer = -1;
+        }
+        FallibleAppendRow(&facts, binding, alias, pointer, first_associated || second_associated);
+    }
+    return FallibleEval.Evaluated(left_pending || right_pending, false, 0, facts);
+}
+
+// A pointer chain has at most one hop per row, so a longer one is a cycle.
+FallibleAlias :: (facts: int[], binding: int) -> int {
+    if (binding < 0) {
+        return 0;
+    }
+    rows := length(facts) / FallibleRowSize;
+    at := binding;
+    levels: int = 0;
+    while (FalliblePointerOf(facts, at) >= 0 && levels < rows) {
+        at = FalliblePointerOf(facts, at);
+        levels += 1;
+    }
+    alias := FallibleAliasOf(facts, at);
+    if (levels >= rows || alias == 0) {
+        return 0;
+    }
+    return alias + levels * 8;
+}
+
+// `target` comes to hold `value` and point at `pointer`, and is associated if
+// it was or `associated` says so.
+FallibleWrite :: (facts: int[], target: int, value: int, pointer: int, associated: bool) -> int[] {
+    // The cell may hold this outcome on only some incoming paths. An unknown
+    // merged pointer cannot retain a proof across its overwrite. Known pointers
+    // follow live targets and normalize at the next join.
+    was := FallibleAssociated(facts, target);
+    clear := was && value == 0;
+    result: int[] = [];
+    placed := false;
+    at: int = 0;
+    while (at < length(facts)) {
+        if (!placed && facts[at] >= target) {
+            FallibleAppendRow(&result, target, value, pointer, was || associated);
+            placed = true;
+        }
+        if (facts[at] != target) {
+            alias := facts[at + FallibleAliasAt];
+            if (clear && facts[at + FalliblePointerAt] < 0 && alias >= 8) {
+                alias = 0;
+            }
+            FallibleAppendRow(&result, facts[at], alias, facts[at + FalliblePointerAt],
+                              facts[at + FallibleAssociatedAt] != 0);
+        }
+        at += FallibleRowSize;
+    }
+    if (!placed) {
+        FallibleAppendRow(&result, target, value, pointer, was || associated);
+    }
+    return result;
+}
+
+FallibleTarget :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames,
+                   facts: int[], node: int) -> int {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.Identifier)) {
+        return FallibleNamed(forest, text, bindings, names, value);
+    }
+    if (Is(forest, value, syntax.DereferenceExpression)) {
+        target := FallibleTarget(forest, text, bindings, names, facts, Field(forest, value, syntax.FieldOperand));
+        if (target >= 0) {
+            return FalliblePointerOf(facts, target);
+        }
+    }
+    return -1;
+}
+
+FalliblePointer :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames,
+                    facts: int[], node: int) -> int {
+    value := Unparenthesized(forest, node);
+    if (Is(forest, value, syntax.AddressExpression)) {
+        return FallibleTarget(forest, text, bindings, names, facts, Field(forest, value, syntax.FieldOperand));
+    }
+    target := FallibleTarget(forest, text, bindings, names, facts, value);
+    if (target >= 0) {
+        return FalliblePointerOf(facts, target);
+    }
+    return -1;
+}
+
+// mode 0 copies an alias, 1 inspects its value, 2 transfers it explicitly.
+// Comparing an address does not inspect the error stored at that address.
+FallibleExpression :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames, source: int,
+                       error_name: string, tuple: bool, node: int, mode: int, input_pending: bool,
+                       input_facts: int[]) -> FallibleEval {
+    facts := input_facts;
+    pending := input_pending;
+    lost := false;
+    value: int = 0;
+    if (node < 0) {
+        return FallibleEval.Evaluated(pending, lost, value, facts);
+    }
+    kind := forest[node].kind;
+    if (kind == syntax.Identifier) {
+        value = FallibleAlias(facts, FallibleNamed(forest, text, bindings, names, node));
+    } else if (kind == syntax.ParenthesizedExpression) {
+        return FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
+                                  Field(forest, node, syntax.FieldExpression), mode, pending, facts);
+    } else if (kind == syntax.MemberExpression || kind == syntax.DereferenceExpression || kind == syntax.AddressExpression) {
+        operand := Field(forest, node, syntax.FieldObject);
+        if (kind != syntax.MemberExpression) {
+            operand = Field(forest, node, syntax.FieldOperand);
+        }
+        switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple, operand, 0, pending, facts) {
+            case .Evaluated(next_pending, next_lost, owner, changed):
+                pending = next_pending;
+                lost = next_lost;
+                facts = changed;
+                if (kind == syntax.AddressExpression && owner > 0) {
+                    value = owner + 8;
+                }
+                if (kind == syntax.DereferenceExpression && owner >= 8) {
+                    value = owner - 8;
+                }
+                if (kind == syntax.MemberExpression) {
+                    member := Text(forest, text, Field(forest, node, syntax.FieldMember));
+                    if (owner > 0 && owner < 8 && member == error_name) {
+                        value = 2;
+                    } else if ((owner & 2) != 0 && owner < 8) {
+                        pending = false;
+                    }
+                }
+        }
+    } else if (kind == syntax.BinaryExpression) {
+        operator := Operator(forest, node);
+        switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
+                                  Field(forest, node, syntax.FieldLeft), 1, pending, facts) {
+            case .Evaluated(next_pending, next_lost, ignored, changed):
+                pending = next_pending;
+                lost = next_lost;
+                facts = changed;
+        }
+        skip := operator == tk.CmpAnd || operator == tk.CmpOr || operator == tk.AndKeyword || operator == tk.OrKeyword || operator == tk.Coalesce;
+        truth := FallibleTruth(forest, text, Field(forest, node, syntax.FieldLeft));
+        runs := true;
+        if (skip && truth >= 0 && operator != tk.Coalesce) {
+            runs = truth == 1;
+            if (operator == tk.CmpOr || operator == tk.OrKeyword) {
+                runs = !runs;
+            }
+        }
+        if (runs) {
+            before := facts;
+            before_pending := pending;
+            switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
+                                      Field(forest, node, syntax.FieldRight), 1, pending, facts) {
+                case .Evaluated(next_pending, next_lost, ignored, changed):
+                    pending = next_pending;
+                    lost = lost || next_lost;
+                    facts = changed;
+            }
+            if (skip && truth < 0) {
+                switch FallibleJoin(before_pending, before, pending, facts) {
+                    case .Evaluated(next_pending, ignored_lost, ignored, changed):
+                        pending = next_pending;
+                        facts = changed;
+                }
+            }
+        }
+    } else {
+        children: int[] = [];
+        child_mode: int = 1;
+        if (kind == syntax.CallExpression) {
+            children.append(Field(forest, node, syntax.FieldFunction));
+            children.extend(Members(forest, Field(forest, node, syntax.FieldArguments)));
+            child_mode = 2;
+        } else if (kind == syntax.UnaryExpression || kind == syntax.ForceUnwrapExpression ||
+                   kind == syntax.OptionalMemberExpression) {
+            children.append(Field(forest, node, syntax.FieldOperand));
+        } else if (kind == syntax.NamedArgument || kind == syntax.StructField) {
+            children.append(Field(forest, node, syntax.FieldValue));
+            child_mode = 2;
+        } else if (kind == syntax.AsExpression || kind == syntax.IsExpression || kind == syntax.AwaitExpression) {
+            children.append(Field(forest, node, syntax.FieldValue));
+        } else if (kind == syntax.IndexExpression) {
+            children.append(Field(forest, node, syntax.FieldObject));
+            children.append(Field(forest, node, syntax.FieldIndex));
+        } else if (kind == syntax.RangeExpression) {
+            children.append(Field(forest, node, syntax.FieldStart));
+            children.append(Field(forest, node, syntax.FieldEnd));
+        } else if (kind == syntax.ArrayExpression || kind == syntax.StructExpression ||
+                   kind == syntax.ArgumentList || kind == syntax.MapExpression || kind == syntax.MapEntry) {
+            children = Members(forest, node);
+            child_mode = 2;
+        }
+        for (child in children) {
+            switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
+                                      child, child_mode, pending, facts) {
+                case .Evaluated(next_pending, next_lost, ignored, changed):
+                    pending = next_pending;
+                    lost = lost || next_lost;
+                    facts = changed;
+            }
+        }
+        if (node == source) {
+            lost = lost || pending;
+            pending = true;
+            facts = FallibleForget(facts, false);
+            value = 2;
+            if (tuple) {
+                value = 1;
+            }
+        }
+    }
+    if ((mode == 1 && value > 0 && value < 8) || (mode == 2 && value > 0)) {
+        pending = false;
+    }
+    return FallibleEval.Evaluated(pending, lost, value, facts);
+}
+
+// Computing a destination can call functions or inspect an index. Merely
+// replacing the error slot itself does not read or acknowledge its old value.
+FallibleAddress :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames, source: int,
+                    error_name: string, tuple: bool, destination: int, input_pending: bool,
+                    input_facts: int[]) -> FallibleEval {
+    pending := input_pending;
+    facts := input_facts;
+    lost := false;
+    node := Unparenthesized(forest, destination);
+    expressions: int[] = [];
+    if (Is(forest, node, syntax.MemberExpression) || Is(forest, node, syntax.IndexExpression)) {
+        expressions.append(Field(forest, node, syntax.FieldObject));
+    } else if (Is(forest, node, syntax.DereferenceExpression)) {
+        expressions.append(Field(forest, node, syntax.FieldOperand));
+    }
+    for (expression in expressions) {
+        switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
+                                  expression, 0, pending, facts) {
+            case .Evaluated(next_pending, next_lost, ignored, changed):
+                pending = next_pending;
+                lost = lost || next_lost;
+                facts = changed;
+        }
+    }
+    if (Is(forest, node, syntax.IndexExpression)) {
+        switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
+                                  Field(forest, node, syntax.FieldIndex), 1, pending, facts) {
+            case .Evaluated(next_pending, next_lost, ignored, changed):
+                pending = next_pending;
+                lost = lost || next_lost;
+                facts = changed;
+        }
+    }
+    return FallibleEval.Evaluated(pending, lost, 0, facts);
+}
+
+FallibleTransfer :: (forest: snapshot.SnapshotNode[], text: string, bindings: FallibleBinding[], names: FallibleNames, source: int,
+                     error_name: string, tuple: bool, current: FallibleNode, input_pending: bool,
+                     input_facts: int[]) -> FallibleEval {
+    pending := input_pending;
+    facts := input_facts;
+    lost := false;
+    node := current.statement;
+    if (node < 0 || current.guard) {
+        return FallibleEval.Evaluated(pending, lost, 0, facts);
+    }
+    kind := forest[node].kind;
+    if (kind == syntax.Assignment) {
+        switch FallibleAddress(forest, text, bindings, names, source, error_name, tuple,
+                               Field(forest, node, syntax.FieldTarget), pending, facts) {
+            case .Evaluated(next_pending, next_lost, ignored, changed):
+                pending = next_pending;
+                lost = next_lost;
+                facts = changed;
+        }
+    }
+    expression: int = -1;
+    mode: int = 1;
+    if (kind == syntax.LocalDeclaration || kind == syntax.Assignment || kind == syntax.ReturnStatement) {
+        expression = Field(forest, node, syntax.FieldValue);
+        mode = 0;
+        if (kind == syntax.ReturnStatement) {
+            mode = 2;
+        }
+    } else if (kind == syntax.IfStatement || kind == syntax.WhileStatement) {
+        expression = Field(forest, node, syntax.FieldCondition);
+    } else if (kind == syntax.SwitchStatement || kind == syntax.SwitchArm || kind == syntax.ForStatement) {
+        expression = Field(forest, node, syntax.FieldValue);
+    } else if (kind == syntax.ReduceStatement || kind == syntax.CancelStatement) {
+        expression = Field(forest, node, syntax.FieldValue);
+        mode = 2;
+    } else if (kind == syntax.DeleteStatement) {
+        expression = Field(forest, node, syntax.FieldTarget);
+    } else if (kind == syntax.ExpressionStatement) {
+        expression = FirstMember(forest, node);
+        mode = 0;
+    }
+    value: int = 0;
+    switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
+                              expression, mode, pending, facts) {
+        case .Evaluated(next_pending, next_lost, produced, changed):
+            pending = next_pending;
+            lost = lost || next_lost;
+            value = produced;
+            facts = changed;
+    }
+    if (kind == syntax.ForStatement || kind == syntax.CancelStatement) {
+        for (field in [syntax.FieldFirst, syntax.FieldLast, syntax.FieldDuration]) {
+            switch FallibleExpression(forest, text, bindings, names, source, error_name, tuple,
+                                      Field(forest, node, field), 1, pending, facts) {
+                case .Evaluated(next_pending, next_lost, ignored, changed):
+                    pending = next_pending;
+                    lost = lost || next_lost;
+                    facts = changed;
+            }
+        }
+    }
+    if (kind == syntax.LocalDeclaration) {
+        target := FallibleDeclarationBinding(bindings, Field(forest, node, syntax.FieldName));
+        if (target >= 0) {
+            pointer := FalliblePointer(forest, text, bindings, names, facts, expression);
+            facts = FallibleWrite(facts, target, value, pointer, value > 0);
+        }
+    } else if (kind == syntax.Assignment) {
+        destination := Unparenthesized(forest, Field(forest, node, syntax.FieldTarget));
+        target := FallibleTarget(forest, text, bindings, names, facts, destination);
+        if (target >= 0) {
+            pointer := FalliblePointer(forest, text, bindings, names, facts, expression);
+            facts = FallibleWrite(facts, target, value, pointer, value > 0);
+        } else if (Is(forest, destination, syntax.MemberExpression)) {
+            owner := FallibleTarget(forest, text, bindings, names, facts, Field(forest, destination, syntax.FieldObject));
+            member := Text(forest, text, Field(forest, destination, syntax.FieldMember));
+            if (owner >= 0 && FallibleAlias(facts, owner) == 1) {
+                if (member == error_name) {
+                    kept: int = 0;
+                    if (value > 0) {
+                        kept = 1;
+                    }
+                    facts = FallibleWrite(facts, owner, kept, -1, kept > 0);
+                }
+            } else if (value > 0) {
+                pending = false;
+            }
+        } else if (Is(forest, destination, syntax.DereferenceExpression)) {
+            // Unknown merged pointees cannot prove the old alias survived.
+            facts = FallibleForget(facts, true);
+        } else if (value > 0) {
+            pending = false;
+        }
+    } else if (kind == syntax.ReturnStatement) {
+        for (binding, index in bindings) {
+            if (binding.returned && FallibleAlias(facts, index) > 0) {
+                pending = false;
+            }
+        }
+        lost = lost || pending;
+    }
+    return FallibleEval.Evaluated(pending, lost, 0, facts);
+}
+
+FallibleOutcome :: (forest: snapshot.SnapshotNode[], text: string, callable: Callable, bindings: FallibleBinding[],
+                    names: FallibleNames,
+                    nodes: FallibleNode[], start: int, source: int, error_name: string, tuple: bool) -> bool {
+    // A node's facts are the rows pool[first[node]] onward, count[node] ints;
+    // an update appends its rows, so a node's earlier rows stay as they were.
+    pool: int[] = [];
+    first := resize([int(0)], length(nodes));
+    count := resize([int(0)], length(nodes));
+    reached := resize([false], length(nodes));
+    pending := resize([false], length(nodes));
+    reached[start] = true;
+    work: int[] = [start];
+    lost := false;
+    while (length(work) > 0) {
+        current := work[length(work) - 1];
+        work = slice(work, 0, length(work) - 1);
+        facts: int[] = [];
+        if (count[current] > 0) {
+            facts = slice(pool, first[current], count[current]);
+        }
+        outgoing := pending[current];
+        switch FallibleTransfer(forest, text, bindings, names, source, error_name, tuple, nodes[current], outgoing, facts) {
+            case .Evaluated(next_pending, next_lost, ignored, changed):
+                outgoing = next_pending;
+                lost = lost || next_lost;
+                facts = changed;
+        }
+        if (current == 0) {
+            for (binding, index in bindings) {
+                if (binding.returned && FallibleAlias(facts, index) > 0) {
+                    outgoing = false;
+                }
+            }
+            lost = lost || outgoing;
+        }
+        for (destination in [nodes[current].first, nodes[current].second]) {
+            if (destination >= 0) {
+                changed := !reached[destination];
+                merged := facts;
+                next_pending := outgoing;
+                if (reached[destination]) {
+                    previous: int[] = [];
+                    if (count[destination] > 0) {
+                        previous = slice(pool, first[destination], count[destination]);
+                    }
+                    switch FallibleJoin(pending[destination], previous, outgoing, facts) {
+                        case .Evaluated(joined, ignored_lost, ignored, joined_facts):
+                            next_pending = joined;
+                            merged = joined_facts;
+                    }
+                    changed = pending[destination] != next_pending || !FallibleSame(previous, merged);
+                }
+                if (changed) {
+                    reached[destination] = true;
+                    pending[destination] = next_pending;
+                    first[destination] = length(pool);
+                    count[destination] = length(merged);
+                    pool.extend(merged);
+                    work.append(destination);
+                }
+            }
+        }
+    }
+    return lost;
+}
+
+// Resolved call facts come from emission, including calls into imported source
+// packages. No native source analyzer or spelling-based error inference runs.
+FallibleBody :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], callables: Callable[],
+                 params: Param[], types: TypeDecl[], callable: Callable, facts: SemanticFact[], generated_query: bool) -> syntax.Diagnostic[] {
+    sources: SemanticFact[] = [];
+    for (fact in facts) {
+        if (fact.kind == CallFact && Is(forest, fact.node, syntax.CallExpression) &&
+            fact.target >= 0 && fact.target < length(callables)) {
+            producer := callables[fact.target];
+            if (ErrorResult(types, params, producer)) {
+                if (producer.waits) {
+                    return [Diagnose(forest, fact.node, callable.document,
+                                     "Task error result checking is not supported by stage one yet")];
+                }
+                duplicate := false;
+                for (source in sources) {
+                    duplicate = duplicate || source.node == fact.node;
+                }
+                if (!duplicate) {
+                    sources.append(fact);
+                }
+            }
+        }
+    }
+    if (length(sources) == 0) {
+        return [];
+    }
+    // A generated system-query evaluator retains the system's source node,
+    // but executes its header rather than that node's authored body.
+    if (generated_query || Field(forest, callable.node, syntax.FieldBody) < 0) {
+        return [Diagnose(forest, sources[0].node, callable.document,
+                         "Error result checking requires an authored function body in stage one")];
+    }
+    text := documents[callable.document].text;
+    bindings := FallibleBindings(forest, text, callable);
+    names := FallibleResolveNames(forest, text, bindings, Field(forest, callable.node, syntax.FieldBody));
+    nodes: FallibleNode[] = [{statement: -1, first: -1, second: -1, guard: true}];
+    start: int = 0;
+    switch FallibleBuildGraph(forest, text, Field(forest, callable.node, syntax.FieldBody), 0, 0, 0, nodes) {
+        case .Built(built, head):
+            nodes = built;
+            start = head;
+    }
+    // Gotos resolve once all label nodes exist, preserving ordinary control flow.
+    for (node, index in nodes) {
+        if (Is(forest, node.statement, syntax.GotoStatement)) {
+            name := Text(forest, text, Field(forest, node.statement, syntax.FieldName));
+            for (label, target in nodes) {
+                if (Is(forest, label.statement, syntax.LabelStatement) &&
+                    Text(forest, text, Field(forest, label.statement, syntax.FieldName)) == name) {
+                    nodes = FallibleLink(nodes, index, target, nodes[index].second);
+                }
+            }
+        }
+    }
+    for (source in sources) {
+        producer := callables[source.target];
+        error_name: string = "";
+        if (producer.results > 0) {
+            error_name = params[producer.first + producer.count + producer.results - 1].name;
+        }
+        if (FallibleOutcome(forest, text, callable, bindings, names, nodes, start, source.node, error_name, producer.results > 1)) {
+            return [Diagnose(forest, source.node, callable.document,
+                             "Error result is ignored on a reachable path; check, report, store or return it")];
+        }
+    }
+    return [];
+}

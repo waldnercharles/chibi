@@ -1,0 +1,94 @@
+package source_format_tests
+
+import format "project:source_format"
+import strings "core:strings"
+
+@test
+LogicalParagraphsSeparateValidationComputationAndOutput :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nwidth := ReadWidth();\nheight := ReadHeight();\nif width <= 0 { return; }\nif height <= 0 { return; }\narea := width * height;\nperimeter := 2 * (width + height);\nPrintArea(area);\nPrintPerimeter(perimeter);\n}\n",
+         "package p\nMain :: () {\n    width := ReadWidth();\n    height := ReadHeight();\n    if width <= 0 {\n        return;\n    }\n    if height <= 0 {\n        return;\n    }\n\n    area := width * height;\n    perimeter := 2 * (width + height);\n\n    PrintArea(area);\n    PrintPerimeter(perimeter);\n}\n");
+}
+
+@test
+LogicalParagraphsKeepProducerChecksAndReturnsTogether :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nitem := FindItem();\nif item == none { return; }\nvalue := Compute(item);\nreturn value;\n}\n",
+         "package p\nMain :: () {\n    item := FindItem();\n    if item == none {\n        return;\n    }\n\n    value := Compute(item);\n    return value;\n}\n");
+}
+
+@test
+LogicalParagraphsRecognizeReceiverRuns :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nleft.x = 1;\nleft.y = 2;\nright.x = 3;\nright.y = 4;\n}\n",
+         "package p\nMain :: () {\n    left.x = 1;\n    left.y = 2;\n\n    right.x = 3;\n    right.y = 4;\n}\n");
+}
+
+@test
+ParagraphModesPreserveCommentsAndProtectedBytes :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    input := "package p\nMain :: () {\nfirst := Read();\n// keep attached\nsecond := Read();\n// chibi fmt: off\nodd:=  1; next:=2;\n// chibi fmt: on\narea := first * second;\nsize := first + second;\nPrint(area);\nPrint(size);\n}\n";
+    output := Run(input, options);
+    assert(strings.Contains(output, "// chibi fmt: off\nodd:=  1; next:=2;\n// chibi fmt: on"), "protected bytes remain exact");
+    assert(strings.Contains(output, "    // keep attached\n    second := Read();"), "a leading comment stays attached");
+    assert(strings.Contains(output, "    size := first + second;\n\n    Print(area);"), "unprotected computation and output still separate");
+    assert(Run(output, options) == output, "comment and protected boundaries reach a fixed point");
+}
+
+@test
+ParagraphDensityChangesSectionSizeWithoutDrift :: () {
+    pieces := ["package p\nMain :: () {\n"];
+    for (index in 0..<10) { pieces.append(format_text("value{} := {};\n", index, index)); }
+    pieces.append("}\n");
+    input := strings.Join(pieces, "");
+    compact := format.Defaults();
+    compact.statement_paragraphs = 2;
+    compact.paragraph_density = 0;
+    spacious := compact;
+    spacious.paragraph_density = 2;
+    a := Run(input, compact);
+    b := Run(input, spacious);
+    assert(strings.Count(b, "\n\n") > strings.Count(a, "\n\n"), "spacious paragraphs make smaller sections");
+    assert(Run(a, compact) == a && Run(b, spacious) == b, "density choices are fixed points");
+}
+
+@test
+SyntaxParagraphsSeparateControlOperations :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 1;
+    With(options,
+         "package p\nMain :: () {\nfirst := 1;\nsecond := 2;\nif ready { Call(); }\nnext := 3;\nlast := 4;\n}\n",
+         "package p\nMain :: () {\n    first := 1;\n    second := 2;\n\n    if ready {\n        Call();\n    }\n\n    next := 3;\n    last := 4;\n}\n");
+}
+
+@test
+ParagraphPreserveAndInlinePoliciesRemainAvailable :: () {
+    source := "package p\nMain :: () {\na := Read();\nb := Read();\nx := a * b;\ny := a + b;\nPrint(x);\nPrint(y);\n}\n";
+    plain := format.Defaults();
+    output := Run(source, plain);
+    assert(!strings.Contains(output, "\n\n"), "preserve mode does not infer sections");
+    inline := plain;
+    inline.statement_paragraphs = 2;
+    inline.keep_one_line_blocks = true;
+    With(inline, "package p\nMain :: () { a := 1; b := 2; Print(a); Print(b); }\n",
+         "package p\nMain :: () { a := 1; b := 2; Print(a); Print(b); }\n");
+}
+
+@test
+ParagraphsRemainStableAcrossLargeDeclarationRuns :: () {
+    pieces := ["package p\nMain :: () {\n"];
+    for (index in 0..<80) { pieces.append(format_text("value{} := {};\n", index, index)); }
+    pieces.append("}\n");
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    output := Run(strings.Join(pieces, ""), options);
+    assert(strings.Count(output, "\n\n") > 1, "a long declaration run receives bounded sections");
+    assert(Run(output, options) == output, "new separators do not accumulate on repeated formatting");
+}

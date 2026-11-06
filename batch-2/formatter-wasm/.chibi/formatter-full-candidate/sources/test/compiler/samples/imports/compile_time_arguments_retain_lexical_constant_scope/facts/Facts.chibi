@@ -1,0 +1,7 @@
+package facts
+import lib "project:compile_time_arguments_retain_lexical_constant_scope/lib"
+Factor :: 3;
+Scale :: (value: int, $N: int) -> int { return value * N; }
+Maybe :: (value: int, $Flag: bool) -> int { if Flag { return value; } return 0; }
+Forward :: ($Flag: bool) -> int { return Maybe(1, Flag); }
+Main :: () -> int { return Scale(2, Factor) + Maybe(4, true) + Scale(1, lib.Factor) + Forward(true); }

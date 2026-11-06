@@ -1,0 +1,10 @@
+package facts
+
+// constant number conversion of f64 overflows to infinity
+@test
+Calls :: () {
+    assert(Overflow(1.5), "1e300 becomes positive infinity");
+    assert(NegativeOverflow(1.5), "-1e300 becomes negative infinity");
+    assert(RoundToInfinity(1.5), "the halfway point past the f32 maximum rounds to infinity");
+    assert(RepresentedDouble(1.5), "f64(1e300) becomes positive infinity");
+}

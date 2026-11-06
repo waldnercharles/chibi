@@ -1,0 +1,11 @@
+package facts
+
+import lib "project:when_imports/lib"
+import target "core:target"
+
+// A `when` branch's import binds when the branch is kept; native_build's
+// RunsTheForeignSamples runs this natively too.
+@test
+Calls :: () {
+    assert(lib.Which() == target.Native, "the kept branch's import binds")
+}

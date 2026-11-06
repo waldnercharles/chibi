@@ -1,0 +1,214 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+
+// A query cursor is an invocation-owned pointer, with provenance distinct
+// from a numeric word, a managed pointer and a component reference.
+QueryCursorKind: int : 4;
+QueryCursorSlot :: (target: Target) -> Slot {
+    return {storage: target.pointer_storage, kind: QueryCursorKind};
+}
+
+// Start one independent cursor, then emit its loop head and first NEXT. The
+// caller has already popped the description. NEXT yields acceptance followed
+// by the row; a false result jumps to the pending exit before reading the row.
+// Marks are [head, exit_jump, cursor_local, row_local]. The body binds the row
+// name until the loop exits and jumps back to head after each iteration.
+QueryIteratorStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[],
+                      description: Value, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    if (!Single(description, QueryStorage) || description.record < 0 || types[description.record].kind != QueryDescriptorDecl) {
+        return Fail(forest, item.node, document, "for requires a query description");
+    }
+    if (Field(forest, item.node, "reverse") >= 0) {
+        return Fail(forest, item.node, document, "Query iteration does not support reverse order");
+    }
+    if (Field(forest, item.node, "key") >= 0) {
+        return Fail(forest, item.node, document, "Query iteration binds one row name");
+    }
+    name_node := Field(forest, item.node, "name");
+    row_type := types[description.record].parent;
+    name := Text(forest, text, name_node);
+    if (name == "") {
+        return Fail(forest, name_node, document, "Invalid string or embedded NUL");
+    }
+    code: Code[] = [];
+    slots: Slot[] = [];
+    locals: Slot[] = [{storage: target.pointer_storage, kind: QueryCursorKind}, ValueLocal(QueryStorage)];
+    cells: Cell[] = [
+        {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1, kind: AddressKind},
+        QueryCell(QueryStorage, description.record, 0),
+        {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1, kind: QueryCursorKind},
+        {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1, kind: AddressKind},
+        {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1, kind: QueryCursorKind},
+        QueryCell(BoolStorage, -1, 0),
+        QueryCell(QueryStorage, row_type, 0),
+    ];
+    hosts: Host[] = [
+        {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: QueryBeginIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+         result_count: 1, written: false},
+        {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: QueryNextIntrinsic, linked: -1, first: at.cell + 3, result_first: at.cell + 5,
+         result_count: 2, written: false},
+    ];
+
+    // BEGIN receives the description once. Saving its cursor before head
+    // means each `for` creates a new traversal of the same description.
+    slots.append(AddressSlot(target));
+    context := at.slot;
+    code.append(Instruction(ops.context, target.pointer_storage, context, 0, 0, 1, node));
+    code.extend(CellWrite(target.pointer_storage, context, at.cell, ops, target, at.slot + length(slots), node));
+    slots.append(AddressSlot(target));
+    code.extend(CellWrite(QueryStorage, description.slot, at.cell + 1, ops, target, at.slot + length(slots), node));
+    slots.append(AddressSlot(target));
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(target.pointer_storage, at.cell + 2, ops, target, at.slot + length(slots), node));
+    slots.append(AddressSlot(target));
+    slots.append(QueryCursorSlot(target));
+    code.append(Instruction(ops.save, target.pointer_storage, 0, at.slot + length(slots) - 1, 0, at.local, node));
+
+    head := at.pc + length(code);
+    code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
+    context = at.slot + length(slots);
+    slots.append(AddressSlot(target));
+    code.append(Instruction(ops.context, target.pointer_storage, context, 0, 0, 1, node));
+    code.extend(CellWrite(target.pointer_storage, context, at.cell + 3, ops, target, at.slot + length(slots), node));
+    slots.append(AddressSlot(target));
+    cursor := at.slot + length(slots);
+    slots.append(QueryCursorSlot(target));
+    code.append(Instruction(ops.local, target.pointer_storage, cursor, at.local, 0, 0, node));
+    code.extend(CellWrite(target.pointer_storage, cursor, at.cell + 4, ops, target, at.slot + length(slots), node));
+    slots.append(AddressSlot(target));
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + 1, node));
+    code.extend(CellRead(BoolStorage, at.cell + 5, ops, target, at.slot + length(slots), node));
+    slots.append(AddressSlot(target));
+    slots.append(ValueLocal(BoolStorage));
+    code.append(Instruction(ops.branch_if, 0, 0, at.slot + length(slots) - 1, 0, at.pc + length(code) + 2, node));
+    leave := at.pc + length(code);
+    code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+
+    code.extend(CellRead(QueryStorage, at.cell + 6, ops, target, at.slot + length(slots), node));
+    slots.append(AddressSlot(target));
+    slots.append(ValueLocal(QueryStorage));
+    row := at.slot + length(slots) - 1;
+    roots: Root[] = [];
+    code.append(Instruction(ops.save, QueryStorage, 0, row, 0, at.local + 1, node));
+    code.append(SymbolCode(ops, name_node, node));
+    bound: Name[] = [{owned: false, name: name, place: LocalPlace, index: at.local + 1, storage: QueryStorage,
+                      container: 0, record: row_type, writable: false, node: name_node}];
+    next: Work[] = [Visit(Field(forest, item.node, "body")), Resume(item.node, QueryIteratorEndPhase, 0, 0)];
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, [], bound, next, 0, NoValue(), NoValue(),
+                        [head, leave, at.local, at.local + 1]);
+}
+
+// END has its own argument cells, so cleanup does not depend on which NEXT
+// last ran. Loop exhaustion and break both target this step; continue targets
+// the existing loop head and leaves the cursor open.
+QueryIteratorEndStep :: (cursor_local: int, ops: Ops, target: Target, at: Bases,
+                         node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [AddressSlot(target), AddressSlot(target),
+                     {storage: target.pointer_storage, kind: QueryCursorKind}, AddressSlot(target)];
+    cells: Cell[] = [
+        {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1, kind: AddressKind},
+        {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1, kind: QueryCursorKind},
+        QueryCell(BoolStorage, -1, 0),
+    ];
+    code.append(Instruction(ops.context, target.pointer_storage, at.slot, 0, 0, 1, node));
+    code.extend(CellWrite(target.pointer_storage, at.slot, at.cell, ops, target, at.slot + 1, node));
+    code.append(Instruction(ops.local, target.pointer_storage, at.slot + 2, cursor_local, 0, 0, node));
+    code.extend(CellWrite(target.pointer_storage, at.slot + 2, at.cell + 1, ops, target, at.slot + 3, node));
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: QueryEndIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2,
+                  result_count: 1, written: false};
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    return Step.Emitted(code, slots, [], cells, [host], [], [], [], [], 0, NoValue(), NoValue(), []);
+}
+
+// A return closes active query loops from the innermost out. Ordinary loops
+// have a nonnegative index or no cursor bound and need no query cleanup.
+QueryIteratorCleanupStep :: (loops: Loop[], ops: Ops, target: Target, at: Bases,
+                             node: snapshot.SnapshotNode) -> Step {
+    code: Code[] = [];
+    slots: Slot[] = [];
+    cells: Cell[] = [];
+    hosts: Host[] = [];
+    index := length(loops) - 1;
+    while (index >= 0) {
+        loop := loops[index];
+        if (loop.each && loop.index < 0 && loop.bound >= 0) {
+            start: Bases = {pc: at.pc + length(code), slot: at.slot + length(slots), local: at.local,
+                            cell: at.cell + length(cells), host: at.host + length(hosts), call: at.call};
+            switch QueryIteratorEndStep(loop.bound, ops, target, start, node) {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                              added_calls, added_names, next, popped, produced, retained, marks):
+                    code.extend(added_code);
+                    slots.extend(added_slots);
+                    cells.extend(added_cells);
+                    hosts.extend(added_hosts);
+            }
+        }
+        index -= 1;
+    }
+    return Step.Emitted(code, slots, [], cells, hosts, [], [], [], [], 0, NoValue(), NoValue(), []);
+}
+
+QueryLoopFinish :: union {
+    Finished(code: Code[], breaks: int[], continues: int[], tail_step: Step)
+}
+QueryFinishLoop :: (input_code: Code[], breaks: int[], continues: int[], loop: Loop, ops: Ops, target: Target,
+                    at: Bases, node: snapshot.SnapshotNode) -> QueryLoopFinish {
+    code := input_code;
+    code.append(Instruction(ops.jump, 0, 0, 0, 0, loop.head, node));
+    done := code[loop.leave];
+    done.target = length(code);
+    code[loop.leave] = done;
+    at_break := loop.first_break;
+    while (at_break < length(breaks)) {
+        escape := code[breaks[at_break]];
+        escape.target = length(code);
+        code[breaks[at_break]] = escape;
+        at_break += 1;
+    }
+    at_continue := loop.first_continue;
+    while (at_continue < length(continues)) {
+        resume := code[continues[at_continue]];
+        resume.target = loop.head;
+        code[continues[at_continue]] = resume;
+        at_continue += 1;
+    }
+    end_at := at;
+    end_at.pc = length(code);
+    return QueryLoopFinish.Finished(code, slice(breaks, 0, loop.first_break), slice(continues, 0, loop.first_continue),
+                                    QueryIteratorEndStep(loop.bound, ops, target, end_at, node));
+}
+
+// Keep cleanup outside EmitBody's dispatch: each return shape supplies its
+// own instructions, but closing cursors is one shared operation.
+QueryCleanReturn :: (step: Step, loops: Loop[], ops: Ops, target: Target, at: Bases,
+                     node: snapshot.SnapshotNode) -> Step {
+    switch step {
+        case .Failed(diagnostic):
+            return Step.Failed(diagnostic);
+        case .Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, popped, produced, retained, marks):
+            finish_index: int = 0;
+            while (finish_index < length(code) && code[finish_index].op != ops.finish) {
+                finish_index += 1;
+            }
+            if (finish_index == length(code)) {
+                return step;
+            }
+            cleanup_at: Bases = {pc: at.pc + finish_index, slot: at.slot + length(slots), local: at.local + length(locals),
+                                 cell: at.cell + length(cells), host: at.host + length(hosts), call: at.call + length(calls)};
+            switch QueryIteratorCleanupStep(loops, ops, target, cleanup_at, node) {
+                case .Failed(diagnostic):
+                    return Step.Failed(diagnostic);
+                case .Emitted(clean_code, clean_slots, clean_locals, clean_cells, clean_hosts, clean_roots,
+                              clean_calls, clean_names, clean_next, clean_popped, clean_value, clean_kept, clean_marks):
+                    added_code := extend(extend(slice(code, 0, finish_index), clean_code),
+                                         slice(code, finish_index, length(code) - finish_index));
+                    return Step.Emitted(added_code, extend(slots, clean_slots), locals, extend(cells, clean_cells),
+                                        extend(hosts, clean_hosts), roots, calls, bound, next, popped, produced, retained, marks);
+            }
+    }
+}

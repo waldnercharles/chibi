@@ -1,0 +1,5 @@
+package facts
+F :: (a: int = 1, b: int) -> int { return a + b; }
+One :: () -> int { return F(); }
+
+// error: 3:27: call has the wrong number of arguments

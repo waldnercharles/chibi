@@ -1,0 +1,220 @@
+package math_types_tests
+
+import math "project:math_types"
+import tk "project:source_tokenizer"
+
+Accepts :: (result: math.Result, kind: int) {
+    switch result {
+        case .Accepted(actual):
+            assert(actual == kind, "operation result type");
+        case .Rejected(message):
+            assert(false, "operation was rejected");
+    }
+}
+Rejects :: (result: math.Result, message: string) {
+    switch result {
+        case .Accepted(kind):
+            assert(false, "invalid operation was accepted");
+        case .Rejected(actual):
+            assert(actual == message, "operation diagnostic");
+    }
+}
+Reads :: (result: math.SwizzleResult, kind: int, expected: int[]) {
+    switch result {
+        case .Accepted(actual, components):
+            assert(actual == kind, "swizzle result type");
+            assert(length(components) == length(expected), "swizzle width");
+            index: int = 0;
+            while (index < length(expected)) {
+                assert(components[index] == expected[index], "swizzle component order");
+                index += 1;
+            }
+        case .Rejected(message):
+            assert(false, "swizzle was rejected");
+    }
+}
+RejectsSwizzle :: (result: math.SwizzleResult, message: string) {
+    switch result {
+        case .Accepted(kind, components):
+            assert(false, "invalid swizzle was accepted");
+        case .Rejected(actual):
+            assert(actual == message, "swizzle diagnostic");
+    }
+}
+
+@test
+ClassifiesOnlyCanonicalMathNames :: () {
+    assert(math.Kind("number") == math.Scalar && math.Kind("f32") == math.Scalar);
+    assert(math.Kind("f64") == math.Double && math.Kind("int") == math.Integer);
+    assert(math.Kind("u64") == math.Integer && math.Kind("bool") == math.Boolean);
+    assert(math.Kind("CF_V3") == math.Unknown && math.Kind("Velocity") == math.Unknown);
+    assert(math.Kind("quat") == math.Quat && math.Kind("vec4") != math.Quat);
+    assert(math.Components(math.Mat3) == 9 && math.Width(math.Mat3) == 3);
+    assert(math.Components(math.Quat) == 4 && math.Width(math.Quat) == 0);
+}
+@test
+ConstructsSplatsConcatenationsAndMatrixDiagonals :: () {
+    assert(math.Constructor(math.Vec3, [math.Scalar], true) == "");
+    assert(math.Constructor(math.Vec4, [math.Vec3, math.Scalar], true) == "");
+    assert(math.Constructor(math.Vec4, [math.Vec2, math.Vec2], true) == "");
+    assert(math.Constructor(math.Mat3, [math.Scalar], true) == "");
+    assert(math.Constructor(math.Mat3, [math.Vec3, math.Vec3, math.Vec3], true) == "");
+    assert(math.Constructor(math.Mat2, [math.Scalar, math.Scalar, math.Scalar, math.Scalar], true) == "");
+}
+@test
+ConstructorsDoNotDropPadOrNarrowComponents :: () {
+    assert(math.Constructor(math.Vec3, [math.Vec2], true) == "vec3 needs 3 components; these arguments supply 2");
+    assert(math.Constructor(math.Vec3, [math.Vec4], true) == "vec3 needs 3 components; these arguments supply 4");
+    empty: int[] = [];
+    assert(math.Constructor(math.Mat4, empty, true) == "mat4 needs 16 components; these arguments supply 0");
+    assert(math.Constructor(math.Vec2, [math.Scalar, math.Double], true) == "math components require explicit f32(value) narrowing from f64");
+    assert(math.Constructor(math.Vec2, [math.Integer], true) == "math components need a resolved f32 value; convert the integer with f32(value)");
+    assert(math.Constructor(math.Vec2, [math.Scalar], false) == "built-in math constructors take positional arguments");
+}
+@test
+QuaternionConstructionIsDistinctFromVectorConstruction :: () {
+    assert(math.Constructor(math.Quat, [math.Scalar, math.Scalar, math.Scalar, math.Scalar], true) == "");
+    assert(math.Constructor(math.Quat, [math.Vec4], true) == "quat takes four f32 components in x, y, z, w order");
+    assert(math.Constructor(math.Quat, [math.Scalar], true) == "quat needs 4 components; these arguments supply 1");
+    assert(math.Constructor(math.Vec4, [math.Quat], true) == "vector and matrix constructors take f32 scalars and vectors");
+}
+@test
+ScalarBroadcastPreservesVectorWidthOnEitherSide :: () {
+    Accepts(math.Binary(tk.Add, math.Scalar, math.Vec2), math.Vec2);
+    Accepts(math.Binary(tk.Sub, math.Scalar, math.Vec3), math.Vec3);
+    Accepts(math.Binary(tk.Quo, math.Scalar, math.Vec4), math.Vec4);
+    Accepts(math.Binary(tk.Mul, math.Vec2, math.Scalar), math.Vec2);
+    Accepts(math.Binary(tk.Sub, math.Vec3, math.Vec3), math.Vec3);
+    Rejects(math.Binary(tk.Add, math.Vec2, math.Vec3), "cannot apply + to vec2 and vec3");
+}
+@test
+MatrixProductsUseColumnVectorsOfTheSameDimension :: () {
+    Accepts(math.Binary(tk.Mul, math.Mat2, math.Vec2), math.Vec2);
+    Accepts(math.Binary(tk.Mul, math.Mat3, math.Mat3), math.Mat3);
+    Accepts(math.Binary(tk.Mul, math.Mat4, math.Vec4), math.Vec4);
+    Rejects(math.Binary(tk.Mul, math.Mat3, math.Vec2), "cannot apply * to mat3 and vec2");
+    Rejects(math.Binary(tk.Mul, math.Vec3, math.Mat3), "a matrix multiplies a column vector on its right; write matrix * vector");
+    Rejects(math.Binary(tk.Mul, math.Mat4, math.Mat3), "cannot apply * to mat4 and mat3");
+}
+@test
+MatricesScaleButDoNotBroadcastScalarAdditionOrDivision :: () {
+    Accepts(math.Binary(tk.Mul, math.Scalar, math.Mat2), math.Mat2);
+    Accepts(math.Binary(tk.Quo, math.Mat3, math.Scalar), math.Mat3);
+    Accepts(math.Binary(tk.Add, math.Mat4, math.Mat4), math.Mat4);
+    Rejects(math.Binary(tk.Add, math.Mat2, math.Scalar), "cannot apply + to mat2 and number");
+    Rejects(math.Binary(tk.Quo, math.Scalar, math.Mat2), "cannot apply / to number and mat2");
+    Rejects(math.Binary(tk.Quo, math.Mat3, math.Mat3), "cannot apply / to mat3 and mat3");
+}
+@test
+QuaternionsComposeAndRotateWithoutVectorBroadcast :: () {
+    Accepts(math.Binary(tk.Mul, math.Quat, math.Quat), math.Quat);
+    Accepts(math.Binary(tk.Mul, math.Quat, math.Vec3), math.Vec3);
+    assert(math.BinaryRecoverable(tk.Mul, math.Quat, math.Vec3), "rotation must report an invalid quaternion");
+    assert(!math.BinaryRecoverable(tk.Mul, math.Quat, math.Quat), "composition uses ordinary f32 arithmetic");
+    Rejects(math.Binary(tk.Mul, math.Vec3, math.Quat), "quat supports quaternion composition and quat * vec3 rotation");
+    Rejects(math.Binary(tk.Add, math.Quat, math.Quat), "quat supports quaternion composition and quat * vec3 rotation");
+    Rejects(math.Binary(tk.Mul, math.Quat, math.Scalar), "quat supports quaternion composition and quat * vec3 rotation");
+}
+@test
+EqualityReturnsBoolAndOrderingNeedsComponents :: () {
+    Accepts(math.Binary(tk.CmpEq, math.Vec3, math.Vec3), math.Boolean);
+    Accepts(math.Binary(tk.NotEq, math.Mat4, math.Mat4), math.Boolean);
+    Accepts(math.Binary(tk.CmpEq, math.Quat, math.Quat), math.Boolean);
+    Rejects(math.Binary(tk.CmpEq, math.Vec3, math.Vec4), "math equality requires operands of the same built-in type");
+    Rejects(math.Binary(tk.Lt, math.Vec2, math.Vec2), "math values support + - * / == and !=; compare components instead");
+    Rejects(math.Binary(tk.Mod, math.Vec2, math.Vec2), "math values support + - * / == and !=; compare components instead");
+}
+@test
+DoublePrecisionNeedsAnExplicitConversionBeforeMath :: () {
+    Rejects(math.Binary(tk.Mul, math.Vec3, math.Double), "math components require explicit f32(value) narrowing from f64");
+    Rejects(math.Binary(tk.Add, math.Double, math.Vec4), "math components require explicit f32(value) narrowing from f64");
+}
+@test
+UnaryNegationKeepsVectorAndMatrixTypes :: () {
+    Accepts(math.Negate(math.Vec2), math.Vec2);
+    Accepts(math.Negate(math.Mat4), math.Mat4);
+    Rejects(math.Negate(math.Quat), "unary math negation needs a vector or matrix");
+}
+@test
+SwizzleReadsPreserveOrderAndPermitRepeatedComponents :: () {
+    Reads(math.Swizzle(math.Vec4, "wzyx", false), math.Vec4, [3, 2, 1, 0]);
+    Reads(math.Swizzle(math.Vec3, "rgb", false), math.Vec3, [0, 1, 2]);
+    Reads(math.Swizzle(math.Vec2, "xxxx", false), math.Vec4, [0, 0, 0, 0]);
+    Reads(math.Swizzle(math.Vec2, "g", false), math.Scalar, [1]);
+}
+@test
+WritableSwizzlesRejectRepeatedDestinations :: () {
+    Reads(math.Swizzle(math.Vec2, "yx", true), math.Vec2, [1, 0]);
+    Reads(math.Swizzle(math.Vec4, "bgra", true), math.Vec4, [2, 1, 0, 3]);
+    RejectsSwizzle(math.Swizzle(math.Vec3, "xyx", true), "a writable swizzle cannot repeat a destination component");
+    RejectsSwizzle(math.Swizzle(math.Vec4, "rr", true), "a writable swizzle cannot repeat a destination component");
+}
+@test
+SwizzleDiagnosticsExplainTheSourceRule :: () {
+    RejectsSwizzle(math.Swizzle(math.Vec3, "xr", false), "a swizzle cannot mix xyzw and rgba components");
+    RejectsSwizzle(math.Swizzle(math.Vec2, "xz", false), "vec2 has no component 'z'");
+    RejectsSwizzle(math.Swizzle(math.Vec3, "a", false), "vec3 has no component 'a'");
+    RejectsSwizzle(math.Swizzle(math.Vec4, "", false), "a swizzle needs one to four components");
+    RejectsSwizzle(math.Swizzle(math.Vec4, "xyzww", false), "a swizzle needs one to four components");
+    RejectsSwizzle(math.Swizzle(math.Vec4, "xy_", false), "swizzles use xyzw or rgba components");
+    RejectsSwizzle(math.Swizzle(math.Quat, "xy", false), "swizzles require a vector");
+}
+
+@test
+MemberwiseFunctionsBroadcastWithoutNarrowing :: () {
+    Accepts(math.Function("sin", [math.Vec3]), math.Vec3);
+    Accepts(math.Function("min", [math.Scalar, math.Vec4]), math.Vec4);
+    Accepts(math.Function("smoothstep", [math.Scalar, math.Scalar, math.Vec2]), math.Vec2);
+    Accepts(math.Function("clamp", [math.Vec3, math.Scalar, math.Scalar]), math.Vec3);
+    Rejects(math.Function("mix", [math.Vec2, math.Vec3, math.Scalar]), "memberwise math operands differ in vector width");
+    Rejects(math.Function("sin", [math.Double]), "math components require explicit f32(value) narrowing from f64");
+    Rejects(math.Function("sqrt", [math.Mat2]), "memberwise math functions take f32 scalars and vectors");
+    Rejects(math.Function("step", [math.Vec2]), "step needs 2 arguments");
+}
+
+@test
+GeometricFunctionsHaveSpecificDimensions :: () {
+    Accepts(math.Function("length", [math.Vec4]), math.Scalar);
+    Accepts(math.Function("dot", [math.Vec2, math.Vec2]), math.Scalar);
+    Accepts(math.Function("cross", [math.Vec3, math.Vec3]), math.Vec3);
+    Accepts(math.Function("refract", [math.Vec4, math.Vec4, math.Scalar]), math.Vec4);
+    Rejects(math.Function("cross", [math.Vec2, math.Vec2]), "cross takes two vec3 operands");
+    Rejects(math.Function("dot", [math.Vec3, math.Vec4]), "dot takes two vectors of one width");
+    Rejects(math.Function("normalize_or", [math.Vec3, math.Vec2]), "normalize_or takes two vectors of one width");
+    Rejects(math.Function("refract", [math.Vec3, math.Vec3, math.Double]), "refract takes two vectors of one width and an f32 ratio");
+}
+
+@test
+MatrixAndQuaternionFunctionsKeepDistinctTypes :: () {
+    Accepts(math.Function("transpose", [math.Mat3]), math.Mat3);
+    Accepts(math.Function("determinant", [math.Mat4]), math.Scalar);
+    Accepts(math.Function("inverse", [math.Mat2]), math.Mat2);
+    Accepts(math.Function("matrix_comp_mult", [math.Mat3, math.Mat3]), math.Mat3);
+    Accepts(math.Function("quat_conjugate", [math.Quat]), math.Quat);
+    Rejects(math.Function("inverse", [math.Vec4]), "inverse takes one matrix");
+    Rejects(math.Function("quat_normalize", [math.Vec4]), "quat_normalize takes one quaternion");
+    assert(math.Recoverable("inverse") && math.Recoverable("normalize") && math.Recoverable("quat_normalize"));
+    assert(math.Recoverable("normalize_or") && !math.Recoverable("normalize_or_zero"));
+}
+
+// Entry for the authored stage-one build host, which calls an int result.
+pub Check :: () -> int {
+    ClassifiesOnlyCanonicalMathNames();
+    ConstructsSplatsConcatenationsAndMatrixDiagonals();
+    ConstructorsDoNotDropPadOrNarrowComponents();
+    QuaternionConstructionIsDistinctFromVectorConstruction();
+    ScalarBroadcastPreservesVectorWidthOnEitherSide();
+    MatrixProductsUseColumnVectorsOfTheSameDimension();
+    MatricesScaleButDoNotBroadcastScalarAdditionOrDivision();
+    QuaternionsComposeAndRotateWithoutVectorBroadcast();
+    EqualityReturnsBoolAndOrderingNeedsComponents();
+    DoublePrecisionNeedsAnExplicitConversionBeforeMath();
+    UnaryNegationKeepsVectorAndMatrixTypes();
+    SwizzleReadsPreserveOrderAndPermitRepeatedComponents();
+    WritableSwizzlesRejectRepeatedDestinations();
+    SwizzleDiagnosticsExplainTheSourceRule();
+    MemberwiseFunctionsBroadcastWithoutNarrowing();
+    GeometricFunctionsHaveSpecificDimensions();
+    MatrixAndQuaternionFunctionsKeepDistinctTypes();
+    return 0;
+}

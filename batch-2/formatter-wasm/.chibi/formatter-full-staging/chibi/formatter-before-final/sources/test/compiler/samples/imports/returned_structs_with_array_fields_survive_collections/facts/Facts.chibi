@@ -1,0 +1,5 @@
+package facts
+Pair :: struct { a: int; b: int; }
+Bundle :: struct { codes: int[]; pairs: Pair[]; tail: Pair; }
+Make :: (n: int) -> Bundle { p: Pair = {a: n, b: n + 1}; return {codes: [n, n + 1, n + 2], pairs: [p, p], tail: p}; }
+Main :: () -> int { total := 0; i := 0; while i < 400000 { b := Make(i); total += b.codes[2] - b.pairs[1].b + b.tail.a - i; i += 1; } return total; }

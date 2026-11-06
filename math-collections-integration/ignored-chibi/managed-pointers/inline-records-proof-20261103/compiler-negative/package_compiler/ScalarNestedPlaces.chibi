@@ -1,0 +1,136 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+
+// Two array levels retain the ordinary interned wrapper identity. Pointer,
+// nominal and aggregate leaves wait for their own writable-place proofs.
+ScalarNestedPlaceShape :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                           names: Name[], types: TypeDecl[], members: TypeMember[], package: int, place: int) -> ValueType {
+    none: ValueType = {storage: 0, container: 0, record: -1};
+    object := Unparenthesized(forest, Field(forest, place, syntax.FieldObject));
+    if (!Is(forest, place, syntax.IndexExpression) || !Is(forest, object, syntax.Identifier) ||
+        Is(forest, Field(forest, place, syntax.FieldIndex), syntax.RangeExpression)) { return none; }
+    outer := ScalarArrayShape(forest, text, callables, params, names, types, members, package, object);
+    if (outer.record < 0 || outer.record >= length(types) || !ScalarNestedCollection(types[outer.record])) { return none; }
+    inner := SequenceElement(types, outer);
+    if (inner.container != ArrayContainer || inner.record >= 0 ||
+        (!Numeric(inner.storage) && inner.storage != BoolStorage && inner.storage != TextStorage)) { return none; }
+    return outer;
+}
+
+// Both source writes reload the current root through the saved outer index.
+// Methods resolve only after their arguments; bracket writes also check the
+// initial complete place before the RHS and keep the old compound leaf.
+ScalarNestedAssigned :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                         callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[],
+                         statement: int, next_variable: ^int) -> ScalarOperands {
+    method := Is(forest, statement, syntax.ExpressionStatement);
+    destination := Unparenthesized(forest, Field(forest, statement, syntax.FieldTarget));
+    place := Unparenthesized(forest, Field(forest, destination, syntax.FieldObject));
+    call := FirstMember(forest, statement);
+    if (method) { place = Unparenthesized(forest, Field(forest, Field(forest, call, syntax.FieldFunction), syntax.FieldObject)); }
+    outer := ScalarNestedPlaceShape(forest, text, callables, params, names, types, members, callable.package, place);
+    if (outer.storage == 0 || (!method && !Is(forest, destination, syntax.IndexExpression))) {
+        return ScalarOperands.Failed(Diagnose(forest, statement, 0,
+            "native nested array writes require two array levels with non-nominal numeric, bool or string elements"));
+    }
+    object := Unparenthesized(forest, Field(forest, place, syntax.FieldObject));
+    binding := ScalarVariable(names, Text(forest, text, object));
+    inner := SequenceElement(types, outer);
+    outer_type := ScalarArrayType(types, outer.storage, outer.record);
+    inner_type := ScalarArrayType(types, inner.storage, inner.record);
+    value_type := ScalarTypeOf(inner.storage);
+    rows := [ScalarAt(forest, statement, facts.ScopeRow, 0, 0, 0, "")];
+    variables := next_variable^;
+    index := variables;
+    index_node := Field(forest, place, syntax.FieldIndex);
+    switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                          index_node, index_node, IntStorage, IntStorage, facts.Clamp, []) {
+        case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+        case .Built(built): rows.extend(ScalarCapture(forest, statement, facts.IntType, variables, built));
+    }
+    variables += 1;
+    arguments: facts.Row[] = [];
+    operator := facts.ArraySet;
+    count := 4;
+    inner_index := -1;
+    if (method) {
+        changed := ScalarChangeKind(forest, text, statement);
+        operator = changed;
+        inputs := Members(forest, Field(forest, call, syntax.FieldArguments));
+        count = 2 + length(inputs);
+        for (input, ordinal in inputs) {
+            value := ScalarArrayArgumentNode(forest, input);
+            type := facts.IntType;
+            prepared := ScalarOperands.Built([]);
+            if (changed == facts.ArrayExtend) { type = inner_type; }
+            if (changed == facts.ArrayPush || ((changed == facts.ArrayInsert || changed == facts.ArrayReplace) && ordinal == 1)) {
+                type = value_type;
+                prepared = ScalarArrayElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                                   value, inner, []);
+            } else {
+                prepared = ScalarArrayArgument(forest, text, callables, params, callable, names, types, members, constants,
+                                               value, inner, changed, []);
+            }
+            switch prepared {
+                case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+                case .Built(built): rows.extend(ScalarCapture(forest, statement, type, variables, built));
+            }
+            arguments.append(ScalarAt(forest, statement, facts.ReadRow, type, variables, 0, ""));
+            variables += 1;
+        }
+    } else {
+        inner_index = variables;
+        inner_node := Field(forest, destination, syntax.FieldIndex);
+        switch ScalarConvert(forest, text, callables, params, callable, names, types, members, constants,
+                              inner_node, inner_node, IntStorage, IntStorage, facts.Clamp, []) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): rows.extend(ScalarCapture(forest, statement, facts.IntType, variables, built));
+        }
+        variables += 1;
+        compound := ScalarArithmetic(CompoundOperator(Operator(forest, statement)));
+        if (compound != 0 && !Numeric(inner.storage)) {
+            return ScalarOperands.Failed(Diagnose(forest, destination, 0, "native array compound assignment requires a numeric value"));
+        }
+        wrapper_type := ScalarElementType(types, outer);
+        initial := [ScalarAt(forest, statement, facts.ReadRow, outer_type, binding.index, 0, ""),
+                    ScalarAt(forest, statement, facts.ReadRow, facts.IntType, index, 0, ""),
+                    ScalarAt(forest, place, facts.ArrayRow, wrapper_type, facts.ArrayPlaceGet, 2, ""),
+                    ScalarAt(forest, place, facts.FieldRow, inner_type, 0, 1, "")];
+        initial.append(ScalarAt(forest, statement, facts.ReadRow, facts.IntType, inner_index, 0, ""));
+        checked_type := facts.BoolType;
+        check := facts.ArrayPlaceCheck;
+        if (compound != 0) { checked_type = value_type; check = facts.ArrayPlaceGet; }
+        initial.append(ScalarAt(forest, destination, facts.ArrayRow, checked_type, check, 2, ""));
+        previous := variables;
+        rows.extend(ScalarCapture(forest, statement, checked_type, variables, initial));
+        variables += 1;
+        incoming: facts.Row[] = [];
+        if (compound != 0) { incoming.append(ScalarAt(forest, statement, facts.ReadRow, value_type, previous, 0, "")); }
+        switch ScalarElementValue(forest, text, callables, params, callable, names, types, members, constants,
+                                   Field(forest, statement, syntax.FieldValue), SequenceElement(types, inner), incoming) {
+            case .Failed(diagnostic): return ScalarOperands.Failed(diagnostic);
+            case .Built(built): incoming = built;
+        }
+        if (compound != 0) { incoming.append(ScalarAt(forest, statement, facts.ArithmeticRow, value_type, compound, 2, "")); }
+        rows.extend(ScalarCapture(forest, statement, value_type, variables, incoming));
+        arguments.extend([ScalarAt(forest, statement, facts.ReadRow, facts.IntType, inner_index, 0, ""),
+                          ScalarAt(forest, statement, facts.ReadRow, value_type, variables, 0, "")]);
+        variables += 1;
+    }
+    // The backend resolves and uniques the outer backing only after every
+    // source effect. Its inner descriptor reference is consumed immediately.
+    changed := [ScalarAt(forest, statement, facts.RefRow, outer_type, binding.index, 0, ""),
+                ScalarAt(forest, statement, facts.ReadRow, facts.IntType, index, 0, "")];
+    changed.extend(arguments);
+    write := ScalarAt(forest, statement, facts.ArrayRow, outer_type, operator, count, "");
+    write.literal = i64(facts.NestedArrayPlace);
+    changed.append(write);
+    rows.append(ScalarAt(forest, statement, facts.AssignRow, outer_type, binding.index, length(changed), ""));
+    rows.extend(changed);
+    rows.append(ScalarAt(forest, statement, facts.EndRow, 0, 0, 0, ""));
+    next_variable^ = variables;
+    return ScalarOperands.Built(rows);
+}

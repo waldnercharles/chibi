@@ -1,0 +1,95 @@
+package source_type_style
+
+import compiler "project:package_compiler"
+import catalog "project:compiler_catalog"
+import strings "core:strings"
+
+pub Preserve: int : 0;
+pub OmitRedundant: int : 1;
+pub Explicit: int : 2;
+
+pub Result :: union {
+    Rewritten(text: string, changed: int, skipped: int, notes: string)
+    | Rejected(message: string)
+}
+
+// Default context is one self-contained source. Supplying project documents
+// through RewriteProject enables the ordinary compiler's import resolution.
+pub Rewrite :: (source: string, mode: int) -> Result {
+    return RewriteProject(source, mode, "/formatter", [], [], ["/formatter/Main.chibi"], [source]);
+}
+
+// The first source is the edited document. Dependency documents are borrowed
+// unchanged. The compiler checks all proposed edits together, exactly twice,
+// rather than compiling the program once per annotation.
+pub RewriteProject :: (source: string, mode: int, project: string, collection_names: string[],
+                       collection_paths: string[], paths: string[], sources: string[]) -> Result {
+    if (mode < Preserve || mode > Explicit) { return Result.Rejected("Invalid binding type policy"); }
+    if (mode == Preserve || strings.TrimSpace(source) == "") { return Result.Rewritten(source, 0, 0, ""); }
+    if (length(paths) == 0 || length(paths) != length(sources)) {
+        return Result.Rejected("Type style requires matching source paths and documents");
+    }
+    input := sources;
+    input[0] = source;
+    switch compiler.AnalyzeSources(project, collection_names, collection_paths, paths, input,
+                                   catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities()) {
+        case .Rejected(diagnostic):
+            return Result.Rewritten(source, 0, 0,
+                format_text("Type style was not applied: document {} at {}:{}: {}. Layout is still available.",
+                            diagnostic.document, diagnostic.line, diagnostic.column, diagnostic.message));
+        case .Analyzed(sites, signature):
+            pieces: string[] = [];
+            at: int = 0;
+            changed: int = 0;
+            skipped: int = 0;
+            for (site in sites) {
+                if (site.document != 0 || (mode == Explicit && site.declared) ||
+                    (mode == OmitRedundant && !site.declared)) { continue; }
+                gap := strings.Slice(source, site.name_end, site.value_start - site.name_end);
+                // An annotation can contain an attached comment. Moving or
+                // discarding that comment is not part of the type policy.
+                if (site.spelling == "" || (mode == OmitRedundant && !site.can_omit) ||
+                    strings.Contains(gap, "//") || strings.Contains(gap, "/*")) {
+                    skipped += 1;
+                    continue;
+                }
+                pieces.append(strings.Slice(source, at, site.name_end - at));
+                if (mode == Explicit) {
+                    if (site.constant) { pieces.append(format_text(": {} : ", site.spelling)); }
+                    else { pieces.append(format_text(": {} = ", site.spelling)); }
+                } else {
+                    if (site.constant) { pieces.append(" :: "); }
+                    else { pieces.append(" := "); }
+                }
+                at = site.value_start;
+                changed += 1;
+            }
+            if (changed == 0) {
+                notes := "";
+                if (skipped > 0) {
+                    notes = format_text("Type style left {} binding(s) unchanged because their contextual/generic/anonymous type or attached comment cannot be rewritten safely.", skipped);
+                }
+                return Result.Rewritten(source, 0, skipped, notes);
+            }
+            pieces.append(strings.Slice(source, at, strings.ByteLength(source) - at));
+            rewritten := strings.Concatenate(pieces);
+            input[0] = rewritten;
+            switch compiler.AnalyzeSources(project, collection_names, collection_paths, paths, input,
+                                           catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities()) {
+                case .Rejected(diagnostic):
+                    return Result.Rewritten(source, 0, skipped + changed,
+                        format_text("Type style kept the original {} candidate binding(s): the rewrite failed compiler validation at {}:{}: {}.",
+                                    changed, diagnostic.line, diagnostic.column, diagnostic.message));
+                case .Analyzed(next_sites, next_signature):
+                    if (!compiler.SameSemantics(signature, next_signature)) {
+                        return Result.Rewritten(source, 0, skipped + changed,
+                            format_text("Type style kept the original {} candidate binding(s): the compiler could not prove an unchanged typed representation, including generated identities, conversions, signatures and lifetimes.", changed));
+                    }
+                    notes := "";
+                    if (skipped > 0) {
+                        notes = format_text("Type style changed {} binding(s); {} contextual/generic/anonymous or commented binding(s) were preserved.", changed, skipped);
+                    }
+                    return Result.Rewritten(rewritten, changed, skipped, notes);
+            }
+    }
+}

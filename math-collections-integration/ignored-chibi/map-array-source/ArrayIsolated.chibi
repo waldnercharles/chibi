@@ -1,0 +1,134 @@
+package map_array_payload
+
+Main :: () -> int {
+    for (round in 0..<64) {
+        basic := Basic();
+        assert(basic == 229);
+        Copies();
+        Places();
+        Calls();
+        Iteration();
+        StringKeys();
+        LiteralValues();
+        skipped := false && length(Make()[1]) == 2;
+        taken := true && length(Make()[1]) == 2;
+        assert(!skipped && taken);
+    }
+    return 0;
+}
+Basic :: () -> int {
+    original: [int: int[]] = [1: [2, 3]];
+    copied := original;
+    copied[1].append(4);
+    copied[2] = [9];
+    delete copied[1];
+    return original[1].length() * 100 + original[1][0] * 10 + copied[2][0];
+}
+Copies :: () {
+    original: [int: int[]] = [1: [11, 12], 2: [21]];
+    copied := original;
+    copied[1][0] = 31;
+    copied[1].append(33);
+    copied[1].extend(copied[1]);
+    assert(copied[1].length() == 6 && copied[1][3] == 31);
+    copied[1].remove_index(1);
+    assert(copied[1].length() == 5 && copied[1][1] == 33);
+    copied[1].resize(7);
+    assert(copied[1][5] == 0 && copied[1][6] == 0);
+    copied[1].resize(1);
+    copied[1].remove_index(99);
+    copied[1].extend([41, 42]);
+    assert(original[1].length() == 2 && original[1][0] == 11 && copied[1][2] == 42);
+    escaped := copied[1];
+    copied[1][0] = 99;
+    assert(escaped[0] == 31);
+    escaped.append(88);
+    assert(escaped.length() == 4 && copied[1].length() == 3);
+    empty := copied[99];
+    assert(empty.length() == 0);
+}
+ResetKey :: (values: ^([int: int[]])) -> int { values^ = [1: [20], 2: [30]]; return 1; }
+ResetIndex :: (values: ^([int: int[]])) -> int { values^ = [1: [20], 2: [30]]; return 0; }
+ResetValue :: (values: ^([int: int[]])) -> int { values^ = [1: [20], 2: [30]]; return 7; }
+CountKey :: (values: ^([int: int[]]), calls: ^int) -> int {
+    calls^ += 1;
+    return ResetKey(values);
+}
+Places :: () {
+    values: [int: int[]] = [1: [11]];
+    before_key := values[ResetKey(&values)];
+    assert(before_key[0] == 11 && values[1][0] == 20);
+    values = [1: [11]];
+    before_index := values[1][ResetIndex(&values)];
+    assert(before_index == 11 && values[1][0] == 20);
+    values[1].append(ResetValue(&values));
+    assert(values[1][0] == 20 && values[1][1] == 7);
+    values[1][ResetIndex(&values)] = 9;
+    assert(values[1][0] == 9 && values[2][0] == 30);
+    calls: int = 0;
+    values[CountKey(&values, &calls)].append(ResetValue(&values));
+    assert(calls == 1 && values[1].length() == 2 && values[1][1] == 7);
+    aliased := Scoped(&values, &values);
+    assert(aliased == 207);
+}
+Scoped :: (read: ^([int: int[]]), changed: ^([int: int[]])) -> int {
+    read^[1].append(ResetValue(changed));
+    return read^[1].length() * 100 + read^[1][1];
+}
+Make :: () -> [int: int[]] { return [1: [11, 12]]; }
+Read :: (values: [int: int[]]) -> int[] { return values[1]; }
+Change :: (values: [int: int[]]) -> int { values[1].append(99); return values[1].length(); }
+Calls :: () {
+    values := Make();
+    changed := Change(values);
+    assert(changed == 3 && values[1].length() == 2);
+    read := Read(values);
+    read[0] = 77;
+    assert(values[1][0] == 11);
+    escaped := Make()[1];
+    assert(escaped.length() == 2 && escaped[1] == 12);
+}
+Iteration :: () {
+    values: [int: int[]] = [1: [1, 2], 2: [3], 3: [4, 5]];
+    total: int = 0;
+    for (key, item in values) {
+        for (number in item) {
+            if (number == 2) { continue; }
+            if (number == 5) { break; }
+            total += number;
+        }
+        if (key == 1) { values[2] = [9]; delete values[3]; }
+    }
+    assert(total == 8 && values[2][0] == 9 && !values.has(3));
+    early: int = 0;
+    for (item in Make()) { early += item[0]; break; }
+    assert(early == 11);
+}
+Key :: (value: int) -> string { return text_from_bytes([u8(65), 0, u8(value)]); }
+ChangeKey :: (key: ^string) -> int { key^ = Key(2); return 7; }
+StringKeys :: () {
+    key := Key(1);
+    original: [string: int[]] = [key: [11]];
+    copied := original;
+    copied[key].append(ChangeKey(&key));
+    assert(key == Key(2) && original[Key(1)].length() == 1);
+    assert(copied[Key(1)].length() == 2 && copied[Key(1)][1] == 7);
+}
+ResetArray :: (values: ^([int: int[]])) -> int[] { values^ = [1: [20]]; return [7]; }
+LiteralValues :: () {
+    original: [int: int[]] = [1: [11]];
+    copied: [int: int[]] = [1: original[1], 1: ResetArray(&original)];
+    assert(copied[1][0] == 7 && original[1][0] == 20);
+}
+
+EntryCopies :: () -> int { Copies(); return 0; }
+
+EntryPlaces :: () -> int { Places(); return 0; }
+
+EntryCalls :: () -> int { Calls(); return 0; }
+
+EntryIteration :: () -> int { Iteration(); return 0; }
+
+EntryStringKeys :: () -> int { StringKeys(); return 0; }
+
+EntryLiteralValues :: () -> int { LiteralValues(); return 0; }

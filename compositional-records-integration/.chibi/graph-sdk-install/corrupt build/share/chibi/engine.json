@@ -1,0 +1,3 @@
+{"sdk_version": "0.1.0", "system": "Darwin", "processors": ["arm64"], "backends": ["native"], "project_version": 39, "artifact_formats": {
+"execution": {"version": 28, "source": "tools/compiler/prepared_writer/Writer.chibi", "sha256": "b4c8d6bbf652c9416def9dbee2a2d8d3ab9c2a389e7cb386ceef9cb21868659d"}
+}}

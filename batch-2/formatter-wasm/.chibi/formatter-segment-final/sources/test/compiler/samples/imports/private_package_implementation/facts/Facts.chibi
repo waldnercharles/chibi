@@ -1,0 +1,5 @@
+package facts
+import lib "project:private_package_implementation/lib"
+One :: () -> int { return Helper(3) + lib.Value(3) + lib.Make(3).x; }
+Shadow :: (lib: Local) -> int { return lib.Hidden; }
+Local :: struct { Hidden: int; }

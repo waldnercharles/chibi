@@ -1,0 +1,6 @@
+package facts
+
+@test
+Calls :: () {
+    assert(Read() == 187, "nullable pointer locals keep presence and aliases");
+}

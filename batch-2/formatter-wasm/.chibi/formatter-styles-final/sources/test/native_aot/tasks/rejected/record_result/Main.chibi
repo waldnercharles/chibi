@@ -1,0 +1,10 @@
+package task_record_result_rejection
+Pair :: struct { left: int; right: bool; }
+Main :: () -> int {
+    pending := Worker();
+    await pending
+    return 0;
+}
+Worker :: () -> Pair { yield
+    return {left: 7, right: true};
+}

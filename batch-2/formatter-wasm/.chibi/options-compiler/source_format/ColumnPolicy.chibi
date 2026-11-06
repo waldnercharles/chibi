@@ -1,0 +1,31 @@
+package source_format
+import strings "core:strings"
+AlignmentColumnPolicy :: (text: string) -> (bits: u64, error: string) {
+    if (strings.TrimSpace(text) == "") { return (u64(0), ""); }
+    parts := strings.Split(text, ",");
+    if (length(parts) > 32) {
+        return (u64(0), "data_column_alignment accepts at most 32 columns");
+    }
+    bits: u64 = 0;
+    for (index in 0..<length(parts)) {
+        value := strings.TrimSpace(parts[index]);
+        mode: u64 = 0;
+        if (value == "left") { mode = 1; }
+        else if (value == "right") { mode = 2; }
+        else if (value != "auto") {
+            return (u64(0), "data_column_alignment uses auto, left or right separated by commas");
+        }
+        bits = bits | (mode << u64(index * 2));
+    }
+    return (bits, "");
+}
+
+ValidAlignmentColumns :: (bits: u64) -> bool {
+    remaining := bits;
+    for (index in 0..<32) {
+        if ((remaining & u64(3)) == u64(3)) { return false; }
+        remaining = remaining >> u64(2);
+    }
+    return true;
+}
+

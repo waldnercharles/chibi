@@ -1,0 +1,221 @@
+package programs
+
+import os "core:os"
+import strings "core:strings"
+import files "graph:files"
+import paths "graph:install"
+
+Join :: (parts: string[]) -> string { return strings.Join(parts, ""); }
+Absolute :: (root: string, path: string) -> string {
+    normalized := path;
+    if (os.Platform() == "Windows") { normalized = strings.ReplaceAll(path, "\\", "/"); }
+    if (strings.HasPrefix(normalized, "/") || (os.Platform() == "Windows" && paths.IsAbsolute(normalized))) {
+        return normalized;
+    }
+    return Join([root, "/", normalized]);
+}
+
+// The target triple of the machine this runs on.
+pub HostTriple :: () -> string {
+    if (os.Platform() == "Windows") {
+        return "x86_64-pc-windows-msvc"
+    }
+    if (os.Platform() == "Darwin") {
+        return "aarch64-apple-darwin"
+    }
+    machine := strings.TrimSpace(os.Capture(["uname", "-m"]).stdout)
+    if (machine == "aarch64" || machine == "arm64") {
+        return "aarch64-unknown-linux-gnu"
+    }
+    return "x86_64-unknown-linux-gnu"
+}
+
+// Sorted source paths and their cache fingerprints. Windows metadata can miss
+// same-size rewrites, so Fingerprint also hashes bytes there. Empty rejects an
+// unreadable source tree rather than reusing an incompletely verified runner.
+TreeInputs :: (folder: string, lines: string[]) -> string[] {
+    out := lines
+    listed := os.List(folder)
+    if (listed.error) {
+        os.Print(Join(["runner: cannot list ", folder]))
+        return []
+    }
+    for (name in listed.names) {
+        path := Join([folder, "/", name])
+        if (os.IsDirectory(path)) {
+            out = TreeInputs(path, out)
+            if (length(out) == 0) { return out }
+        } else if (strings.HasSuffix(name, ".chibi")) {
+            fingerprint := files.Fingerprint(path)
+            if (fingerprint == "") {
+                os.Print(Join(["runner: cannot fingerprint ", path]))
+                return []
+            }
+            out.append(Join([path, "\t", fingerprint]))
+        }
+    }
+    return out
+}
+
+// Gather the same identity before and after a cold compile. An input changing
+// while the compiler runs must not publish a runner under the earlier key.
+RunnerInputs :: (root: string, file: string, folders: string[], configuration: string[], tools: string[]) -> string[] {
+    lines := configuration
+    if (file != "") {
+        entry_path := os.RealPath(Absolute(root, file))
+        entry_stamp := files.Fingerprint(entry_path)
+        if (entry_path == "" || !os.IsFile(entry_path) || entry_stamp == "") {
+            os.Print(Join(["runner: cannot fingerprint source ", file]))
+            return []
+        }
+        lines.append(Join([entry_path, "\t", entry_stamp]))
+    }
+    for (tool in tools) {
+        canonical := os.RealPath(tool)
+        fingerprint := files.Fingerprint(canonical)
+        if (canonical == "" || !os.IsFile(canonical) || fingerprint == "") {
+            os.Print(Join(["runner: cannot fingerprint executable ", tool]))
+            return []
+        }
+        lines.append(Join([canonical, "\t", fingerprint]))
+    }
+    for (folder in folders) {
+        canonical := os.RealPath(Absolute(root, folder))
+        if (canonical == "") {
+            os.Print(Join(["runner: cannot resolve source tree ", folder]))
+            return []
+        }
+        lines = TreeInputs(canonical, lines)
+        if (length(lines) == 0) { return [] }
+    }
+    return lines
+}
+
+RemoveRunnerWork :: (path: string) -> bool {
+    if (!paths.RemoveTree(path)) {
+        os.Print(Join(["runner: cannot remove private compilation directory ", path]))
+        return false
+    }
+    return true
+}
+
+Invocation :: (root: string, compiler: string, llvm: string, inputs: string[], function: string,
+               collections: string[], target: string, output: string) -> string[] {
+    command := [compiler, "--core", Absolute(root, "packages/core")]
+    command.extend(inputs)
+    command.extend(["--entry", function, "--output", output, "--llvm", llvm, "--target", target])
+    for (collection in collections) {
+        equals := strings.Index(collection, "=")
+        command.extend(["--collection", Join([strings.Slice(collection, 0, equals + 1),
+                                      Absolute(root, strings.Slice(collection, equals + 1, strings.ByteLength(collection)))])])
+    }
+    return command
+}
+
+// The low-level seed interface also supplies an exact dry-run command.
+pub Command :: (root: string, compiler: string, llvm: string, source: string, function: string,
+                collections: string[], target: string, output: string) -> string[] {
+    return Invocation(root, compiler, llvm, ["--compiler", root, "--source", Absolute(root, source)],
+                      function, collections, target, output)
+}
+
+// The source and package entry forms share one verified cache/publication path.
+Cached :: (root: string, compiler: string, llvm_directory: string, inputs: string[], folders: string[], file: string,
+           function: string, collections: string[], name: string) -> string {
+    driver := os.RealPath(os.FindExecutable(compiler))
+    llvm := os.RealPath(llvm_directory)
+    if (driver == "" || llvm == "" || !os.IsFile(driver) || !os.IsDirectory(llvm)) {
+        os.Print("runner: pass an executable --native-driver and --llvm DIR")
+        return ""
+    }
+    target := HostTriple()
+    linker := "ld.lld"
+    suffix := ""
+    if (os.Platform() == "Darwin") {
+        linker = "ld64.lld"
+    } else if (os.Platform() == "Windows") {
+        linker = "lld-link"
+        suffix = ".exe"
+    }
+    configuration := ["native-runner-v4", root, strings.Join(inputs, "\n"), strings.Join(folders, "\n"), function, strings.Join(collections, ","), target]
+    tools := [driver, Join([llvm, "/opt", suffix]), Join([llvm, "/llc", suffix]), Join([llvm, "/", linker, suffix])]
+    lines := RunnerInputs(root, file, folders, configuration, tools)
+    if (length(lines) == 0) { return "" }
+    key := os.HashText(strings.Join(lines, "\n"))
+    program_name := Join([name, suffix])
+    published := Absolute(root, Join([".chibi/build-runner/", key]))
+    program := Join([published, "/", program_name])
+    if (os.IsFile(program)) {
+        return program
+    }
+    if (os.MakeDirectory(Absolute(root, ".chibi/build-runner"))) {
+        os.Print("runner: cannot create .chibi/build-runner")
+        return ""
+    }
+    reserved := os.TemporaryDirectory(Absolute(root, ".chibi/build-runner"))
+    if (reserved.error || reserved.path == "") {
+        os.Print("runner: cannot reserve a private compilation directory")
+        return ""
+    }
+    work := reserved.path
+    command := Invocation(root, driver, llvm, inputs, function, collections, target, Join([work, "/", program_name]))
+    built := os.Capture(command)
+    if (built.status != 0) {
+        os.Print(Join(["runner: ", name, " does not compile natively: ", strings.TrimSpace(built.stderr)]))
+        removed := RemoveRunnerWork(work)
+        return ""
+    }
+    if (!os.IsFile(Join([work, "/", program_name]))) {
+        os.Print(Join(["runner: compiler did not write ", name]))
+        removed := RemoveRunnerWork(work)
+        return ""
+    }
+    checked := RunnerInputs(root, file, folders, configuration, tools)
+    if (length(checked) == 0 || os.HashText(strings.Join(checked, "\n")) != key) {
+        os.Print("runner: an input changed during compilation; retry")
+        removed := RemoveRunnerWork(work)
+        return ""
+    }
+    if (os.Publish(work, published)) {
+        if (!RemoveRunnerWork(work)) { return "" }
+        if (!os.IsFile(program)) {
+            os.Print(Join(["runner: cannot publish ", program]))
+            return ""
+        }
+    }
+    return program
+}
+
+// Compile an authored source using compiler, with project imports rooted at
+// root. All current consumers use the graph/core trees; graph fixtures also
+// bind their own source/helper tree. Empty reports a failed compilation.
+pub Build :: (root: string, compiler: string, llvm: string, source: string, function: string,
+              collections: string[]) -> string {
+    return BuildWithProject(root, root, compiler, llvm, source, function, collections)
+}
+
+// Runtime generators share compiler packages through project: imports, while
+// their entry and graph collection remain rooted at the repository.
+pub BuildWithProject :: (root: string, project: string, compiler: string, llvm: string, source: string, function: string,
+                         collections: string[]) -> string {
+    folders := ["tools/toolchain", "tools/graph", "packages/core"]
+    if (project != root) { folders.append(project) }
+    if (strings.HasPrefix(source, "test/graph/")) { folders.append("test/graph") }
+    base := strings.Slice(source, strings.LastIndex(source, "/") + 1, strings.ByteLength(source))
+    name := Join([strings.Slice(base, 0, strings.LastIndex(base, ".")), "-", function])
+    return Cached(root, compiler, llvm, ["--compiler", project, "--source", Absolute(root, source)],
+                  folders, source, function, collections, name)
+}
+
+// Bootstrap the current compiler once from the verified seed. Its own sources
+// supply current runtime semantics; consumers share this same content key.
+pub Compiler :: (root: string, verified_seed: string, llvm: string) -> string {
+    return Cached(root, verified_seed, llvm, ["--compiler", Absolute(root, "tools/compiler"), "--package", "native_driver"],
+                  ["tools/compiler", "packages/core"], "", "Main", [], "chibi")
+}
+// A reviewable bootstrap plan for callers that print commands without running.
+pub CompilerCommand :: (root: string, verified_seed: string, llvm: string, output: string) -> string[] {
+    return Invocation(root, verified_seed, llvm,
+                      ["--compiler", Absolute(root, "tools/compiler"), "--package", "native_driver"],
+                      "Main", [], HostTriple(), output)
+}

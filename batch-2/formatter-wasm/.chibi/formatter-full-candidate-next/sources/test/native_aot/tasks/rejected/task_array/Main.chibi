@@ -1,0 +1,8 @@
+package task_array_rejection
+Main :: () -> int {
+    pending := Worker();
+    values := [pending];
+    return 0;
+}
+Worker :: () -> int { yield
+    return 1; }

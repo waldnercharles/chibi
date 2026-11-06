@@ -1,0 +1,159 @@
+package scalar_regression
+
+import cases "project:scalar_cases"
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import tests "project:scalar_llvm_tests"
+import strings "core:strings"
+
+// The host transports these authored cases; it does not classify source text.
+pub Sources :: () -> string[] {
+    output: string[] = [];
+    for (index in 0..<cases.Count()) {
+        output.append(cases.Source(index));
+    }
+    return output;
+}
+
+pub Tests :: () -> int {
+    return tests.Tests();
+}
+
+// Host invocation selects entries in its root package only. Keep this test
+// forwarding entry authored and preserve the original input rows unchanged.
+pub EmitBytes :: (rows: facts.Row[]) -> u8[] {
+    return scalar.EmitBytes(rows);
+}
+
+Same :: (left: facts.Row[], right: facts.Row[]) -> bool {
+    if (length(left) != length(right)) {
+        return false;
+    }
+    for (index in 0..<length(left)) {
+        a := left[index];
+        b := right[index];
+        if (a.kind != b.kind || a.type != b.type || a.value != b.value || a.count != b.count || a.name != b.name ||
+            a.text != b.text || a.start != b.start || a.end != b.end || a.line != b.line || a.column != b.column) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Negative results are failures. Zero means a checked rejection with no bytes;
+// one means a checked accepted result. Neither is inferred by the transport.
+pub Check :: (rows: facts.Row[]) -> int {
+    checked := cases.Check(rows);
+    if (checked != 1) {
+        return checked - 100;
+    }
+    if (scalar.Validate(rows) != "") {
+        return -1;
+    }
+    bytes := scalar.EmitBytes(rows);
+    accepted := rows[1].kind == facts.DocumentRow;
+    switch scalar.Emit(rows) {
+        case .Invalid(message):
+            return -2;
+        case .Rejected(projection):
+            if (accepted || !Same(rows, projection) || length(bytes) != 0) {
+                return -3;
+            }
+            return 0;
+        case .Emitted(text):
+            if (!accepted || length(bytes) == 0 || !strings.Contains(text, Entry(rows)) ||
+                !Calls(rows, text)) {
+                return -4;
+            }
+            expected := strings.Bytes(text);
+            if (length(expected) != length(bytes)) {
+                return -5;
+            }
+            for (index in 0..<length(expected)) {
+                if (bytes[index] != u8(expected[index])) {
+                    return -6;
+                }
+            }
+            return 1;
+    }
+}
+
+// The entry's definition: a module that calls the runtime, to format text,
+// fail an assert, work with arrays or release strings, takes the context first.
+Entry :: (rows: facts.Row[]) -> string {
+    texted := false;
+    for (row in rows) {
+        if ((row.kind == facts.TextRow && row.value == facts.TextFormat) || row.kind == facts.AssertRow ||
+            Allocates(row)) {
+            return "define i32 @chibi_scalar(ptr %ctx)";
+        }
+        texted = texted || row.type == facts.StringType;
+    }
+    if (texted) {
+        // A string a call returns or a local holds is released through the
+        // context, which the rows do not say; either entry is right.
+        return "define i32 @chibi_scalar(";
+    }
+    return "define i32 @chibi_scalar()";
+}
+// Whether the row allocates or checks an index through the context: an array
+// change, read or copy, a loop over an array, or a literal with elements.
+// Length, contains, remove and an empty literal do not.
+Allocates :: (row: facts.Row) -> bool {
+    if (row.kind == facts.ForRow) {
+        return row.literal >= i64(facts.RangeArray);
+    }
+    if (row.kind != facts.ArrayRow) {
+        return false;
+    }
+    if (row.value == facts.ArrayNew) {
+        return row.count > 0;
+    }
+    return row.value != facts.ArrayLength && row.value != facts.ArrayContains && row.value != facts.ArrayRemove;
+}
+// Every recorded call is an emitted LLVM call of its callee, and every other
+// function is defined internally, so the module keeps the source's calls.
+Calls :: (rows: facts.Row[], text: string) -> bool {
+    functions: int = 0;
+    for (row in rows) {
+        if (row.kind == facts.FunctionRow) {
+            if (functions > 0 && !strings.Contains(text, format_text("define internal {} @chibi_scalar.{}(",
+                                                                     Type(row.type), functions))) {
+                return false;
+            }
+            functions += 1;
+        }
+        if (row.kind == facts.CallRow && !strings.Contains(text, format_text("call {} @{}(", Type(row.type),
+                                                                             Symbol(row.value)))) {
+            return false;
+        }
+    }
+    return true;
+}
+Symbol :: (function: int) -> string {
+    if (function == 0) {
+        return "chibi_scalar";
+    }
+    return format_text("chibi_scalar.{}", function);
+}
+Type :: (type: int) -> string {
+    if (type == facts.BoolType) {
+        return "i1";
+    }
+    if (type == facts.StringType) {
+        return "{ ptr, i32, ptr }";
+    }
+    if (type == facts.FloatType) {
+        return "float";
+    }
+    if (type == facts.DoubleType) {
+        return "double";
+    }
+    if (type >= facts.ArrayType) {
+        return "{ i32, i32, ptr, ptr }";
+    }
+    if (type >= facts.RecordType) {
+        return format_text("%record{}", type - facts.RecordType);
+    }
+    return format_text("i{}", facts.Bits(type));
+}

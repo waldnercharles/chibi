@@ -1,0 +1,46 @@
+{
+  "head": "d5ac3310ee9d34615cb210bd5bd77e9685ffb7ec",
+  "tree": "7ed61166396e26720fe2c83afd35e764de549c58",
+  "base": "21ba81a0aa0e84a0d880d98fc53d574896bcedb4",
+  "clean_before": true,
+  "steps": [
+    {
+      "name": "published-docs",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "published-docs"
+      ],
+      "exit_code": 0,
+      "seconds": 3.7246219580993056,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-d5ac-published-docs.log",
+      "log_sha256": "195b6f541a361c4b190ea0708c4a119802cab942572d304d97615c762b526aee"
+    },
+    {
+      "name": "chibi-cli",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "chibi-cli"
+      ],
+      "exit_code": 0,
+      "seconds": 6.366440917132422,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-d5ac-chibi-cli.log",
+      "log_sha256": "da8becc6c62756c001bddaa01985e691d15216c64c4ec693d3fc61f9430e52dc"
+    },
+    {
+      "name": "format",
+      "argv": [
+        "make",
+        "check-format"
+      ],
+      "exit_code": 0,
+      "seconds": 23.33813799987547,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-d5ac-format.log",
+      "log_sha256": "090c575bfe2722036cea64b3e6bb4a6d8e9a525f491ce7d33541606f765b383e"
+    }
+  ],
+  "clean_after": true
+}

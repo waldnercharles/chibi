@@ -1,0 +1,6 @@
+package facts
+
+Main :: () -> int {
+    x: int? = nil;
+    return x!;
+}

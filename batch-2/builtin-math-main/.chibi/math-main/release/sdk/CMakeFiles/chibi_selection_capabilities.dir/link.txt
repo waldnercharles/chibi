@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_selection_capabilities.a "CMakeFiles/chibi_selection_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/selection.c.o" "CMakeFiles/chibi_selection_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/selection_definition.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_selection_capabilities.a

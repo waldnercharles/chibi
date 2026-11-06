@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_input_map.a "CMakeFiles/chibi_input_map.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/assets/input_map.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_input_map.a

@@ -1,0 +1,38 @@
+package facts
+
+import os "core:os"
+
+// core:os runs programs natively: an exit status, a signal as its negative
+// number, 127 for a program that cannot start, arguments passed unchanged,
+// output captured whole with its NUL bytes, and started programs waited for,
+// killed with what they started, or run side by side.
+@test
+Calls :: () {
+    assert(os.Run(["/bin/sh", "-c", "exit 71"]) == 71, "an exit status");
+    assert(os.Run(["/bin/sh", "-c", "kill -TERM $$"]) == -15, "a signal is its negative number");
+    assert(os.Run(["/no/such/program"]) == 127, "a program that cannot start");
+
+    passed := os.Capture(["/bin/sh", "-c", "printf '%s|' \"$@\"; printf err >&2", "sh", "", "a b", "$x;\"'"]);
+    assert(passed.status == 0 && passed.stdout == "|a b|$x;\"'|" && passed.stderr == "err", "arguments reach the child unchanged");
+    nul := os.Capture(["/bin/sh", "-c", "printf 'a\\000b'"]);
+    assert(nul.status == 0 && text_byte_length(nul.stdout) == 3 && text_byte_at(nul.stdout, 1) == 0, "NUL bytes survive");
+    big := os.Capture(["/bin/sh", "-c", "head -c 1048576 /dev/zero | tr '\\000' a"]);
+    assert(big.status == 0 && text_byte_length(big.stdout) == 1048576, "a whole MiB of output");
+
+    slow := os.Start(["/bin/sleep", "5"], os.Inherited);
+    assert(slow != 0 && os.Wait(slow, 100) == os.StillRunning, "still running after 100 ms");
+    assert(os.Kill(slow) == -9, "killed");
+    first := os.Start(["/bin/sh", "-c", "exit 7"], os.Piped);
+    second := os.Start(["/bin/sh", "-c", "exit 5"], os.Inherited);
+    assert(os.Wait(second, -1) == 5 && os.Wait(first, -1) == 7, "two at once, each with its own status");
+    assert(os.Wait(os.Start(["/no/such/program"], os.Inherited), -1) == 127, "a started program that cannot start");
+    // Kill stops what the program started too.
+    assert(os.Remove("os_late") == nil, "no marker");
+    group := os.Start(["/bin/sh", "-c", "(sleep 1; echo late > os_late) & wait"], os.Inherited);
+    assert(os.Kill(group) == -9, "the group is killed");
+    assert(os.Run(["/bin/sleep", "2"]) == 0 && !os.Exists("os_late"), "its child is gone");
+
+    assert(os.FindExecutable("/bin/sh") == "/bin/sh" && os.FindExecutable("/no/such/program") == "", "FindExecutable");
+    assert(os.RealPath(os.Root()) == os.RealPath("."), "the root is the working directory");
+    assert(os.Platform() == "Linux" || os.Platform() == "Darwin", "a POSIX platform");
+}

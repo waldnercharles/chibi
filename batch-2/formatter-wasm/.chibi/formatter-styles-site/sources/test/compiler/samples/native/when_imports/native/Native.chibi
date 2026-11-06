@@ -1,0 +1,5 @@
+package native
+
+pub Which :: () -> int {
+    return 1
+}

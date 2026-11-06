@@ -1,0 +1,13 @@
+package scoped_map_alias
+Old :: (values: [int: int], ignored: int) -> int { return values[1]; }
+Reset :: (values: ^([int: int])) -> int { values^ = [1: 99]; return 1; }
+Alias :: (read: ^([int: int]), changed: ^([int: int])) -> int {
+    read^ = [1: 11];
+    return Old(read^, Reset(changed));
+}
+Main :: () -> int {
+    values: [int: int] = [1: 5];
+    assert(Alias(&values, &values) == 11);
+    assert(values[1] == 99);
+    return 0;
+}

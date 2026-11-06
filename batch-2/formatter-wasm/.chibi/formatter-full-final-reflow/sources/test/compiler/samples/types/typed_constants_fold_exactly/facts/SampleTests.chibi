@@ -1,0 +1,36 @@
+package facts
+
+// typed constants fold exactly
+@test
+Calls :: () {
+    r1: int = ReadSign();
+    e1: int = -2147483648;
+    assert(r1 == e1, "ReadSign call 1");
+    r2: i8 = ReadSmall();
+    e2: i8 = 127;
+    assert(r2 == e2, "ReadSmall call 2");
+    r3: u32 = ReadUnsigned();
+    e3: u32 = 2147483647;
+    assert(r3 == e3, "ReadUnsigned call 3");
+    r4: int = ReadFloor();
+    e4: int = -2;
+    assert(r4 == e4, "ReadFloor call 4");
+    r5: i64 = ReadWide();
+    e5: i64 = -9223372036854775808;
+    assert(r5 == e5, "ReadWide call 5");
+    r6: u64 = ReadMask();
+    e6: u64 = 18446744073709551615;
+    assert(r6 == e6, "ReadMask call 6");
+    r7: u8 = ReadLow();
+    e7: u8 = 240;
+    assert(r7 == e7, "ReadLow call 7");
+    r8: int = ReadBig();
+    e8: int = 4;
+    assert(r8 == e8, "ReadBig call 8");
+    r9: i8 = ReadHalf();
+    e9: i8 = 64;
+    assert(r9 == e9, "ReadHalf call 9");
+    r10: u8 = ReadWrapped();
+    e10: u8 = 44;
+    assert(r10 == e10, "ReadWrapped call 10");
+}

@@ -1,0 +1,120 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Loans capture their values during source argument evaluation. A mapped
+// loan also keeps its immutable string key until the call resolves the path.
+LoanInstruction :: (slots: int[], item: Instruction, pc: int) -> string {
+    out := format_text("p{}:\n{}", pc, Load(format_text("a{}", pc), item.type, "s", item.left));
+    if (item.target == ArrayLoanMap && MapKey(slots[item.right] - RefType) == abi.TextStorage) {
+        kept: Instruction = {op: TextRetain, type: abi.TextStorage, output: 0, left: int(item.literal), right: 0, target: 0, literal: 0};
+        out = strings.Concatenate([out, TextCounted(kept, pc)]);
+    }
+    if (item.target == ArrayLoanMove) {
+        out = strings.Concatenate([out, Store(format_text("%a{}", pc), item.type, "s", item.output)]);
+    } else {
+        out = format_text("{}  %v{} = call {} @chibi_array.{}.copy(ptr %ctx, {} %a{})\n", out, pc, TypeName(item.type), item.type, TypeName(item.type), pc);
+        out = strings.Concatenate([out, Store(format_text("%v{}", pc), item.type, "s", item.output)]);
+    }
+    return format_text("{}  br label %p{}\n", out, pc + 1);
+}
+
+// A loan keeps its evaluated array alive while later arguments run. Before
+// calling C, compare every captured place before changing any of them, then
+// retire matching loans, make the places unique, and acquire the call loans.
+// This preserves repeated arguments that point at the same place. A later
+// argument that replaced a place leaves the historical loan independent.
+ForeignArrays :: (slots: int[], arguments: int[], code: Instruction[], origins: int[], item: Instruction, pc: int) -> string {
+    if (length(origins) == 0) { return ""; }
+    array := abi.ArrayType();
+    out: string[] = [];
+    for (index in 0..<item.target) {
+        slot := arguments[item.right + index];
+        if (origins[slot] < 0) { continue; }
+        loan := code[origins[slot]];
+        name := format_text("loan{}_{}", pc, index);
+        out.append(Load(format_text("{}.given", name), loan.type, "s", slot));
+        if (loan.target != ArrayLoanPlace && loan.target != ArrayLoanMap) { continue; }
+        out.append(Load(format_text("{}.captured", name), loan.type, "s", loan.left));
+        if (loan.target == ArrayLoanMap) {
+            mapped := slots[loan.right] - RefType;
+            key := MapKey(mapped);
+            out.append(Load(format_text("{}.root", name), RefType + mapped, "s", loan.right));
+            out.append(format_text("  %{}.map = load {}, ptr %{}.root\n", name, TypeName(mapped), name));
+            out.append(Load(format_text("{}.key", name), key, "s", int(loan.literal)));
+            out.append(format_text("  %{}.address = call ptr @chibi_map.{}.address({} %{}.map, {} %{}.key, i1 false)\n", name, mapped, TypeName(mapped), name, TypeName(key), name));
+            out.append(format_text("  %{}.present = icmp ne ptr %{}.address, null\n  br i1 %{}.present, label %{}.read, label %{}.absent\n{}.read:\n", name, name, name, name, name, name));
+        } else { out.append(Load(format_text("{}.address", name), RefType + loan.type, "s", loan.right)); }
+        out.append(format_text("  %{}.current = load {}, ptr %{}.address\n", name, array, name));
+        for (field in 0..<4) {
+            type := "i32";
+            if (field >= 2) { type = "ptr"; }
+            out.append(format_text("  %{}.before{} = extractvalue {} %{}.captured, {}\n", name, field, array, name, field));
+            out.append(format_text("  %{}.now{} = extractvalue {} %{}.current, {}\n", name, field, array, name, field));
+            out.append(format_text("  %{}.same{} = icmp eq {} %{}.before{}, %{}.now{}\n", name, field, type, name, field, name, field));
+        }
+        out.append(format_text("  %{}.size = and i1 %{}.same0, %{}.same1\n  %{}.storage = and i1 %{}.same2, %{}.same3\n", name, name, name, name, name, name));
+        if (loan.target == ArrayLoanMap) {
+            out.append(format_text("  %{}.equal = and i1 %{}.size, %{}.storage\n  br label %{}.checked\n{}.absent:\n  br label %{}.checked\n{}.checked:\n", name, name, name, name, name, name, name));
+            out.append(format_text("  %{}.matches = phi i1 [ %{}.equal, %{}.read ], [ false, %{}.absent ]\n", name, name, name, name));
+        } else { out.append(format_text("  %{}.matches = and i1 %{}.size, %{}.storage\n", name, name, name)); }
+    }
+    // Release all matching loans before uniqueness. Retaking one early would
+    // make a repeated argument detach the same place a second time.
+    for (index in 0..<item.target) {
+        slot := arguments[item.right + index];
+        if (origins[slot] < 0) { continue; }
+        loan := code[origins[slot]];
+        if (loan.target != ArrayLoanPlace && loan.target != ArrayLoanMap) { continue; }
+        name := format_text("loan{}_{}", pc, index);
+        out.append(format_text("  br i1 %{}.matches, label %{}.drop, label %{}.dropped\n{}.drop:\n", name, name, name, name));
+        out.append(format_text("  call void @chibi_array.{}.drop(ptr %ctx, {} %{}.given)\n  br label %{}.dropped\n{}.dropped:\n", loan.type, array, name, name, name));
+    }
+    for (index in 0..<item.target) {
+        slot := arguments[item.right + index];
+        if (origins[slot] < 0) { continue; }
+        loan := code[origins[slot]];
+        if (loan.target != ArrayLoanPlace && loan.target != ArrayLoanMap) { continue; }
+        name := format_text("loan{}_{}", pc, index);
+        out.append(format_text("  br i1 %{}.matches, label %{}.prepare, label %{}.skip\n{}.prepare:\n", name, name, name, name));
+        address := format_text("%{}.address", name);
+        if (loan.target == ArrayLoanMap) {
+            mapped := slots[loan.right] - RefType;
+            address = format_text("%{}.canonical", name);
+            out.append(format_text("  {} = call ptr @chibi_map.{}.reference(ptr %ctx, ptr %{}.root, {} %{}.key)\n", address, mapped, name, TypeName(MapKey(mapped)), name));
+        }
+        out.append(format_text("  %{}.latest = load {}, ptr {}\n  %{}.length = extractvalue {} %{}.latest, 0\n", name, array, address, name, array, name));
+        out.append(format_text("  %{}.unique = call {} @chibi_array.{}.unique(ptr %ctx, {} %{}.latest, i32 %{}.length, i1 true)\n", name, array, loan.type, array, name, name));
+        out.append(format_text("  store {} %{}.unique, ptr {}\n  br label %{}.prepared\n{}.skip:\n  br label %{}.prepared\n{}.prepared:\n", array, name, address, name, name, name, name));
+        out.append(format_text("  %{}.ready_address = phi ptr [ {}, %{}.prepare ], [ null, %{}.skip ]\n", name, address, name, name));
+    }
+    // Canonical detachment may rehash entries. Keep keys until every final
+    // address is resolved, then release them before calling C.
+    for (index in 0..<item.target) {
+        slot := arguments[item.right + index];
+        if (origins[slot] < 0) { continue; }
+        loan := code[origins[slot]];
+        if (loan.target != ArrayLoanMap || MapKey(slots[loan.right] - RefType) != abi.TextStorage) { continue; }
+        name := format_text("loan{}_{}", pc, index);
+        out.append(format_text("  %{}.key.owner = extractvalue {} %{}.key, 2\n  call void @chibi_scalar.free(ptr %ctx, ptr %{}.key.owner)\n", name, abi.TextType(), name, name));
+    }
+    for (index in 0..<item.target) {
+        slot := arguments[item.right + index];
+        if (origins[slot] < 0) { continue; }
+        loan := code[origins[slot]];
+        name := format_text("loan{}_{}", pc, index);
+        if (loan.target == ArrayLoanPlace || loan.target == ArrayLoanMap) {
+            out.append(format_text("  br i1 %{}.matches, label %{}.retake, label %{}.historical\n{}.retake:\n", name, name, name, name));
+            out.append(format_text("  %{}.ready = load {}, ptr %{}.ready_address\n", name, array, name));
+            out.append(format_text("  %{}.retaken = call {} @chibi_array.{}.copy(ptr %ctx, {} %{}.ready)\n", name, array, loan.type, array, name));
+            out.append(Store(format_text("%{}.retaken", name), loan.type, "s", slot));
+            out.append(format_text("  br label %{}.done\n{}.historical:\n", name, name));
+        }
+        out.append(format_text("  %{}.held_length = extractvalue {} %{}.given, 0\n", name, array, name));
+        out.append(format_text("  %{}.held_unique = call {} @chibi_array.{}.unique(ptr %ctx, {} %{}.given, i32 %{}.held_length, i1 true)\n", name, array, loan.type, array, name, name));
+        out.append(Store(format_text("%{}.held_unique", name), loan.type, "s", slot));
+        if (loan.target == ArrayLoanPlace || loan.target == ArrayLoanMap) { out.append(format_text("  br label %{}.done\n{}.done:\n", name, name)); }
+    }
+    return strings.Join(out, "");
+}

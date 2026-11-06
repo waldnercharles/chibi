@@ -1,0 +1,7 @@
+package shadow_square_root
+
+sqrt :: (value: int) -> int { return value + 7; }
+Main :: () -> int {
+    assert(sqrt(5) == 12);
+    return 0;
+}

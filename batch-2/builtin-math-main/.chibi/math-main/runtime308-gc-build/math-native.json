@@ -1,0 +1,35 @@
+{
+  "selector": "--package-compiler-chibi-math-native",
+  "command": [
+    "python3",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-validation/tools/test_policy.py",
+    "native",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/test_language",
+    "--package-compiler-chibi-math-native"
+  ],
+  "status": 134,
+  "wall_seconds": 27.76690979185514,
+  "binary_sha256": "74f01c55fb3b145339be348c55d3a265545b1c397c2324eb19e1207801948ca8",
+  "log_sha256": "0d20f5099d8c2b4b7c88f3044aade20075718b3a85d7daf055b0db25e7a847ae",
+  "pressure_records": [
+    {
+      "backend": "BYTECODE",
+      "collection_marks": 850,
+      "mask": 63,
+      "calls": 3
+    },
+    {
+      "backend": "SLJIT",
+      "collection_marks": 850,
+      "mask": 63,
+      "calls": 3
+    }
+  ],
+  "policy_wall_seconds": 27.624,
+  "pressure_log_requirements_passed": false,
+  "new_source_files_unchanged": true,
+  "new_binary_unchanged": true,
+  "old_source_files_unchanged": true,
+  "old_evidence_files_unchanged": true,
+  "old_binaries_unchanged": true
+}

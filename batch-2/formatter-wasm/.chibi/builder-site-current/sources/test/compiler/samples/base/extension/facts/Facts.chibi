@@ -1,0 +1,10 @@
+package facts
+Build :: (count: int) -> int {
+    xs: int[] = [];
+    index: int = 0;
+    while (index < count) {
+        xs = extend(xs, [index, index]);
+        index += 1;
+    }
+    return length(xs);
+}

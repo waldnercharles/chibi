@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_asset_compiler_host.a "CMakeFiles/chibi_asset_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/asset_compiler_host.c.o" "CMakeFiles/chibi_asset_compiler_host.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/support/binary_cache.c.o" CMakeFiles/chibi_asset_compiler_host.dir/generated/assets/asset_compiler_packaged.c.o
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_asset_compiler_host.a

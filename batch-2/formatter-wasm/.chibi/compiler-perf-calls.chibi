@@ -1,0 +1,584 @@
+package perf
+Type0 :: struct { value: int; }
+Type1 :: struct { value: int; }
+Type2 :: struct { value: int; }
+Type3 :: struct { value: int; }
+Type4 :: struct { value: int; }
+Type5 :: struct { value: int; }
+Type6 :: struct { value: int; }
+Type7 :: struct { value: int; }
+Type8 :: struct { value: int; }
+Type9 :: struct { value: int; }
+Type10 :: struct { value: int; }
+Type11 :: struct { value: int; }
+Type12 :: struct { value: int; }
+Type13 :: struct { value: int; }
+Type14 :: struct { value: int; }
+Type15 :: struct { value: int; }
+Type16 :: struct { value: int; }
+Type17 :: struct { value: int; }
+Type18 :: struct { value: int; }
+Type19 :: struct { value: int; }
+Type20 :: struct { value: int; }
+Type21 :: struct { value: int; }
+Type22 :: struct { value: int; }
+Type23 :: struct { value: int; }
+Type24 :: struct { value: int; }
+Type25 :: struct { value: int; }
+Type26 :: struct { value: int; }
+Type27 :: struct { value: int; }
+Type28 :: struct { value: int; }
+Type29 :: struct { value: int; }
+Type30 :: struct { value: int; }
+Type31 :: struct { value: int; }
+Type32 :: struct { value: int; }
+Type33 :: struct { value: int; }
+Type34 :: struct { value: int; }
+Type35 :: struct { value: int; }
+Type36 :: struct { value: int; }
+Type37 :: struct { value: int; }
+Type38 :: struct { value: int; }
+Type39 :: struct { value: int; }
+Type40 :: struct { value: int; }
+Type41 :: struct { value: int; }
+Type42 :: struct { value: int; }
+Type43 :: struct { value: int; }
+Type44 :: struct { value: int; }
+Type45 :: struct { value: int; }
+Type46 :: struct { value: int; }
+Type47 :: struct { value: int; }
+Type48 :: struct { value: int; }
+Type49 :: struct { value: int; }
+Type50 :: struct { value: int; }
+Type51 :: struct { value: int; }
+Type52 :: struct { value: int; }
+Type53 :: struct { value: int; }
+Type54 :: struct { value: int; }
+Type55 :: struct { value: int; }
+Type56 :: struct { value: int; }
+Type57 :: struct { value: int; }
+Type58 :: struct { value: int; }
+Type59 :: struct { value: int; }
+Type60 :: struct { value: int; }
+Type61 :: struct { value: int; }
+Type62 :: struct { value: int; }
+Type63 :: struct { value: int; }
+Type64 :: struct { value: int; }
+Type65 :: struct { value: int; }
+Type66 :: struct { value: int; }
+Type67 :: struct { value: int; }
+Type68 :: struct { value: int; }
+Type69 :: struct { value: int; }
+Type70 :: struct { value: int; }
+Type71 :: struct { value: int; }
+Type72 :: struct { value: int; }
+Type73 :: struct { value: int; }
+Type74 :: struct { value: int; }
+Type75 :: struct { value: int; }
+Type76 :: struct { value: int; }
+Type77 :: struct { value: int; }
+Type78 :: struct { value: int; }
+Type79 :: struct { value: int; }
+Value :: () -> int { return 1; }
+Main :: () {
+ value0: int = Value();
+ value1: int = Value();
+ value2: int = Value();
+ value3: int = Value();
+ value4: int = Value();
+ value5: int = Value();
+ value6: int = Value();
+ value7: int = Value();
+ value8: int = Value();
+ value9: int = Value();
+ value10: int = Value();
+ value11: int = Value();
+ value12: int = Value();
+ value13: int = Value();
+ value14: int = Value();
+ value15: int = Value();
+ value16: int = Value();
+ value17: int = Value();
+ value18: int = Value();
+ value19: int = Value();
+ value20: int = Value();
+ value21: int = Value();
+ value22: int = Value();
+ value23: int = Value();
+ value24: int = Value();
+ value25: int = Value();
+ value26: int = Value();
+ value27: int = Value();
+ value28: int = Value();
+ value29: int = Value();
+ value30: int = Value();
+ value31: int = Value();
+ value32: int = Value();
+ value33: int = Value();
+ value34: int = Value();
+ value35: int = Value();
+ value36: int = Value();
+ value37: int = Value();
+ value38: int = Value();
+ value39: int = Value();
+ value40: int = Value();
+ value41: int = Value();
+ value42: int = Value();
+ value43: int = Value();
+ value44: int = Value();
+ value45: int = Value();
+ value46: int = Value();
+ value47: int = Value();
+ value48: int = Value();
+ value49: int = Value();
+ value50: int = Value();
+ value51: int = Value();
+ value52: int = Value();
+ value53: int = Value();
+ value54: int = Value();
+ value55: int = Value();
+ value56: int = Value();
+ value57: int = Value();
+ value58: int = Value();
+ value59: int = Value();
+ value60: int = Value();
+ value61: int = Value();
+ value62: int = Value();
+ value63: int = Value();
+ value64: int = Value();
+ value65: int = Value();
+ value66: int = Value();
+ value67: int = Value();
+ value68: int = Value();
+ value69: int = Value();
+ value70: int = Value();
+ value71: int = Value();
+ value72: int = Value();
+ value73: int = Value();
+ value74: int = Value();
+ value75: int = Value();
+ value76: int = Value();
+ value77: int = Value();
+ value78: int = Value();
+ value79: int = Value();
+ value80: int = Value();
+ value81: int = Value();
+ value82: int = Value();
+ value83: int = Value();
+ value84: int = Value();
+ value85: int = Value();
+ value86: int = Value();
+ value87: int = Value();
+ value88: int = Value();
+ value89: int = Value();
+ value90: int = Value();
+ value91: int = Value();
+ value92: int = Value();
+ value93: int = Value();
+ value94: int = Value();
+ value95: int = Value();
+ value96: int = Value();
+ value97: int = Value();
+ value98: int = Value();
+ value99: int = Value();
+ value100: int = Value();
+ value101: int = Value();
+ value102: int = Value();
+ value103: int = Value();
+ value104: int = Value();
+ value105: int = Value();
+ value106: int = Value();
+ value107: int = Value();
+ value108: int = Value();
+ value109: int = Value();
+ value110: int = Value();
+ value111: int = Value();
+ value112: int = Value();
+ value113: int = Value();
+ value114: int = Value();
+ value115: int = Value();
+ value116: int = Value();
+ value117: int = Value();
+ value118: int = Value();
+ value119: int = Value();
+ value120: int = Value();
+ value121: int = Value();
+ value122: int = Value();
+ value123: int = Value();
+ value124: int = Value();
+ value125: int = Value();
+ value126: int = Value();
+ value127: int = Value();
+ value128: int = Value();
+ value129: int = Value();
+ value130: int = Value();
+ value131: int = Value();
+ value132: int = Value();
+ value133: int = Value();
+ value134: int = Value();
+ value135: int = Value();
+ value136: int = Value();
+ value137: int = Value();
+ value138: int = Value();
+ value139: int = Value();
+ value140: int = Value();
+ value141: int = Value();
+ value142: int = Value();
+ value143: int = Value();
+ value144: int = Value();
+ value145: int = Value();
+ value146: int = Value();
+ value147: int = Value();
+ value148: int = Value();
+ value149: int = Value();
+ value150: int = Value();
+ value151: int = Value();
+ value152: int = Value();
+ value153: int = Value();
+ value154: int = Value();
+ value155: int = Value();
+ value156: int = Value();
+ value157: int = Value();
+ value158: int = Value();
+ value159: int = Value();
+ value160: int = Value();
+ value161: int = Value();
+ value162: int = Value();
+ value163: int = Value();
+ value164: int = Value();
+ value165: int = Value();
+ value166: int = Value();
+ value167: int = Value();
+ value168: int = Value();
+ value169: int = Value();
+ value170: int = Value();
+ value171: int = Value();
+ value172: int = Value();
+ value173: int = Value();
+ value174: int = Value();
+ value175: int = Value();
+ value176: int = Value();
+ value177: int = Value();
+ value178: int = Value();
+ value179: int = Value();
+ value180: int = Value();
+ value181: int = Value();
+ value182: int = Value();
+ value183: int = Value();
+ value184: int = Value();
+ value185: int = Value();
+ value186: int = Value();
+ value187: int = Value();
+ value188: int = Value();
+ value189: int = Value();
+ value190: int = Value();
+ value191: int = Value();
+ value192: int = Value();
+ value193: int = Value();
+ value194: int = Value();
+ value195: int = Value();
+ value196: int = Value();
+ value197: int = Value();
+ value198: int = Value();
+ value199: int = Value();
+ value200: int = Value();
+ value201: int = Value();
+ value202: int = Value();
+ value203: int = Value();
+ value204: int = Value();
+ value205: int = Value();
+ value206: int = Value();
+ value207: int = Value();
+ value208: int = Value();
+ value209: int = Value();
+ value210: int = Value();
+ value211: int = Value();
+ value212: int = Value();
+ value213: int = Value();
+ value214: int = Value();
+ value215: int = Value();
+ value216: int = Value();
+ value217: int = Value();
+ value218: int = Value();
+ value219: int = Value();
+ value220: int = Value();
+ value221: int = Value();
+ value222: int = Value();
+ value223: int = Value();
+ value224: int = Value();
+ value225: int = Value();
+ value226: int = Value();
+ value227: int = Value();
+ value228: int = Value();
+ value229: int = Value();
+ value230: int = Value();
+ value231: int = Value();
+ value232: int = Value();
+ value233: int = Value();
+ value234: int = Value();
+ value235: int = Value();
+ value236: int = Value();
+ value237: int = Value();
+ value238: int = Value();
+ value239: int = Value();
+ value240: int = Value();
+ value241: int = Value();
+ value242: int = Value();
+ value243: int = Value();
+ value244: int = Value();
+ value245: int = Value();
+ value246: int = Value();
+ value247: int = Value();
+ value248: int = Value();
+ value249: int = Value();
+ value250: int = Value();
+ value251: int = Value();
+ value252: int = Value();
+ value253: int = Value();
+ value254: int = Value();
+ value255: int = Value();
+ value256: int = Value();
+ value257: int = Value();
+ value258: int = Value();
+ value259: int = Value();
+ value260: int = Value();
+ value261: int = Value();
+ value262: int = Value();
+ value263: int = Value();
+ value264: int = Value();
+ value265: int = Value();
+ value266: int = Value();
+ value267: int = Value();
+ value268: int = Value();
+ value269: int = Value();
+ value270: int = Value();
+ value271: int = Value();
+ value272: int = Value();
+ value273: int = Value();
+ value274: int = Value();
+ value275: int = Value();
+ value276: int = Value();
+ value277: int = Value();
+ value278: int = Value();
+ value279: int = Value();
+ value280: int = Value();
+ value281: int = Value();
+ value282: int = Value();
+ value283: int = Value();
+ value284: int = Value();
+ value285: int = Value();
+ value286: int = Value();
+ value287: int = Value();
+ value288: int = Value();
+ value289: int = Value();
+ value290: int = Value();
+ value291: int = Value();
+ value292: int = Value();
+ value293: int = Value();
+ value294: int = Value();
+ value295: int = Value();
+ value296: int = Value();
+ value297: int = Value();
+ value298: int = Value();
+ value299: int = Value();
+ value300: int = Value();
+ value301: int = Value();
+ value302: int = Value();
+ value303: int = Value();
+ value304: int = Value();
+ value305: int = Value();
+ value306: int = Value();
+ value307: int = Value();
+ value308: int = Value();
+ value309: int = Value();
+ value310: int = Value();
+ value311: int = Value();
+ value312: int = Value();
+ value313: int = Value();
+ value314: int = Value();
+ value315: int = Value();
+ value316: int = Value();
+ value317: int = Value();
+ value318: int = Value();
+ value319: int = Value();
+ value320: int = Value();
+ value321: int = Value();
+ value322: int = Value();
+ value323: int = Value();
+ value324: int = Value();
+ value325: int = Value();
+ value326: int = Value();
+ value327: int = Value();
+ value328: int = Value();
+ value329: int = Value();
+ value330: int = Value();
+ value331: int = Value();
+ value332: int = Value();
+ value333: int = Value();
+ value334: int = Value();
+ value335: int = Value();
+ value336: int = Value();
+ value337: int = Value();
+ value338: int = Value();
+ value339: int = Value();
+ value340: int = Value();
+ value341: int = Value();
+ value342: int = Value();
+ value343: int = Value();
+ value344: int = Value();
+ value345: int = Value();
+ value346: int = Value();
+ value347: int = Value();
+ value348: int = Value();
+ value349: int = Value();
+ value350: int = Value();
+ value351: int = Value();
+ value352: int = Value();
+ value353: int = Value();
+ value354: int = Value();
+ value355: int = Value();
+ value356: int = Value();
+ value357: int = Value();
+ value358: int = Value();
+ value359: int = Value();
+ value360: int = Value();
+ value361: int = Value();
+ value362: int = Value();
+ value363: int = Value();
+ value364: int = Value();
+ value365: int = Value();
+ value366: int = Value();
+ value367: int = Value();
+ value368: int = Value();
+ value369: int = Value();
+ value370: int = Value();
+ value371: int = Value();
+ value372: int = Value();
+ value373: int = Value();
+ value374: int = Value();
+ value375: int = Value();
+ value376: int = Value();
+ value377: int = Value();
+ value378: int = Value();
+ value379: int = Value();
+ value380: int = Value();
+ value381: int = Value();
+ value382: int = Value();
+ value383: int = Value();
+ value384: int = Value();
+ value385: int = Value();
+ value386: int = Value();
+ value387: int = Value();
+ value388: int = Value();
+ value389: int = Value();
+ value390: int = Value();
+ value391: int = Value();
+ value392: int = Value();
+ value393: int = Value();
+ value394: int = Value();
+ value395: int = Value();
+ value396: int = Value();
+ value397: int = Value();
+ value398: int = Value();
+ value399: int = Value();
+ value400: int = Value();
+ value401: int = Value();
+ value402: int = Value();
+ value403: int = Value();
+ value404: int = Value();
+ value405: int = Value();
+ value406: int = Value();
+ value407: int = Value();
+ value408: int = Value();
+ value409: int = Value();
+ value410: int = Value();
+ value411: int = Value();
+ value412: int = Value();
+ value413: int = Value();
+ value414: int = Value();
+ value415: int = Value();
+ value416: int = Value();
+ value417: int = Value();
+ value418: int = Value();
+ value419: int = Value();
+ value420: int = Value();
+ value421: int = Value();
+ value422: int = Value();
+ value423: int = Value();
+ value424: int = Value();
+ value425: int = Value();
+ value426: int = Value();
+ value427: int = Value();
+ value428: int = Value();
+ value429: int = Value();
+ value430: int = Value();
+ value431: int = Value();
+ value432: int = Value();
+ value433: int = Value();
+ value434: int = Value();
+ value435: int = Value();
+ value436: int = Value();
+ value437: int = Value();
+ value438: int = Value();
+ value439: int = Value();
+ value440: int = Value();
+ value441: int = Value();
+ value442: int = Value();
+ value443: int = Value();
+ value444: int = Value();
+ value445: int = Value();
+ value446: int = Value();
+ value447: int = Value();
+ value448: int = Value();
+ value449: int = Value();
+ value450: int = Value();
+ value451: int = Value();
+ value452: int = Value();
+ value453: int = Value();
+ value454: int = Value();
+ value455: int = Value();
+ value456: int = Value();
+ value457: int = Value();
+ value458: int = Value();
+ value459: int = Value();
+ value460: int = Value();
+ value461: int = Value();
+ value462: int = Value();
+ value463: int = Value();
+ value464: int = Value();
+ value465: int = Value();
+ value466: int = Value();
+ value467: int = Value();
+ value468: int = Value();
+ value469: int = Value();
+ value470: int = Value();
+ value471: int = Value();
+ value472: int = Value();
+ value473: int = Value();
+ value474: int = Value();
+ value475: int = Value();
+ value476: int = Value();
+ value477: int = Value();
+ value478: int = Value();
+ value479: int = Value();
+ value480: int = Value();
+ value481: int = Value();
+ value482: int = Value();
+ value483: int = Value();
+ value484: int = Value();
+ value485: int = Value();
+ value486: int = Value();
+ value487: int = Value();
+ value488: int = Value();
+ value489: int = Value();
+ value490: int = Value();
+ value491: int = Value();
+ value492: int = Value();
+ value493: int = Value();
+ value494: int = Value();
+ value495: int = Value();
+ value496: int = Value();
+ value497: int = Value();
+ value498: int = Value();
+ value499: int = Value();
+}

@@ -1,0 +1,56 @@
+package foreign_values
+
+foreign import libc "system:c"
+foreign libc {
+    memset :: (data: u8[], value: i32, count: u64) -> rawptr
+    memcmp :: (left: u8[], right: u8[], count: u64) -> i32
+}
+
+Main :: () -> int {
+    original := [u8(65), 0, 66];
+    other := original;
+    changed := memset(original, 9, 1);
+    assert(original[0] == 9 && other[0] == 65);
+
+    // The first argument is an owned historical value while the last
+    // argument replaces its former place. No allocation follows that release
+    // before memcmp, so poisoning makes an unprotected read fail reliably.
+    buffer := [u8(65), 0, 66];
+    replacement := [u8(88)];
+    compared := memcmp(buffer, [u8(65), 0, 66], Replace(&buffer, replacement));
+    assert(compared == 0 && length(buffer) == 1 && buffer[0] == 88);
+
+    value := [u8(65)];
+    result := FillCopy(value);
+    assert(result == 9 && value[0] == 65);
+    FillScoped(&value);
+    assert(value[0] == 7);
+    captured := [u8(65), 0, 66];
+    copied_early := InspectCopy(captured, Replace(&captured, replacement));
+    assert(copied_early == 9 && captured[0] == 88);
+
+    // Repeated arguments name one writable place. The native probe also
+    // writes through one pointer while reading the other.
+    identical := memcmp(value, value, 1);
+    assert(identical == 0);
+    temporary := memcmp(Make(), [u8(65), 0, 66], 3);
+    assert(temporary == 0);
+    return 0;
+}
+Replace :: (buffer: ^(u8[]), replacement: u8[]) -> u64 {
+    buffer^ = replacement;
+    return 3;
+}
+FillCopy :: (buffer: u8[]) -> int {
+    changed := memset(buffer, 9, 1);
+    return int(buffer[0]);
+}
+FillScoped :: (buffer: ^(u8[])) {
+    changed := memset(buffer^, 7, 1);
+}
+Make :: () -> u8[] { return [u8(65), 0, 66]; }
+InspectCopy :: (buffer: u8[], ignored: u64) -> int {
+    assert(buffer[0] == 65);
+    changed := memset(buffer, 9, 1);
+    return int(buffer[0]);
+}

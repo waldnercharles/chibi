@@ -1,0 +1,49 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+
+// ForeignStorage currently represents pointer values and function addresses as
+// 64-bit words. A wasm32 C pointer is 32 bits, including an array's element
+// stride. Reject these source signatures before that distinction is erased.
+// Numeric u64 values and byte-buffer/cstring borrows have their own valid ABI.
+ScalarWasmForeignType :: (forest: snapshot.SnapshotNode[], text: string, node: int, document: int)
+-> syntax.Diagnostic {
+    if (node < 0) { return ScalarPassed(); }
+    if (Is(forest, node, syntax.Type) &&
+        Text(forest, text, Field(forest, node, syntax.FieldName)) == "rawptr") {
+        return Diagnose(forest, node, document, "native WebAssembly foreign rawptr signatures are not supported");
+    }
+    if (Is(forest, node, syntax.CallableType)) {
+        return Diagnose(forest, node, document, "native WebAssembly foreign function-pointer signatures are not supported");
+    }
+    child := forest[node].first_child;
+    while (child >= 0) {
+        rejected := ScalarWasmForeignType(forest, text, child, document);
+        if (rejected.message != "") { return rejected; }
+        child = forest[child].next_sibling;
+    }
+    return ScalarPassed();
+}
+
+ScalarWasmForeignABI :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]) -> syntax.Diagnostic {
+    for (document, file in documents) {
+        member := FirstMember(forest, document.syntax_root);
+        while (member >= 0) {
+            if (Is(forest, member, syntax.ForeignBlock)) {
+                for (declaration in Members(forest, member)) {
+                    if (Is(forest, declaration, syntax.ForeignFunction)) {
+                        rejected := ScalarWasmForeignType(forest, document.text,
+                            Field(forest, declaration, syntax.FieldParameters), file);
+                        if (rejected.message != "") { return rejected; }
+                        rejected = ScalarWasmForeignType(forest, document.text,
+                            Field(forest, declaration, syntax.FieldResults), file);
+                        if (rejected.message != "") { return rejected; }
+                    }
+                }
+            }
+            member = NextMember(forest, member);
+        }
+    }
+    return ScalarPassed();
+}

@@ -1,0 +1,23 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 5957df1d..9f9ae2e2 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -448,17 +448,9 @@ if(EMSCRIPTEN)
+ 		-sFULL_ES3=1
+ 		-sALLOW_MEMORY_GROWTH=1
+ 		-sFILESYSTEM=1
+-		-sASYNCIFY=1
+-		-sASYNCIFY_STACK_SIZE=2040000
+-		# Skip ASYNCIFY instrumentation for functions proven never to suspend
+-		# (never reach cf_sleep / a coroutine yield / a fiber swap). This severs
+-		# the allocator hub (cf_alloc & co, an indirect call) and the cspv shader
+-		# compiler from the instrumented set, shrinking the wasm-opt link pass and
+-		# the output module. See cmake/asyncify_remove.txt for the list + contract.
+-		-sASYNCIFY_REMOVE=@${CMAKE_CURRENT_SOURCE_DIR}/cmake/asyncify_remove.txt
+ 	)
+ 
+-	target_compile_options(cute PRIVATE -O1 -fno-rtti -fno-exceptions)
++	target_compile_options(cute PRIVATE -fno-rtti -fno-exceptions)
+ endif()
+ 
+ if(ANDROID)

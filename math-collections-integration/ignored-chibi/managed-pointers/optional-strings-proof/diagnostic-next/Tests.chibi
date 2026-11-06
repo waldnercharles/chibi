@@ -1,0 +1,3 @@
+package lib
+@test
+Cell :: () { result:=Value(); assert(result==1); }

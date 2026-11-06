@@ -1,0 +1,204 @@
+package install
+
+import files "graph:files"
+import os "core:os"
+import strings "core:strings"
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+UpperA: int : 65;
+UpperZ: int : 90;
+LowerA: int : 97;
+LowerZ: int : 122;
+Colon: int : 58;
+Slash: int : 47;
+Backslash: int : 92;
+
+DriveRoot :: (path: string) -> bool {
+    if (strings.ByteLength(path) < 3) {
+        return false;
+    }
+    drive := strings.ByteAt(path, 0);
+    letter := (drive >= UpperA && drive <= UpperZ) || (drive >= LowerA && drive <= LowerZ);
+    separator := strings.ByteAt(path, 2);
+    return letter && strings.ByteAt(path, 1) == Colon && (separator == Slash || separator == Backslash);
+}
+
+Normalize :: (path: string) -> string {
+    if (os.Platform() == "Windows" || DriveRoot(path)) {
+        return strings.ReplaceAll(path, "\\", "/");
+    }
+    return path;
+}
+
+// The end of '/', 'C:/', or a Windows '//server/share' root, never 'C:'.
+RootLength :: (path: string) -> int {
+    if (DriveRoot(path)) { return 3; }
+    if (os.Platform() == "Windows" && strings.HasPrefix(path, "//")) {
+        parts := strings.Split(strings.TrimPrefix(path, "//"), "/");
+        if (length(parts) < 2 || parts[0] == "" || parts[1] == "") { return 0; }
+        return 3 + strings.ByteLength(parts[0]) + strings.ByteLength(parts[1]);
+    }
+    if (strings.HasPrefix(path, "/")) { return 1; }
+    return 0;
+}
+
+pub IsAbsolute :: (path: string) -> bool {
+    return RootLength(Normalize(path)) != 0;
+}
+
+pub Parent :: (path: string) -> string {
+    normalized := Normalize(path);
+    root := RootLength(normalized);
+    while (strings.ByteLength(normalized) > root && strings.HasSuffix(normalized, "/")) {
+        normalized = strings.TrimSuffix(normalized, "/");
+    }
+    if (strings.ByteLength(normalized) == root) { return ""; }
+    end := strings.LastIndex(normalized, "/");
+    if (end < 0) { return ""; }
+    if (end < root) { return strings.Slice(normalized, 0, root); }
+    return strings.Slice(normalized, 0, end);
+}
+// Resolve existing components before interpreting '..', preserving symlink
+// semantics. Missing suffixes are normalized without creating directories.
+pub CanonicalPath :: (path: string) -> string {
+    normalized := Normalize(path);
+    // A Windows-looking root is still a relative filename to POSIX realpath.
+    // Classify it for portable path checks, but never resolve it on that host.
+    if (DriveRoot(normalized) && os.Platform() != "Windows") { return ""; }
+    root := RootLength(normalized);
+    if (root == 0) { return ""; }
+    result := os.RealPath(strings.Slice(normalized, 0, root));
+    if (result == "") { return ""; }
+    result = Normalize(result);
+    parts := strings.Split(strings.Slice(normalized, root, strings.ByteLength(normalized)), "/");
+    for (index in 0..<length(parts)) {
+        part := parts[index];
+        if (part == "" || part == ".") {
+            continue;
+        }
+        if (part == "..") {
+            parent := Parent(result);
+            if (parent != "") { result = parent; }
+            continue;
+        }
+        candidate := Join([result, "/", part]);
+        if (strings.HasSuffix(result, "/")) {
+            candidate = Join([result, part]);
+        }
+        resolved := os.RealPath(candidate);
+        kind := os.Kind(candidate);
+        if (kind != os.KindNone && (resolved == "" ||
+                           (index < length(parts) - 1 && !os.IsDirectory(resolved)))) {
+            return "";
+        }
+        result = candidate;
+        if (resolved != "") {
+            result = Normalize(resolved);
+        }
+    }
+    return result;
+}
+// file_stamp starts with device:inode; its remaining metadata may change.
+pub Identity :: (path: string) -> string {
+    stamp := os.Stamp(path);
+    if (stamp == "") {
+        return "";
+    }
+    device := strings.Partition(stamp, ":").head;
+    inode := strings.Partition(strings.Partition(stamp, ":").tail, ":").head;
+    if (device == "" || inode == "") {
+        return "";
+    }
+    return Join([device, ":", inode]);
+}
+// A case-insensitive filesystem can name the same directory with two cases.
+pub Inside :: (path: string, directory: string) -> bool {
+    identity := Identity(directory);
+    if (identity == "") {
+        // Without the input identity, containment cannot be proved safe.
+        return true;
+    }
+    current := path;
+    while (current != "") {
+        if (Identity(current) == identity) {
+            return true;
+        }
+        current = Parent(current);
+    }
+    return false;
+}
+// Only regular files and real directories are distribution inputs.
+pub SameTree :: (source: string, staged: string) -> bool {
+    kind := os.Kind(source);
+    if (kind != os.Kind(staged)) {
+        return false;
+    }
+    if (kind == os.KindFile) {
+        hash := files.Digest(source);
+        return hash != "" && hash == files.Digest(staged);
+    }
+    if (kind != os.KindDirectory) {
+        return false;
+    }
+    names := files.Names(source);
+    if (strings.Join(names, "\n") != strings.Join(files.Names(staged), "\n")) {
+        return false;
+    }
+    for (name in names) {
+        if (!SameTree(Join([source, "/", name]), Join([staged, "/", name]))) {
+            return false;
+        }
+    }
+    return true;
+}
+pub CopyTree :: (source: string, destination: string) -> bool {
+    kind := os.Kind(source);
+    if (kind == os.KindFile) {
+        if (os.MakeDirectory(Parent(destination)) || os.Copy(source, destination)) {
+            return false;
+        }
+        return true;
+    }
+    if (kind != os.KindDirectory || os.MakeDirectory(destination)) {
+        return false;
+    }
+    for (name in files.Names(source)) {
+        if (!CopyTree(Join([source, "/", name]), Join([destination, "/", name]))) {
+            return false;
+        }
+    }
+    return true;
+}
+pub RemoveTree :: (path: string) -> bool {
+    if (os.Kind(path) == os.KindDirectory) {
+        for (name in files.Names(path)) {
+            if (!RemoveTree(Join([path, "/", name]))) {
+                return false;
+            }
+        }
+    }
+    failed := os.Remove(path);
+    return !failed;
+}
+// Sorted relative file names and their byte hashes, without absolute paths.
+pub Inventory :: (root: string, relative: string) -> string {
+    path := root;
+    if (relative != "") {
+        path = Join([root, "/", relative]);
+    }
+    if (os.IsFile(path)) {
+        return Join([relative, "\t", files.Digest(path), "\n"]);
+    }
+    text := "";
+    for (name in files.Names(path)) {
+        child := name;
+        if (relative != "") {
+            child = Join([relative, "/", name]);
+        }
+        text = Join([text, Inventory(root, child)]);
+    }
+    return text;
+}

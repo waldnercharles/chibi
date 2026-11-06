@@ -1,0 +1,2 @@
+package lib
+pub Bits: i64 : 1 << 40 | 0xF0;

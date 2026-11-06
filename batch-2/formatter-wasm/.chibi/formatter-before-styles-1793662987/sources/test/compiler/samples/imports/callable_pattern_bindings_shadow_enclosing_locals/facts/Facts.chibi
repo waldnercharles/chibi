@@ -1,0 +1,5 @@
+package facts
+import lib "project:callable_pattern_bindings_shadow_enclosing_locals/lib"
+Choice :: union { Some(amount: int) | None }
+IfPattern :: () -> int { payload := 90; return lib.Remap(3, (value: int) { choice := Choice.Some(value); if choice is .Some(payload) && payload > 0 { return payload + 1; } return 0; }) + payload; }
+WhilePattern :: () -> int { payload := 90; return lib.Remap(3, (value: int) { choice := Choice.Some(value); total := 0; while choice is .Some(payload) && payload > 0 { total += payload; choice = Choice.Some(payload - 1); } return total; }) + payload; }

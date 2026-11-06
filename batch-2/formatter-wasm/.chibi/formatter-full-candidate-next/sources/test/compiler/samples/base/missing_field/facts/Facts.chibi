@@ -1,0 +1,5 @@
+package facts
+Pair :: struct { a: int; b: int; }
+One :: () -> Pair { return {a: 1}; }
+
+// error: 3:28: Struct literal needs every field

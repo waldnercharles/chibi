@@ -1,0 +1,5 @@
+package facts
+Value: number : number(1e300);
+pub Fold :: (unused: number) -> number { return Value; }
+
+// error: 2:24: Numeric literal is outside the range of number

@@ -1,0 +1,30 @@
+package map_evaluation_effects
+
+ResetKey :: (values: ^([int: int])) -> int { values^ = [9: 90]; return 1; }
+ResetValue :: (values: ^([int: int])) -> int { values^ = [8: 80]; return 7; }
+ResetRead :: (values: ^([int: int])) -> int { values^ = [1: 99]; return 1; }
+OldArgument :: (values: [int: int], ignored: int) -> int { return values[1]; }
+Main :: () -> int {
+    CallsCaptured();
+    WritesCurrent();
+    return 0;
+}
+CallsCaptured :: () -> int {
+    values: [int: int] = [1: 11];
+    assert(OldArgument(values, ResetRead(&values)) == 11);
+    assert(values[1] == 99);
+    return 0;
+}
+WritesCurrent :: () -> int {
+    values: [int: int] = [1: 11];
+    // Changes resolve their current target after evaluating key and value.
+    values[ResetKey(&values)] = 5;
+    assert(values[9] == 90 && values[1] == 5);
+    values[1] = ResetValue(&values);
+    assert(values[8] == 80 && values[1] == 7 && !values.has(9));
+    values[ResetKey(&values)] = ResetValue(&values);
+    assert(values[8] == 80 && values[1] == 7 && !values.has(9));
+    delete values[ResetRead(&values)];
+    assert(!values.has(1));
+    return 0;
+}

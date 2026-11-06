@@ -1,0 +1,9 @@
+package lib
+
+foreign import libc "system:c"
+
+foreign libc {
+    abs :: (value: i32) -> i32
+}
+
+pub Magnitude :: (value: i32) -> i32 { return abs(value); }

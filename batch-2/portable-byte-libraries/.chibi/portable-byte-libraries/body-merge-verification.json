@@ -1,0 +1,99 @@
+{
+  "accepted": "51650ccff2c8830c6c22eb2c17f0b67c07dcf346",
+  "previous": "2d10d6fc420bb0a815772362f9add03648d38851",
+  "merge_paths": 11,
+  "checks": [
+    {
+      "path": "src/execution/prepared_record.c",
+      "exact_accepted_blob": true,
+      "sha256": "6ffd27fecdfe2ec95fc8abf77d3399c4c25e23e45278ca54553eda6f13d72448"
+    },
+    {
+      "path": "src/types/value_wire.c",
+      "exact_accepted_blob": true,
+      "sha256": "61096cc602d1feb8fd96cc2d8dcbd10ce3528bb598b3ebfeb4e4699726c8678d"
+    },
+    {
+      "path": "src/types/value_wire.h",
+      "exact_accepted_blob": true,
+      "sha256": "314c3967fe30a96ab5fdfe8f5aa24b57a32bc4010d1aef5de74bafad0c5695f6"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "accepted_plus_unchanged43line_helper": true,
+      "helper_sha256": "c16b7effccfe9145f3b298dcd1b81865adf6ff7a170f67b6b78368183484e299"
+    },
+    {
+      "path": "test/language/record_prepared_runtime.c",
+      "exact_accepted_blob": true,
+      "sha256": "41c9009a20b0ebb13a385dca0d95adb187ecae5442710af4669355b0ede68681"
+    },
+    {
+      "path": "test/native_aot/emitter_calls/Failures.chibi",
+      "exact_accepted_blob": true,
+      "sha256": "24a4fd3ce7dfb7e9570da3f88d68727acb4482d2a3eef2e9c4e3b7a6c0922369"
+    },
+    {
+      "path": "test/native_aot/emitter_calls/Formats.chibi",
+      "exact_accepted_blob": true,
+      "sha256": "f5506b0481e85126138b3ef09e4aa480a9569fcb29314cb772f92757ed52771a"
+    },
+    {
+      "path": "tools/compiler/bootstrap/bootstrap.json",
+      "exact_accepted_blob": true,
+      "sha256": "37280899dd06e3435e656e6eeee1e9307f5f5658ebf438738e9efe02f98d598c"
+    },
+    {
+      "path": "tools/compiler/bootstrap/compiler.chibip",
+      "exact_accepted_blob": true,
+      "sha256": "e93318a3db0f6f10cd65ae54f4b3a6bc0e4590da65a785b3c331b500cd24e1d6"
+    },
+    {
+      "path": "tools/compiler/package_compiler/Body.chibi",
+      "exact_accepted_blob": true,
+      "sha256": "718fe5933fa59a537c27126e92ae7e2f1320722896130d7ed1f0bc5ba3776743"
+    },
+    {
+      "path": "tools/compiler/runtime.json",
+      "exact_accepted_blob": true,
+      "sha256": "e1adf32b577f9a20993e9db40d4c3777d2b3a8325d1bb8a19a57bf2256f23348"
+    }
+  ],
+  "bootstrap_closure": {
+    "file": "compiler.chibip",
+    "bytes": 20767296,
+    "sha256": "e93318a3db0f6f10cd65ae54f4b3a6bc0e4590da65a785b3c331b500cd24e1d6"
+  },
+  "bootstrap_sources_verified": [
+    "tools/compiler/package_compiler/Compile.chibi",
+    "tools/compiler/package_compiler/Body.chibi",
+    "tools/compiler/package_compiler/Steps.chibi",
+    "tools/compiler/package_compiler/Maps.chibi",
+    "tools/compiler/package_compiler/References.chibi",
+    "tools/compiler/package_compiler/Pointers.chibi",
+    "tools/compiler/package_compiler/Tasks.chibi",
+    "tools/compiler/package_compiler/TaskResults.chibi",
+    "tools/compiler/package_compiler/Tree.chibi",
+    "tools/compiler/package_compiler/Number.chibi",
+    "tools/compiler/package_compiler/Optional.chibi",
+    "tools/compiler/package_compiler/Sequences.chibi",
+    "tools/compiler/package_compiler/Queries.chibi",
+    "tools/compiler/package_compiler/QueryLoops.chibi",
+    "tools/compiler/package_compiler/Behavior.chibi",
+    "tools/compiler/package_compiler/Scalar.chibi",
+    "tools/compiler/syntax_diagnostics/Diagnostics.chibi",
+    "packages/core/strings/Strings.chibi",
+    "tools/compiler/source_snapshot/Snapshot.chibi",
+    "tools/compiler/compiler_syntax/Syntax.chibi",
+    "tools/compiler/package_routes/Routes.chibi",
+    "tools/compiler/package_syntax/Extract.chibi",
+    "tools/compiler/package_graph/Graph.chibi",
+    "tools/compiler/package_paths/Paths.chibi",
+    "tools/compiler/lexical_binding/Binding.chibi",
+    "tools/compiler/prepared_writer/Writer.chibi",
+    "tools/compiler/scalar_facts/Facts.chibi"
+  ],
+  "private_target_structurally_unchanged": true,
+  "compiler_profile_and_source_role_seams": "Preserved public7/private6 and explicit27compilerinputs; library-specific independent source review found no blocker.",
+  "validation": "Source/blob/hash review only; no new runtime execution or heavyproducer."
+}

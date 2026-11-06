@@ -1,0 +1,245 @@
+package source_format
+
+import strings "core:strings"
+import tk "project:source_tokenizer"
+import directives "project:source_directives"
+
+pub CommentPolicies :: struct {
+    comment_reflow: int; // preserve=0, prose=1, docs=2, all=3
+    comment_width: int;
+    reflow_block_comments: bool;
+    tab_width: int;
+}
+
+pub CommentDefaults :: () -> CommentPolicies {
+    return {comment_reflow: 0, comment_width: 80, reflow_block_comments: false, tab_width: 4};
+}
+
+CommentLine :: struct {
+    eligible: bool;
+    marker: string;
+    indent: string;
+    content: string;
+    columns: int;
+}
+
+CommentIndent :: (text: string, start: int) -> (standalone: bool, value: string) {
+    first := start;
+    while (first > 0 && strings.ByteAt(text, first - 1) != 10) { first -= 1; }
+    for (at in first..<start) {
+        byte := strings.ByteAt(text, at);
+        if (byte != 32 && byte != 9) { return (false, ""); }
+    }
+    return (true, strings.Slice(text, first, start - first));
+}
+
+CommentColumns :: (indent: string, tab_width: int) -> int {
+    columns := 0;
+    for (byte in text_bytes(indent)) {
+        if (byte == 9) { columns += tab_width - columns % tab_width; }
+        else { columns += 1; }
+    }
+    return columns;
+}
+
+// Commented code, Markdown structures and deliberate alignment remain authored.
+// A conservative prose classifier is preferable to damaging an example or URL.
+CommentProse :: (raw: string) -> bool {
+    if (strings.HasSuffix(raw, "  ") || strings.Contains(raw, "\t")) { return false; }
+    content := strings.TrimSpace(raw);
+    if (content == "" || strings.Contains(content, "  ") || strings.Contains(content, "://") ||
+        strings.Contains(content, "|") || strings.Contains(content, "`") ||
+        strings.Contains(content, "{") || strings.Contains(content, "}") ||
+        strings.Contains(content, ":=") || strings.Contains(content, "::") ||
+        strings.Contains(content, "=>") || strings.Contains(content, ";") ||
+        strings.Contains(content, " = ") || strings.Contains(content, " + ") ||
+        strings.Contains(content, " - ") || strings.Contains(content, " * ") ||
+        strings.Contains(content, " / ") || strings.Contains(content, " && ") ||
+        strings.Contains(content, " || ") || strings.Contains(content, "(") || strings.Contains(content, ")")) {
+        return false;
+    }
+    for (prefix in ["#", ">", "- ", "* ", "+ ", "---", "===", "~~~", "@", "TODO", "FIXME",
+                    "NOTE:", "chibi ", "nolint", "noinspection", "clang-format", "fmt:", "format:"]) {
+        if (strings.HasPrefix(content, prefix)) { return false; }
+    }
+    for (prefix in ["www.", "if ", "for ", "while ", "switch ", "case ", "when ", "return ", "foreign ", "import ", "package "]) {
+        if (strings.HasPrefix(content, prefix)) { return false; }
+    }
+    first := strings.ByteAt(content, 0);
+    if (first >= 48 && first <= 57) { return false; }
+    if (strings.HasSuffix(content, ":")) { return false; }
+    words := strings.Fields(content);
+    if (length(words) <= 4 && !strings.HasSuffix(content, ".") && !strings.HasSuffix(content, "!") &&
+        !strings.HasSuffix(content, "?") && !strings.HasSuffix(content, ",")) { return false; }
+    return true;
+}
+
+CommentInfo :: (text: string, start: int, end: int, policy: CommentPolicies) -> CommentLine {
+    result: CommentLine = {eligible: false, marker: "", indent: "", content: "", columns: 0};
+    indent := CommentIndent(text, start);
+    if (!indent.standalone) { return result; }
+    spelling := strings.Slice(text, start, end - start);
+    if (!strings.HasPrefix(spelling, "//")) { return result; }
+    if (strings.HasPrefix(spelling, "////")) { return result; }
+    marker := "//";
+    if (strings.HasPrefix(spelling, "///")) { marker = "///"; }
+    if (strings.HasPrefix(spelling, "//!")) { marker = "//!"; }
+    doc := marker != "//";
+    if ((doc && policy.comment_reflow == 1) || (!doc && policy.comment_reflow == 2)) { return result; }
+    raw := strings.Slice(spelling, strings.ByteLength(marker), strings.ByteLength(spelling) - strings.ByteLength(marker));
+    // Four authored spaces after the marker indicate a Markdown code block.
+    if (strings.HasPrefix(raw, "    ")) { return result; }
+    result.eligible = CommentProse(raw);
+    result.marker = marker;
+    result.indent = indent.value;
+    result.content = strings.TrimSpace(raw);
+    result.columns = CommentColumns(indent.value, policy.tab_width);
+    return result;
+}
+
+CommentAdjacent :: (text: string, first: int, last: int) -> bool {
+    newlines := 0;
+    for (at in first..<last) {
+        byte := strings.ByteAt(text, at);
+        if (byte == 10) { newlines += 1; }
+        else if (byte != 13 && byte != 32 && byte != 9) { return false; }
+    }
+    return newlines == 1;
+}
+
+CommentWrapped :: (content: string, indent: string, marker: string, width: int, columns: int, eol: string) -> string {
+    available := width - columns - strings.ByteLength(marker) - 1;
+    if (available < 8) { available = 8; }
+    words := strings.Fields(content);
+    lines: string[] = [];
+    current: string[] = [];
+    used := 0;
+    for (word in words) {
+        size := strings.ByteLength(word);
+        if (used > 0 && used + 1 + size > available) {
+            lines.append(strings.Concatenate([marker, " ", strings.Join(current, " ")]));
+            current = []; used = 0;
+        }
+        current.append(word);
+        if (used > 0) { used += 1; }
+        used += size;
+    }
+    if (used > 0) { lines.append(strings.Concatenate([marker, " ", strings.Join(current, " ")])); }
+    return strings.Join(lines, strings.Concatenate([eol, indent]));
+}
+
+CommentBlock :: (text: string, start: int, end: int, policy: CommentPolicies) -> string {
+    spelling := strings.Slice(text, start, end - start);
+    if (!policy.reflow_block_comments || !strings.HasPrefix(spelling, "/*")) { return spelling; }
+    indent := CommentIndent(text, start);
+    if (!indent.standalone) { return spelling; }
+    at := end;
+    while (at < strings.ByteLength(text) && strings.ByteAt(text, at) != 10) {
+        if (strings.ByteAt(text, at) != 32 && strings.ByteAt(text, at) != 9 && strings.ByteAt(text, at) != 13) { return spelling; }
+        at += 1;
+    }
+    doc := strings.HasPrefix(spelling, "/**");
+    if ((doc && policy.comment_reflow == 1) || (!doc && policy.comment_reflow == 2)) { return spelling; }
+    prefix := "/*";
+    first := 2;
+    if (doc) { prefix = "/**"; first = 3; }
+    body := strings.Slice(spelling, first, strings.ByteLength(spelling) - first - 2);
+    content: string[] = [];
+    paragraph_end := false;
+    for (line in strings.SplitLines(body)) {
+        raw := line;
+        if (strings.HasPrefix(raw, indent.value)) { raw = strings.TrimPrefix(raw, indent.value); }
+        left := strings.TrimLeftSpace(raw);
+        if (strings.HasPrefix(left, "*")) { raw = strings.TrimPrefix(left, "*"); }
+        // Indentation after the block's own prefix belongs to the example.
+        if (strings.HasPrefix(raw, "    ") || strings.HasPrefix(raw, "\t")) { return spelling; }
+        trimmed := strings.TrimSpace(raw);
+        if (trimmed == "") { paragraph_end = length(content) > 0; continue; }
+        // Keep authored paragraph boundaries; this conservative block mode
+        // wraps one prose paragraph and leaves multi-paragraph blocks intact.
+        if (paragraph_end) { return spelling; }
+        if (!CommentProse(trimmed)) { return spelling; }
+        content.append(trimmed);
+    }
+    if (length(content) == 0) { return spelling; }
+    words := strings.Join(content, " ");
+    columns := CommentColumns(indent.value, policy.tab_width);
+    if (columns + strings.ByteLength(prefix) + strings.ByteLength(words) + 4 <= policy.comment_width) {
+        return strings.Concatenate([prefix, " ", words, " */"]);
+    }
+    eol := "\n";
+    if (strings.Contains(spelling, "\r\n")) { eol = "\r\n"; }
+    wrapped := CommentWrapped(words, indent.value, " *", policy.comment_width, columns, eol);
+    return strings.Concatenate([prefix, eol, indent.value, wrapped, eol, indent.value, " */"]);
+}
+
+pub CommentStyle :: (text: string, policy: CommentPolicies) -> Result {
+    if (policy.comment_reflow < 0 || policy.comment_reflow > 3 || policy.comment_width < 20 ||
+        policy.comment_width > 400 || policy.tab_width < 1 || policy.tab_width > 16) {
+        return Result.Rejected("Invalid comment formatting policy");
+    }
+    if (policy.comment_reflow == 0) { return Result.Formatted(text, ""); }
+    switch tk.Tokenize(text) {
+        case .Scanned(kinds, starts, ends, rows, columns, errors, offsets, error_rows, error_columns):
+            if (length(errors) != 0) { return Result.Rejected("Comment formatting requires valid tokens"); }
+            pieces: string[] = [];
+            copied := 0;
+            changed := false;
+            verbatim := false;
+            fence := "";
+            index := 0;
+            while (index < length(kinds)) {
+                if (kinds[index] != tk.Comment) { index += 1; continue; }
+                spelling := strings.Slice(text, starts[index], ends[index] - starts[index]);
+                next_verbatim := directives.Apply(spelling, verbatim);
+                protected := verbatim || next_verbatim;
+                verbatim = next_verbatim;
+                if (protected) { fence = ""; index += 1; continue; }
+                content := spelling;
+                if (strings.HasPrefix(spelling, "///") || strings.HasPrefix(spelling, "//!")) { content = strings.Slice(spelling, 3, strings.ByteLength(spelling) - 3); }
+                else if (strings.HasPrefix(spelling, "//")) { content = strings.Slice(spelling, 2, strings.ByteLength(spelling) - 2); }
+                content = strings.TrimSpace(content);
+                fenced := fence != "";
+                if (strings.HasPrefix(content, "```") || strings.HasPrefix(content, "~~~")) {
+                    delimiter := strings.Slice(content, 0, 3);
+                    if (fence == delimiter) { fence = ""; }
+                    else if (fence == "") { fence = delimiter; }
+                    fenced = true;
+                }
+                if (fenced) { index += 1; continue; }
+                replacement := spelling;
+                last := index;
+                if (strings.HasPrefix(spelling, "/*")) {
+                    replacement = CommentBlock(text, starts[index], ends[index], policy);
+                } else {
+                    info := CommentInfo(text, starts[index], ends[index], policy);
+                    if (info.eligible) {
+                        contents := [info.content];
+                        while (last + 1 < length(kinds) && kinds[last + 1] == tk.Comment &&
+                               CommentAdjacent(text, ends[last], starts[last + 1])) {
+                            next := CommentInfo(text, starts[last + 1], ends[last + 1], policy);
+                            if (!next.eligible || next.marker != info.marker || next.indent != info.indent) { break; }
+                            contents.append(next.content); last += 1;
+                        }
+                        eol := "\n";
+                        if (strings.HasSuffix(spelling, "\r") ||
+                            (last > index && strings.Contains(strings.Slice(text, starts[index], ends[last] - starts[index]), "\r\n"))) { eol = "\r\n"; }
+                        replacement = CommentWrapped(strings.Join(contents, " "), info.indent, info.marker,
+                                                     policy.comment_width, info.columns, eol);
+                        if (strings.ByteAt(text, ends[last] - 1) == 13) { replacement = strings.Concatenate([replacement, "\r"]); }
+                    }
+                }
+                original := strings.Slice(text, starts[index], ends[last] - starts[index]);
+                if (replacement != original) {
+                    pieces.append(strings.Slice(text, copied, starts[index] - copied)); pieces.append(replacement);
+                    copied = ends[last]; changed = true;
+                }
+                index = last + 1;
+            }
+            if (!changed) { return Result.Formatted(text, ""); }
+            pieces.append(strings.Slice(text, copied, strings.ByteLength(text) - copied));
+            rewritten := strings.Concatenate(pieces);
+            if (!StyleTokenEquivalent(text, rewritten, false, true)) { return Result.Rejected("Comment reflow would change source tokens"); }
+            return Result.Formatted(rewritten, "");
+    }
+}

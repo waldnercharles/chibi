@@ -1,0 +1,32 @@
+package layout_probe
+import format "project:source_format"
+Show :: (source: string, o: format.Options) {
+    switch format.Format(source, o) {
+        case .Formatted(text, notes): print_string(text); print_string(notes);
+        case .Rejected(message): print_string(message);
+    }
+}
+Main :: () -> int {
+    o := format.Defaults();
+    o.chain_layout = 1;
+    Show("package p\nA :: () { value := actor.\nFirst().\nSecond(); }\n", o);
+    o.chain_layout = 2;
+    Show("package p\nA :: () { value := actor?.First().Second(); }\n", o);
+    o = format.Defaults();
+    o.short_case_arms = 3;
+    Show("package p\nA :: (value: int) { switch value { case 1: First(); Second(); case: /* reason */ Third(); } }\n", o);
+    o = format.Defaults();
+    o.attribute_layout = 1;
+    Show("package p\n@a\n@b\nR :: struct {}\n@fast\nMain :: () {}\nforeign { @native\nCall :: (); }\n", o);
+    o.attribute_layout = 2;
+    Show("package p\n@a @b R :: struct {}\n@fast Main :: () {}\nforeign { @native Call :: (); }\n", o);
+    o = format.Defaults();
+    o.preferred_width = 32;
+    o.signature_break_priority = 1;
+    Show("package p\nFunction :: (x: int, y: int) -> VeryLongResultType {}\n", o);
+    o.signature_break_priority = 2;
+    Show("package p\nFunction :: (x: int, y: int) -> VeryLongResultType {}\n", o);
+    Show("package p\nFunction :: () (result: VeryLongResultType) {}\n", o);
+    Show("package p\nFunction :: () VeryLongResultType {}\n", o);
+    return 0;
+}

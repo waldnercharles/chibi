@@ -1,0 +1,46 @@
+package native_waiting_test
+
+import os "core:os"
+import strings "core:strings"
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    folder := format_text("{}/waiting cases", arguments[2]);
+    made := os.MakeDirectory(folder);
+    assert(made == nil, "make waiting test fixture");
+    folder = os.RealPath(folder);
+    argument_marker := strings.Concatenate([folder, "/argument"]);
+    forbidden := strings.Concatenate([folder, "/later"]);
+    source := strings.Concatenate([
+        "package waiting_cases\nimport os \"core:os\"\nimport testing \"core:testing\"\n",
+        "Check :: (value: int) { assert(value == 42); }\n",
+        "Immediate :: () -> int { if (false) { yield } return 42; }\n",
+        "Later :: () { written := os.WriteText(\"", forbidden, "\", \"unexpected\"); assert(written == nil); }\n",
+        "Argument :: () -> int { written := os.WriteText(\"", argument_marker, "\", \"argument evaluated\"); assert(written == nil); return 7; }\n",
+        "Child :: (value: int) -> int { Later(); yield\n    return value; }\n",
+        "Expect :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); }\n",
+        "@test Pure :: () { Check(42); }\n",
+        "@test ImmediateReady :: () { value := await Immediate(); Check(value); }\n",
+        "@test Waits :: () { await Delay(0); Later(); }\n",
+        "@test Yields :: () { yield\n    Later(); }\n",
+        "@test Spawns :: () { Child(Argument()); Later(); }\n",
+        "@test ExpectedIsNotBusy :: () { Expect(); yield\n    Later(); }\n",
+        "@test Budget :: () { while (true) {} }\n"]);
+    written := os.WriteText(format_text("{}/Tests.chibi", folder), source);
+    assert(written == nil, "write waiting test fixture");
+    for (mode in ["-O0", "-O2"]) {
+        report := os.Capture([arguments[0], "test", mode, "--llvm", arguments[1], folder]);
+        if (report.status != 1 || !strings.Contains(report.stdout, "7 tests, 5 failed")) { os.Print(report.stdout); os.Print(report.stderr); }
+        assert(report.status == 1 && strings.Contains(report.stdout, "7 tests, 5 failed"), "generated test wrappers run waiting and plain tests");
+        assert(strings.Contains(report.stdout, "PASS project.Pure") && strings.Contains(report.stdout, "PASS project.ImmediateReady"), "an immediately ready authored await passes");
+        assert(strings.Contains(report.stdout, "a test must finish without waiting") && strings.Contains(report.stdout, "a test cannot start a task"), "task commands report the established Busy reasons");
+        assert(strings.Contains(report.stdout, "expected AssertionFailed, but it failed with another failure"), "ExpectFailure cannot swallow Busy");
+        assert(strings.Contains(report.stdout, "FAIL project.Budget") && strings.Contains(report.stdout, "BudgetExhausted"), "each generated test owns its bounded execution scope");
+        assert(os.IsFile(argument_marker) && !os.Exists(forbidden), "spawning evaluates arguments but no rejected work continues");
+        removed := os.Remove(argument_marker);
+        assert(removed == nil, "clear the observed argument between optimization levels");
+    }
+    os.Print("native waiting tests: ready awaits, Busy, expected failures and quota passed");
+    return 0;
+}

@@ -1,0 +1,5 @@
+package facts
+import lib "project:callable_capture_rejection/lib"
+Main :: (limit: int) -> bool { return lib.Apply(3, (value: int) => value > limit); }
+
+// error: 3:76: Inline functions cannot capture enclosing locals

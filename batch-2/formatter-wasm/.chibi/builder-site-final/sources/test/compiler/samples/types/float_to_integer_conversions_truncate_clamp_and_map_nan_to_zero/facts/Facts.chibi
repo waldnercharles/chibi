@@ -1,0 +1,8 @@
+package facts
+ToI32 :: (x: f64) -> i32 { return i32(x); }
+ToU8 :: (x: f64) -> u8 { return u8(x); }
+ToI64 :: (x: f64) -> i64 { return i64(x); }
+ToU64 :: (x: f64) -> u64 { return u64(x); }
+NumberToI32 :: (x: number) -> i32 { return i32(x); }
+Divide :: (a: f64, b: f64) -> f64 { return a / b; }
+Negate :: (x: f64) -> f64 { return x * -1.0; }

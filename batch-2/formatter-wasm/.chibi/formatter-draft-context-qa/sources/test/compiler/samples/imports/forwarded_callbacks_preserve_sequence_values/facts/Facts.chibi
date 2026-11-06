@@ -1,0 +1,8 @@
+package facts
+import lib "project:forwarded_callbacks_preserve_sequence_values/lib"
+Count :: (input: int[]) -> int { return input.length(); }
+Change :: (input: int[]) -> int[] { input.append(9); input[0] = 7; return input; }
+ReadNamed :: (input: int[]) -> int { return lib.ReadForward(input, Count); }
+ReadInline :: (input: int[]) -> int { return lib.ReadForward(input, (row: int[]) => row.length()); }
+CopiedNamed :: () -> int { original: int[] = [1, 2]; copied := lib.TransformForward(original, Change); return original[0] * 1000 + original.length() * 100 + copied[0] * 10 + copied.length(); }
+CopiedInline :: () -> int { original: int[] = [1, 2]; copied := lib.TransformForward(original, (row: int[]) { row.append(9); row[0] = 8; return row; }); return original[0] * 1000 + original.length() * 100 + copied[0] * 10 + copied.length(); }

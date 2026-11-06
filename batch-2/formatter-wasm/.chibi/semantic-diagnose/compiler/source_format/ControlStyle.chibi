@@ -1,0 +1,239 @@
+package source_format
+
+import strings "core:strings"
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+
+// A body whose grammar accepts either braces or one statement. Block nodes
+// remain present in both forms, so removing braces never removes a scope.
+ControlBlock :: (rows: diag.Node[], node: int) -> bool {
+    if (KindOf(rows, node) != diag.Block) {
+        return false;
+    }
+    parent := ParentKind(rows, node);
+    return parent == diag.IfStatement || parent == diag.WhileStatement;
+}
+
+BareControlBlock :: (rows: diag.Node[], node: int) -> bool {
+    return ControlBlock(rows, node) && KindOf(rows, FirstChild(rows, node)) != tk.OpenBrace;
+}
+
+// These statements cannot expose an unmatched inner if to an outer else.
+// A nested control keeps braces even when its own body is one statement.
+SimpleControlStatement :: (kind: int) -> bool {
+    return kind == diag.ExpressionStatement || kind == diag.Assignment ||
+           kind == diag.LocalDeclaration || kind == diag.ConstantDeclaration ||
+           kind == diag.ReturnStatement || kind == diag.BreakStatement ||
+           kind == diag.ContinueStatement || kind == diag.YieldStatement ||
+           kind == diag.DeleteStatement || kind == diag.CancelStatement;
+}
+
+// Brace edits are attached to leaf rows and emitted in source order. Growth is
+// linear in rows and source bytes; nested bodies never rescan their subtrees.
+ControlBraces :: (text: string, rows: diag.Node[], tokens: Token[], mode: int) -> string {
+    count := length(rows);
+    // Leaf handles are row + 1; zero means an empty subtree. resize grows
+    // with zero values, rather than repeating the initializer's first item.
+    first := resize([int(0)], count);
+    last := resize([int(0)], count);
+    token_at := resize([int(0)], count);
+    comments := resize([false], count);
+    protected := resize([false], count);
+    opens := resize([int(0)], count);
+    closes := resize([int(0)], count);
+    dropped := resize([false], count);
+    verbatim := false;
+    at: int = 0;
+    while (at < length(tokens)) {
+        token := tokens[at];
+        node := token.node;
+        token_at[node] = at;
+        first[node] = node + 1;
+        last[node] = node + 1;
+        if (token.comment) {
+            words := text_slice(text, token.start, token.end - token.start);
+            if (strings.HasPrefix(words, "// chibi fmt: off")) {
+                verbatim = true;
+            }
+            comments[node] = true;
+            protected[node] = verbatim;
+            if (strings.HasPrefix(words, "// chibi fmt: on")) {
+                verbatim = false;
+            }
+        } else {
+            protected[node] = verbatim;
+        }
+        at += 1;
+    }
+    at = count - 1;
+    while (at >= 0) {
+        parent := rows[at].parent;
+        if (parent >= 0) {
+            if (first[at] > 0 && (first[parent] == 0 || first[at] < first[parent])) {
+                first[parent] = first[at];
+            }
+            if (last[at] > last[parent]) {
+                last[parent] = last[at];
+            }
+            comments[parent] = comments[parent] || comments[at];
+            protected[parent] = protected[parent] || protected[at];
+        }
+        at -= 1;
+    }
+    edits := false;
+    at = 0;
+    while (at < count) {
+        if (ControlBlock(rows, at) && !protected[at] && first[at] > 0) {
+            braced := KindOf(rows, FirstChild(rows, at)) == tk.OpenBrace;
+            if (!braced && mode == Always) {
+                ending := last[at] - 1;
+                // Keep a trailing comment on its statement rather than moving
+                // it onto the inserted closing brace.
+                next := token_at[ending] + 1;
+                while (next < length(tokens) && tokens[next].comment &&
+                       rows[tokens[next].node].row == rows[ending].row &&
+                       !protected[tokens[next].node]) {
+                    ending = tokens[next].node;
+                    next += 1;
+                }
+                beginning := first[at] - 1;
+                opens[beginning] += 1;
+                closes[ending] += 1;
+                edits = true;
+            } else if (braced && mode == OmitSingle && !comments[at]) {
+                child := rows[at].first_child;
+                statement: int = -1;
+                opener: int = -1;
+                closer: int = -1;
+                many := false;
+                while (child >= 0) {
+                    kind := rows[child].kind;
+                    if (kind == tk.OpenBrace) {
+                        opener = child;
+                    } else if (kind == tk.CloseBrace) {
+                        closer = child;
+                    } else if (kind != tk.Semicolon) {
+                        if (statement >= 0) {
+                            many = true;
+                        }
+                        statement = child;
+                    }
+                    child = rows[child].next_sibling;
+                }
+                if (!many && statement >= 0 && SimpleControlStatement(rows[statement].kind) &&
+                    opener >= 0 && closer >= 0) {
+                    dropped[opener] = true;
+                    dropped[closer] = true;
+                    edits = true;
+                }
+            }
+        }
+        at += 1;
+    }
+    if (!edits) {
+        return text;
+    }
+    out: string[] = [];
+    copied: int = 0;
+    skip_gap := false;
+    token_index: int = 0;
+    for (token in tokens) {
+        dropping := dropped[token.node];
+        if (!skip_gap && !dropping) {
+            out.append(text_slice(text, copied, token.start - copied));
+        }
+        skip_gap = false;
+        repeat: int = 0;
+        while (repeat < opens[token.node]) {
+            out.append("{\n");
+            repeat += 1;
+        }
+        if (!dropping) {
+            out.append(text_slice(text, token.start, token.end - token.start));
+        } else {
+            if (rows[token.node].kind == tk.OpenBrace) {
+                // Replace both gaps around the opener by one break, so a
+                // removed brace cannot create a new blank paragraph.
+                out.append("\n");
+                skip_gap = true;
+            } else {
+                following := text_byte_length(text);
+                if (token_index + 1 < length(tokens)) {
+                    following = tokens[token_index + 1].start;
+                }
+                gap := text_slice(text, token.end, following - token.end);
+                if (strings.IndexByte(gap, 10) < 0) {
+                    out.append("\n");
+                }
+            }
+        }
+        repeat = 0;
+        while (repeat < closes[token.node]) {
+            out.append("\n}");
+            repeat += 1;
+        }
+        copied = token.end;
+        token_index += 1;
+    }
+    out.append(text_slice(text, copied, text_byte_length(text) - copied));
+    return strings.Join(out, "");
+}
+
+ControlBraceLeaf :: (rows: diag.Node[], node: int) -> bool {
+    kind := rows[node].kind;
+    return (kind == tk.OpenBrace || kind == tk.CloseBrace) && ControlBlock(rows, rows[node].parent);
+}
+
+NextControlRow :: (rows: diag.Node[], at: int, leaves: bool) -> int {
+    while (at < length(rows)) {
+        row := rows[at];
+        skip := row.start == row.end || row.kind == tk.Semicolon || ControlBraceLeaf(rows, at);
+        if (leaves) {
+            skip = skip || row.first_child >= 0;
+        } else {
+            skip = skip || row.kind == diag.Comment;
+        }
+        if (!skip) {
+            break;
+        }
+        at += 1;
+    }
+    return at;
+}
+
+// Only controlled block brace leaves may differ. Every scope and statement
+// retains its depth, kind and field. Comments may acquire the explicit Block
+// owner, but their exact bytes and order among all other leaves must stay.
+SameControlTree :: (original: string, a: diag.Node[], a_fields: int[], a_named: bool[],
+                    rewritten: string, b: diag.Node[], b_fields: int[], b_named: bool[]) -> bool {
+    a_depth := Depths(a);
+    b_depth := Depths(b);
+    pass: int = 0;
+    while (pass < 2) {
+        leaves := pass == 1;
+        i := NextControlRow(a, 0, leaves);
+        j := NextControlRow(b, 0, leaves);
+        while (i < length(a) && j < length(b)) {
+            if (a[i].kind != b[j].kind) {
+                return false;
+            }
+            if (!leaves && (a_depth[i] != b_depth[j] || a_fields[i] != b_fields[j] || a_named[i] != b_named[j])) {
+                return false;
+            }
+            if (leaves && a[i].first_child < 0 && b[j].first_child < 0) {
+                size := a[i].end - a[i].start;
+                if (size != b[j].end - b[j].start ||
+                    text_slice(original, a[i].start, size) != text_slice(rewritten, b[j].start, size)) {
+                    return false;
+                }
+            }
+            i = NextControlRow(a, i + 1, leaves);
+            j = NextControlRow(b, j + 1, leaves);
+        }
+        if (i < length(a) || j < length(b)) {
+            return false;
+        }
+        pass += 1;
+    }
+    return true;
+}

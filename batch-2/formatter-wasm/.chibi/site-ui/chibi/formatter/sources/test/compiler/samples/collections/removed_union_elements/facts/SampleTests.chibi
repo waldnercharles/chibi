@@ -1,0 +1,15 @@
+package facts
+
+// removed union elements
+@test
+Calls :: () {
+    r1: int = Removed();
+    e1: int = 1;
+    assert(r1 == e1, "Removed call 1");
+    r2: int = Replaced();
+    e2: int = 2;
+    assert(r2 == e2, "Replaced call 2");
+    r3: int = Walked();
+    e3: int = 14;
+    assert(r3 == e3, "Walked call 3");
+}

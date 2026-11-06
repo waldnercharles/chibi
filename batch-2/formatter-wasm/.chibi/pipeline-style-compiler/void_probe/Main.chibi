@@ -1,0 +1,42 @@
+package void_probe
+import compiler "project:package_compiler"
+import catalog "project:compiler_catalog"
+
+Dump :: (signature: compiler.SemanticSignature) {
+    for (callable in signature.callables) {
+        print_string(format_text("CALL {} result={} container={} record={} results={} identity={}\n", callable.name,
+                                 callable.result, callable.result_container, callable.result_record,
+                                 callable.results, callable.identity));
+    }
+    for (body, index in signature.bodies) {
+        print_string(format_text("BODY {} slots={} locals={} cells={} calls={} roots={} effects={} write={} facts={} code={}\n",
+                                 index, length(body.slots), length(body.locals), length(body.cells), length(body.calls),
+                                 length(body.roots), body.effects, body.direct_write, length(body.facts), length(body.code)));
+        for (instruction in body.code) {
+            print_string(format_text(" op={} type={} out={} left={} right={} target={} offset={} storage={} container={} record={} payload={} text={} hastext={} message={} hasmessage={}\n",
+                                     instruction.op, instruction.type, instruction.output, instruction.left,
+                                     instruction.right, instruction.target, instruction.offset, instruction.value_storage,
+                                     instruction.value_container, instruction.value_record, instruction.payload,
+                                     instruction.text, instruction.has_text, instruction.message, instruction.has_message));
+        }
+        for (fact in body.facts) { print_string(format_text(" fact kind={} target={}\n",fact.kind,fact.target)); }
+    }
+}
+
+Main :: () {
+    original := "package p\nDone :: () {}\nInvoke :: () { Done(); }\n";
+    proposed := "package p\nDone :: fn() {}\nInvoke :: fn() => Done();\n";
+    switch compiler.AnalyzeSources("/formatter", [], [], ["/formatter/Main.chibi"], [original],
+                                    catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities()) {
+        case .Rejected(problem): print_string(problem.message);
+        case .Analyzed(sites, before):
+            print_string("BEFORE\n"); Dump(before);
+            switch compiler.AnalyzeSources("/formatter", [], [], ["/formatter/Main.chibi"], [proposed],
+                                           catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities()) {
+                case .Rejected(problem): print_string(problem.message);
+                case .Analyzed(other, next_signature):
+                    print_string("AFTER\n"); Dump(next_signature);
+                    print_string(format_text("SAME={}\n",compiler.SameSemantics(before, next_signature)));
+            }
+    }
+}

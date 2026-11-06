@@ -1,0 +1,19 @@
+# Hashes of file build rules.
+bb63980824f498f22ee35342cb2d0952 sdk/generated/assets/asset_compiler_packaged.c
+b9ac3f264aa6dbc5dcc107941a2e1372 sdk/generated/authoring/engine_components.c
+f18bedb958b6f88912f737d2d4a904f6 sdk/generated/fonts/editor_code_font.c
+055f83162a222e3b3ad1e41042496af3 sdk/generated/fonts/editor_inconsolata_font.c
+7a47db27902717ca4ef4bc847da061c1 sdk/generated/fonts/editor_nerd_symbols_font.c
+8dd493ad52fa84a148d9979007ad9db6 sdk/generated/fonts/editor_noto_sans_bold_font.c
+74e2c50bb2e9691ab9373b55f2c19e2f sdk/generated/fonts/editor_noto_sans_font.c
+93899f4be08f844cafa784bb4b945903 sdk/generated/fonts/editor_noto_sans_semibold_font.c
+5b93051bd37ba84c7a21adc9f21de837 sdk/generated/fonts/editor_ui_bold_font.c
+c66d9bf642f90f9199ddf8e5fd41c906 sdk/generated/fonts/editor_ui_font.c
+f7a07ec4400a36f7cd68762132249ef8 sdk/generated/fonts/editor_ui_medium_font.c
+da3e1eb3af409977d502149049852cbc sdk/generated/fonts/editor_ui_numeric_font.c
+780f2223f27815c405d37c8152311b4e sdk/generated/fonts/editor_ui_semibold_font.c
+7db3fe68f09c9a9e9c875214fb65fa0a sdk/generated/fonts/studio_bold_font.c
+a91bb56e9eb5bdc9dd9f373c549fff63 sdk/generated/fonts/studio_medium_font.c
+5381e1954b9f398715ee2ae3d1b782d2 sdk/generated/fonts/studio_numeric_font.c
+b7c7f3bc35b706d4f6a326e02a76a710 sdk/generated/fonts/studio_regular_font.c
+402a428128749c6e876e915ae525b06d sdk/generated/fonts/studio_semibold_font.c

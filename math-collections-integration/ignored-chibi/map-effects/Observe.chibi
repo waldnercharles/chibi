@@ -1,0 +1,11 @@
+package observe_map_effects
+Reset :: (values: ^([int: int])) -> int { values^ = [1: 99]; return 1; }
+Old :: (values: [int: int], ignored: int) -> int { return values[1]; }
+ReadValue :: () -> int {
+    values: [int: int] = [1: 11, 2: 22];
+    return values[Reset(&values)];
+}
+ArgumentValue :: () -> int {
+    values: [int: int] = [1: 11];
+    return Old(values, Reset(&values));
+}

@@ -1,0 +1,35 @@
+{
+  "state": "newseparate frozen source-only803checkpoint complete; producergrantpending",
+  "branch": "codex/portable-byte-libraries-post803-20261028",
+  "head": "c9cfe668e15896936086e0b7431d71588532b4e9",
+  "tree": "0ebc105f1fb9a08394355833afdf7a739de39a2a",
+  "accepted_main": "79743c5675e5a18eeea14193d729cc6e45bdf926",
+  "old795head_preserved": "3200134a8b7e35c22695c7f7e3527a85893da37f",
+  "independent_source_review": {
+    "reviewer": "/root/bits_hash",
+    "head": "c9cfe668e15896936086e0b7431d71588532b4e9",
+    "tree": "0ebc105f1fb9a08394355833afdf7a739de39a2a",
+    "result": "Source-onlyapproval; nofindings",
+    "verified": [
+      "actualinprocessprivatebankREADY_HOSTpath",
+      "binaryretention/rootargs/independentarraymutation/exactfilebytesEOF",
+      "bothnativebackendentriesandnofallback",
+      "fixturecleanupand4-casedispatcher",
+      "unchanged34APIs23tests/public7private6/source-role/emitterseams",
+      "27d8closure27sourcesandunchangedprivatetarget",
+      "accepted803/protocol14/capturehostselectionsources"
+    ],
+    "execution_claim": false
+  },
+  "callback": "exact95linepreparedpatchapplied; onecaseexistingFILES/ALLdispatchers; uncompiled/unexecuted",
+  "api_count": 34,
+  "test_count": 23,
+  "private_protocol": 14,
+  "compiler_sha256": "27d8f3d0568e442e1a70b167c04ba97c671ea0d0b1e85e3a7493d88fc59bb912",
+  "runtime_tag": "compiler-runtime-prepared26-43eec64f98e6fb288935dacfcbf86296dbc43b02",
+  "validation_plan": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/post803-matching-source-validation-plan.json",
+  "validation_plan_sha256": "2d2c8a9e27cb2433e2935ecd2de312aa96a63e603df152e29c601f82e02c125e",
+  "old320plan_unchanged": true,
+  "no_801_source_adopted": true,
+  "execution_and_publication": "No build/test/producer/regeneration/push; integerboundaryand801effects/publicationholdsremain"
+}

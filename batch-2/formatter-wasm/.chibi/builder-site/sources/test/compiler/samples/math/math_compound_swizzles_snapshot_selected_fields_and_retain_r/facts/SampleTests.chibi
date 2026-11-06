@@ -1,0 +1,9 @@
+package facts
+
+// math compound swizzles snapshot selected fields and retain rhs side effects
+@test
+Calls :: () {
+    r1: bool = Check();
+    e1: bool = true;
+    assert(r1 == e1, "Check call 1");
+}

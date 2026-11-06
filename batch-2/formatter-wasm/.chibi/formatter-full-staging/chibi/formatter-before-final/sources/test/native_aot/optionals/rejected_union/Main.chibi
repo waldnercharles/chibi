@@ -1,0 +1,7 @@
+package rejected_union
+Choice :: union { Empty | Number(value: int) }
+Read :: () -> Choice? { return nil; }
+Main :: () -> int {
+    choice := Read();
+    switch choice { case .Empty: return 0; case .Number(value): return value; }
+}

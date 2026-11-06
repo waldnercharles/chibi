@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_array_capabilities.a "CMakeFiles/chibi_array_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/arrays.c.o" "CMakeFiles/chibi_array_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/arrays_definition.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_array_capabilities.a

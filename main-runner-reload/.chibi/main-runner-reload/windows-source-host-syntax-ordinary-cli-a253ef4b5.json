@@ -1,0 +1,110 @@
+{
+  "base": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+  "source_sha256": {
+    "src/authoring/source_package_files.c": "ce5b602d5269f69f59bb79e048a2dc9bc0253e201e59814d63740d2b115c85f4",
+    "src/authoring/source_package_paths.c": "e1ade02761cd30cbc42025ced4a9691da9ba266bbde36e4f93f25d2064347c97",
+    "src/authoring/source_package_routes.c": "2264042b92515183b9a6f3227c1ff651a62b87356c47d3dffbe4d1b5575a80d8",
+    "src/host/chibi_main.c": "5237cab300713a37922fcded4f9f74fe17d98131712930696394edbf07f376fc",
+    "src/host/compile_main.c": "6ecbb81134be1ae489903ea9e5e330e110175fe942e8b37ec54a0de7fa24a876",
+    "src/host/application.c": "5577c4b4768891b2c8561ca2447cc5a189a4d7c47359e99b339ca54ab837368c",
+    "src/host/application_io.c": "69f85d81cea30dd86fca1f4c68d2abd4fdc84dd72c037b05328e12c6bc53efee",
+    "src/host/application_tools.c": "4010949bf4d1ed9e4643f2cbec5f719367b4b3119830dfb2e759a58d9f1d9b29",
+    "src/authoring/program.c": "494dcd04eb14f697bde26df9112aa4e726deb4554b7cb1d2fb6a72c2aff26e53",
+    "src/authoring/program_service.c": "8d50ed5a14f75bb74027a7bb9bd36628ce98cfec0e035a22c49608bf8b377915",
+    "src/host/process.c": "9be7a7314fd9c44061ae144f48da5cd1cac5a3eacabd8b50d6863986f8586c75",
+    "src/host/export.c": "b181f5b95b2c3c8ec9255d970983451b0601398b05d39189c9f1bae948e3b0c9",
+    "test/language/package_files.c": "2fa02d5b631af6a2c5dfbb57983a490509a562dc0ebf09b2177c01a1a9326ec4",
+    "src/authoring/source_package_io.h": "047b21fc7d17e4461ab14e6921f53b6d814e7c78b027733938bc2745a1940ac5",
+    "src/authoring/source_package_paths.h": "2968c6ef85ce93dfc3ac8ea00a9ee05f867facd8e022a0ed20e682921b0cf120",
+    "src/host/process.h": "28fd4ec47f0ead3f152f9ad7254a4f8d91cf828262229aabd63910e3e42c655f",
+    "src/host/export.h": "b9c6437d81f7f316301a4d891c24d48a1a924be18f70098ba9ac1fa8dbb895ae",
+    "src/host/application.h": "de050f5aa45dbe7aad4a78de5af0d58529cfd5ed3c7049dcf595d19444c7f4e8",
+    "src/host/application_io.h": "f8d82442c083741b08976254fb76fd41407cef6288cbe7d4a8222afbe110eaae",
+    "src/host/application_tools.h": "fcc6ce272c970af9de8e6831f41e2ca00959f421d057f06b677b2d8ea88c0913",
+    "src/authoring/program.h": "dfb605298bc5fd15777359cd02096c538292d44becc1348ff4135650ac1d42ab",
+    "src/authoring/program_service.h": "074ece01dc3c2d8d2aa7a227dd1ea7e7b0e9bf797f365b1dfc41c2ccc2e027c6"
+  },
+  "staged_headers_sha256": {
+    "sdk/public/program/authoring/program.h": "dfb605298bc5fd15777359cd02096c538292d44becc1348ff4135650ac1d42ab",
+    "sdk/public/program/authoring/program_service.h": "074ece01dc3c2d8d2aa7a227dd1ea7e7b0e9bf797f365b1dfc41c2ccc2e027c6",
+    "sdk/public/source_catalog/authoring/source_package_io.h": "047b21fc7d17e4461ab14e6921f53b6d814e7c78b027733938bc2745a1940ac5",
+    "sdk/private/source_catalog/authoring/source_package_paths.h": "2968c6ef85ce93dfc3ac8ea00a9ee05f867facd8e022a0ed20e682921b0cf120",
+    "sdk/private/launcher/host/application.h": "de050f5aa45dbe7aad4a78de5af0d58529cfd5ed3c7049dcf595d19444c7f4e8",
+    "sdk/private/launcher/host/application_io.h": "f8d82442c083741b08976254fb76fd41407cef6288cbe7d4a8222afbe110eaae",
+    "sdk/private/launcher/host/application_tools.h": "fcc6ce272c970af9de8e6831f41e2ca00959f421d057f06b677b2d8ea88c0913",
+    "sdk/private/launcher/host/process.h": "28fd4ec47f0ead3f152f9ad7254a4f8d91cf828262229aabd63910e3e42c655f",
+    "sdk/private/launcher/host/export.h": "b9c6437d81f7f316301a4d891c24d48a1a924be18f70098ba9ac1fa8dbb895ae"
+  },
+  "sources_unchanged_during_checks": true,
+  "checks": [
+    {
+      "source": "src/authoring/source_package_files.c",
+      "returncode": 0,
+      "wall_seconds": 0.795
+    },
+    {
+      "source": "src/authoring/source_package_paths.c",
+      "returncode": 0,
+      "wall_seconds": 0.028
+    },
+    {
+      "source": "src/authoring/source_package_routes.c",
+      "returncode": 0,
+      "wall_seconds": 0.048
+    },
+    {
+      "source": "src/host/chibi_main.c",
+      "returncode": 0,
+      "wall_seconds": 0.05
+    },
+    {
+      "source": "src/host/compile_main.c",
+      "returncode": 0,
+      "wall_seconds": 0.074
+    },
+    {
+      "source": "src/host/application.c",
+      "returncode": 0,
+      "wall_seconds": 0.043
+    },
+    {
+      "source": "src/host/application_io.c",
+      "returncode": 0,
+      "wall_seconds": 0.407
+    },
+    {
+      "source": "src/host/application_tools.c",
+      "returncode": 0,
+      "wall_seconds": 0.051
+    },
+    {
+      "source": "src/authoring/program.c",
+      "returncode": 0,
+      "wall_seconds": 0.035
+    },
+    {
+      "source": "src/authoring/program_service.c",
+      "returncode": 0,
+      "wall_seconds": 0.04
+    },
+    {
+      "source": "src/host/process.c",
+      "returncode": 0,
+      "wall_seconds": 0.34
+    },
+    {
+      "source": "src/host/export.c",
+      "returncode": 0,
+      "wall_seconds": 0.391
+    },
+    {
+      "source": "test/language/package_files.c",
+      "returncode": 1,
+      "wall_seconds": 0.042
+    }
+  ],
+  "wall_seconds": 2.396,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/windows-source-host-syntax-ordinary-cli-a253ef4b5.log",
+  "windows_execution": "unrun; no Windows runtime",
+  "warning_exclusions": "GCC multichar canaries and Clang annotate attributes only"
+}

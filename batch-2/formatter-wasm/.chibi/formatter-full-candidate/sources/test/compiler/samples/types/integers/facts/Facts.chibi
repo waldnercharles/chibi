@@ -1,0 +1,19 @@
+package facts
+Mask: u64 : 0xFF00000000000000;
+Small: u8 : 200;
+Hash :: (bytes: u8[]) -> u64 {
+    hash: u64 = 1469598103934665603;
+    for (item in bytes) { hash = (hash ^ u64(item)) * 1099511628211; }
+    return hash;
+}
+Bytes :: (n: int) -> u8[] {
+    out: u8[] = [1, 2, 255];
+    out = append(out, u8(wrap: n));
+    out = append(out, Small);
+    return out;
+}
+High :: (n: int) -> int { mask := Mask; return int(wrap: (mask >> 56) + u64(n)); }
+Mixed :: (a: int, b: i64) -> i64 { return i64(a) + b; }
+Store :: (a: int) -> i64 { x: i64 = a; x += 10; x *= 3; return x; }
+Narrow :: (v: i64) -> int { return int(v); }
+Clamp :: (v: int) -> u8 { return u8(v); }

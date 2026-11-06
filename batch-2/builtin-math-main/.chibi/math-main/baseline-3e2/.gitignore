@@ -1,0 +1,75 @@
+build/
+build-code-language/
+build-sdk/
+/build-sdk-tests/
+/build-sdk-tests-cmake/
+build-language/
+.worktrees/
+# A second build tree, so verifying a build cannot relink the binary a manual
+# verification session is running out of build/.
+build-verify/
+build-release/
+build-package/
+dist/
+build-debug/
+# On macOS, the CMake trees beside graph builds: the first build host and the
+# build-graph checks' reference.
+build-cmake/
+build-debug-cmake/
+build-release-cmake/
+build-performance/
+build-web/
+build-web-profile/
+build-web-threads/
+build-web-site/
+build-web-asan/
+build-reflect/
+build-tracy/
+build-tools/
+generated/
+.pi-lens/
+.cache/
+.pi/*
+!.pi/settings.json
+!.pi/skills/
+!.pi/skills/**
+!.pi/agents/
+!.pi/agents/*.md
+!.pi/workflows/
+!.pi/workflows/issue-to-merge.js
+!.pi/prompts/
+!.pi/prompts/issue-to-merge.md
+imgui.ini
+NodeEditor.json
+compile_commands.json
+*.tsv.lock
+build-dev/
+.chibi/
+.DS_Store
+
+__pycache__/
+node_modules/
+
+# Temporary atomic authoring writes.
+content/*/.authoring-*.tmp
+
+# Machine-local Codex MCP configuration.
+.codex/
+
+# Local external game mount and browser capture outputs.
+projects/local-game
+.playwright-mcp/
+build-sdk-reflect/
+build-studio/
+build-asan/
+build-install-sdk/
+build-install-studio/
+build-web-player/
+build-webgpu-test/
+build-web-sdk/
+build-web-sdk-threads/
+build-studio-web/
+build-studio-web-threads/
+
+build-wasm-language/
+build-wasm-language-threads/

@@ -1,0 +1,269 @@
+package graph_evidence_tests
+
+import evidence "graph:evidence"
+import engine "graph:engine"
+import files "graph:files"
+import os "core:os"
+import strings "core:strings"
+
+// graph:evidence: what makes a build's recorded commands and symbols prove the
+// profile CI selected. Flags and symbols are tables of inputs and verdicts;
+// records are real files with real stamps.
+
+Fresh :: () -> string {
+    made := os.Capture(["mktemp", "-d"]);
+    assert(made.status == 0, "a scratch directory");
+    return os.RealPath(strings.TrimSpace(made.stdout));
+}
+
+Clean :: (directory: string) {
+    assert(os.Capture(["rm", "-rf", directory]).status == 0, "cleanup");
+}
+
+Write :: (path: string, text: string) {
+    assert(os.WriteText(path, text) == nil, "a file");
+}
+
+Good :: (sanitizers: bool) -> string[] {
+    arguments := ["cc", "-O1", "-g", "-fno-omit-frame-pointer", "-DCHIBI=1", "-D", "OTHER", "-c", "x.c"];
+    if (sanitizers) {
+        arguments.append("-fsanitize=address,undefined");
+    }
+    return arguments;
+}
+
+With :: (arguments: string[], extra: string[]) -> string[] {
+    combined: string[] = [];
+    combined.extend(arguments);
+    combined.extend(extra);
+    return combined;
+}
+
+Without :: (arguments: string[], name: string) -> string[] {
+    kept: string[] = [];
+    for (argument in arguments) {
+        if (argument != name) {
+            kept.append(argument);
+        }
+    }
+    return kept;
+}
+
+FlagsAcceptTheSelectedProfile :: () {
+    assert(evidence.CheckFlags(Good(false), false, false) == "", "baseline");
+    assert(evidence.CheckFlags(Good(true), true, false) == "", "sanitized");
+    assert(evidence.CheckFlags(With(Good(false), ["-UNDEBUG"]), false, true) == "", "a test names -UNDEBUG");
+}
+
+FlagsRefuseWhatBreaksIt :: () {
+    baseline := Good(false);
+    assert(evidence.CheckFlags(Without(baseline, "-O1"), false, false) == "expected exactly -O1", "no -O1");
+    assert(evidence.CheckFlags(With(baseline, ["-O2"]), false, false) == "expected exactly -O1", "a second -O");
+    assert(evidence.CheckFlags(Without(baseline, "-g"), false, false) == "expected debug information", "no -g");
+    assert(evidence.CheckFlags(With(baseline, ["-g0"]), false, false) == "expected debug information", "-g0");
+    assert(evidence.CheckFlags(Without(baseline, "-fno-omit-frame-pointer"), false, false) == "expected frame pointers", "no frame pointers");
+    assert(evidence.CheckFlags(With(baseline, ["-fomit-frame-pointer"]), false, false) == "expected frame pointers", "omitted frame pointers");
+    assert(evidence.CheckFlags(With(baseline, ["-DNDEBUG"]), false, false) == "NDEBUG disables assertions", "-DNDEBUG");
+    assert(evidence.CheckFlags(With(baseline, ["-D", "NDEBUG=1"]), false, false) == "NDEBUG disables assertions", "-D NDEBUG=1");
+    assert(evidence.CheckFlags(baseline, false, true) == "test assertions must be explicitly enabled", "a test without -UNDEBUG");
+}
+
+FlagsCheckTheSanitizersExactly :: () {
+    refused := "expected ASan+UBSan exactly when requested, without disabling flags";
+    assert(evidence.CheckFlags(Good(false), true, false) == refused, "requested, absent");
+    assert(evidence.CheckFlags(Good(true), false, false) == refused, "present, not requested");
+    assert(evidence.CheckFlags(With(Good(false), ["-fsanitize=address"]), true, false) == refused, "only ASan");
+    assert(evidence.CheckFlags(With(Good(true), ["-fno-sanitize=undefined"]), true, false) == refused, "a disabling flag");
+    assert(evidence.CheckFlags(With(Good(true), ["-fsanitize=thread"]), true, false) == refused, "a second selection");
+    assert(evidence.CheckSanitizers(["ld", "-o", "x"], false) == "", "a link without sanitizers");
+    assert(evidence.CheckSanitizers(["ld", "-fsanitize=address,undefined"], true) == "", "a sanitized link");
+}
+
+ELF :: () -> string {
+    return "0000000000001000 T main\n                 U __asan_init\n                 U __ubsan_handle_add_overflow\n                 U printf\n";
+}
+MachObject :: () -> string {
+    return "                 U ___asan_init\n                 U ___ubsan_handle_add_overflow\n0000000000000010 T _main\n";
+}
+Stub :: () -> string {
+    return "0000000000000000 T __asan_init\n                 U __ubsan_handle_add_overflow\n";
+}
+Linked :: () -> string {
+    return "0000000000002000 T __asan_init\n0000000000002100 T __ubsan_handle_add_overflow\n";
+}
+
+SymbolsMatchTheProfile :: () {
+    mismatch := "sanitizer symbols do not match the requested profile";
+    assert(evidence.CheckSymbols(ELF(), true, true) == "", "an ELF object");
+    assert(evidence.CheckSymbols(MachObject(), true, true) == "", "a Mach-O object, typed and underscored");
+    assert(evidence.CheckSymbols(Linked(), true, false) == "", "a link defines the runtime");
+    assert(evidence.CheckSymbols(ELF(), false, true) == mismatch, "instrumented, not requested");
+    assert(evidence.CheckSymbols("                 U printf\n", true, true) == mismatch, "requested, none found");
+    assert(evidence.CheckSymbols("                 U printf\n", false, true) == "", "neither");
+    assert(evidence.CheckSymbols(Stub(), true, true) == mismatch, "a defined stub is not instrumentation in an object");
+    assert(evidence.CheckSymbols("                 U __asan_init\n", true, true) == mismatch, "one family only");
+    assert(length(evidence.Symbols(ELF(), true)) == 2, "each runtime symbol once");
+}
+
+ExportedFlagsReadTheHeaderOneStringPerLine :: () {
+    header := "static const char *const flags[] = {\n    \"-O1\",\n    \"-DNAME=\\\"x\\\"\",\n    \"a\\\\b\",\n};\n";
+    flags := evidence.ExportedFlags(header);
+    assert(length(flags) == 3 && flags[0] == "-O1" && flags[1] == "-DNAME=\"x\"" && flags[2] == "a\\b", "the flags");
+}
+
+// A record is the command, a blank line, then each stamped file and its stamp.
+Record :: (output: string, command: string[], stamped: string[]) {
+    text := strings.Join(command, "\n");
+    text = format_text("{}\n\n", text);
+    for (path in stamped) {
+        text = format_text("{}{}\n{}\n", text, path, files.Fingerprint(path));
+    }
+    Write(format_text("{}.chibi-record", output), text);
+}
+
+RecordsBindTheCommandToLiveStamps :: () {
+    directory := Fresh();
+    source := format_text("{}/a.c", directory);
+    output := format_text("{}/a.o", directory);
+    Write(source, "int a;\n");
+    Write(output, "object");
+    compile := ["cc", "-O1", "-c", source, "-o", output];
+    Record(output, compile, [source, output]);
+    assert(evidence.ReadRecord(output) == "", "a current record");
+    assert(strings.Join(evidence.Arguments(output), " ") == strings.Join(compile, " "), "the recorded command");
+
+    // ccache records depfile inputs relative to the checkout: the same file.
+    relative := format_text("{}/../{}/a.c", directory, strings.BaseName(directory));
+    Record(output, compile, [relative, output]);
+    assert(evidence.ReadRecord(output) == "", "another spelling of the same input");
+
+    other := format_text("{}/b.c", directory);
+    Write(other, "int b;\n");
+    Record(output, compile, [other, output]);
+    assert(strings.Contains(evidence.ReadRecord(output), "missing command input binding"), "the input is not stamped");
+    Record(output, compile, [output]);
+    assert(strings.Contains(evidence.ReadRecord(output), "missing output binding or malformed stamps"), "no stamped input at all");
+
+    Record(output, ["cc", "-c", source, "-o", other], [source, output]);
+    assert(strings.Contains(evidence.ReadRecord(output), "command output mismatch"), "the command wrote another output");
+
+    Record(output, compile, [source, other]);
+    assert(strings.Contains(evidence.ReadRecord(output), "missing output binding"), "the output is not the last stamp");
+
+    Record(output, compile, [source, output]);
+    Write(source, "int changed;\n");
+    assert(strings.Contains(evidence.ReadRecord(output), "stale input/output"), "an input changed after the record");
+    Write(source, "int a;\n");
+
+    assert(strings.Contains(evidence.ReadRecord(format_text("{}/none.o", directory)), "no record"), "no record");
+    Clean(directory);
+}
+
+RecordsBindLinksToTheirObjectsAndLibraries :: () {
+    directory := Fresh();
+    object := format_text("{}/a.o", directory);
+    archive := format_text("{}/libx.a", directory);
+    program := format_text("{}/program", directory);
+    Write(object, "o");
+    Write(archive, "a");
+    Write(program, "p");
+    link := ["ld", "-isysroot", "/not/an/input", object, "-o", program, archive];
+    Record(program, link, [object, archive, program]);
+    assert(evidence.ReadRecord(program) == "", "a link names its objects and libraries");
+    Record(program, link, [object, program]);
+    assert(strings.Contains(evidence.ReadRecord(program), "missing command input binding"), "a library is not stamped");
+    Clean(directory);
+}
+
+NativeProductsUseTheirOwnRecipe :: () {
+    directory := Fresh();
+    for (target in engine.NativeProducts()) {
+        command := engine.NativeCommand("/bootstrap/compiler", "/native/llvm", directory, directory, target, 4);
+        assert(evidence.CheckNative(command, directory, directory, target) == "", "the registered native recipe");
+        assert(evidence.CheckSanitizers(command, false) == "", "native products do not inherit C instrumentation");
+        assert(evidence.CheckSanitizers(command, true) != "", "the C sanitizer contract stays strict");
+        for (option in ["--level", "--shared", "-fsanitize=address,undefined"]) {
+            assert(evidence.CheckNative(With(command, [option, "0"]), directory, directory, target) != "",
+                   "a different native product/profile is refused");
+        }
+        changed := command;
+        changed[2] = directory;
+        assert(evidence.CheckNative(changed, directory, directory, target) != "", "a different compiler source is refused");
+        changed = command;
+        changed[6] = "OtherEntry";
+        assert(evidence.CheckNative(changed, directory, directory, target) != "", "a different entry is refused");
+        if (target != "chibi") {
+            changed = command;
+            changed[0] = "/bootstrap/compiler";
+            assert(evidence.CheckNative(changed, directory, directory, target) != "", "a companion uses the current product compiler");
+        }
+    }
+    Clean(directory);
+}
+
+NativeRecordsBindCompilerSourcesAndTools :: () {
+    directory := Fresh();
+    compiler := format_text("{}/compiler", directory);
+    core := format_text("{}/core", directory);
+    llvm := format_text("{}/llvm", directory);
+    for (path in [compiler, core, llvm]) {
+        made := os.MakeDirectory(path);
+        assert(made == nil, "the input directory");
+    }
+    nested := format_text("{}/package", compiler);
+    made := os.MakeDirectory(nested);
+    assert(made == nil, "the nested package");
+    driver := format_text("{}/seed", directory);
+    source := format_text("{}/Main.chibi", nested);
+    core_source := format_text("{}/Core.chibi", core);
+    program := format_text("{}/program", directory);
+    Write(driver, "compiler");
+    Write(source, "package main\nMain :: () -> int { return 42; }\n");
+    Write(core_source, "package core_fixture\nValue :: () -> int { return 1; }\n");
+    Write(program, "native program");
+    command := [driver, "--compiler", compiler, "--core", core, "--source", source, "--output", program, "--llvm", llvm];
+    inputs := [driver, compiler, core, nested, source, core_source];
+    linker := "ld.lld";
+    suffix := "";
+    if (os.Platform() == "Darwin") { linker = "ld64.lld"; }
+    if (os.Platform() == "Windows") { linker = "lld-link"; suffix = ".exe"; }
+    for (tool in ["opt", "llc", linker]) {
+        path := format_text("{}/{}{}", llvm, tool, suffix);
+        Write(path, tool);
+        inputs.append(path);
+    }
+    inputs.append(program);
+    Record(program, command, inputs);
+    assert(evidence.ReadRecord(program) == "", "a native record binds compiler, sources and tools");
+    for (input in [driver, compiler, core, nested, source, core_source, inputs[6], inputs[7], inputs[8]]) {
+        Record(program, command, Without(inputs, input));
+        assert(strings.Contains(evidence.ReadRecord(program), "missing command input binding"), "every native input is bound");
+    }
+    for (input in [driver, source, core_source, inputs[6]]) {
+        Record(program, command, inputs);
+        Write(input, "changed bytes");
+        assert(strings.Contains(evidence.ReadRecord(program), "stale input/output"), "changed native input is refused");
+    }
+    Record(program, With(command, ["-o", program]), inputs);
+    assert(strings.Contains(evidence.ReadRecord(program), "more than one output option"), "C and native outputs cannot be mixed");
+    package_command := [driver, "--compiler", compiler, "--core", core, "--package", "package", "--output", program, "--llvm", llvm];
+    Record(program, package_command, inputs);
+    assert(evidence.ReadRecord(program) == "", "a package has no explicit source option");
+    Record(program, package_command, Without(inputs, source));
+    assert(strings.Contains(evidence.ReadRecord(program), "missing command input binding"), "package receipts bind nested sources");
+    assert(length(engine.NativeInputs(format_text("{}/missing", directory))) == 0, "a missing source inventory fails closed");
+    Clean(directory);
+}
+
+pub Run :: () -> int {
+    FlagsAcceptTheSelectedProfile();
+    FlagsRefuseWhatBreaksIt();
+    FlagsCheckTheSanitizersExactly();
+    SymbolsMatchTheProfile();
+    ExportedFlagsReadTheHeaderOneStringPerLine();
+    RecordsBindTheCommandToLiveStamps();
+    RecordsBindLinksToTheirObjectsAndLibraries();
+    NativeProductsUseTheirOwnRecipe();
+    NativeRecordsBindCompilerSourcesAndTools();
+    return 0;
+}

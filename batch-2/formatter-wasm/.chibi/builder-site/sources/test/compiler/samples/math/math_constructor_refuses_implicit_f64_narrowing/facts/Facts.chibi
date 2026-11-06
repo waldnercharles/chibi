@@ -1,0 +1,4 @@
+package facts
+Bad :: (wide: f64) -> vec3 { return vec3(wide); }
+
+// error: 2:37: math components require explicit f32(value) narrowing from f64

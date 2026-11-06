@@ -1,0 +1,174 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Main returns the length of format_text("{} {}", 7, "x").
+Formats :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 13, 0, 0, 0, 0, 0),
+            Code(native.Constant, 6, 1, 0, 0, 0, 7),
+            Code(native.Constant, 13, 2, 0, 0, 0, 1),
+            Code(native.Format, 13, 3, 0, 0, 3, 0),
+            Code(native.TextLength, 6, 4, 3, 0, 0, 0),
+            Code(native.Publish, 6, 0, 4, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+FormatModule :: (code: native.Instruction[], arguments: int[], main: bool, value_type: int = 6) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(abi.LinuxX64(), [Function(6, 0, 0, 5, 0, 8, 0, 3)], empty,
+                       [13, value_type, 13, 13, 6], empty, code, arguments, records, empty,
+                       ["{} {}", "x"], source, names, empty, empty, main, 1);
+}
+FormatMismatch :: () -> string { return "native format differs from its operands"; }
+ChangedFormat :: (item: native.Instruction, message: string) {
+    code := Formats();
+    code[4] = item;
+    Rejects(FormatModule(code, [0, 1, 2], false), message);
+}
+// Formatting turns scalar words and string views into runtime values and
+// calls format_text through the context passed first to every function.
+@test
+FormatsKeepRuntimeValuesAndContext :: () {
+    text := Emitted(FormatModule(Formats(), [0, 1, 2], false));
+    assert(strings.Contains(text, "\n; chibi-format\n"));
+    assert(strings.Contains(text, "\n; chibi-format-numbers\n"));
+    assert(strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx) #0 {\n"));
+    assert(strings.Contains(text, "%values4 = alloca [3 x { i32, i32, i64, ptr }]\n  %text4 = alloca { ptr, i32, ptr }\n"));
+    assert(strings.Contains(text, "%f4_1.word = sext i32 %f4_1 to i64\n  %f4_1.value = insertvalue { i32, i32, i64, ptr } { i32 1, i32 0, i64 0, ptr null }, i64 %f4_1.word, 2\n"));
+    assert(strings.Contains(text, "%f4_2.sized = insertvalue { i32, i32, i64, ptr } { i32 12, i32 0, i64 0, ptr null }, i32 %f4_2.length, 1\n"));
+    assert(strings.Contains(text, "%f4_2.value = insertvalue { i32, i32, i64, ptr } %f4_2.sized, ptr %f4_2.bytes, 3\n"));
+    assert(strings.Contains(text, "%f4_2.at = getelementptr inbounds [3 x { i32, i32, i64, ptr }], ptr %values4, i64 0, i64 2\n"));
+    assert(strings.Contains(text, "%format4.at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 0\n  %format4 = load ptr, ptr %format4.at\n  call void %format4(ptr %ctx, ptr %values4, i32 3, ptr %text4)\n  %v4 = load { ptr, i32, ptr }, ptr %text4\n"));
+}
+@test
+FormatLibraryExportsPassContext :: () {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    ids: i64[] = [3];
+    no_names: string[] = [];
+    text := Emitted(native.EmitLibrary(abi.LinuxX64(), "Formats", ["Main"], ids,
+                                       [Function(6, 0, 0, 5, 0, 8, 0, 3)], empty,
+                                       [13, 6, 13, 13, 6], empty, Formats(), [0, 1, 2],
+                                       records, empty, ["{} {}", "x"], 1, no_names));
+    assert(strings.Contains(text, "define internal i32 @chibi_scalar.0(ptr %ctx) #0 {\n"));
+    assert(strings.Contains(text, "(ptr %ctx, ptr %in, ptr %out) #0 {\nentry:\n  %r = call i32 @chibi_scalar.0(ptr %ctx)\n"));
+}
+@test
+NativeProgramCannotFormat :: () {
+    Rejects(FormatModule(Formats(), [0, 1, 2], true), "a native program cannot call the runtime yet");
+}
+@test
+MissingFormatIsRejected :: () {
+    ChangedFormat(Code(native.Format, 13, 3, 0, 0, 0, 0), FormatMismatch());
+}
+@test
+FormatCalleeIsRejected :: () {
+    ChangedFormat(Code(native.Format, 13, 3, 1, 0, 3, 0), FormatMismatch());
+}
+@test
+FormatArgumentsPastTableAreRejected :: () {
+    ChangedFormat(Code(native.Format, 13, 3, 0, 1, 3, 0), FormatMismatch());
+}
+@test
+FormatIntResultIsRejected :: () {
+    ChangedFormat(Code(native.Format, 6, 3, 0, 0, 3, 0), Output());
+}
+@test
+IntFormatIsRejected :: () {
+    Rejects(FormatModule(Formats(), [1, 0, 2], false), FormatMismatch());
+}
+
+@test
+ContextWithoutFormatDoesNotRequestFormatter :: () {
+    text := Emitted(ArrayModule(Arrays()));
+    assert(native.Runtime(Arrays()));
+    assert(!strings.Contains(text, "; chibi-format"));
+}
+@test
+LaterPieceFormatRequestsFormatter :: () {
+    code := Chained(8200, [Code(native.Constant, 6, 0, 0, 0, 0, 7),
+                           Code(native.Publish, 6, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)]);
+    code.extend(Formats());
+    empty: int[] = [];
+    records: native.Record[] = [];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    text := Emitted(native.Emit(abi.LinuxX64(),
+        [Function(6, 0, 0, 1, 0, 8203, 0, 0), Function(6, 0, 1, 5, 8203, 8, 0, 3)],
+        empty, [6, 13, 6, 13, 13, 6], empty, code, [0, 1, 2], records, empty,
+        ["{} {}", "x"], source, names, empty, empty, false, 1));
+    pieces := strings.Split(text, "\n; chibi-piece\n");
+    assert(length(pieces) == 2);
+    assert(strings.Contains(pieces[0], "\n; chibi-format\n"));
+    assert(strings.Contains(pieces[0], "\n; chibi-format-numbers\n"));
+    assert(!strings.Contains(pieces[1], "; chibi-format"));
+}
+
+@test
+StringOnlyFormatOmitsNumberRequirement :: () {
+    code := Formats();
+    code[2] = Code(native.Constant, 13, 1, 0, 0, 0, 1);
+    text := Emitted(FormatModule(code, [0, 1, 2], false, 13));
+    assert(strings.Contains(text, "\n; chibi-format\n"));
+    assert(!strings.Contains(text, "; chibi-format-numbers"));
+}
+@test
+BoolFormatKeepsNumberRequirementForModifiers :: () {
+    code := Formats();
+    code[2] = Code(native.Constant, 1, 1, 0, 0, 0, 1);
+    text := Emitted(FormatModule(code, [0, 1, 2], false, 1));
+    assert(strings.Contains(text, "\n; chibi-format-numbers\n"));
+}
+
+// A collection contributes its descriptor's inline count, never an element
+// pointer. Only native-owned contexts understand these format-only tags.
+SummaryModule :: (type: int, context: int) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    functions := [Function(6, 0, 0, 4, 0, 7, 0, 2)];
+    slots: int[] = [13, type, 13, 6];
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, 13, 0, 0, 0, 0, 0),
+             Code(native.Constant, type, 1, 0, 0, 0, 0),
+             Code(native.Format, 13, 2, 0, 0, 2, 0),
+             Code(native.TextLength, 6, 3, 2, 0, 0, 0),
+             Code(native.Publish, 6, 0, 3, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    if (context == 0) {
+        return native.EmitProgram(abi.LinuxX64(), functions, empty, slots, empty, code, [0, 1],
+                                  records, empty, ["{}"], source, names, empty, empty);
+    }
+    ids: i64[] = [3];
+    if (context == 1) {
+        characters: bool[] = [];
+        tags: i64[] = [];
+        return native.EmitFamilyLibraryStates(abi.LinuxX64(), "Summaries", ["Main"], ids,
+            functions, empty, slots, empty, code, [0, 1], records, empty, tags, ["{}"], 1, names, -1, characters);
+    }
+    if (context == 2) {
+        return native.Emit(abi.LinuxX64(), functions, empty, slots, empty, code, [0, 1],
+                           records, empty, ["{}"], source, names, empty, empty, false, 1);
+    }
+    return native.EmitLibrary(abi.LinuxX64(), "Summaries", ["Main"], ids, functions, empty, slots, empty,
+                              code, [0, 1], records, empty, ["{}"], 1, names);
+}
+@test
+AggregateFormatRequiresNativeContext :: () {
+    for (type in [int(1030), 2150]) {
+        for (context in [int(0), 1]) {
+            text := Emitted(SummaryModule(type, context));
+            assert(strings.Contains(text, "; chibi-format\n"));
+            assert(!strings.Contains(text, "; chibi-format-numbers\n"));
+        }
+        for (context in [int(2), 3]) {
+            Rejects(SummaryModule(type, context), "aggregate formatting requires a standalone or execution-family context");
+        }
+    }
+}

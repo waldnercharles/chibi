@@ -1,0 +1,4 @@
+package facts
+pub Fold :: (value: f64) -> number { return value; }
+
+// error: 2:38: returned value differs from the result type

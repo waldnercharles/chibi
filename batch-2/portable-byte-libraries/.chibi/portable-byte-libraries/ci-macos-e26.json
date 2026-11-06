@@ -1,0 +1,19 @@
+{
+  "head": "e26a3cba344d67b0e0ece44b56463fe236270885",
+  "job": {
+    "id": 122826410078,
+    "head_sha": "e26a3cba344d67b0e0ece44b56463fe236270885",
+    "name": "Engine build and native tests (macOS)",
+    "status": "completed",
+    "conclusion": "failure"
+  },
+  "run": 40691274830,
+  "logTruncated": true,
+  "source": "Codex read_pull_request_check_diagnostics job log",
+  "summary": "Documentation CLI checks fail because recursively shipped Tests.chibi encounters Unknown callable assert.",
+  "failed_cases": [
+    "published_site_builds",
+    "compiler_docs_writes_the_listed_pages",
+    "compiler_docs_generates_reference_pages"
+  ]
+}

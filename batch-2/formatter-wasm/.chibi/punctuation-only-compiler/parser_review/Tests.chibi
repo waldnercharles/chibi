@@ -1,0 +1,10 @@
+package parser_review
+import syntax "project:compiler_syntax"
+@test
+NamedFnCallConstantsStillParse :: () {
+    source := "package p\nfn :: (x: int) -> int { return x; }\nValue :: fn(1);\n";
+    switch syntax.Parse(source) {
+        case .Parsed(rows, fields, named, extras, root): assert(true, "constant call remains syntax");
+        case .Rejected(diagnostic): print_string(diagnostic.message); assert(false, "fn call remains a constant expression");
+    }
+}

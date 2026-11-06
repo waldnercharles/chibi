@@ -1,0 +1,37 @@
+package facts
+import testing "core:testing"
+import helper "project:helper"
+@test
+Plain :: () { assert(true); }
+@test
+Assertion :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); assert(false, "expected assert"); }
+@test
+Wrong :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); assert(false, "wrong category"); }
+@test
+Before :: () { assert(false, "before expectation"); testing.ExpectFailure(testing.Failure.AssertionFailed); }
+@test
+Returns :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); }
+@test
+Bounds :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); items := [int(1), 2]; assert(items[9] == 0); }
+@test
+WrongBounds :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); items := [int(1)]; assert(items[9] == 0); }
+@test
+Imported :: () { helper.Arm(); assert(false, "imported arm"); }
+@test
+Overwrite :: () { testing.ExpectFailure(testing.Failure.IndexOutOfRange); helper.Arm(); assert(false, "last arm wins"); }
+@test
+Budget :: () { testing.ExpectFailure(testing.Failure.BudgetExhausted); while (true) {} }
+@test
+Unwrapped :: () { testing.ExpectFailure(testing.Failure.UnwrappedNil); value := helper.Optional(false)!; }
+@test
+WrongUnwrap :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); value := helper.Optional(false)!; }
+@test
+BeforeUnwrap :: () { value := helper.Optional(false)!; testing.ExpectFailure(testing.Failure.UnwrappedNil); }
+@test
+ImportedUnwrap :: () { helper.ArmNil(); value := helper.Optional(false)!; }
+@test
+PresentUnwrap :: () { value := helper.Optional(true)!; assert(value == 42); }
+@test
+ReturnsUnwrap :: () { testing.ExpectFailure(testing.Failure.UnwrappedNil); }
+@test
+OverwriteUnwrap :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); helper.ArmNil(); value := helper.Optional(false)!; }

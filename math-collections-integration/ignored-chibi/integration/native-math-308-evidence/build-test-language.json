@@ -1,0 +1,23 @@
+{
+  "name": "build-test-language",
+  "command": [
+    "cmake",
+    "--build",
+    ".chibi/integration/native-math-308-language",
+    "--target",
+    "test_language",
+    "--parallel",
+    "4",
+    "--verbose"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+  "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+  "snapshot_revision": "b87afaea2-dirty",
+  "started_unix": 1793211757.569053,
+  "environment": {},
+  "wall_seconds": 63.548787416890264,
+  "exit_code": 0,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/build-test-language.log",
+  "log_sha256": "045be8862e36c6bedf87c00813a09d345a4cfcf10a28973aa78971c373793dfc",
+  "summaries": []
+}

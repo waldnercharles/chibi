@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_text_search.a "CMakeFiles/chibi_text_search.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/support/text_search.c.o" "CMakeFiles/chibi_text_search.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/support/text_rank.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_text_search.a

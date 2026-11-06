@@ -1,0 +1,10 @@
+package facts
+
+// compile-time for loops cover ranges, arrays and exits
+@test
+Calls :: () {
+    r1: int = Main();
+    // 55 + 3210 + (5 + 21) + 6 + 5
+    e1: int = 3302;
+    assert(r1 == e1, "Main call 1");
+}

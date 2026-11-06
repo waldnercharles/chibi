@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_graph_catalog.a "CMakeFiles/chibi_graph_catalog.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/graph_catalog.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_graph_catalog.a

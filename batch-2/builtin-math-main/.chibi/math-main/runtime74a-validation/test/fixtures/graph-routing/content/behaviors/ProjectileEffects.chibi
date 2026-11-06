@@ -1,0 +1,10 @@
+ProjectileEffects :: behavior {
+
+    action spawn_prototype_action = spawn_prototype(Prototype: TrailEmitter);
+    on Begin :: () {
+        spawn_prototype_action();
+    }
+    after spawn_prototype_action {
+        spawn_prototype_action.Entity.ParticleEmitter.parent = self;
+    }
+}

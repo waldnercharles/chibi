@@ -1,0 +1,10 @@
+package string_key_callback
+Text :: (i: int) -> string { return text_from_bytes([u8(65), 0, u8(i)]); }
+Change :: (key: ^string) -> int { key^ = Text(2); return 7; }
+Main :: () -> int {
+    key := Text(1);
+    values: [string: int] = [:];
+    values[key] = Change(&key);
+    assert(values.has(Text(1)) && !values.has(Text(2)));
+    return 0;
+}

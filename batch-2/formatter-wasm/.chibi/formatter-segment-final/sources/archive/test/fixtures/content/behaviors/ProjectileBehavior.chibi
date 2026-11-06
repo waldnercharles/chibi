@@ -1,0 +1,40 @@
+// Face the current velocity and expire after the authored lifetime. Physics
+// integrates movement.
+ProjectileBehavior :: behavior {
+    // The last frame step, for actions and functions.
+    Step: number = 0
+    import_component_write_1 :: (import_arg_0: number, import_arg_1: entity = self) -> (Value: Projectile) {
+        if import_arg_1 == 0 {
+            import_arg_1 = self
+        }
+        import_arg_1.Projectile.age = import_arg_0
+        return import_arg_1.Projectile
+    }
+
+    action set_gameprojectile_age = import_component_write_1(self.Projectile.age + Step)
+    on Tick :: (dt: number s) {
+        Step = dt
+        await Face_Direction(self.Velocity.x, self.Velocity.y)
+        set_gameprojectile_age()
+    }
+    after set_gameprojectile_age {
+        if set_gameprojectile_age.Value.age >= set_gameprojectile_age.Value.lifetime {
+            destroy_entity(self)
+        }
+    }
+    Face_Direction :: (X: number = 0.0, Y: number = 0.0) {
+        if self.Orientation {
+            if 0.0 >= Direction_Magnitude(X, Y) {
+                return
+            } else {
+                self.Orientation = DirectionMath.Direction_Orientation(X, Y)
+                return
+            }
+        } else {
+            return
+        }
+    }
+    Direction_Magnitude :: (x: number = 0.0, y: number = 0.0) -> (Result: number = 0.0) {
+        return abs(x) + abs(y)
+    }
+}

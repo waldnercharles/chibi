@@ -1,0 +1,98 @@
+package core_strings
+
+// Fixed successful fallbacks from test/language/text_format.c.
+@test
+TextFormatRejectsWriteCountModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:n}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsStringModifierForInteger :: () {
+    value: int = 37;
+    assert(format_text("{0:s}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsPointerModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:p}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsShortWriteCountModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:hn}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsLongLongHexModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:llx}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsPositionalPrintfModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:2$d}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsDynamicWidthModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:*d}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsOversizedWidthModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:999999999999999d}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsOversizedPrecisionModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:.999999999999999d}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsPercentWriteCountModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:%n}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsSizeCharacterModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:zc}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsAlternateDecimalModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:#d}", value) == "37");
+    return;
+}
+@test
+TextFormatRejectsCharacterPrecisionModifier :: () {
+    value: int = 37;
+    assert(format_text("{0:.2c}", value) == "37");
+    return;
+}
+@test
+TextFormatOversizedPlaceholderIndexRendersEmpty :: () {
+    value: string = "safe";
+    assert(format_text("a{999999999999999999999999999}b{0}c", value) == "absafec");
+    return;
+}
+@test
+TextFormatIntegerModifierKeepsStringValue :: () {
+    value: string = "text";
+    assert(format_text("{0:d}", value) == "text");
+    return;
+}
+@test
+TextFormatLiteralPercentRunRemainsUnchanged :: () {
+    assert(format_text("%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%") == "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%");
+    return;
+}

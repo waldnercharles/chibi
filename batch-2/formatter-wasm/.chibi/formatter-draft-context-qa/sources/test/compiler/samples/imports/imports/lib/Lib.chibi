@@ -1,0 +1,17 @@
+package lib
+import text "core:strings"
+pub Point :: struct { x: int; y: int; }
+pub Shape :: union { Dot(at: Point) | Line(size: int) | Nothing }
+pub Make :: (x: int, y: int) -> Point { p: Point = {x: x, y: y}; return p; }
+pub Sum :: (p: Point) -> int { return p.x + p.y; }
+pub Twice :: (n: int) -> int { return Helper(n) * 2; }
+Helper :: (n: int) -> int { return n + 1; }
+pub Width :: (s: string) -> int { return text.ByteLength(s); }
+pub Size :: (shape: Shape) -> int {
+    switch shape {
+        case .Dot(at): return Sum(at);
+        case .Line(size): return size;
+        case .Nothing: return 0;
+    }
+    return -1;
+}

@@ -1,0 +1,5 @@
+package facts
+Touch :: (v: ^int) { v^ += 0; }
+Grow :: (b: u8) -> int { a: int = 1; Touch(&a); a += b; return a; }
+
+// error: 3:49: Mismatched integer types int and u8; convert one operand

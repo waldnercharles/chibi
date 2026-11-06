@@ -1,0 +1,9 @@
+package facts
+
+// number constants widen to f64 exactly
+@test
+Calls :: () {
+    assert(ForwardWiden(1.5) == 1.5, "a constant widens before its source is declared");
+    assert(NegativeZeroAlias(1.5), "a negated zero alias keeps its sign");
+    assert(SubnormalWiden(1.5), "the smallest subnormal widens exactly");
+}

@@ -1,0 +1,4 @@
+package facts
+Literal :: (a: u8) -> u8 { return a << 300; }
+Counted :: (a: u8, n: u32) -> u8 { return a << n; }
+Signed :: (a: i8, n: u64) -> i8 { return a >> n; }

@@ -1,0 +1,188 @@
+package source_format
+
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+
+ContinuationLayout :: struct {
+    breaks: bool[];
+    joins: bool[];
+    opens: int[];
+    closes: int[];
+}
+
+PostfixChain :: (kind: int) -> bool {
+    return kind == diag.MemberExpression || kind == diag.OptionalMemberExpression || kind == diag.CallExpression ||
+           kind == diag.IndexExpression || kind == diag.ForceUnwrapExpression || kind == diag.DereferenceExpression;
+}
+
+// The first/last token handles of every row. AST preorder lets the backward
+// propagation visit each edge exactly once, including arbitrarily long chains.
+LayoutTokenRanges :: (rows: diag.Node[], tokens: Token[]) -> (first: int[], last: int[]) {
+    first := resize([int(0)], length(rows));
+    last := resize([int(0)], length(rows));
+    for (index in 0..<length(tokens)) {
+        first[tokens[index].node] = index + 1;
+        last[tokens[index].node] = index + 1;
+    }
+    node := length(rows) - 1;
+    while (node >= 0) {
+        parent := rows[node].parent;
+        if (parent >= 0) {
+            if (first[node] > 0 && (first[parent] == 0 || first[node] < first[parent])) { first[parent] = first[node]; }
+            if (last[node] > last[parent]) { last[parent] = last[node]; }
+        }
+        node -= 1;
+    }
+    return (first, last);
+}
+
+// Operator side and member-chain rules choose only gaps. Comments remain
+// barriers, and the ordinary token/tree proof validates every resulting break.
+ContinuationBreaks :: (bytes: int[], rows: diag.Node[], fields: int[], tokens: Token[], options: Options) -> ContinuationLayout {
+    breaks := resize([false], length(tokens));
+    joins := resize([false], length(tokens));
+    opens := resize([int(0)], length(tokens));
+    closes := resize([int(0)], length(tokens));
+    binary_roots := resize([int(0)], length(rows));
+    member_roots := resize([int(0)], length(rows));
+    member_counts := resize([int(0)], length(rows));
+    for (node in 0..<length(rows)) {
+        parent := rows[node].parent;
+        if (rows[node].kind == diag.BinaryExpression) {
+            binary_roots[node] = node + 1;
+            if (parent >= 0 && rows[parent].kind == diag.BinaryExpression) { binary_roots[node] = binary_roots[parent]; }
+        }
+        if (PostfixChain(rows[node].kind)) {
+            member_roots[node] = node + 1;
+            if (parent >= 0 && PostfixChain(rows[parent].kind)) { member_roots[node] = member_roots[parent]; }
+        }
+    }
+    for (token in tokens) {
+        if (rows[token.node].kind == tk.Period && (ParentKind(rows, token.node) == diag.MemberExpression ||
+            ParentKind(rows, token.node) == diag.OptionalMemberExpression)) {
+            chain := member_roots[rows[token.node].parent];
+            if (chain > 0) { member_counts[chain - 1] += 1; }
+        }
+    }
+    ranges := LayoutTokenRanges(rows, tokens);
+    for (index in 1..<length(tokens)) {
+        current := tokens[index];
+        parent := rows[current.node].parent;
+        if (parent < 0) { continue; }
+        if (rows[parent].kind == diag.BinaryExpression && fields[current.node] == diag.FieldOperator &&
+            !tokens[index - 1].comment && index + 1 < length(tokens) && !tokens[index + 1].comment) {
+            before := Breaks(bytes, false, tokens[index - 1].end, current.start) > 0;
+            after_break := Breaks(bytes, false, current.end, tokens[index + 1].start) > 0;
+            chosen := false;
+            if (options.binary_layout == 1) { chosen = true; }
+            else if (options.binary_layout == 2) {
+                chain := binary_roots[parent] - 1;
+                chosen = chain >= 0 && PunctuationPower(rows, fields, parent) == PunctuationPower(rows, fields, chain);
+            }
+            if (chosen || before || after_break) {
+                side := options.binary_operator_position;
+                if (side == 0 && chosen) { side = 1; }
+                if (side == 1) { breaks[index] = true; joins[index + 1] = true; }
+                else if (side == 2) { joins[index] = true; breaks[index + 1] = true; }
+            }
+        }
+        member := rows[parent].kind == diag.MemberExpression || rows[parent].kind == diag.OptionalMemberExpression;
+        call_open := rows[current.node].kind == tk.OpenParen && rows[parent].kind == diag.ArgumentList &&
+                     ParentKind(rows, parent) == diag.CallExpression;
+        if (member || call_open) {
+            owner := parent;
+            if (call_open) { owner = rows[parent].parent; }
+            chain := member_roots[owner];
+            if (chain > 0 && member_counts[chain - 1] >= 2) {
+                // Optional access must touch its operand. Keep `?.` together;
+                // ordinary dots remain legal break points in a mixed chain.
+                dot := rows[current.node].kind == tk.Period && rows[parent].kind == diag.MemberExpression;
+                if (options.chain_layout == 2 && dot) { breaks[index] = true; }
+                else if (options.chain_layout > 0 && !tokens[index - 1].comment && !current.comment) { joins[index] = true; }
+            }
+        }
+    }
+    if (options.chain_layout == 2) {
+        for (node in 0..<length(rows)) {
+            if (member_counts[node] >= 2 && ranges.first[node] > 0 && ranges.last[node] > 0) {
+                opens[ranges.first[node] - 1] += 1;
+                closes[ranges.last[node] - 1] += 1;
+            }
+        }
+    }
+    return {breaks: breaks, joins: joins, opens: opens, closes: closes};
+}
+
+// Syntax-owned minimum gaps complement inferred paragraphs. Leading comments
+// remain with their statement because ranges include the attached extras.
+RequiredBlankLines :: (bytes: int[], rows: diag.Node[], fields: int[], tokens: Token[], options: Options) -> int[] {
+    gaps := resize([int(0)], length(tokens));
+    ranges := LayoutTokenRanges(rows, tokens);
+    enders := LineEnders();
+    last_statement := resize([int(0)], length(rows));
+    last_child := resize([int(0)], length(rows));
+    previous_sibling := resize([int(0)], length(rows));
+    for (node in 0..<length(rows)) {
+        parent := rows[node].parent;
+        if (parent >= 0) {
+            previous_sibling[node] = last_child[parent];
+            last_child[parent] = node + 1;
+            if (enders[rows[node].kind]) { last_statement[parent] = node + 1; }
+        }
+    }
+    for (node in 0..<length(rows)) {
+        kind := rows[node].kind;
+        first := ranges.first[node] - 1;
+        last := ranges.last[node] - 1;
+        if (first < 0 || last < 0) { continue; }
+        parent := rows[node].parent;
+        if (kind == diag.ReturnStatement && options.blank_lines_before_final_return > 0 &&
+            parent >= 0 && last_statement[parent] == node + 1) {
+            prior := previous_sibling[node] - 1;
+            if (prior >= 0 && KindOf(rows, prior) != tk.OpenBrace && KindOf(rows, prior) != diag.Comment) {
+                gaps[first] = options.blank_lines_before_final_return;
+            }
+        }
+        if ((kind == diag.IfStatement || kind == diag.WhileStatement || kind == diag.ForStatement ||
+             kind == diag.SwitchStatement) && options.blank_lines_after_control > 0) {
+            next := rows[node].next_sibling;
+            if (next >= 0 && ranges.first[next] > 0 && KindOf(rows, next) != tk.CloseBrace) {
+                gaps[ranges.first[next] - 1] = options.blank_lines_after_control;
+            }
+        }
+        if ((kind == diag.RecordField || kind == diag.ComponentField) && options.blank_lines_between_members > 0) {
+            prior := previous_sibling[node] - 1;
+            if (prior >= 0 && KindOf(rows, prior) != tk.OpenBrace &&
+                gaps[first] < options.blank_lines_between_members) { gaps[first] = options.blank_lines_between_members; }
+        }
+    }
+    if (options.blank_lines_between_import_groups > 0) {
+        previous_start := 0;
+        previous_end := 0;
+        for (node in 0..<length(rows)) {
+            if (rows[node].kind != diag.ImportDeclaration) { continue; }
+            path := ChildByField(rows, fields, node, diag.FieldPath);
+            collection_start := 0;
+            collection_end := 0;
+            if (path >= 0) {
+                collection_start = rows[path].start + 1;
+                collection_end = collection_start;
+                while (collection_end < rows[path].end - 1 && bytes[collection_end] != 58) { collection_end += 1; }
+                if (collection_end == rows[path].end - 1) { collection_end = collection_start; }
+            }
+            same := previous_end - previous_start == collection_end - collection_start;
+            at := 0;
+            while (same && at < collection_end - collection_start) {
+                same = bytes[previous_start + at] == bytes[collection_start + at];
+                at += 1;
+            }
+            prior := previous_sibling[node] - 1;
+            if (KindOf(rows, prior) == diag.ImportDeclaration && !same && ranges.first[node] > 0) {
+                gaps[ranges.first[node] - 1] = options.blank_lines_between_import_groups;
+            }
+            previous_start = collection_start;
+            previous_end = collection_end;
+        }
+    }
+    return gaps;
+}

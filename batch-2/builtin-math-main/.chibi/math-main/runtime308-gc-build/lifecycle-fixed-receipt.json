@@ -1,0 +1,127 @@
+{
+  "status": "stopped after authored effect metadata mismatch",
+  "capture": {
+    "file": "test/language/package_compiler_chibi.c",
+    "old_source_sha256": "404f48acb258b11705d2ecc8441771c17950aa1fe13c3758a32f2721555394bc",
+    "new_source_sha256": "70926648c833dc7236021c97a77bb0984f7194e342f11e9a5d86f060188f588c",
+    "exact_change": "Move the single REQUIRE(prepare()) from inside the variants loop to immediately before it.",
+    "delta_sha256": "d30668477827be4855c3a25f961f55dbea9d00152a4aa27c8fbb661a21954cac",
+    "full_working_diff_sha256": "2b89b9ed28f6da85c3517374c0fb024e0aff828ed88eabe725f26f55feb164f7",
+    "source_files_manifest_sha256": "b1f1c179d4c43d6fd6b03f489ec262f62e69242299d20c533f7b7a4bf5117128",
+    "immutable_initial_failure_files_sha256": {
+      "configure.json": "c6352e90262e9e21e0c71e3b8745f27c816cb4ea8361fba14678086536b359fd",
+      "package_compiler_chibi.c": "404f48acb258b11705d2ecc8441771c17950aa1fe13c3758a32f2721555394bc",
+      "capture.json": "fdfcf0ca14da5e83cae636d57dd08788878f9a4990e6bebce5ee8abdaffe7156",
+      "hashes.json": "374460edaab7e2dc424ba726d7d98353935a05a0bb9d382991f19d2154d27f2e",
+      "math-native.log": "0d20f5099d8c2b4b7c88f3044aade20075718b3a85d7daf055b0db25e7a847ae",
+      "test_language": "74f01c55fb3b145339be348c55d3a265545b1c397c2324eb19e1207801948ca8",
+      "build.json": "cc513115f6c33ba8313b937aad9eb29e23f941d282eff5b616a2063bde37c84b",
+      "receipt.json": "01a31deaeff6cbd26ef0cfbea1059fe2398df5eb3d4d689b115314dbaf57131a"
+    },
+    "immutable_original_top_evidence_sha256": {
+      "capture.json": "fdfcf0ca14da5e83cae636d57dd08788878f9a4990e6bebce5ee8abdaffe7156",
+      "receipt.json": "01a31deaeff6cbd26ef0cfbea1059fe2398df5eb3d4d689b115314dbaf57131a",
+      "build.json": "cc513115f6c33ba8313b937aad9eb29e23f941d282eff5b616a2063bde37c84b",
+      "build.log": "68a43e8e66fe61c7eec897dac85cad63c99535a1d09d5abcaa85bdf0102c286e",
+      "configure.json": "c6352e90262e9e21e0c71e3b8745f27c816cb4ea8361fba14678086536b359fd",
+      "configure.log": "2503ceaf1a4d852c68c1a700bb5d952a08825627bfc95a14a6b1ea1471485954",
+      "math-native.log": "0d20f5099d8c2b4b7c88f3044aade20075718b3a85d7daf055b0db25e7a847ae",
+      "math-native.json": "51985f9d36f1cc6896c88efaa8f12a861701da5a7f92f58a3b894849aac41a92",
+      "source-files.json": "705daedcc22112056d1ae5e6134e4fad069014ce868f9c6a56e6c32a42e8424e",
+      "strict-fixture-command.json": "3f8e52ea3ceea6936c2a33801755e31fc5d2c894c8a3aa58973c11134706f12c",
+      "compile_commands.json": "356eab0030f5c73258ac276b29610d92ae7456dee24c09393b9c49a48fc7d3a7",
+      "math-source.patch": "83259b7a437c9beb0700cd40d6a7fec7ac8eb6fe6d23fba5b2e28ff17a924fca",
+      "pressure-only.patch": "cecb9b597f8d4bac1f513512eba4fe4cc4245576848695e57200519e6739d7d4",
+      "index-math-source.patch": "f69daa55d0e6a9431a14f42dc008bcf2ee0f09b0364e7b940a1e0f0f32474efe"
+    },
+    "source_edits": "Only the authorized snapshot copy; no authoritative source edits."
+  },
+  "strict_rebuild": {
+    "command": [
+      "cmake",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build",
+      "--target",
+      "test_language",
+      "--parallel",
+      "4"
+    ],
+    "status": 0,
+    "wall_seconds": 5.1544733750633895,
+    "strict_flags_unchanged": true,
+    "helper_patches": [],
+    "source_sha256": "70926648c833dc7236021c97a77bb0984f7194e342f11e9a5d86f060188f588c",
+    "binary": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/test_language",
+    "binary_bytes": 15479088,
+    "binary_sha256": "316142a7b1ac398f81eb374757cc70e64c29aa8635a288fe01f76900c71a5301"
+  },
+  "selected_test": {
+    "selector": "--package-compiler-chibi-math-native",
+    "command": [
+      "python3",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-validation/tools/test_policy.py",
+      "native",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/test_language",
+      "--package-compiler-chibi-math-native"
+    ],
+    "status": 1,
+    "wall_seconds": 20.004505624994636,
+    "binary_sha256": "316142a7b1ac398f81eb374757cc70e64c29aa8635a288fe01f76900c71a5301",
+    "source_sha256": "70926648c833dc7236021c97a77bb0984f7194e342f11e9a5d86f060188f588c",
+    "log_sha256": "5e5d0685d79ecb8c3f38ba7175f6a3b76bd8b9c1cbf1ba9ebaadf8cca9a9d958",
+    "pressure_records": [
+      {
+        "backend": "BYTECODE",
+        "collection_marks": 850,
+        "mask": 63,
+        "calls": 3
+      },
+      {
+        "backend": "SLJIT",
+        "collection_marks": 850,
+        "mask": 63,
+        "calls": 3
+      }
+    ],
+    "summary": {
+      "passed": 0,
+      "failed": 1,
+      "total": 1,
+      "suites": 0,
+      "assertions": 529
+    },
+    "policy_wall_seconds": 19.899,
+    "pressure_log_requirements_passed": false,
+    "lifecycle_fixed_sources_unchanged": true,
+    "new_binary_unchanged": true,
+    "initial_failure_archive_unchanged": true,
+    "original_top_evidence_unchanged": true,
+    "runtime308_source_snapshot_unchanged": true,
+    "runtime308_evidence_unchanged": true,
+    "runtime308_binaries_unchanged": true
+  },
+  "first_diagnostic": "function 1 (handler): native kind/effects 0/2, authored 0/0",
+  "diagnostics": [
+    "function 1 (handler): native kind/effects 0/2, authored 0/0",
+    "(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-validation/test/language/package_compiler_chibi.c (8423): y->kind == x->kind && y->effects == x->effects)",
+    "(FAILED: /Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-validation/test/language/package_compiler_chibi.c (9261): test->actual && same_declarations(test->expected[backend], test->actual) && same_points(test->expected[backend], test->actual) && same_watches(test->expected[backend], test->actual))"
+  ],
+  "phase": "Pressure variant, authored compiler BYTECODE, first prepared target BYTECODE, declaration/effect comparison before runtime execution.",
+  "pressure_c_oracles_completed": 2,
+  "pressure_authored_runtime_paths_completed": 0,
+  "pressure_authored_runtime_paths_required": 4,
+  "ordinary_variant_reached_end_before_pressure": true,
+  "source_edits": "Only the authorized corrected C-file copy into the GC snapshot.",
+  "helper_patches": [],
+  "producer_runs": [],
+  "evidence_files_sha256": {
+    "lifecycle-fixed-capture.json": "eca24b6f4bbad29640dea78cc443981273d6704594208e5930596c8432080937",
+    "lifecycle-fix.patch": "d30668477827be4855c3a25f961f55dbea9d00152a4aa27c8fbb661a21954cac",
+    "lifecycle-fixed-working.patch": "2b89b9ed28f6da85c3517374c0fb024e0aff828ed88eabe725f26f55feb164f7",
+    "lifecycle-fixed-source-files.json": "b1f1c179d4c43d6fd6b03f489ec262f62e69242299d20c533f7b7a4bf5117128",
+    "lifecycle-fixed-build.json": "91f0dc0e8eb505c76d18cf69dcdb8c1ca59cbe8867062ef72b1a3ca4c87f8ef6",
+    "lifecycle-fixed-build.log": "78cfdd6ba7e40cb8361cdc43d167e7e23797edbd5bd7635e2bfd7d6e815b30e4",
+    "lifecycle-fixed-native.json": "95752bcd7e6ab2940eaaf030cf20cb30588a8bb4bb0f6768eb7ad16dbb2fc290",
+    "lifecycle-fixed-native.log": "5e5d0685d79ecb8c3f38ba7175f6a3b76bd8b9c1cbf1ba9ebaadf8cca9a9d958"
+  }
+}

@@ -1,0 +1,7 @@
+package facts
+@error Failure :: struct { code: int; }
+Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }
+Later :: (value: int) -> int { yield; return value; }
+Use :: () { returned := await Later(Read().value); }
+
+// error: 5:37: Error result is ignored on a reachable path; check, report, store or return it

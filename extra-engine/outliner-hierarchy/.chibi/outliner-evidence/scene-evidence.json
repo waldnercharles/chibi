@@ -1,0 +1,70 @@
+{
+  "source": "/Users/cwaldner/Personal/chibi-studio-outliner",
+  "build": "/Users/cwaldner/.codex/worktrees/outliner-hierarchy/chibi/build-outliner-studio",
+  "sdk": "/Users/cwaldner/.codex/worktrees/outliner-hierarchy/chibi/dist/outliner-sdk",
+  "binary": "/Users/cwaldner/.codex/worktrees/outliner-hierarchy/chibi/build-outliner-studio/bin/studio-acceptance",
+  "binary_sha256": "25a6ccc0becb58a775d18cba5aa444b649ce235787f61349b6d58b7b42b0c2f7",
+  "extraction_sha256": "e4f720dcfd5a9efba1c829b132f4a7745e0e65bc906957504b91c27cf5257c52",
+  "compile_commands_sha256": "e61f48f70aa64143e3d687b0625ebdbb3a0b151076e1751ce45773a7f8941481",
+  "frames": 2,
+  "hidden": true,
+  "window": [
+    1920,
+    1080
+  ],
+  "success": "Studio scene move accepted: frames=2",
+  "resources": {
+    "studio": [
+      264,
+      451173,
+      "9144322cd92a1dd738280b92eb6539b168936f509743de7691928937284c28e2"
+    ],
+    "ui": [
+      2,
+      297,
+      "8505446e5ec71ec7c070f17b6729e0f6c41e2f9666dc7218b3c80a2f2d184e92"
+    ]
+  },
+  "files": {
+    "tests/acceptance/scene_move.h": {
+      "bytes": 17757,
+      "sha256": "c8ed725e6b22d591532cb2788686592bf94e45033f229649f86fded9a7da5dc7"
+    },
+    "tests/acceptance/README.md": {
+      "bytes": 15336,
+      "sha256": "db0c4f3c814cadf8c75108aa8e5d8edbe0073fcfcd3628915f099e43a45f31cf"
+    },
+    "tests/acceptance/outliner_move.h": {
+      "bytes": 11885,
+      "sha256": "98d1cd1bfbbc5adfaf56a222869454dc2712182196c3b710fa4123d13a7bd664"
+    },
+    "tests/acceptance/main.c": {
+      "bytes": 133674,
+      "sha256": "4362ea584d6a55cd10077a85906c2bdbd22da876a883440e3eeb8c66532214a5"
+    },
+    "tests/acceptance/host.c": {
+      "bytes": 569,
+      "sha256": "79336a3b1fe8ad01ff2df59fa77c0fcd71ef3e019ea67282c1af1400df36a033"
+    },
+    "tests/acceptance/application.c": {
+      "bytes": 303,
+      "sha256": "99f312f466e3abe43d30a47094f1dd03fa0a27672244eb0960ed4dc5e316ab3c"
+    },
+    "tests/acceptance/project/project.kdl": {
+      "bytes": 79,
+      "sha256": "1f454791f165b6dd7652ac7b8a8a18b4d6c8917ddf00c4121c44c512ec161e65"
+    },
+    "tests/acceptance/vendor/pico_unit.h": {
+      "bytes": 13953,
+      "sha256": "ae1c93c155941afbd914f2c7a1fb2128d72aafcc05bddf3ddb0bb6f72eef22b8"
+    },
+    "tests/acceptance/project/content/scenes/Start.kdl": {
+      "bytes": 39,
+      "sha256": "4512130a3539013e0ec2e50c0c0427cb9f027f9f997d95379b6a47950aee745b"
+    },
+    "tests/acceptance/project/content/behaviors/Counter.chibi": {
+      "bytes": 92,
+      "sha256": "ab072105e163873d9d414fdf1cbc35f48a28a8b874139531ea61c3c581ac57cd"
+    }
+  }
+}

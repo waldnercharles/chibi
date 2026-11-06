@@ -1,0 +1,186 @@
+package native_link_host
+
+import link "project:native_link"
+import os "core:os"
+import strings "core:strings"
+
+// The effects of the link step: finding the LLVM tools and the C library's
+// start files, writing the macOS stubs and running the tools. Everything it
+// runs comes from native_link, which has no effects and is tested on its own.
+
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+
+Fail :: (kind: int, code: int) -> link.Error {
+    failed: link.Error = {kind: kind, code: code};
+    return failed;
+}
+
+// The LLVM tool `name` in the LLVM folder, "" when it is not there. A Windows
+// folder holds name.exe, and a distribution's lld tools are links to lld.
+pub Tool :: (llvm: string, name: string) -> string {
+    for (candidate in [Join([llvm, "/", name]), Join([llvm, "/", name, ".exe"])]) {
+        kind := os.Kind(candidate);
+        if (kind == os.KindFile || kind == os.KindLink) {
+            return candidate;
+        }
+    }
+    return "";
+}
+
+pub Object :: (llvm: string, module: string, object: string, level: int) -> link.Error? {
+    llc := Tool(llvm, "llc");
+    if (llc == "") {
+        return Fail(link.MissingTool, 0);
+    }
+    status := os.Run(link.ObjectCommand(llc, module, object, level));
+    if (status != 0) {
+        return Fail(link.ToolFailed, status);
+    }
+    return nil;
+}
+
+// The folder with the C library's start files and development library, and
+// the dynamic linker's path, on a Linux system; empty strings when it has none.
+pub Libc :: () -> (folder: string, interpreter: string) {
+    for (folder in ["/usr/lib/x86_64-linux-gnu", "/usr/lib64", "/lib/x86_64-linux-gnu", "/usr/lib"]) {
+        complete := true;
+        for (name in ["crt1.o", "crti.o", "crtn.o", "libc.so"]) {
+            complete = complete && os.IsFile(Join([folder, "/", name]));
+        }
+        if (!complete) {
+            continue;
+        }
+        for (interpreter in ["/lib64/ld-linux-x86-64.so.2", "/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+                             "/usr/lib64/ld-linux-x86-64.so.2"]) {
+            if (os.Exists(interpreter)) {
+                return (folder, interpreter);
+            }
+        }
+    }
+    return ("", "");
+}
+
+// The plan with what the system provides filled in.
+pub Discover :: (plan: link.Plan) -> link.Plan {
+    found := plan;
+    if (link.TargetOf(plan.triple) == link.LinuxX64 && !plan.static && plan.libc == "") {
+        located := Libc();
+        found.libc = located.folder;
+        found.interpreter = located.interpreter;
+    }
+    return found;
+}
+
+Write :: (path: string, text: string) -> bool {
+    return os.WriteText(path, text) == nil;
+}
+
+// The link itself, with the stubs written into plan.work.
+Build :: (plan: link.Plan) -> link.Error? {
+    target := link.TargetOf(plan.triple);
+    if (target < 0) {
+        return Fail(link.BadTriple, 0);
+    }
+    if (length(plan.objects) == 0 || plan.output == "") {
+        return Fail(link.BadPlan, 0);
+    }
+    if (Tool(plan.llvm, link.Linker(target)) == "") {
+        return Fail(link.MissingTool, 0);
+    }
+    ready := Discover(plan);
+    if (target == link.LinuxX64 && !plan.static && ready.libc == "") {
+        return Fail(link.MissingLibc, 0);
+    }
+    if (target == link.MacOSArm64) {
+        if (!Write(link.StubPath(plan.work, "System"), link.Stub(link.InstallName("System"), true))) {
+            return Fail(link.CannotWrite, 0);
+        }
+        for (dependency in plan.libraries) {
+            if (!Write(link.StubPath(plan.work, dependency), link.Stub(link.InstallName(dependency), false))) {
+                return Fail(link.CannotWrite, 0);
+            }
+        }
+    }
+    if (target == link.WindowsX64 && plan.static) {
+        if (!Write(Join([plan.work, "/kernel32.def"]), link.Kernel32Definition())) {
+            return Fail(link.CannotWrite, 0);
+        }
+        dependency := Tool(plan.llvm, "lld-link");
+        made := os.Run([dependency, "/lib", "/nologo", Join(["/def:", plan.work, "/kernel32.def"]), "/machine:x64",
+                        Join(["/out:", plan.work, "/kernel32.lib"])]);
+        if (made != 0) {
+            return Fail(link.ToolFailed, made);
+        }
+    }
+    // The linker's output has the same name whatever the program is called: a
+    // macOS ad-hoc signature carries it, and two links of the same inputs must
+    // give the same bytes.
+    partial := Join([plan.work, "/a.out"]);
+    if (target == link.WindowsX64) {
+        partial = Join([plan.work, "/a.exe"]);
+    }
+    if (os.Remove(partial) != nil) {
+        return Fail(link.CannotWrite, 0);
+    }
+    command := link.Command(ready, partial);
+    command[0] = Tool(plan.llvm, link.Linker(target));
+    status := os.Run(command);
+    if (status != 0) {
+        if (os.Remove(partial) != nil) {
+            return Fail(link.CannotWrite, 0);
+        }
+        return Fail(link.ToolFailed, status);
+    }
+    if (os.Rename(partial, plan.output) != nil) {
+        return Fail(link.CannotWrite, 0);
+    }
+    return nil;
+}
+
+// The files Build leaves in the work folder.
+Leftovers :: (plan: link.Plan) -> string[] {
+    names: string[] = [link.StubPath(plan.work, "System"), Join([plan.work, "/kernel32.def"]),
+                       Join([plan.work, "/kernel32.lib"]), Join([plan.work, "/a.out"]),
+                       Join([plan.work, "/a.exe"])];
+    for (dependency in plan.libraries) {
+        names.append(link.StubPath(plan.work, dependency));
+    }
+    return names;
+}
+
+// Links the plan's program and publishes it at `output`, replacing nothing
+// until the link has succeeded. Nothing else outlives the call: the work
+// folder, `output.work` unless the plan names one, holds only the stubs and is
+// removed with them. No path, time or process id reaches the program's bytes.
+pub Link :: (plan: link.Plan) -> link.Error? {
+    ready := plan;
+    own := false;
+    if (plan.work == "") {
+        ready.work = Join([plan.output, ".work"]);
+        own = true;
+    }
+    if (os.Kind(ready.work) == os.KindNone) {
+        if (os.MakeDirectory(ready.work) != nil) {
+            return Fail(link.CannotWrite, 0);
+        }
+    } else {
+        own = false;
+    }
+    failure := Build(ready);
+    cleaned := true;
+    for (path in Leftovers(ready)) {
+        cleaned = cleaned && os.Remove(path) == nil;
+    }
+    if (own) {
+        cleaned = cleaned && os.Remove(ready.work) == nil;
+    }
+    if (failure != nil) {
+        return failure;
+    }
+    if (!cleaned) {
+        return Fail(link.CannotWrite, 0);
+    }
+    return nil;
+}

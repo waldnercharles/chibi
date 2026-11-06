@@ -1,0 +1,8 @@
+package rejected_union_is
+Choice :: union { Empty | Number(value: int) }
+Read :: () -> Choice? { return nil; }
+Main :: () -> int {
+    choice := Read();
+    if (choice is .Empty) { return 1; }
+    return 0;
+}

@@ -1,0 +1,89 @@
+{
+  "base": "d2c222b00c9754c1d275c03d943cb5725c144d53",
+  "builder": "/private/tmp/chibi-owned-composed-proof/stage3/chibi",
+  "llvm": "/private/tmp/chibi-bba9-proof/llvm22",
+  "compiler_build_seconds": 31.6,
+  "native_unit_tests": {
+    "passed": 250,
+    "seconds": 3.46,
+    "log": "string-cell-native-tests.log"
+  },
+  "ordinary_source": {
+    "seconds": 1.16,
+    "log": ".chibi/managed-pointers/string-cell-ordinary.log"
+  },
+  "source_poison": {
+    "runs": 4,
+    "seconds": 1.56,
+    "live": 0,
+    "peak_normal": 1494,
+    "peak_forced": 16,
+    "total": 15023,
+    "log": "string-cell-poison.log"
+  },
+  "source_callbacks": {
+    "runs": 4,
+    "seconds": 1.46,
+    "live": 0,
+    "peak": 18,
+    "total": 30046,
+    "log": "string-cell-callback.log"
+  },
+  "raw_borrowed_import": {
+    "runs": 4,
+    "seconds": 1.15,
+    "live": 0,
+    "log": "text-cell-raw.log"
+  },
+  "wrong_tag_storage": {
+    "runs": 8,
+    "seconds": 2.51,
+    "log": "text-cell-bad.log"
+  },
+  "selective_missing_import": {
+    "status": 50,
+    "live": 0,
+    "seconds": 0.45,
+    "log": "string-cell-null-negative.log",
+    "diff": "string-cell-negative.diff"
+  },
+  "source_hashes": {
+    "tools/compiler/llvm_native/Emit.chibi": "5e04252c7d23d3a7642a4c5f4b1c9a12621fefb6e57471d83a778671cd83b5b0",
+    "tools/compiler/llvm_native/Managed.chibi": "16d507c3032eed8b1cb95d85ad084e93c8342854c739dba28d6a89365a50a5b6",
+    "tools/compiler/llvm_native/ManagedRecords.chibi": "c54e17d2243fc4763516fa974052186d24fb9c129fe6c7c8e017b4ebe78602c6",
+    "tools/compiler/llvm_native/TextSequences.chibi": "3920717a4fc7de758b13faaf73c086896bc43072d96e181aa31db0714db7d600",
+    "tools/compiler/package_compiler/ScalarPointers.chibi": "cf23c0cbb276688f2a157651dcbafdfad58feee1e86f73c63c1f03408a3a4de5",
+    "tools/compiler/scalar_llvm/Emit.chibi": "4c8ca27584345d2b0fb50b2b3c87dbde8442f6b925978e472dedf33d1dfda6aa",
+    "tools/compiler/scalar_llvm/Managed.chibi": "eca09102a7d8d1bdd0a7d8bc28b74ff7a2f48f7be4c1fb22d00a3cb66e37e427",
+    "test/native_aot/managed_pointers/source/StringCells.chibi": "997205543b1393e385db17cc30effce43014dd89330d590de54c74f5b536e0a9",
+    "test/native_aot/managed_pointers/TextCells.chibi": "115df986cf3c7807f4815306d8193c5660bc301b7c68beb4fd22ce13ec9af228",
+    "test/native_aot/managed_pointers/TextCellImages.chibi": "a788deee62336e7f27ddcddd6f5d1839ba8860d5d5b1a54438845007e96326b9",
+    "test/native_aot/managed_pointers/TextCellImagesHost.chibi": "c456b790dc50c87f10874533bebf54e0772c02e9afaae2a559af41026b38d3e5",
+    "test/native_aot/managed_pointers/text_cells/Writer.chibi": "f707f8077d014c55634ded9580e454f9e999b812592ce5f0edf158915f671ba6",
+    "test/native_aot/diagnostics/Probe.chibi": "e7adb0a0f8f73547cc2f6fcad420dc8ba3cf7bcb4f526904dc6173d98c2042ed"
+  },
+  "diagnostic_replacement": {
+    "ordinary_positive_seconds": 0.9,
+    "ordinary_log": "/private/tmp/chibi-string-cell-diagnostic/ordinary.log",
+    "native_span": "2:51",
+    "focused_suite_seconds": 48.37,
+    "log": "string-cell-diagnostics.log"
+  },
+  "source_image_lifetime": {
+    "levels": [
+      0,
+      2
+    ],
+    "wrapper_seconds": 14.7,
+    "log": "string-cell-images.log",
+    "work": "string-cell-family-proof/text-cell-images",
+    "source": "test/native_aot/managed_pointers/text_cells/Writer.chibi",
+    "old_cells_pending": [
+      1,
+      0
+    ],
+    "negative_status": 33,
+    "negative_change": "Only actual source Write Text.share call becomes identity; both controls release roots/images before returning33"
+  },
+  "fixture_only_postproof": "Removed unused borrowed command alias; valid default/tag/storage emitter paths unchanged. Documentation and canonical registration updated."
+}

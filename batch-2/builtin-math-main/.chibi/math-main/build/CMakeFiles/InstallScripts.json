@@ -1,0 +1,12 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/build/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/build/sdk/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/build/sdk/language/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/build/tools/chibi_ctl/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/build/test/language/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/build/test/tools/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

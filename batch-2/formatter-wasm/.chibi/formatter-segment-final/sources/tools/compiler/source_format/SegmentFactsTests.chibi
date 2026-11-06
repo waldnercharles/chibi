@@ -1,0 +1,180 @@
+package source_format
+
+import syntax "project:compiler_syntax"
+import diag "project:syntax_diagnostics"
+
+SegmentFixtureFacts :: (source: string) -> SegmentFacts {
+    switch syntax.Parse(source) {
+        case .Rejected(diagnostic):
+            print_string(diagnostic.message);
+            assert(false, "SEGMENT facts fixture parses");
+            return {sequences: [], units: [], bindings: [], refs: [], defs: [], node_bindings: [], name_ids: [],
+                    owners: [], occurrences: [], occurrence_first: [], occurrence_count: []};
+        case .Parsed(rows, fields, named, extras, root):
+            return SegmentSummarize(text_bytes(source), rows, fields, Tokens(rows, fields, root));
+    }
+}
+
+@test
+SegmentFactsRetainAllLexicalReferences :: () {
+    source := "package p\nF :: (a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int, j: int) { total := a + b + c + d + e + f + g + h + i + j; Save(total); }\n";
+    facts := SegmentFixtureFacts(source);
+    assert(length(facts.sequences) == 1 && facts.sequences[0].is_function,
+           "the function body has one statement sequence");
+    assert(facts.sequences[0].count == 2 && facts.units[0].refs_count == 10,
+           "every parameter read survives beyond eight names");
+    assert(facts.units[0].defs_count == 1 && facts.units[1].refs_count == 1,
+           "initialization defines its binding and a later call reads it");
+    binding := facts.units[0].target;
+    assert(binding > 0 && facts.refs[facts.units[1].refs_first] == binding,
+           "the use resolves to the lexical declaration");
+}
+
+@test
+SegmentFactsResolveShadowingAndInitializerScope :: () {
+    source := "package p\nF :: (value: int) { outer := value; if ready { value := value + 1; Save(value); } Save(value); }\n";
+    facts := SegmentFixtureFacts(source);
+    assert(length(facts.sequences) == 2 && facts.sequences[0].count == 3 && facts.sequences[1].count == 2,
+           "outer and nested statements each occupy a contiguous sequence");
+    outer := facts.refs[facts.units[0].refs_first];
+    nested := facts.units[facts.sequences[1].first - 1];
+    assert(facts.refs[nested.refs_first] == outer && nested.target != outer,
+           "a shadowing initializer reads the outer binding before defining its own");
+    saved := facts.units[facts.sequences[1].first];
+    assert(facts.refs[saved.refs_first] == nested.target,
+           "the nested call reads the inner binding");
+    assert(facts.refs[facts.units[2].refs_first] == outer,
+           "leaving a block restores the outer binding");
+    assert(nested.parent == 2 && facts.units[1].additional == SegmentControl,
+           "the complete control statement is one outer unit");
+}
+
+@test
+SegmentFactsSeparateNamespacesAndObjectReceivers :: () {
+    source := "package p\nimport io \"core:io\"\nimport \"core:math\"\nShape :: struct { x: int; }\nF :: (object: Shape) { io.Read(); math.Abs(1); Shape.Build(); object.Read(); if ready { io := object; io.Read(); } io.Read(); }\n";
+    facts := SegmentFixtureFacts(source);
+    first := facts.sequences[0].first - 1;
+    assert(facts.units[first].category == SegmentMethod && facts.units[first + 1].category == SegmentMethod &&
+           facts.units[first + 2].category == SegmentMethod,
+           "explicit imports, implicit imports and type names are not object variables");
+    object := facts.units[first + 3];
+    assert(object.category == SegmentObjectMethod && object.receiver > 0,
+           "a parameter receiver resolves as an object variable");
+    nested := facts.sequences[1].first - 1;
+    assert(facts.units[nested + 1].category == SegmentObjectMethod,
+           "a local variable may shadow an import namespace");
+    assert(facts.units[first + 5].category == SegmentMethod,
+           "the import namespace returns after the local scope");
+}
+
+@test
+SegmentFactsTrackAssignmentDefinitionsAndReads :: () {
+    source := "package p\nF :: (object: Shape, index: int, value: int) { value = 2; value += 3; object.x = value; object[index] = value; }\n";
+    facts := SegmentFixtureFacts(source);
+    assert(facts.units[0].defs_count == 1 && facts.units[0].refs_count == 0,
+           "a plain variable assignment defines without reading its old value");
+    assert(facts.units[1].defs_count == 1 && facts.units[1].refs_count == 1,
+           "compound assignment both reads and defines its binding");
+    assert(facts.units[2].defs_count == 1 && facts.units[2].refs_count == 2 && facts.units[2].receiver > 0,
+           "a member assignment reads and defines the base object");
+    assert(facts.units[3].defs_count == 1 && facts.units[3].refs_count == 3,
+           "an indexed target reads its index and its base separately");
+}
+
+@test
+SegmentFactsRestrictLoopAndPatternBindings :: () {
+    source := "package p\nF :: (item: int, value: Outcome) { for item in item..<3 { Save(item); } Save(item); if value is .Some(item) && item > 0 { Save(item); } else { Save(item); } Save(item); }\n";
+    facts := SegmentFixtureFacts(source);
+    parameter: int = 0;
+    for (binding in 1..length(facts.bindings)) {
+        if (facts.bindings[binding - 1].declaration >= 0 && facts.occurrence_count[binding] > 0) {
+            occurrence := facts.occurrences[facts.occurrence_first[binding]];
+            if (occurrence.owner == 0 && facts.bindings[binding - 1].kind == SegmentVariableBinding) {
+                parameter = binding;
+                break;
+            }
+        }
+    }
+    assert(parameter > 0, "the parameter has a lexical binding");
+    assert(facts.refs[facts.units[0].refs_first] == parameter,
+           "the for iterable reads the outer binding before introducing its iterator");
+    loop_body := facts.units[facts.sequences[1].first - 1];
+    assert(facts.refs[loop_body.refs_first] != parameter,
+           "the loop body reads its own iterator binding");
+    assert(facts.refs[facts.units[1].refs_first] == parameter,
+           "the iterator ends with the loop body");
+    then_body := facts.units[facts.sequences[2].first - 1];
+    else_body := facts.units[facts.sequences[3].first - 1];
+    assert(facts.refs[then_body.refs_first] != parameter && facts.refs[else_body.refs_first] == parameter,
+           "successful pattern bindings do not leak into else");
+}
+
+@test
+SegmentFactsExposeDescendantOccurrencesForWholeControls :: () {
+    facts := SegmentFixtureFacts("package p\nF :: (object: Shape) { if ready { object.x = 1; object.Save(); } }\n");
+    control := facts.units[0];
+    receiver := facts.units[facts.sequences[1].first - 1].receiver;
+    inside: int = 0;
+    first := facts.occurrence_first[receiver];
+    end := first + facts.occurrence_count[receiver];
+    for (index in first..<end) {
+        occurrence := facts.occurrences[index];
+        if (occurrence.node >= control.node && occurrence.node <= control.end_node) { inside += 1; }
+    }
+    assert(inside == 2 && control.refs_count == 0,
+           "binding occurrence ranges include nested effects without copying them into every ancestor");
+}
+
+@test
+SegmentFactsClassifyChibiRhsFormsAndSourceTypes :: () {
+    facts := SegmentFixtureFacts("package p\nShape :: struct { x: int; }\nF :: (object: Shape, pointer: ^int, value: int) { a: int = 1; b := value; c := [1, 2]; d := {x: value}; e := value + 1; f := -value; g := pointer^; h := value as int; i := Read(); j := object.Read(); k := Shape(1); }\n");
+    expected: int[] = [SegmentRhsConstant, SegmentRhsName, SegmentRhsCreation, SegmentRhsCreation,
+                       SegmentRhsInfix, SegmentRhsPrefix, SegmentRhsPostfix, SegmentRhsCast,
+                       SegmentRhsMethod, SegmentRhsObjectMethod, SegmentRhsCreation];
+    assert(length(facts.units) == length(expected), "every RHS fixture is one initialized statement");
+    for (index in 0..<length(expected)) {
+        assert(facts.units[index].category == SegmentInit && facts.units[index].rhs_category == expected[index],
+               "Chibi RHS forms have the documented SEGMENT syntax category");
+    }
+    assert(facts.units[0].type_name > 0 && facts.units[1].type_name == 0,
+           "only an authored type annotation supplies a type name");
+    assert(facts.units[8].rhs_function > 0 && facts.units[9].rhs_function > 0 && facts.units[9].rhs_receiver > 0,
+           "root function and object-method metadata survive initialization syntax");
+}
+
+@test
+SegmentFactsKeepNamedResultsAndAddressAliases :: () {
+    facts := SegmentFixtureFacts("package p\nF :: (value: int) -> (result: int) { pointer := &value; copy := pointer; result = copy^; return; }\n");
+    pointer := facts.units[0].target;
+    copy := facts.units[1].target;
+    value := facts.refs[facts.units[0].refs_first];
+    assert(facts.bindings[pointer - 1].alias == value && facts.bindings[pointer - 1].address_alias,
+           "an authored address expression records the aliased lexical source");
+    assert(facts.bindings[copy - 1].alias == pointer && !facts.bindings[copy - 1].address_alias,
+           "a copied pointer keeps its own binding identity and source dependency");
+    assert(facts.units[2].target > 0 && facts.units[2].target != value,
+           "a named result is a writable binding in its function");
+}
+
+@test
+SegmentFactsFollowChainedMethodReceivers :: () {
+    facts := SegmentFixtureFacts("package p\nimport tables \"project:tables\"\nF :: (table: Table) { table.getNodeTable().addColumns(); table.getEdgeTable().addColumns(); Read(table).addColumns(); tables.Read().addColumns(); }\n");
+    assert(facts.units[0].category == SegmentObjectMethod && facts.units[1].category == SegmentObjectMethod &&
+           facts.units[0].receiver == facts.units[1].receiver && facts.units[0].receiver > 0,
+           "chained methods retain the lexical variable that supplies their receiver");
+    assert(facts.units[2].category == SegmentMethod && facts.units[2].receiver == 0,
+           "an arbitrary function argument does not become the result's receiver");
+    assert(facts.units[3].category == SegmentMethod && facts.units[3].receiver == 0,
+           "a chained namespace call does not invent an object variable");
+}
+
+@test
+SegmentFactsExcludeLibraryDeclarationLists :: () {
+    facts := SegmentFixtureFacts("package p\nHelpers :: library { A :: () {} B :: () {} C :: () {} D :: () {} }\n");
+    assert(length(facts.sequences) == 4 && length(facts.units) == 0,
+           "function bodies are sequences but their containing library declaration list is not");
+    for (statements in facts.sequences) {
+        assert(statements.is_function && statements.count == 0,
+               "empty library functions retain their own function-body identity");
+    }
+}

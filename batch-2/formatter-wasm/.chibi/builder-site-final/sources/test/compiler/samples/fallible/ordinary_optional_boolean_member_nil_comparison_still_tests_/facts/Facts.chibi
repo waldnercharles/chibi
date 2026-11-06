@@ -1,0 +1,4 @@
+package facts
+Flag :: (value: bool, absent: bool) -> (data: int, error: bool?) { if absent { return(7, nil); } return(7, value); }
+TakeBool :: (value: bool) -> int { if value { return 99; } return 17; }
+Use :: (value: bool, absent: bool) -> int { r := Flag(value, absent); if r.error != nil { return TakeBool(r.error); } return 0; }

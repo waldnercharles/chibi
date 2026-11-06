@@ -1,0 +1,79 @@
+package directory_enumeration_probe
+
+import engine "graph:engine"
+import os "core:os"
+import programs "graph:programs"
+import target "core:target"
+
+when target.Os == target.Windows {
+    import sys "core:sys/windows"
+    Raw :: (path: string) -> string[] { return sys.List(path); }
+} else {
+    import sys "core:sys/posix"
+    Raw :: (path: string) -> string[] { return sys.List(path); }
+}
+
+foreign import faults "/Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/.chibi/directory-errors/work.NrCbiM/fault.a"
+foreign faults { chibi_directory_mode :: (mode: i32) -> i32 }
+foreign { chibi_native_scope_begin :: (steps: i64) -> i32 }
+
+Mode :: (mode: int) {
+    selected := chibi_directory_mode(i32(mode));
+    assert(int(selected) == mode, "the owned failure provider selects its mode");
+}
+Balanced :: () {
+    active := chibi_directory_mode(-1);
+    assert(active == 0, "every real enumeration handle is closed");
+}
+Main :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 5, "files, empty directory, cache project, compiler and LLVM");
+    // Exercise the instrumented backedges too, without a practical quota.
+    begun := chibi_native_scope_begin(i64(9223372036854775807));
+    assert(begun == 0, "the program owns its instrumented runtime scope");
+    Mode(0);
+    empty := os.List(arguments[1]);
+    assert(empty.error == nil, "an empty directory completes successfully");
+    assert(length(empty.names) == 0, "an empty directory has no names");
+    normal := os.List(arguments[0]);
+    assert(normal.error == nil, "the real enumeration completes");
+    assert(length(normal.names) == 5 && normal.names[0] == "a.chibi" && normal.names[4] == "e.chibi",
+           "all names are returned in sorted order");
+    raw := Raw(arguments[0]);
+    assert(length(raw) == 5, "the raw platform API preserves successful listings");
+    Balanced();
+    for mode in [int(1), 2, 4] {
+        Mode(mode);
+        failed := os.List(arguments[0]);
+        assert(failed.error != nil, "open, partial read and close failures are reported");
+        assert(length(failed.names) == 0, "a failed inventory exposes no partial names");
+        Mode(mode);
+        raw = Raw(arguments[0]);
+        assert(length(raw) == 0, "the raw platform compatibility API remains empty on failure");
+        Balanced();
+    }
+    Mode(3);
+    no_match := os.List(arguments[1]);
+    assert(no_match.error == nil, "the native no-match condition is a valid empty directory");
+    assert(length(no_match.names) == 0, "no-match returns no names");
+    Balanced();
+    Mode(0);
+    inputs := engine.NativeInputs(arguments[0]);
+    assert(length(inputs) == 5, "the source inventory contains every file");
+    Mode(2);
+    incomplete := engine.NativeInputs(arguments[0]);
+    assert(length(incomplete) == 0, "the inventory walker refuses a partial listing");
+    Balanced();
+    Mode(0);
+    cached := programs.Build(arguments[2], arguments[3], arguments[4], "Main.chibi", "Main", []);
+    assert(cached != "", "a real native runner is published before the failed walk");
+    status := os.Run([cached]);
+    assert(status == 42, "the cached program actually executes");
+    Mode(2);
+    refused := programs.Build(arguments[2], arguments[3], arguments[4], "Main.chibi", "Main", []);
+    assert(refused == "", "a failed source walk cannot reuse or publish a native runner");
+    Balanced();
+    Mode(0);
+    os.Print("PASS empty, open/read/close errors, source inventory and native cache refusal");
+    return 0;
+}

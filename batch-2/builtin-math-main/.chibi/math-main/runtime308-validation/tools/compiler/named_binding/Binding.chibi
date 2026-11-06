@@ -1,0 +1,433 @@
+package named_binding
+
+import binding "project:lexical_binding"
+import syntax "project:syntax_diagnostics"
+import strings "core:strings"
+
+// All tables contain analyzer/catalog facts. A negative ID slot denotes zero;
+// symbol_types is aligned with the lexical symbol table. Nonnegative indices
+// and spans retain the owning analyzer's structural invariants.
+pub Type :: struct {
+    storage: int;
+    container: int;
+    flags: int;
+    nominal_slot: int;
+    parameter_slot: int;
+    collection: u64;
+}
+pub Entry :: struct {
+    name: string;
+    source_name: string;
+    key: string;
+    id_slot: int;
+    type: int;
+    has_source_name: bool;
+    has_key: bool;
+    internal: bool;
+    component: bool;
+}
+pub Import :: struct {
+    alias: string;
+    identity: string;
+    document: int;
+    export_start: int;
+    export_count: int;
+    has_alias: bool;
+}
+pub Export :: struct {
+    name: string;
+    kind: int;
+    id_slot: int;
+}
+pub Use :: struct {
+    kind: int;
+    symbol: int;
+    member_slot: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
+pub Request :: struct {
+    text: string;
+    scope: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
+pub TypeUse :: union {
+    Absent | Reference(symbol: int, member: u64, start: int, end: int, line: int, column: int, document: int)
+}
+pub Resolution :: union {
+    Resolved(storage: int, container: int, flags: int, nominal: u64,
+             parameter: u64, use: TypeUse, diagnostics: syntax.Diagnostic[], collection: u64)
+}
+pub Environment :: union {
+    Tables(lexical: binding.Environment, types: Type[], ids: u64[],
+           merged: Entry[], own: Entry[], native: Entry[], symbol_types: int[],
+           imports: Import[], exports: Export[], uses: Use[], identity: string,
+           package_scope: int, has_native: bool, has_documents: bool, entity_id: u64)
+}
+pub Value :: union {
+    Typed(storage: int, container: int, flags: int, nominal: u64, parameter: u64)
+}
+
+pub IDAt :: (ids: u64[], slot: int) -> u64 {
+    if (slot < 0) {
+        return 0;
+    }
+    return ids[slot];
+}
+pub TypeAt :: (types: Type[], ids: u64[], index: int) -> Value {
+    type := types[index];
+    return Value.Typed(type.storage, type.container, type.flags,
+                       IDAt(ids, type.nominal_slot), IDAt(ids, type.parameter_slot));
+}
+pub Builtin :: (name: string) -> Value {
+    if (name == "Cancelled") {
+        return Value.Typed(18, 0, 512, 0x63616e63656c6c65, 0);
+    }
+    names: string[] = ["void", "bool", "i8", "u8", "i16", "u16", "int", "u32",
+                       "i64", "u64", "number", "f64", "name", "string", "handle", "struct", "enum"];
+    index: int = 0;
+    while (index < length(names)) {
+        if (names[index] == name) {
+            return Value.Typed(index, 0, 0, 0, 0);
+        }
+        index += 1;
+    }
+    // Odin's sized names for the two game spellings.
+    if (name == "i32") {
+        return Value.Typed(6, 0, 0, 0, 0);
+    }
+    if (name == "f32") {
+        return Value.Typed(10, 0, 0, 0, 0);
+    }
+    if (name == "exec" || name == "flow") {
+        return Value.Typed(0, 0, 0, 0, 0);
+    }
+    if (name == "entity") {
+        return Value.Typed(14, 0, 0, binding.ID("type", "ecs.entity"), 0);
+    }
+    if (name == "task") {
+        return Value.Typed(17, 0, 64, 0, 0);
+    }
+    if (name == "any") {
+        return Value.Typed(0, 0, 16, 0, 0);
+    }
+    return Value.Typed(0, 0, 1, 0, 0);
+}
+pub Bad :: (value: Value) -> bool {
+    switch value {
+        case .Typed(storage, container, flags, nominal, parameter):
+            return (flags & 1) != 0;
+    }
+}
+WithNominal :: (value: Value, id: u64) -> Value {
+    switch value {
+        case .Typed(storage, container, flags, nominal, parameter):
+            return Value.Typed(storage, container, flags, id, parameter);
+    }
+}
+
+// Catalog spelling compatibility is byte based: ASCII case plus ignored
+// underscores, spaces and hyphens. UTF-8 bytes remain unchanged.
+Next :: (text: string, index: int) -> int {
+    current := index;
+    byte := strings.ByteAt(text, current);
+    while (byte == 95 || byte == 32 || byte == 45) {
+        current += 1;
+        byte = strings.ByteAt(text, current);
+    }
+    return current;
+}
+FoldByte :: (byte: int) -> int {
+    if (byte < 0) {
+        return 0;
+    }
+    if (byte >= 65 && byte <= 90) {
+        return byte + 32;
+    }
+    return byte;
+}
+Matches :: (left: string, right: string) -> bool {
+    a: int = 0;
+    b: int = 0;
+    while (true) {
+        a = Next(left, a);
+        b = Next(right, b);
+        x := FoldByte(strings.ByteAt(left, a));
+        y := FoldByte(strings.ByteAt(right, b));
+        if (x != y) {
+            return false;
+        }
+        if (x == 0) {
+            return true;
+        }
+        a += 1;
+        b += 1;
+    }
+}
+ShortName :: (name: string) -> string {
+    start := strings.LastIndexByte(name, 46) + 1;
+    return strings.Slice(name, start, strings.ByteLength(name) - start);
+}
+FindCatalog :: (entries: Entry[], name: string) -> int {
+    found: int = -1;
+    index: int = 0;
+    while (index < length(entries)) {
+        item := entries[index];
+        if (!item.internal) {
+            if (item.name == name) {
+                return index;
+            }
+            if (Matches(item.name, name) || Matches(ShortName(item.name), name) ||
+                (item.has_source_name && Matches(item.source_name, name)) ||
+                (item.has_key && Matches(item.key, name))) {
+                if (found >= 0) {
+                    found = -2;
+                }
+                if (found != -2) {
+                    found = index;
+                }
+            }
+        }
+        index += 1;
+    }
+    return found;
+}
+pub TypeIndex :: (entries: Entry[], ids: u64[], id: u64) -> int {
+    index: int = 0;
+    while (index < length(entries)) {
+        if (IDAt(ids, entries[index].id_slot) == id) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+Namespace :: (environment: Environment, scope: int, document: int, name: string) -> int {
+    switch environment {
+        case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
+                     identity, package_scope, has_native, has_documents, entity_id):
+            if (!has_documents) {
+                return -1;
+            }
+            dot := strings.IndexByte(name, 46);
+            if (dot <= 0) {
+                return -1;
+            }
+            alias := strings.Slice(name, 0, dot);
+            index: int = 0;
+            while (index < length(imports)) {
+                imported := imports[index];
+                if (imported.document == document && imported.has_alias && imported.alias == alias && alias != "_") {
+                    local := binding.FindName(lexical, scope, alias);
+                    if (local < 0) {
+                        local = binding.FindCallable(lexical, scope, alias);
+                    }
+                    switch lexical {
+                        case .Tables(scopes, symbols, functions, lexical_ids, keys):
+                            if (local >= 0 && symbols[local].scope > package_scope) {
+                                return -1;
+                            }
+                    }
+                    return index;
+                }
+                index += 1;
+            }
+            return -1;
+    }
+}
+pub FindType :: (environment: Environment, scope: int, document: int, name: string) -> int {
+    importedIndex := Namespace(environment, scope, document, name);
+    switch environment {
+        case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
+                     identity, package_scope, has_native, has_documents, entity_id):
+            if (importedIndex >= 0) {
+                dot := strings.IndexByte(name, 46);
+                member := strings.Slice(name, dot + 1, strings.ByteLength(name) - dot - 1);
+                imported := imports[importedIndex];
+                if (imported.identity == identity) {
+                    switch lexical {
+                        case .Tables(scopes, symbols, functions, lexical_ids, keys):
+                            index: int = 0;
+                            while (index < length(symbols)) {
+                                symbol := symbols[index];
+                                if (symbol.scope == package_scope && symbol.kind == 13 && symbol.name == member) {
+                                    return TypeIndex(merged, ids, IDAt(lexical_ids, symbol.id_slot));
+                                }
+                                index += 1;
+                            }
+                    }
+                    return -1;
+                }
+                index := imported.export_start;
+                end := index + imported.export_count;
+                while (index < end) {
+                    exported := exports[index];
+                    if (exported.kind == 1 && exported.name == member) {
+                        return TypeIndex(merged, ids, IDAt(ids, exported.id_slot));
+                    }
+                    index += 1;
+                }
+                return -1;
+            }
+            if (!has_native) {
+                return FindCatalog(merged, name);
+            }
+            found := FindCatalog(own, name);
+            if (found >= 0) {
+                return TypeIndex(merged, ids, IDAt(ids, own[found].id_slot));
+            }
+            if (found == -2) {
+                return found;
+            }
+            found = FindCatalog(native, name);
+            if (found >= 0) {
+                return TypeIndex(merged, ids, IDAt(ids, native[found].id_slot));
+            }
+            return found;
+    }
+}
+UseAt :: (environment: Environment, request: Request, symbol: int, nominal: u64) -> TypeUse {
+    if (symbol < 0 && nominal == 0) {
+        return TypeUse.Absent;
+    }
+    switch environment {
+        case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
+                     identity, package_scope, has_native, has_documents, entity_id):
+            for (use in uses) {
+                if (use.kind == 4 && use.symbol == symbol && IDAt(ids, use.member_slot) == nominal &&
+                    use.document == request.document && use.start == request.start && use.end == request.end) {
+                    return TypeUse.Absent;
+                }
+            }
+            return TypeUse.Reference(symbol, nominal, request.start, request.end, request.line, request.column, request.document);
+    }
+}
+Complete :: (environment: Environment, request: Request, value: Value, symbol: int,
+             diagnostics: syntax.Diagnostic[], tokens: string[], forced_container: int, added_flags: int,
+             collection: u64) -> Resolution {
+    switch value {
+        case .Typed(storage, original_container, original_flags, nominal, parameter):
+            container := original_container;
+            flags := original_flags | added_flags;
+            if (forced_container >= 0) {
+                container = forced_container;
+            }
+            for (token in tokens) {
+                if (token == "?") {
+                    flags = flags | 2;
+                }
+                if (token == "[" || token == "[]") {
+                    container = 1;
+                }
+            }
+            use := TypeUse.Absent;
+            if ((flags & 1) == 0) {
+                useNominal := nominal;
+                if (symbol >= 0) {
+                    useNominal = 0;
+                }
+                use = UseAt(environment, request, symbol, useNominal);
+            }
+            if ((flags & 2) != 0) {
+                switch environment {
+                    case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
+                                 identity, package_scope, has_native, has_documents, entity_id):
+                        found := TypeIndex(merged, ids, nominal);
+                        if (found < 0 || !merged[found].component) {
+                            flags = flags | 2048;
+                        }
+                }
+            }
+            return Resolution.Resolved(storage, container, flags, nominal, parameter, use, diagnostics, collection);
+    }
+}
+BindName :: (environment: Environment, request: Request, name: string,
+             parsed: bool, tokens: string[], forced_container: int, added_flags: int) -> Resolution {
+    value := Builtin(name);
+    collection: u64 = 0;
+    diagnostics: syntax.Diagnostic[] = [];
+    switch environment {
+        case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
+                     identity, package_scope, has_native, has_documents, entity_id):
+            symbol := binding.FindName(lexical, request.scope, name);
+            replaced := false;
+            if (parsed || Bad(value)) {
+                switch lexical {
+                    case .Tables(scopes, symbols, functions, lexical_ids, keys):
+                        if (symbol >= 0 && (symbols[symbol].kind == 12 || symbols[symbol].kind == 13)) {
+                            value = TypeAt(types, ids, symbol_types[symbol]);
+                            collection = types[symbol_types[symbol]].collection;
+                            replaced = true;
+                        }
+                }
+            }
+            if (!replaced && Bad(value)) {
+                found := FindType(environment, request.scope, request.document, name);
+                if (found >= 0) {
+                    value = WithNominal(TypeAt(types, ids, merged[found].type), IDAt(ids, merged[found].id_slot));
+                    collection = types[merged[found].type].collection;
+                } else {
+                    message_prefix := "Unknown";
+                    if (found == -2) {
+                        message_prefix = "Ambiguous";
+                    }
+                    diagnostic: syntax.Diagnostic = {
+                        start: request.start, end: request.end, line: request.line,
+                        column: request.column, document: request.document,
+                        message: strings.Slice(format_text("{} type '{}'", message_prefix, name), 0, 191)
+                    };
+                    diagnostics.append(diagnostic);
+                }
+            }
+            if (name == "entity" && entity_id != 0) {
+                value = WithNominal(value, entity_id);
+            }
+            useSymbol: int = -1;
+            switch lexical {
+                case .Tables(scopes, symbols, functions, lexical_ids, keys):
+                    if (symbol >= 0 && symbols[symbol].kind == 12) {
+                        useSymbol = symbol;
+                    }
+            }
+            return Complete(environment, request, value, useSymbol, diagnostics, tokens, forced_container, added_flags, collection);
+    }
+}
+// Parsed names are decoded ordinary type leaves. Constructor arguments,
+// structural union/task assembly and measured signatures remain separate.
+pub Parsed :: (environment: Environment, request: Request, tokens: string[]) -> Resolution {
+    return BindName(environment, request, request.text, true, tokens, -1, 0);
+}
+pub Text :: (environment: Environment, request: Request) -> Resolution {
+    name := strings.Concatenate(strings.Fields(request.text));
+    flags: int = 0;
+    if (strings.HasSuffix(name, "?")) {
+        name = strings.TrimSuffix(name, "?");
+        flags = flags | 2;
+    }
+    container: int = 0;
+    if (strings.HasSuffix(name, "[]")) {
+        name = strings.TrimSuffix(name, "[]");
+        container = 1;
+    }
+    if (strings.HasPrefix(name, "\"")) {
+        decoded := compiler_json_string(name);
+        // Legacy fallback copies the decoded C-string prefix, including when
+        // JSON contains NUL. Parsed-name validation is a different entry path.
+        if (decoded.valid) {
+            name = decoded.value;
+            nul := strings.IndexByte(name, 0);
+            if (nul >= 0) {
+                name = strings.Slice(name, 0, nul);
+            }
+        }
+    }
+    tokens: string[] = [];
+    return BindName(environment, request, name, false, tokens, container, flags);
+}

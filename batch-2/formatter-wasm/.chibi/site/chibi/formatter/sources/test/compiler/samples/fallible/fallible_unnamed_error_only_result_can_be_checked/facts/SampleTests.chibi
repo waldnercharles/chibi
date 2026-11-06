@@ -1,0 +1,9 @@
+package facts
+
+// fallible unnamed error-only result can be checked
+@test
+Calls :: () {
+    r1: int = Use();
+    e1: int = 3;
+    assert(r1 == e1, "Use call 1");
+}

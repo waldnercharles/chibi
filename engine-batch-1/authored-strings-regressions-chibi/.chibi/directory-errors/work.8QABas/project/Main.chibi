@@ -1,0 +1,2 @@
+package cached
+Main :: () -> int { return 42; }

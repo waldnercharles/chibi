@@ -1,0 +1,149 @@
+[
+  {
+    "selector": "language-program-session",
+    "phase": "reachability-accepted",
+    "head": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+    "driver_sha256": "0545350219b6d74a34d64738b2a7014bd0099d456b67c10d0d7d1e312aacc4c2",
+    "source_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-ordinary-cli-reachability-source-receipt.json",
+    "started_utc": "2026-10-29T01:08:13.476630+00:00",
+    "finished_utc": "2026-10-29T01:08:14.232929+00:00",
+    "returncode": 0,
+    "wall_seconds": 0.756,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-program-session-ordinary-cli-reachability-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--program-session"
+    ],
+    "passed": 8,
+    "failed": 0,
+    "cases": 8,
+    "suites": 0,
+    "assertions": 136
+  },
+  {
+    "selector": "language-program",
+    "phase": "reachability-accepted",
+    "head": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+    "driver_sha256": "0545350219b6d74a34d64738b2a7014bd0099d456b67c10d0d7d1e312aacc4c2",
+    "source_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-ordinary-cli-reachability-source-receipt.json",
+    "started_utc": "2026-10-29T01:08:14.233645+00:00",
+    "finished_utc": "2026-10-29T01:08:14.887744+00:00",
+    "returncode": 0,
+    "wall_seconds": 0.654,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-program-ordinary-cli-reachability-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--program"
+    ],
+    "passed": 211,
+    "failed": 0,
+    "cases": 211,
+    "suites": 0,
+    "assertions": 14167
+  },
+  {
+    "selector": "language-publication",
+    "phase": "reachability-accepted",
+    "head": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+    "driver_sha256": "0545350219b6d74a34d64738b2a7014bd0099d456b67c10d0d7d1e312aacc4c2",
+    "source_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-ordinary-cli-reachability-source-receipt.json",
+    "started_utc": "2026-10-29T01:08:14.888373+00:00",
+    "finished_utc": "2026-10-29T01:08:14.899177+00:00",
+    "returncode": 0,
+    "wall_seconds": 0.011,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-publication-ordinary-cli-reachability-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--publication"
+    ],
+    "passed": 6,
+    "failed": 0,
+    "cases": 6,
+    "suites": 0,
+    "assertions": 320
+  },
+  {
+    "selector": "language-record-publication",
+    "phase": "reachability-accepted",
+    "head": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+    "driver_sha256": "0545350219b6d74a34d64738b2a7014bd0099d456b67c10d0d7d1e312aacc4c2",
+    "source_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-ordinary-cli-reachability-source-receipt.json",
+    "started_utc": "2026-10-29T01:08:14.899539+00:00",
+    "finished_utc": "2026-10-29T01:08:14.907762+00:00",
+    "returncode": 0,
+    "wall_seconds": 0.008,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-record-publication-ordinary-cli-reachability-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--record-publication"
+    ],
+    "passed": 7,
+    "failed": 0,
+    "cases": 7,
+    "suites": 0,
+    "assertions": 230
+  },
+  {
+    "selector": "language-root-state",
+    "phase": "reachability-accepted",
+    "head": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+    "driver_sha256": "0545350219b6d74a34d64738b2a7014bd0099d456b67c10d0d7d1e312aacc4c2",
+    "source_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-ordinary-cli-reachability-source-receipt.json",
+    "started_utc": "2026-10-29T01:08:14.908170+00:00",
+    "finished_utc": "2026-10-29T01:08:14.920647+00:00",
+    "returncode": 0,
+    "wall_seconds": 0.012,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-root-state-ordinary-cli-reachability-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--root-state"
+    ],
+    "passed": 3,
+    "failed": 0,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 194
+  },
+  {
+    "selector": "language-modules",
+    "phase": "reachability-accepted",
+    "head": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+    "driver_sha256": "0545350219b6d74a34d64738b2a7014bd0099d456b67c10d0d7d1e312aacc4c2",
+    "source_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-ordinary-cli-reachability-source-receipt.json",
+    "started_utc": "2026-10-29T01:08:14.921160+00:00",
+    "finished_utc": "2026-10-29T01:08:14.975096+00:00",
+    "returncode": 0,
+    "wall_seconds": 0.054,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-modules-ordinary-cli-reachability-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--modules"
+    ],
+    "passed": 22,
+    "failed": 0,
+    "cases": 22,
+    "suites": 0,
+    "assertions": 908
+  },
+  {
+    "selector": "language-record-prepared",
+    "phase": "reachability-accepted",
+    "head": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+    "driver_sha256": "0545350219b6d74a34d64738b2a7014bd0099d456b67c10d0d7d1e312aacc4c2",
+    "source_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-ordinary-cli-reachability-source-receipt.json",
+    "started_utc": "2026-10-29T01:08:14.975571+00:00",
+    "finished_utc": "2026-10-29T01:08:15.044157+00:00",
+    "returncode": 0,
+    "wall_seconds": 0.069,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-record-prepared-ordinary-cli-reachability-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--record-prepared"
+    ],
+    "passed": 23,
+    "failed": 0,
+    "cases": 23,
+    "suites": 0,
+    "assertions": 6465
+  }
+]

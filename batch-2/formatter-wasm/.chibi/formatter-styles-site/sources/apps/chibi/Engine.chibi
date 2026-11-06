@@ -1,0 +1,27 @@
+package chibi_cli
+
+// `chibi build` inside an engine checkout builds the engine through the
+// authored build driver, tools/toolchain/Driver.chibi, through the verified
+// native bootstrap entry. A checkout is the nearest ancestor holding that
+// driver; a game project nearer than it keeps `chibi build` for the game.
+
+EngineRoot :: () -> string {
+    directory := files.resolve(".")
+    while directory != "" {
+        if files.kind(Join([directory, "/tools/toolchain/Driver.chibi"])) != 0 {
+            return directory
+        }
+        directory = Parent(directory)
+    }
+    return ""
+}
+
+EngineBuild :: (root: string, arguments: string[]) -> int {
+    script := Join([root, "/tools/build.sh"])
+    if files.kind(script) == 0 {
+        Error("build: cannot find tools/build.sh in the engine checkout")
+        return 1
+    }
+    command := ["sh", script, "build"]
+    return process.run(Concat(command, arguments))
+}

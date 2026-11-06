@@ -1,0 +1,7 @@
+package facts
+@error Failure :: struct { code: int; }
+Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }
+Observe :: (error: Failure?) -> int { if error { return error.code; } return 0; }
+Later :: (value: int) -> int { yield; return value; }
+Use :: () { returned := await Later(Observe(Read().error)); }
+Stop :: () { task := Later(0); cancel task; }

@@ -1,0 +1,11 @@
+Projectile :: behavior {
+    elapsed := 0.0
+    lifetime := 3
+
+    on Tick :: (dt: float s) {
+        elapsed += dt
+        if (elapsed >= lifetime) {
+            destroy(self)
+        }
+    }
+}

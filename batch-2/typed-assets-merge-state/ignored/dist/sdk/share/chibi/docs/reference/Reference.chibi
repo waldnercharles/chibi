@@ -1,0 +1,174 @@
+package reference
+
+import markdown "project:markdown"
+import strings "core:strings"
+
+// The reference of a collection's packages, generated from their source: each
+// package with its import path, and each pub declaration's signature with the
+// comment written above it.
+
+Colon :: 58;
+
+// A comment line's text, without its slashes.
+CommentText :: (line: string) -> string {
+    return markdown.Trim(markdown.From(markdown.Trim(line), 2));
+}
+
+IsComment :: (line: string) -> bool {
+    return strings.HasPrefix(markdown.Trim(line), "//");
+}
+
+// The name a pub declaration line exports, or "" for any other line:
+// `pub Name :: ...` and typed constants such as `pub Name: int : 5;`.
+Declared :: (line: string) -> string {
+    if (!strings.HasPrefix(line, "pub ")) {
+        return "";
+    }
+    declaration := strings.TrimPrefix(line, "pub ");
+    marker := strings.Index(declaration, " :: ");
+    if (marker > 0) {
+        return strings.Slice(declaration, 0, marker);
+    }
+    colon := strings.IndexByte(declaration, Colon);
+    if (colon > 0 && strings.Contains(markdown.From(declaration, colon), " : ")) {
+        return strings.Slice(declaration, 0, colon);
+    }
+    return "";
+}
+
+// A declaration's signature: a record's or union's lines as written, and
+// otherwise its lines joined up to the body or the closing semicolon.
+Signature :: (lines: string[], start: int, end: int) -> string {
+    text: string = "";
+    whole := strings.Index(lines[start], ":: struct") > 0 ||
+             strings.Index(lines[start], ":: union") > 0;
+    index := start;
+    while (whole && index < end) {
+        if (index == start) {
+            text = lines[index];
+        } else {
+            text = format_text("{}\n{}", text, lines[index]);
+        }
+        line := markdown.Trim(lines[index]);
+        if (strings.HasSuffix(line, "}") || strings.HasSuffix(line, "};")) {
+            return text;
+        }
+        index += 1;
+    }
+    while (index < end) {
+        line := markdown.Trim(lines[index]);
+        if (strings.HasSuffix(line, ";")) {
+            return markdown.Trim(format_text("{} {}", text, line));
+        }
+        if (strings.HasSuffix(line, "{")) {
+            body := strings.LastIndex(line, " {");
+            return markdown.Trim(format_text("{} {}", text, strings.Slice(line, 0, body)));
+        }
+        text = markdown.Trim(format_text("{} {}", text, line));
+        index += 1;
+    }
+    return text;
+}
+
+// The package folder of a path inside the collection.
+Package :: (path: string) -> string {
+    return markdown.Folder(path);
+}
+
+// The Markdown of one file's declarations, under its package's heading when
+// the file starts a package, and the index in lines of each of its lines:
+// a comment's own, and its declaration's for the lines written around it.
+FileMarkdown :: (collection: string, path: string, first: bool, lines: string[], start: int,
+                 end: int) -> (md: string[], origins: int[]) {
+    if (first) {
+        md.append(format_text("## {}", strings.BaseName(Package(path))));
+        md.append("");
+        md.append(format_text("Import it as `{}:{}`.", collection, Package(path)));
+        md.append("");
+        origins = markdown.Pad(origins, length(md), start);
+    }
+    // comment holds the lines of the comment above the current line.
+    comment: int[] = [];
+    index := start;
+    while (index < end) {
+        line := lines[index];
+        name := Declared(line);
+        if (name != "") {
+            md.append(format_text("### {}", name));
+            md.append("");
+            md.append("```chibi");
+            md.append(Signature(lines, index, end));
+            md.append("```");
+            md.append("");
+            origins = markdown.Pad(origins, length(md), index);
+            for (at in comment) {
+                md.append(CommentText(lines[at]));
+                origins.append(at);
+            }
+            md.append("");
+            origins.append(index);
+        }
+        if (IsComment(line) && !markdown.IsBlank(markdown.At(line, 0))) {
+            comment.append(index);
+        } else {
+            comment = [];
+        }
+        index += 1;
+    }
+    return (md: md, origins: origins);
+}
+
+// The Markdown of the reference page, and the index in lines of each of its
+// lines. paths names each file relative to the collection's folder, and
+// starts[i] is where file i begins in lines.
+Markdown :: (collection: string, paths: string[], starts: int[],
+             lines: string[]) -> (md: string[], origins: int[]) {
+    md = [format_text("# The {} packages", collection), "",
+          "Each package's pub declarations and the comments written above them in its source.", ""];
+    origins = markdown.Pad(origins, length(md), 0);
+    previous: string = "";
+    index: int = 0;
+    while (index < length(paths)) {
+        end := length(lines);
+        if (index + 1 < length(starts)) {
+            end = starts[index + 1];
+        }
+        first := Package(paths[index]) != previous;
+        previous = Package(paths[index]);
+        file := FileMarkdown(collection, paths[index], first, lines, starts[index], end);
+        md.extend(file.md);
+        origins.extend(file.origins);
+        index += 1;
+    }
+    return (md: md, origins: origins);
+}
+
+// The reference page's body, with Markdown's arguments; page is the
+// collection's folder, and the last two arguments map links as
+// markdown.Render does.
+pub Render :: (collection: string, paths: string[], starts: int[], lines: string[], page: string,
+               sources: string[], outputs: string[]) -> string[] {
+    reference := Markdown(collection, paths, starts, lines);
+    return markdown.Render(reference.md, page, sources, outputs);
+}
+
+// A report, as markdown.Dropped writes it, of each link Render writes as text,
+// at the file and line of the comment that holds it.
+pub Unpublished :: (collection: string, paths: string[], starts: int[], lines: string[], page: string,
+                    sources: string[], outputs: string[]) -> string[] {
+    reference := Markdown(collection, paths, starts, lines);
+    rendered := markdown.Page(reference.md, page, sources, outputs);
+    reports: string[] = [];
+    index: int = 0;
+    while (index < length(rendered.at)) {
+        line := reference.origins[rendered.at[index]];
+        file: int = 0;
+        while (file + 1 < length(starts) && starts[file + 1] <= line) {
+            file += 1;
+        }
+        source := format_text("{}/{}", page, paths[file]);
+        reports.append(markdown.Dropped(source, line - starts[file] + 1, rendered.targets[index]));
+        index += 1;
+    }
+    return reports;
+}

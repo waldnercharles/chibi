@@ -1,0 +1,9 @@
+package facts
+
+// map parameter removal
+@test
+Calls :: () {
+    r1: int = Keep();
+    e1: int = 2;
+    assert(r1 == e1, "Keep call 1");
+}

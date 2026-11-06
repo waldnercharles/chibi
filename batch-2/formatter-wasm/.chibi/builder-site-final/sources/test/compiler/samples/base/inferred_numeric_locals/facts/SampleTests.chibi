@@ -1,0 +1,30 @@
+package facts
+
+// inferred numeric locals
+@test
+Calls :: () {
+    r1: int = ByReference();
+    e1: int = 1;
+    assert(r1 == e1, "ByReference call 1");
+    r2: int = One();
+    e2: int = 5;
+    assert(r2 == e2, "One call 2");
+    r3: int = Index();
+    e3: int = 10;
+    assert(r3 == e3, "Index call 3");
+    r4: int = Negative();
+    e4: int = 1;
+    assert(r4 == e4, "Negative call 4");
+    r5: i64 = Wide();
+    e5: i64 = 2147483649;
+    assert(r5 == e5, "Wide call 5");
+    r6: u64 = Maximum();
+    e6: u64 = 18446744073709551615;
+    assert(r6 == e6, "Maximum call 6");
+    r7: number = Decimal();
+    e7: number = 0.75;
+    assert(r7 == e7, "Decimal call 7");
+    r8: number = Exponent();
+    e8: number = 1000.0;
+    assert(r8 == e8, "Exponent call 8");
+}

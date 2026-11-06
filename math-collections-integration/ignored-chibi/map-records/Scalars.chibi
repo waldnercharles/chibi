@@ -1,0 +1,10 @@
+package map_scalar_domain
+Main :: () -> int {
+    flags: [int: bool] = [1: true];
+    bytes: [string: u8] = ["x": u8(255)];
+    narrow: [i8: i16] = [i8(-2): i16(-300)];
+    assert(flags[1] && !flags[2]);
+    assert(bytes["x"] == u8(255));
+    assert(narrow[i8(-2)] == i16(-300));
+    return 0;
+}

@@ -1,0 +1,7 @@
+package facts
+Tiny :: () -> (value: i8) { return 7; }
+Narrow :: (n: i8) -> int { return int(n); }
+Use :: () -> int { n: int = Tiny(); return Narrow(n.value); }
+Alias :: () -> int { n: int = Tiny(); q := n; return Narrow(q.value); }
+Assigned :: (value: int) -> int { n: int = Tiny(); n = value; return Narrow(n.value); }
+Converted :: (value: int) -> int { n: int = Tiny(); n = value; return int(n.value); }

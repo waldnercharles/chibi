@@ -1,0 +1,70 @@
+package unions
+
+Choice :: union { Empty | Number(value: int) | Text(value: string) }
+Read :: (present: bool) -> Choice? {
+    if (present) { return Choice.Number(7); }
+    return nil;
+}
+Required :: (choice: Choice) -> int {
+    switch choice {
+        case .Empty: return 0;
+        case .Number(value): return value;
+        case .Text(value): return text_byte_at(value, 2);
+    }
+}
+Forward :: (choice: Choice?) -> Choice {
+    if (choice) { return choice; }
+    return Choice.Empty;
+}
+Named :: () -> (value: int, choice: Choice?) { return (12, Choice.Number(8)); }
+Clear :: (choice: ^(Choice?)) -> int { choice^ = nil; return 0; }
+Consume :: (choice: Choice, ignored: int) -> int { return Required(choice); }
+ConsumeAliased :: (original: ^(Choice?), changed: ^(Choice?)) -> int {
+    if (original^) { return Consume(original^, Clear(changed)); }
+    return -1;
+}
+
+@test
+GuardedMatches :: () {
+    choice := Read(true);
+    if (choice) {
+        assert(choice is .Number && choice is not .Empty);
+        switch choice {
+            case .Empty: assert(false);
+            case .Number(value): assert(value == 7);
+            case .Text(value): assert(false);
+        }
+        assert(Required(choice) == 7);
+        assert(Required(Forward(choice)) == 7);
+        choice = Choice.Empty;
+        assert(choice != nil);
+        if (choice) { assert(choice is .Empty); }
+    } else { assert(false); }
+    assert(Read(false) == nil);
+}
+
+@test
+GuardedNamedMember :: () {
+    result := Named();
+    if (result.choice) {
+        switch result.choice {
+            case .Empty: assert(false);
+            case .Number(value): assert(value + result.value == 20);
+            case .Text(value): assert(false);
+        }
+    } else { assert(false); }
+}
+
+@test
+ManagedPayloadBeforeLaterMutation :: () {
+    choice: Choice? = Choice.Text(text_from_bytes([u8(65), 0, 9]));
+    result := ConsumeAliased(&choice, &choice);
+    assert(result == 9 && choice == nil);
+}
+
+Main :: () -> int {
+    GuardedMatches();
+    GuardedNamedMember();
+    ManagedPayloadBeforeLaterMutation();
+    return 0;
+}

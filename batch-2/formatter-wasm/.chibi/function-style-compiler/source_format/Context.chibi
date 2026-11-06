@@ -1,0 +1,41 @@
+package source_format
+
+import type_style "project:source_type_style"
+import strings "core:strings"
+
+// Logical paths and immutable dependency documents. The editable source is
+// always document zero; semantic passes substitute the current text there.
+pub Context :: struct {
+    project: string;
+    collection_names: string[];
+    collection_paths: string[];
+    paths: string[];
+    sources: string[];
+}
+
+pub EmptyContext :: () -> Context {
+    return {project: "", collection_names: [], collection_paths: [], paths: [], sources: []};
+}
+
+ContextProblem :: (context: Context) -> string {
+    if (length(context.paths) != length(context.sources) ||
+        length(context.collection_names) != length(context.collection_paths)) {
+        return "Formatter project context requires matching paths, sources and collections";
+    }
+    if (length(context.paths) > 256) { return "Formatter project context exceeds 256 documents"; }
+    if (length(context.paths) > 0 && context.project == "") { return "Formatter project context requires a project root"; }
+    bytes: int = 0;
+    for (source in context.sources) { bytes += strings.ByteLength(source); }
+    if (bytes > 16777216) { return "Formatter project context exceeds 16 MiB"; }
+    return "";
+}
+
+ProveStyle :: (original: string, proposed: string, context: Context, target: int) -> (same: bool, notes: string) {
+    if (length(context.paths) == 0) {
+        proof := type_style.ProveFor(original, proposed, target);
+        return (proof.same, proof.notes);
+    }
+    proof := type_style.ProveProjectFor(original, proposed, context.project, context.collection_names,
+                                        context.collection_paths, context.paths, context.sources, target);
+    return (proof.same, proof.notes);
+}

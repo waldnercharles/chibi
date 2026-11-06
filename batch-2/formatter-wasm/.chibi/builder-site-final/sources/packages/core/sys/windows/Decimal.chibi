@@ -1,0 +1,27 @@
+package windows
+
+import strings "core:strings"
+
+// Win32 paths, stamps and process ownership records need only decimal words.
+// Keep these helpers independent of the general formatter and the C runtime.
+UnsignedDecimal :: (value: u64) -> string {
+    digits := resize([u8(0)], 20);
+    cursor := 20;
+    remaining := value;
+    while true {
+        cursor -= 1;
+        digits[cursor] = u8(remaining % 10) + u8(48);
+        remaining /= 10;
+        if remaining == 0 { break; }
+    }
+    return text_from_bytes(slice(digits, cursor, 20 - cursor));
+}
+
+SignedDecimal :: (value: i64) -> string {
+    magnitude := u64(wrap: value);
+    if value < 0 {
+        // Unsigned subtraction also handles the minimum signed word.
+        return strings.Concatenate(["-", UnsignedDecimal(u64(0) - magnitude)]);
+    }
+    return UnsignedDecimal(magnitude);
+}

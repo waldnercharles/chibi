@@ -1,0 +1,4 @@
+package facts
+Bad :: () -> vec2 { v := vec3(1, 2, 3); return v.xr; }
+
+// error: 2:48: a swizzle cannot mix xyzw and rgba components

@@ -1,0 +1,368 @@
+package source_format
+
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+import directives "project:source_directives"
+
+// Paragraphs are sibling statements, never pieces of an expression. These
+// are lexical/structural cues, not resolved alias or side-effect information.
+ParagraphInput: int : 1;
+ParagraphSetup: int : 2;
+ParagraphCompute: int : 3;
+ParagraphGuard: int : 4;
+ParagraphControl: int : 5;
+ParagraphEffect: int : 6;
+ParagraphExit: int : 7;
+ParagraphDefinition: int : 8;
+ParagraphOther: int : 9;
+ParagraphLabel: int : 10;
+ParagraphNames: int : 8;
+ParagraphWindow: int : 12;
+
+// Eight i32 and one bool per statement. Name spans live in one flat bounded
+// table; source bytes and syntax rows remain borrowed from the caller.
+ParagraphUnit :: struct {
+    first: int;
+    last: int;
+    size: int;
+    category: int;
+    target: int;
+    receiver: int;
+    previous: int;
+    next: int;
+    protected: bool;
+}
+
+ParagraphContainer :: (kind: int) -> bool {
+    return kind == diag.Block || kind == diag.CallableBody;
+}
+
+ParagraphStatement :: (kind: int) -> bool {
+    return kind == diag.LocalDeclaration || kind == diag.ConstantDeclaration || kind == diag.Assignment ||
+           kind == diag.ExpressionStatement || kind == diag.ReturnStatement || kind == diag.IfStatement ||
+           kind == diag.WhileStatement || kind == diag.ForStatement || kind == diag.SwitchStatement ||
+           kind == diag.BreakStatement || kind == diag.ContinueStatement || kind == diag.CancelStatement ||
+           kind == diag.DeleteStatement || kind == diag.YieldStatement || kind == diag.SequenceStatement ||
+           kind == diag.GotoStatement || kind == diag.LabelStatement ||
+           kind == diag.FunctionDeclaration || kind == diag.RecordDeclaration || kind == diag.UnionDeclaration ||
+           kind == diag.MacroDeclaration || kind == diag.StateDeclaration;
+}
+
+ParagraphEarlyExit :: (rows: diag.Node[], fields: int[], node: int) -> bool {
+    if (KindOf(rows, node) != diag.IfStatement || ChildByField(rows, fields, node, diag.FieldAlternative) >= 0) {
+        return false;
+    }
+    body := ChildByField(rows, fields, node, diag.FieldConsequence);
+    child := FirstChild(rows, body);
+    exits: int = 0;
+    while (child >= 0) {
+        kind := rows[child].kind;
+        if (kind == diag.ReturnStatement || kind == diag.BreakStatement || kind == diag.ContinueStatement) {
+            exits += 1;
+        } else if (kind != tk.OpenBrace && kind != tk.CloseBrace && kind != tk.Semicolon && kind != diag.Comment) {
+            return false;
+        }
+        child = rows[child].next_sibling;
+    }
+    return exits == 1;
+}
+
+ParagraphValueCategory :: (rows: diag.Node[], node: int) -> int {
+    value := node;
+    while (KindOf(rows, value) == diag.ParenthesizedExpression) {
+        child := FirstChild(rows, value);
+        value = -1;
+        while (child >= 0) {
+            if (rows[child].kind >= diag.Comment && rows[child].kind != diag.Comment) {
+                value = child;
+                break;
+            }
+            child = rows[child].next_sibling;
+        }
+    }
+    kind := KindOf(rows, value);
+    if (kind == diag.CallExpression || kind == diag.AwaitExpression) { return ParagraphInput; }
+    if (kind == diag.Number || kind == diag.String || kind == diag.Character || kind == diag.Boolean ||
+        kind == diag.Nil || kind == diag.ArrayExpression || kind == diag.StructExpression || kind == diag.MapExpression) {
+        return ParagraphSetup;
+    }
+    return ParagraphCompute;
+}
+
+ParagraphCategory :: (rows: diag.Node[], fields: int[], node: int) -> int {
+    kind := rows[node].kind;
+    if (kind == diag.LocalDeclaration || kind == diag.ConstantDeclaration || kind == diag.Assignment) {
+        return ParagraphValueCategory(rows, ChildByField(rows, fields, node, diag.FieldValue));
+    }
+    if (kind == diag.IfStatement) {
+        if (ParagraphEarlyExit(rows, fields, node)) { return ParagraphGuard; }
+        return ParagraphControl;
+    }
+    if (kind == diag.WhileStatement || kind == diag.ForStatement || kind == diag.SwitchStatement ||
+        kind == diag.SequenceStatement) { return ParagraphControl; }
+    if (kind == diag.ReturnStatement || kind == diag.BreakStatement || kind == diag.ContinueStatement ||
+        kind == diag.GotoStatement) {
+        return ParagraphExit;
+    }
+    if (kind == diag.LabelStatement) { return ParagraphLabel; }
+    if (kind == diag.ExpressionStatement || kind == diag.CancelStatement || kind == diag.DeleteStatement ||
+        kind == diag.YieldStatement) { return ParagraphEffect; }
+    if (kind == diag.FunctionDeclaration || kind == diag.RecordDeclaration || kind == diag.UnionDeclaration ||
+        kind == diag.MacroDeclaration || kind == diag.StateDeclaration) { return ParagraphDefinition; }
+    return ParagraphOther;
+}
+
+ParagraphSameName :: (rows: diag.Node[], bytes: int[], a: int, b: int) -> bool {
+    if (a == 0 || b == 0) { return false; }
+    left := rows[a - 1];
+    right := rows[b - 1];
+    size := left.end - left.start;
+    if (size != right.end - right.start) { return false; }
+    at: int = 0;
+    while (at < size) {
+        if (bytes[left.start + at] != bytes[right.start + at]) { return false; }
+        at += 1;
+    }
+    return true;
+}
+
+ParagraphUses :: (rows: diag.Node[], bytes: int[], names: int[], counts: int[], unit: int, name: int) -> bool {
+    slot: int = 0;
+    while (slot < counts[unit - 1]) {
+        if (ParagraphSameName(rows, bytes, name, names[(unit - 1) * ParagraphNames + slot])) { return true; }
+        slot += 1;
+    }
+    return false;
+}
+
+// The additive cost for a paragraph is independent of blank lines already in
+// the input. Generated separators therefore cannot create different features.
+ParagraphSizeCost :: (statements: int, size: int, maximum: int, token_limit: int) -> int {
+    cost: int = 0;
+    if (statements == 1) { cost += 5; }
+    if (statements > maximum) {
+        excess := statements - maximum;
+        cost += excess * excess * 7;
+    }
+    if (size > token_limit) {
+        excess := size - token_limit;
+        // A very large indivisible statement must not overflow the cost.
+        if (excess > 400) { excess = 400; }
+        cost += excess / 4;
+    }
+    return cost;
+}
+
+// Return true before selected visible tokens. The algorithm does one tree
+// summary pass, bounds lexical names to eight per statement, and considers at
+// most twelve predecessors per partition point: O(bytes + rows + 12*units).
+// A normal file should take milliseconds; even the formatter's largest input
+// needs bounded passes rather than an all-pairs dependence graph.
+ParagraphBreaks :: (text: string, bytes: int[], rows: diag.Node[], fields: int[], root: int,
+                    tokens: Token[], mode: int, density: int) -> bool[] {
+    marks := resize([false], length(tokens));
+    if (mode == 0 || length(tokens) == 0) { return marks; }
+    count := length(rows);
+    first := resize([int(0)], count);
+    last := resize([int(0)], count);
+    sizes := resize([int(0)], count);
+    identifiers := resize([int(0)], count);
+    protected := resize([false], count);
+    token_protected := resize([false], length(tokens));
+    verbatim := false;
+    for (index in 0..<length(tokens)) {
+        token := tokens[index];
+        next_verbatim := verbatim;
+        if (token.comment) {
+            next_verbatim = directives.Apply(text_slice(text, token.start, token.end - token.start), verbatim);
+        } else {
+            first[token.node] = index + 1;
+            last[token.node] = index + 1;
+            // Layout may add/remove terminators and optional trailing commas
+            // after this pass. Neither changes the paragraph's logical size.
+            if (rows[token.node].kind != tk.Semicolon && rows[token.node].kind != tk.Comma) {
+                sizes[token.node] = 1;
+            }
+            if (rows[token.node].kind == diag.Identifier) { identifiers[token.node] = token.node + 1; }
+        }
+        token_protected[index] = verbatim || next_verbatim;
+        protected[token.node] = token_protected[index];
+        verbatim = next_verbatim;
+    }
+    at := count - 1;
+    while (at >= 0) {
+        parent := rows[at].parent;
+        if (parent >= 0) {
+            if (first[at] > 0 && (first[parent] == 0 || first[at] < first[parent])) { first[parent] = first[at]; }
+            if (last[at] > last[parent]) { last[parent] = last[at]; }
+            if (identifiers[at] > 0 && (identifiers[parent] == 0 || identifiers[at] < identifiers[parent])) {
+                identifiers[parent] = identifiers[at];
+            }
+            sizes[parent] += sizes[at];
+            protected[parent] = protected[parent] || protected[at];
+        }
+        at -= 1;
+    }
+    units: ParagraphUnit[] = [];
+    owners := resize([int(0)], count);
+    first_unit := resize([int(0)], count);
+    last_unit := resize([int(0)], count);
+    // Preorder makes the nearest statement owner available before its leaves.
+    for (node in 0..<count) {
+        parent := rows[node].parent;
+        if (parent >= 0) { owners[node] = owners[parent]; }
+        if (parent < 0 || !ParagraphContainer(rows[parent].kind) || !ParagraphStatement(rows[node].kind) ||
+            first[node] == 0) { continue; }
+        target: int = 0;
+        receiver: int = 0;
+        kind := rows[node].kind;
+        if (kind == diag.LocalDeclaration || kind == diag.ConstantDeclaration) {
+            named := ChildByField(rows, fields, node, diag.FieldName);
+            if (named >= 0) { target = identifiers[named]; }
+        } else if (kind == diag.Assignment) {
+            named := ChildByField(rows, fields, node, diag.FieldTarget);
+            if (named >= 0) { target = identifiers[named]; receiver = target; }
+        } else if (kind == diag.ExpressionStatement) {
+            expression := FirstChild(rows, node);
+            if (KindOf(rows, expression) == diag.CallExpression) {
+                function := ChildByField(rows, fields, expression, diag.FieldFunction);
+                if (KindOf(rows, function) == diag.MemberExpression) {
+                    object := ChildByField(rows, fields, function, diag.FieldObject);
+                    if (object >= 0) { receiver = identifiers[object]; }
+                }
+            }
+        }
+        units.append({first: first[node] - 1, last: last[node] - 1, size: sizes[node],
+                      category: ParagraphCategory(rows, fields, node), target: target, receiver: receiver,
+                      previous: last_unit[parent], next: 0, protected: protected[node]});
+        id := length(units);
+        if (last_unit[parent] > 0) { units[last_unit[parent] - 1].next = id; }
+        else { first_unit[parent] = id; }
+        last_unit[parent] = id;
+        owners[node] = id;
+    }
+    if (length(units) == 0) { return marks; }
+    names := resize([int(0)], length(units) * ParagraphNames);
+    name_counts := resize([int(0)], length(units));
+    for (token in tokens) {
+        node := token.node;
+        owner := owners[node];
+        if (owner == 0 || rows[node].kind != diag.Identifier || fields[node] == diag.FieldMember ||
+            fields[node] == diag.FieldName || ParentKind(rows, node) == diag.TypeName) { continue; }
+        slot := name_counts[owner - 1];
+        if (slot >= ParagraphNames || ParagraphUses(rows, bytes, names, name_counts, owner, node + 1)) { continue; }
+        names[(owner - 1) * ParagraphNames + slot] = node + 1;
+        name_counts[owner - 1] = slot + 1;
+    }
+    forced := resize([false], length(units) + 1);
+    allowed := resize([false], length(units) + 1);
+    joins := resize([int(0)], length(units) + 1);
+    breaks := resize([int(0)], length(units) + 1);
+    base: int = 10;
+    maximum: int = 6;
+    token_limit: int = 100;
+    if (density == 0) { base = 18; maximum = 8; token_limit = 140; }
+    else if (density == 2) { base = 6; maximum = 4; token_limit = 70; }
+    packaged := ChildByField(rows, fields, root, diag.FieldPackage) >= 0;
+    for (id in 1..length(units)) {
+        current := units[id - 1];
+        previous := current.previous;
+        breaks[id] = base;
+        if (previous == 0) { continue; }
+        before := units[previous - 1];
+        allowed[id] = !current.protected && !before.protected;
+        // A label names the following code, so it is never detached from that
+        // code by a generated separator. Existing authored gaps still anchor.
+        if (before.category == ParagraphLabel) { allowed[id] = false; }
+        forced[id] = !allowed[id];
+        // Comment lines already delineate a section. They stay physically
+        // attached where written; only existing blank gaps around them anchor.
+        leading_comment := false;
+        gap := before.last + 1;
+        while (gap <= current.first) {
+            if (tokens[gap].comment && rows[tokens[gap].node].row > rows[tokens[before.last].node].row) {
+                leading_comment = true;
+            }
+            if (Breaks(bytes, packaged, tokens[gap - 1].end, tokens[gap].start) > 1) {
+                forced[id] = true;
+                if (!token_protected[gap - 1] && !token_protected[gap]) { marks[gap] = true; }
+            }
+            gap += 1;
+        }
+        if (leading_comment) { forced[id] = true; allowed[id] = false; }
+        if (!allowed[id]) { continue; }
+        if (before.category == current.category) { breaks[id] += 4; }
+        if (ParagraphSameName(rows, bytes, before.receiver, current.receiver)) { breaks[id] += 20; }
+        else if (before.receiver > 0 && current.receiver > 0) { joins[id] += base + 8; }
+        if (before.category == ParagraphGuard && current.category != ParagraphGuard) { joins[id] += base + 12; }
+        else if (before.category == ParagraphControl || current.category == ParagraphControl ||
+                 before.category == ParagraphDefinition || current.category == ParagraphDefinition) { joins[id] += base + 8; }
+        else if ((before.category == ParagraphCompute && current.category == ParagraphEffect) ||
+                 (before.category == ParagraphEffect && current.category != ParagraphEffect && current.category != ParagraphExit)) {
+            joins[id] += base + 8;
+        }
+        if (current.category == ParagraphGuard || current.category == ParagraphExit) {
+            producer := previous;
+            distance: int = 0;
+            while (producer > 0 && distance < 3) {
+                if (ParagraphUses(rows, bytes, names, name_counts, id, units[producer - 1].target)) {
+                    breaks[id] += 30;
+                    joins[id] = 0;
+                    break;
+                }
+                producer = units[producer - 1].previous;
+                distance += 1;
+            }
+        } else if (ParagraphUses(rows, bytes, names, name_counts, id, before.target)) { breaks[id] += 4; }
+    }
+    if (mode == 1) {
+        for (id in 1..length(units)) {
+            if (allowed[id] && (forced[id] || joins[id] > breaks[id])) { marks[units[id - 1].first] = true; }
+        }
+        return marks;
+    }
+    costs := resize([int(0)], length(units) + 1);
+    choices := resize([int(0)], length(units) + 1);
+    parts := resize([int(0)], length(units) + 1);
+    for (container in 0..<count) {
+        end := first_unit[container];
+        while (end > 0) {
+            start := end;
+            statements: int = 0;
+            size: int = 0;
+            joined: int = 0;
+            best: int = 2000000000;
+            best_parts: int = 2000000000;
+            chosen: int = 0;
+            while (start > 0 && statements < ParagraphWindow) {
+                unit := units[start - 1];
+                statements += 1;
+                size += unit.size;
+                previous := unit.previous;
+                value := joined + ParagraphSizeCost(statements, size, maximum, token_limit);
+                pieces: int = 1;
+                if (previous > 0) { value += costs[previous] + breaks[start]; pieces += parts[previous]; }
+                // Ties prefer fewer paragraphs, then the earlier start. Source
+                // order and these stable costs decide every outcome.
+                if (value < best || (value == best && pieces <= best_parts)) {
+                    best = value; best_parts = pieces; chosen = start;
+                }
+                if (forced[start]) { break; }
+                joined += joins[start];
+                start = previous;
+            }
+            costs[end] = best;
+            choices[end] = chosen;
+            parts[end] = best_parts;
+            end = units[end - 1].next;
+        }
+        end = last_unit[container];
+        while (end > 0) {
+            start := choices[end];
+            previous := units[start - 1].previous;
+            if (previous > 0 && allowed[start]) { marks[units[start - 1].first] = true; }
+            end = previous;
+        }
+    }
+    return marks;
+}

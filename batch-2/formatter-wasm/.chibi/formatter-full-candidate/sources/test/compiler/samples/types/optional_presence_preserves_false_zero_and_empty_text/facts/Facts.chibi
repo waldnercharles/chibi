@@ -1,0 +1,13 @@
+package facts
+Flag :: () -> bool? { return false; }
+Count :: () -> int? { return 0; }
+Text :: () -> string? { return ""; }
+Absent :: () -> int? { return nil; }
+Use :: () -> int {
+    score: int = 0;
+    if Flag() { score += 1; }
+    if Count() { score += 10; }
+    if Text() { score += 100; }
+    if Absent() { score += 1000; }
+    return score;
+}

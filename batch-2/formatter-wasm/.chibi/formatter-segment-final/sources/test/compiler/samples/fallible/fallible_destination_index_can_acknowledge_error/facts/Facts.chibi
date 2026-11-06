@@ -1,0 +1,5 @@
+package facts
+@error Failure :: struct { code: int; }
+Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }
+Choose :: (error: Failure?) -> int { return 0; }
+Use :: () -> int { result := Read(); values: int[] = [0]; values[Choose(result.error)] = result.value; return values[0]; }

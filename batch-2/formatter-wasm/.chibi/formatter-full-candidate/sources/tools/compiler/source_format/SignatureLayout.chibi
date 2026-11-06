@@ -1,0 +1,35 @@
+package source_format
+
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+
+// Each primary parameter opener owns the last result token and the gap that
+// can move its result to the next line. Handles use zero for absence.
+SignatureRanges :: (rows: diag.Node[], fields: int[], tokens: Token[]) -> (ends: int[], returns: int[]) {
+    ends := resize([int(0)], length(tokens));
+    returns := resize([int(0)], length(tokens));
+    ranges := LayoutTokenRanges(rows, tokens);
+    for (node in 0..<length(rows)) {
+        kind := rows[node].kind;
+        if (kind != diag.FunctionDeclaration && kind != diag.ForeignFunction) { continue; }
+        parameters := ChildByField(rows, fields, node, diag.FieldParameters);
+        results := ChildByField(rows, fields, node, diag.FieldResults);
+        if (parameters < 0 || results < 0 || ranges.first[parameters] == 0 || ranges.first[results] == 0) { continue; }
+        open := ranges.first[parameters] - 1;
+        returning := ranges.first[results] - 1;
+        if (returning > 0 && rows[tokens[returning - 1].node].kind == tk.ArrowRight) { returning -= 1; }
+        ends[open] = ranges.last[results];
+        // A bare scalar result starts with a name. Breaking before it would
+        // insert a header terminator; use parameter wrapping in that case.
+        beginning := rows[tokens[returning].node].kind;
+        if (beginning == tk.ArrowRight || beginning == tk.OpenParen || beginning == tk.OpenBracket ||
+            beginning == tk.Xor || beginning == tk.Mul) { returns[open] = returning + 1; }
+    }
+    return (ends, returns);
+}
+
+AttributeGap :: (rows: diag.Node[], previous: Token, current: Token) -> bool {
+    return ParentKind(rows, previous.node) == diag.Attribute &&
+           ParentOf(rows, previous.node) != ParentOf(rows, current.node) &&
+           !previous.comment && !current.comment;
+}

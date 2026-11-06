@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_component_presentation.a "CMakeFiles/chibi_component_presentation.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/authoring/component_presentation.c.o" CMakeFiles/chibi_component_presentation.dir/generated/authoring/engine_components.c.o
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_component_presentation.a

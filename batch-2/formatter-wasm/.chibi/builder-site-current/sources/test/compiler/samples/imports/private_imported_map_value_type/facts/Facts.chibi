@@ -1,0 +1,5 @@
+package facts
+import lib "project:private_imported_map_value_type/lib"
+One :: () -> int { values: [int: lib.Hidden] = [:]; return 0; }
+
+// error: 3:34: 'lib.Hidden' is private: declare it pub to use it from another package

@@ -1,0 +1,14 @@
+diff --git a/src/block_allocator.c b/src/block_allocator.c
+--- a/src/block_allocator.c
++++ b/src/block_allocator.c
+@@ -9,6 +9,10 @@ b3BlockAllocator b3CreateBlockAllocator( int elementSize, int initialCount )
+ {
+ 	B3_ASSERT( elementSize >= (int)sizeof( void* ) );
+ 
++	// Freed elements store a pointer, even when their payload only needs float alignment.
++	int alignment = (int)_Alignof( void* );
++	elementSize = ( elementSize + alignment - 1 ) / alignment * alignment;
++
+ 	b3BlockAllocator allocator = { 0 };
+ 
+ 	b3Array_Create( allocator.blocks );

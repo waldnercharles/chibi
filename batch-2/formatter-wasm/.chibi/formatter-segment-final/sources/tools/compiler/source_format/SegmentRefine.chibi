@@ -1,0 +1,185 @@
+package source_format
+
+import diag "project:syntax_diagnostics"
+
+SegmentObjectPart: int : 1;
+SegmentSyntaxPart: int : 2;
+SegmentControlPart: int : 3;
+SegmentReturnPart: int : 4;
+SegmentIsolatedPart: int : 5;
+
+// Inclusive zero-based indices into the flat statement table.
+SegmentPart :: struct {
+    first: int;
+    last: int;
+    kind: int;
+}
+
+SegmentArgument :: struct {
+    category: int;
+    name: int;
+}
+
+SegmentParameters :: struct {
+    first: int[];
+    counts: int[];
+    arguments: SegmentArgument[];
+}
+
+// Unwrap each expression once, including named argument values. Parentheses
+// and authored wrapping cannot change the parameter comparison.
+SegmentRefineRoots :: (rows: diag.Node[], fields: int[]) -> int[] {
+    roots := resize([int(-1)], length(rows));
+    at := length(rows) - 1;
+    while (at >= 0) {
+        roots[at] = at;
+        kind := rows[at].kind;
+        child: int = -1;
+        if (kind == diag.ParenthesizedExpression) { child = ChildByField(rows, fields, at, diag.FieldExpression); }
+        else if (kind == diag.AwaitExpression || kind == diag.NamedArgument || kind == diag.TypedArgument) {
+            child = ChildByField(rows, fields, at, diag.FieldValue);
+        } else if (kind == diag.ExpressionStatement) { child = rows[at].first_child; }
+        if (child >= 0) { roots[at] = roots[child]; }
+        at -= 1;
+    }
+    return roots;
+}
+
+SegmentArgumentFeature :: (rows: diag.Node[], fields: int[], roots: int[], node: int) -> SegmentArgument {
+    node = roots[node];
+    kind := rows[node].kind;
+    category: int = SegmentRhsNone; name: int = 0;
+    if (kind == diag.Identifier) { category = SegmentRhsName; name = node + 1; }
+    else if (kind == diag.Number || kind == diag.String || kind == diag.Character || kind == diag.Boolean || kind == diag.Nil) {
+        category = SegmentRhsConstant;
+    } else if (kind == diag.StructExpression || kind == diag.ArrayExpression || kind == diag.MapExpression) {
+        category = SegmentRhsCreation;
+    } else if (kind == diag.BinaryExpression) { category = SegmentRhsInfix; }
+    else if (kind == diag.UnaryExpression || kind == diag.AddressExpression) { category = SegmentRhsPrefix; }
+    else if (kind == diag.DereferenceExpression || kind == diag.ForceUnwrapExpression) { category = SegmentRhsPostfix; }
+    else if (kind == diag.AsExpression) { category = SegmentRhsCast; }
+    else if (kind == diag.CallExpression) {
+        function := ChildByField(rows, fields, node, diag.FieldFunction);
+        if (function >= 0) {
+            function = roots[function];
+            if (rows[function].kind == diag.Identifier) { name = function + 1; }
+            else if (rows[function].kind == diag.MemberExpression || rows[function].kind == diag.OptionalMemberExpression) {
+                member := ChildByField(rows, fields, function, diag.FieldMember);
+                if (member >= 0) { name = member + 1; }
+            }
+        }
+        if (name > 0) { category = SegmentRhsMethod; }
+    }
+    return {category: category, name: name};
+}
+
+// Table 6.3 leaves "param similar" undefined. The Chibi adapter compares
+// equal, nonempty argument lists positionally, using RHS syntax categories
+// and ID similarity for identifiers/call names. Unsupported roots fail the
+// comparison. These descriptors are gathered once, never per boundary.
+SegmentCallParameters :: (facts: SegmentFacts, rows: diag.Node[], fields: int[]) -> SegmentParameters {
+    first := resize([int(0)], length(facts.units)); counts := resize([int(0)], length(facts.units));
+    arguments: SegmentArgument[] = [];
+    roots := SegmentRefineRoots(rows, fields);
+    for (unit in 0..<length(facts.units)) {
+        category := facts.units[unit].category;
+        if (category != SegmentMethod && category != SegmentObjectMethod) { continue; }
+        call := facts.units[unit].call_node;
+        if (call < 0) { continue; }
+        assert(call < length(rows) && rows[call].kind == diag.CallExpression, "call facts refer to a call expression");
+        list := ChildByField(rows, fields, call, diag.FieldArguments);
+        if (list < 0) { continue; }
+        first[unit] = length(arguments);
+        child := rows[list].first_child;
+        while (child >= 0) {
+            if (rows[child].kind > diag.Comment) {
+                arguments.append(SegmentArgumentFeature(rows, fields, roots, child));
+                counts[unit] += 1;
+            }
+            child = rows[child].next_sibling;
+        }
+    }
+    return {first: first, counts: counts, arguments: arguments};
+}
+
+SegmentParametersSimilar :: (names: SegmentNameWords, parameters: SegmentParameters, left: int, right: int) -> bool {
+    count := parameters.counts[left];
+    if (count == 0 || count != parameters.counts[right]) { return false; }
+    a := parameters.first[left]; b := parameters.first[right];
+    for (offset in 0..<count) {
+        one := parameters.arguments[a + offset]; two := parameters.arguments[b + offset];
+        if (one.category == SegmentRhsNone || one.category != two.category) { return false; }
+        if ((one.category == SegmentRhsName || one.category == SegmentRhsMethod) &&
+            !SegmentNameSimilar(names, one.name, two.name)) { return false; }
+    }
+    return true;
+}
+
+SegmentPartCanMerge :: (kind: int) -> bool {
+    return kind == SegmentObjectPart || kind == SegmentSyntaxPart;
+}
+
+SegmentMergeBoundary :: (facts: SegmentFacts, names: SegmentNameWords, features: SegmentFeature[],
+                         parameters: SegmentParameters, left: SegmentPart, right: SegmentPart, hard: bool[]) -> bool {
+    if (!SegmentPartCanMerge(left.kind) || !SegmentPartCanMerge(right.kind) || left.last + 1 != right.first ||
+        hard[right.first] || facts.units[left.last].sequence != facts.units[right.first].sequence) { return false; }
+    one := features[left.last]; two := features[right.first];
+    if (SegmentSingletonCompatible(names, one, two, false)) { return true; }
+    calls := (one.category == SegmentMethod && two.category == SegmentObjectMethod) ||
+             (one.category == SegmentObjectMethod && two.category == SegmentMethod);
+    return calls && SegmentParametersSimilar(names, parameters, left.last, right.first);
+}
+
+// Phase III scans each SynS run with the published three-statement window.
+// Phase IV considers single statements instead of physical lines, so wrapping
+// cannot change segmentation. It uses only Table 6.3 cross-category rules;
+// the thesis does not authorize undoing a SynS split for same-category pairs.
+// Each statement boundary is considered a bounded number of times. Together
+// with the one argument/root pass this is O(rows + units + arguments).
+SegmentRefine :: (facts: SegmentFacts, names: SegmentNameWords, features: SegmentFeature[],
+                  parts: SegmentPart[], hard: bool[], rows: diag.Node[], fields: int[]) -> SegmentPart[] {
+    if (length(parts) == 0) { return []; }
+    cuts := resize([false], length(facts.units));
+    levels := resize([int(0)], length(facts.units));
+    for (part in parts) {
+        if (part.kind != SegmentSyntaxPart || part.last - part.first < 3) { continue; }
+        for (unit in part.first + 1..<part.last + 1) {
+            if (!hard[unit]) { levels[unit] = SegmentPairSimilarity(names, features[unit - 1], features[unit]); }
+        }
+        for (unit in part.first + 2..<part.last + 1) {
+            if (hard[unit - 1] || hard[unit]) { continue; }
+            if (levels[unit - 1] < levels[unit]) { cuts[unit - 1] = true; }
+            else if (levels[unit] < levels[unit - 1]) { cuts[unit] = true; }
+        }
+    }
+    refined: SegmentPart[] = [];
+    for (part in parts) {
+        first := part.first;
+        for (unit in part.first + 1..<part.last + 1) {
+            if (cuts[unit] || hard[unit]) {
+                refined.append({first: first, last: unit - 1, kind: part.kind});
+                first = unit;
+            }
+        }
+        refined.append({first: first, last: part.last, kind: part.kind});
+    }
+    parameters := SegmentCallParameters(facts, rows, fields);
+    result: SegmentPart[] = [];
+    at: int = 0;
+    while (at < length(refined)) {
+        part := refined[at]; at += 1;
+        if (part.first == part.last && SegmentPartCanMerge(part.kind)) {
+            previous := length(result) - 1;
+            if (previous >= 0 && SegmentMergeBoundary(facts, names, features, parameters, result[previous], part, hard)) {
+                result[previous].last = part.last;
+                continue;
+            }
+            if (at < length(refined) && SegmentMergeBoundary(facts, names, features, parameters, part, refined[at], hard)) {
+                part.last = refined[at].last; part.kind = refined[at].kind;
+                at += 1;
+            }
+        }
+        result.append(part);
+    }
+    return result;
+}

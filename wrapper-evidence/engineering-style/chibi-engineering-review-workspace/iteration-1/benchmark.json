@@ -1,0 +1,386 @@
+{
+  "metadata": {
+    "skill_name": "chibi-engineering-review",
+    "skill_path": "<path/to/skill>",
+    "executor_model": "<model-name>",
+    "analyzer_model": "<model-name>",
+    "timestamp": "2026-10-29T22:35:14Z",
+    "evals_run": [
+      "medium-real-commit",
+      "seeded-defects",
+      "small-real-commit"
+    ],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": "medium-real-commit",
+      "eval_name": "medium-real-commit",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.75,
+        "passed": 3,
+        "failed": 1,
+        "total": 4,
+        "time_seconds": 1101.2,
+        "tokens": 226066,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Every finding in the review cites a specific path and line number.",
+          "passed": true,
+          "evidence": "Eight of nine findings open with path:line (Expressions.chibi:214, Statements.chibi:211-224, Expressions.chibi:390-397, Tree.chibi:118, docs/source-parser.md:19-20, Expressions.chibi:213-214, Expressions.chibi:383, source_parser_chibi.c:29-48). The '[TEST] test/language/syntax_corpus' finding heads with a directory but cites 'Body.chibi:2728 (36 links)' in its evidence. The commit-message NIT cites 'source_tokenizer_chibi.c:453-455', 'main.c:757' and 'Makefile:41'."
+        },
+        {
+          "text": "The review assesses whether the iterative else-if parsing preserves behavior of the recursive version (e.g., node structure, diagnostics) and cites the test or input that shows it.",
+          "passed": true,
+          "evidence": "'I traced each rewrite against the parent, and the trees come out the same: New creates nodes in the same order, and the children and fields are the same. The node ranges match once the ParseIf fixup has run ... So the Tree-sitter differential is still a valid check.' Names the differential (SourceParserDiff.chibi driven by source_parser_chibi.c) as the check and the inputs that exercise chains: 'The longest else-if chain has 36 links (Body.chibi:2728)' and 'The syntax corpus contains a single else-if'. Weaker than tracing a concrete small chain (the without_skill review does), but it states the verdict and the test/input."
+        },
+        {
+          "text": "The review does not recommend defensive checks, compatibility shims, or splitting functions for length.",
+          "passed": true,
+          "evidence": "The only check proposed is '_Static_assert(sizeof PARSER_PATHS == sizeof PARSER_FILES, \"one path per file\")' as an alternative to merging parallel arrays: a compile-time assert of an invariant, which the repo's fail-fast rule favors, not a defensive runtime guard. The 'if (c.failed) { return -1; }' early return appears only conditionally under 'What I would measure' as a cost fix. Restoring ParseExpression/ParsePostfix/ParseArgument is about the depth limit, not length. No shims."
+        },
+        {
+          "text": "Every finding includes concrete evidence (a count, measurement, named caller/consumer or failing input), or the review states plainly that there are no substantive findings.",
+          "passed": false,
+          "evidence": "Most findings carry counts or inputs: DESIGN (51 call sites, frames 7 -> 3, ~70 -> ~48 at Body.chibi:3505), ParseIf SIMPLIFY ('Only 212 of about 6,100 if statements'), range-copy SIMPLIFY ('git grep ParseIndexValue finds one call site'), Opener TEST (invalid2.chibi.txt), corpus TEST (36, 17, 17, 15 links), commit-message NIT (313,206 > 262,144 bytes). But '[NIT] Expressions.chibi:213-214 \u2014 the comment about postfix forms sits above IsCallTarget' has no Evidence line at all: only 'Cost: read' and 'Fix: move the two lines'. No count, measurement, caller or input."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": "seeded-defects",
+      "eval_name": "seeded-defects",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.92,
+        "passed": 11,
+        "failed": 1,
+        "total": 12,
+        "time_seconds": 750.9,
+        "tokens": 172785,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "The review flags assert(matches++ <= array->count) in pin_array_count_type as a bug because the assert has a side effect that changes the returned count in debug builds.",
+          "passed": true,
+          "evidence": "'[BUG] src/types/array.c:136 \u2014 `assert(matches++ <= array->count)` has a side effect, so the result depends on the build mode' and 'every build with asserts enabled returns one more than the true count, while release builds return the true count'. Backed by a scratch run: 'returned 3 for 2 matches when compiled with asserts, and 2 when compiled with -DNDEBUG'."
+        },
+        {
+          "text": "The review flags the 'if (!array) return 0;' guard in pin_array_count_type as a silent guard on a state only a bug produces, recommending an assert or removal rather than keeping it.",
+          "passed": true,
+          "evidence": "'[NIT] src/types/array.c:124-126, 130 \u2014 silent guards hide the bugs they meet' / 'a NULL array reads as \"0 matches\"' / 'Fix: `assert(array && type_name)`'. It recommends an assert; it rates the finding only NIT."
+        },
+        {
+          "text": "The review flags the per-element xstrdup/free inside the pin_array_count_type loop as needless allocation.",
+          "passed": true,
+          "evidence": "'[PERF] src/types/array.c:130-133 \u2014 xstrdup and free for every element, only to compare a string the loop already holds' / 'Fix: `strcmp(value.type_name, type_name)` without the copy.'"
+        },
+        {
+          "text": "The review flags comparing forest[index].kind against the string \"call_expression\" inside the per-node loop in CollectCalls.",
+          "passed": false,
+          "evidence": "The review doesn't flag it. The comparison appears only under 'What I would leave alone': '`forest[index].kind == \"call_expression\"` (`:26`) is a string comparison per node, but the forest stores every kind as a string ... Interning kinds is a forest-wide change, not a fix for this commit.' It saw the comparison and deliberately declined it. The reasoning is accurate, because SnapshotNode.kind is a string and Tree.chibi `Is` does the same comparison."
+        },
+        {
+          "text": "The review flags LineOf/ColumnOf rescanning the text from the start for every call site (quadratic work) or notes that SnapshotNode already stores row and column, so line/column are duplicated or derivable.",
+          "passed": true,
+          "evidence": "'[PERF] ... LineOf and ColumnOf rescan the text from byte 0 for every call site to recompute what each node already stores' / 'SnapshotNode stores `row` and `column` (Snapshot.chibi:37-38)' / 'about 391 million ByteAt calls for Body.chibi alone'."
+        },
+        {
+          "text": "The review flags CountCallsInForest as a wrapper that only forwards to CollectCalls and should be deleted.",
+          "passed": true,
+          "evidence": "'`CountCallsInForest` (:39-42) only forwards to `CollectCalls`.' Its fix is to delete the file, and 'What I would delete' lists '`CountCallsInForest`, `LineOf`, `ColumnOf` and the body of `CalleeName`'."
+        },
+        {
+          "text": "The review flags the is_dead bool on CallSite (filtered by LiveSites, set by MarkDead) as list membership encoded in a flag, or flags MarkDead's sites-by-removed nested loop.",
+          "passed": true,
+          "evidence": "'`is_dead` is written `false` at :33 and read only by `LiveSites`, so a stored bool stands in for list membership. MarkDead does sites \u00d7 removed string compares.'"
+        },
+        {
+          "text": "The review flags that the commit adds no test (no @test and no C test case) for the new behavior.",
+          "passed": true,
+          "evidence": "'[TEST] ... neither addition has a test' / 'the diff contains no `@test` and no pico_unit case.'"
+        },
+        {
+          "text": "The review flags that the new procedures or the new C function have no callers in the repository (speculative or dead code).",
+          "passed": true,
+          "evidence": "'The 9 new Chibi declarations ... have 0 references outside the file' and '[SIMPLIFY] src/types/array.h:52-53, src/types/array.c:122-138 \u2014 a new public SDK C entry point with no caller' ('LSP find_references and git grep find only the declaration and the definition')."
+        },
+        {
+          "text": "Every reported finding gives concrete evidence (a count, measurement, named consumer/caller, or failing input) rather than only restating a rule.",
+          "passed": true,
+          "evidence": "I inspected all 14 findings, and each Evidence line carries a concrete fact: file counts ('package_compiler/ now has 19 .chibi files; CompilerSources.txt:1-18 lists 18'), a lookup (Concatenate at :551, no Concat), a worked failing input (the callee at Explain.chibi:34 returns 564 bytes instead of 12), a document count (30 of 31 documents read the wrong text), an experiment (3 vs 2), counts (about 14,294 allocations, about 391M ByteAt calls, 0 references for 9 declarations), concrete derivations (offset is forest[node].start, line is row + 1), the inputs each missing test would catch, and the failing NULL inputs. The weakest is the commit-message NIT ('the message names two features with no shared code'), which still states a checkable fact, not only the rule."
+        },
+        {
+          "text": "The review does not recommend adding defensive NULL checks, fallback values or extra validation for internal invariants.",
+          "passed": true,
+          "evidence": "No defensive additions. It replaces the silent `if (!array)` return with '`assert(array && type_name)`', deletes the tautological assert, says to 'assert that the field exists' instead of returning \"\", and leaves the NULL-tolerant neighbours alone as out of scope. 'skip elements whose type name is NULL' replaces an existing fallback for a valid runtime state (scalars without a type_name); it adds no new check on an internal invariant."
+        },
+        {
+          "text": "The review does not recommend splitting any function purely because of its length.",
+          "passed": true,
+          "evidence": "No function-split recommendation anywhere. The only split concerns the commit: 'Fix: split it into two commits, each naming its consumer.'"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": "small-real-commit",
+      "eval_name": "small-real-commit",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "time_seconds": 994.8,
+        "tokens": 226124,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Every finding in the review cites a specific path and line number.",
+          "passed": true,
+          "evidence": "All five findings open with path:line: '[BUG] tools/compiler/package_compiler/Sequences.chibi:472', '[BUG] tools/compiler/package_compiler/Pointers.chibi:617', '[DESIGN] tools/compiler/package_compiler/Steps.chibi:4900', '[TEST] test/language/argument_effects_chibi.c:159-171', '[NIT] test/language/argument_effects_chibi.c:183'. The 'What I would delete' items also cite lines (Steps.chibi:554-586, :903-908)."
+        },
+        {
+          "text": "The review does not recommend defensive checks, compatibility shims, deprecation steps, or splitting functions for length.",
+          "passed": true,
+          "evidence": "Fixes are: wrap the missing store routes in WriteStep, one ExternalDestination predicate replacing per-caller flags (consolidation), add StoreField/StoreManaged/LocalField cases, drop the derivable 'parallel' column. The only assert mentioned is a temporary reachability probe under 'What I would measure' ('add a temporary assert in the item.phase == FieldPhase arm'), not a defensive check. No shims, deprecations or length-based splits."
+        },
+        {
+          "text": "Every finding includes concrete evidence (a count, measurement, named caller/consumer or failing input), or the review states plainly that there are no substantive findings.",
+          "passed": true,
+          "evidence": "BUG 1: failing input 'pub StoreField :: (pointer: ^Counter) { pointer.value = 2; }' expected { SCRIPT_EFFECT_WRITE, false }. BUG 2: failing input 'pub StoreManaged :: (pointer: ^int) -> ^int { pointer^ = 2; return pointer; }'. DESIGN: counts ('WriteStep's 4 callers', 'C has one function, script_analyzer_writes_external, with 3 callers') and named missing routes. TEST: names the single route all new cases take (Steps.chibi:794-796) and the untested routes, plus concrete cases. NIT: count ('in all 21 rows parallel == (effects == 0)')."
+        },
+        {
+          "text": "The review identifies who consumes the changed effect summaries (a named caller, pass or test), showing it read beyond the diff hunks.",
+          "passed": true,
+          "evidence": "Brief 'Consumers:' line: 'src/execution/native.c:120 binds a native export only to an authored function with effects == 0. The test derives parallel from pure && !effects && behavior_function_hosts_pure (argument_effects_chibi.c:330), and this purity decides automatic test parallelism.' Also traces propagation over call edges (Compile.chibi:2843-2853) into each entry's effects (Compile.chibi:2855-2860)."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": "medium-real-commit",
+      "eval_name": "medium-real-commit",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.5,
+        "passed": 2,
+        "failed": 2,
+        "total": 4,
+        "time_seconds": 796.8,
+        "tokens": 174791,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Every finding in the review cites a specific path and line number.",
+          "passed": false,
+          "evidence": "Findings 1-5, 7 and 8 cite path:line (semantic.h:12, SourceParserDiff.chibi:11-16 and test_policy.py lines 580-622, Statements.chibi:211-224, Tree.chibi:100, Expressions.chibi:376-405, source_tokenizer_chibi.c:27, docs/source-parser.md:20-21). Finding 6 ('The commit message leaves out half the change and every reason') cites no path:line anywhere ('Steps.chibi is about 306 KiB' has no line). Finding 9's first bullet ('test/language/main.c: the usage string is split by hand') gives a path but no line."
+        },
+        {
+          "text": "The review assesses whether the iterative else-if parsing preserves behavior of the recursive version (e.g., node structure, diagnostics) and cites the test or input that shows it.",
+          "passed": true,
+          "evidence": "'Else-if equivalence. I traced if a {A} else if b {B} else {C} and a three-link chain. Rows are created in the same order as before: New for the chained if still follows Take(else). The first/next/parent links and the alternative fields match the recursive version. After the fixup, every link's end equals the final block's end ... The differential compares rows by index, so the unchanged creation order matters.' Finding 3 adds the failure path: 'This also holds when the parse fails partway, because nothing is added to a link after current = chained.'"
+        },
+        {
+          "text": "The review does not recommend defensive checks, compatibility shims, or splitting functions for length.",
+          "passed": true,
+          "evidence": "No shims or defensive NULL/validation checks. The 'if (c.failed) { return -1; }' guard at the top of Expect is proposed to skip wasted Opener rescans on a known state, not to mask a defect. Borderline: finding 5 says 'The loop body is also four levels deep, which conflicts with the small-functions rule', but the recommended fix ('Otherwise call ParseIndexValue') is de-duplication of the copied range parse, the same fix the with_skill review gives, not a split for length."
+        },
+        {
+          "text": "Every finding includes concrete evidence (a count, measurement, named caller/consumer or failing input), or the review states plainly that there are no substantive findings.",
+          "passed": false,
+          "evidence": "Findings 1, 2, 6 and 7 have counts or named consumers ('51 sites', test_policy.py GROUPS, '234 .chibi files and 2,888,323 bytes'). Finding 9 ('Small formatting points') has none: 'clang-format doesn't reflow string literals, so this is pure churn' and 'the new entry sits alone in a list that otherwise has two entries per line' are assertions with no count, measurement, caller or input. Finding 3 ('allocates an int[] for every if statement') also gives no count of affected statements, unlike the with_skill review's '212 of about 6,100'."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": "seeded-defects",
+      "eval_name": "seeded-defects",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.83,
+        "passed": 10,
+        "failed": 2,
+        "total": 12,
+        "time_seconds": 462.9,
+        "tokens": 128256,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "The review flags assert(matches++ <= array->count) in pin_array_count_type as a bug because the assert has a side effect that changes the returned count in debug builds.",
+          "passed": true,
+          "evidence": "'B5. The C `assert` has a side effect, so debug and release builds return different counts' / 'With assertions on, `matches` is incremented, so every debug or sanitizer build returns the true count plus one.'"
+        },
+        {
+          "text": "The review flags the 'if (!array) return 0;' guard in pin_array_count_type as a silent guard on a state only a bug produces, recommending an assert or removal rather than keeping it.",
+          "passed": true,
+          "evidence": "'**The NULL check is defensive, against fail-fast** (`array.c:124-126`). CLAUDE.md: \"avoid defensive NULL checks that mask defects\" ... Use `assert(array && type_name)` and remove the early return.'"
+        },
+        {
+          "text": "The review flags the per-element xstrdup/free inside the pin_array_count_type loop as needless allocation.",
+          "passed": true,
+          "evidence": "'**It allocates on the heap once per element for nothing** (`array.c:130-134`). `xstrdup` followed by `free` around a read-only `strcmp` is wasted allocator traffic. Compare `value.type_name` directly.'"
+        },
+        {
+          "text": "The review flags comparing forest[index].kind against the string \"call_expression\" inside the per-node loop in CollectCalls.",
+          "passed": false,
+          "evidence": "The only mention is 'Use the package's helper for kind checks. Write `Is(forest, index, \"call_expression\")` rather than `forest[index].kind == ...` (`Tree.chibi:51`), as the rest of the package does.' This is a consistency point. `Is` does the same `forest[node].kind == kind` string comparison for every node, so the review doesn't say the per-node string comparison is a problem."
+        },
+        {
+          "text": "The review flags LineOf/ColumnOf rescanning the text from the start for every call site (quadratic work) or notes that SnapshotNode already stores row and column, so line/column are duplicated or derivable.",
+          "passed": true,
+          "evidence": "'M5. `LineOf` and `ColumnOf` recompute data the node already has, at O(sites \u00d7 bytes)' / '`SnapshotNode` already carries `row` and `column` (`Snapshot.chibi:37-38`)'."
+        },
+        {
+          "text": "The review flags CountCallsInForest as a wrapper that only forwards to CollectCalls and should be deleted.",
+          "passed": true,
+          "evidence": "'**`CountCallsInForest` is a pure alias** (`CallCensus.chibi:39-42`). It forwards to `CollectCalls` under a misleading name ... Delete it.'"
+        },
+        {
+          "text": "The review flags the is_dead bool on CallSite (filtered by LiveSites, set by MarkDead) as list membership encoded in a flag, or flags MarkDead's sites-by-removed nested loop.",
+          "passed": true,
+          "evidence": "It passes on the MarkDead clause: 'Cost is O(sites \u00d7 removed). Use `removed.contains(site.callee)`, or build a `[string: bool]` set once.' It doesn't make the list-membership point about is_dead ('`is_dead` is mutable state with no use case yet')."
+        },
+        {
+          "text": "The review flags that the commit adds no test (no @test and no C test case) for the new behavior.",
+          "passed": true,
+          "evidence": "'M7. No tests ... \"Add or update an authored `@test` for every expressible behavior change, or a pico_unit case for a native boundary\". There are none.'"
+        },
+        {
+          "text": "The review flags that the new procedures or the new C function have no callers in the repository (speculative or dead code).",
+          "passed": true,
+          "evidence": "'M1. Dead code in both languages: nothing calls any of it' / '`git grep` finds no reference to `pin_array_count_type`, `CallCensus`, `CollectCalls`, `CountCallsInForest`, `MarkDead` or `LiveSites` outside their own definitions.'"
+        },
+        {
+          "text": "Every reported finding gives concrete evidence (a count, measurement, named consumer/caller, or failing input) rather than only restating a rule.",
+          "passed": false,
+          "evidence": "Most findings carry concrete evidence, but several only restate a rule or a preference. M5: 'Minor point: `10` should be a named newline constant. The compiler often writes bytes as numbers, but a name costs nothing here.' Minor: 'The struct initializer is noisier than it needs to be ... the zero values are the defaults.' (no citation). Commit hygiene: 'The commit skipped the pre-commit checklist. CLAUDE.md asks for a whole-diff review before committing' (a rule plus an inference it can't check). M3 is mostly CLAUDE.md quotes ('Counting array elements by type is trivial in Chibi')."
+        },
+        {
+          "text": "The review does not recommend adding defensive NULL checks, fallback values or extra validation for internal invariants.",
+          "passed": true,
+          "evidence": "No defensive additions. It recommends 'Use `assert(array && type_name)` and remove the early return' and criticises the NULL-to-\"\" fallback. It suggests reusing `Text`, which returns \"\" for -1, but that existing helper replaces equivalent code; it isn't a new fallback."
+        },
+        {
+          "text": "The review does not recommend splitting any function purely because of its length.",
+          "passed": true,
+          "evidence": "No function-split recommendation. The only split concerns the commit: 'Split them, or, per M1 and M3, drop the C half.'"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": "small-real-commit",
+      "eval_name": "small-real-commit",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.5,
+        "passed": 2,
+        "failed": 2,
+        "total": 4,
+        "time_seconds": 740.3,
+        "tokens": 182163,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Every finding in the review cites a specific path and line number.",
+          "passed": false,
+          "evidence": "Findings 1-4 cite path:line (e.g. 'PointerWriteStep (Pointers.chibi:327-355)', 'Steps.chibi:795', 'Compile.chibi:2838-2853', 'Steps.chibi:848'). Finding 5 ('the commit message says what, not why') cites no path or line. Finding 6 ('Nit: the parallel column adds no signal for WRITE rows') quotes 'parallel = pure && !actual.effects && hosts_pure(...)' but gives no file path or line number."
+        },
+        {
+          "text": "The review does not recommend defensive checks, compatibility shims, deprecation steps, or splitting functions for length.",
+          "passed": true,
+          "evidence": "Recommendations are: wrap PointerWriteStep results in WriteStep, add test rows (DereferenceWrite, KeepWrite, StoreField, IncrementInt), reword the OwnWrite comment and add a friction entry, optionally derive public WRITE from body_write in Assemble, and rewrite the commit message. 'Compare with ==, not &, because UnknownWrite is -1' is a correctness note, not a defensive check. No shims, deprecations or length-based splits."
+        },
+        {
+          "text": "Every finding includes concrete evidence (a count, measurement, named caller/consumer or failing input), or the review states plainly that there are no substantive findings.",
+          "passed": false,
+          "evidence": "Findings 1-4 have concrete evidence (failing inputs 'pub DereferenceWrite ...' and 'pub KeepWrite :: (pointer: ^int) -> ^int { pointer^ = 2; return pointer; }'; named call sites; named consumer 'library_function (src/execution/native.c:114-123)'; named StatePlace path Steps.chibi:848). Finding 6 offers only a paraphrase of the formula ('any nonzero expected effect forces false') with no count of rows, no location and no consumer; contrast the with_skill review's 'in all 21 rows'. Finding 5's core point ('says what, not why') is a rule restatement, though it does point at PointerWriteStep for the false claim. Borderline, but the burden of proof is on the assertion."
+        },
+        {
+          "text": "The review identifies who consumes the changed effect summaries (a named caller, pass or test), showing it read beyond the diff hunks.",
+          "passed": true,
+          "evidence": "Finding 3: 'library_function (src/execution/native.c:114-123) refuses to bind any authored function whose effects is nonzero'. 'What the change does': 'Callers then inherit the bit through the effect-call fixed point (Compile.chibi:2838-2853)'. Also names the preparation-side in-place proof (docs/package-compiler.md:110-115) as the WriteFact consumer."
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 0.89,
+        "stddev": 0.1277,
+        "min": 0.75,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 948.9667,
+        "stddev": 179.5913,
+        "min": 750.9,
+        "max": 1101.2
+      },
+      "tokens": {
+        "mean": 208325.0,
+        "stddev": 30778.5565,
+        "min": 172785,
+        "max": 226124
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 0.61,
+        "stddev": 0.1905,
+        "min": 0.5,
+        "max": 0.83
+      },
+      "time_seconds": {
+        "mean": 666.6667,
+        "stddev": 178.714,
+        "min": 462.9,
+        "max": 796.8
+      },
+      "tokens": {
+        "mean": 161736.6667,
+        "stddev": 29228.46,
+        "min": 128256,
+        "max": 182163
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.28",
+      "time_seconds": "+282.3",
+      "tokens": "+46588"
+    }
+  },
+  "notes": [
+    "Discriminating assertions are the evidence and path:line ones; the 'no defensive checks' and 'no length split' assertions passed in all six runs and don't separate the configurations.",
+    "Both configurations found every seeded defect. The skill's gain is evidence quality: it ran the assert side effect in scratch (3 vs 2), counted call sites, and estimated the line/column rescan cost; the baseline restated rules in several findings.",
+    "Accuracy: the small-commit baseline made two false claims (call-site count, store routing); the with-skill runs had one minor error each, in non-finding sections.",
+    "Coverage gap: only the medium baseline noticed that the Chibi parser and tokenizer selectors are in no CI group in tools/test_policy.py. The skill has no check for 'is the new or touched test actually run by CI'.",
+    "The seeded with-skill run put the string-compared node kind under 'leave alone' with a correct reason (the forest stores kinds as strings by design); assertion 4 was too strict.",
+    "Cost: the skill used about 29% more tokens and 42% more time on average (one run each, so variance is unknown)."
+  ]
+}

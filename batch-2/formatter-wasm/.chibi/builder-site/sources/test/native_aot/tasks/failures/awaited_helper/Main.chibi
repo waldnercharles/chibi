@@ -1,0 +1,13 @@
+package task_failure
+Main :: () -> int {
+    value := await Worker();
+    return value;
+}
+Worker :: () -> int {
+    yield
+    return Broken();
+}
+Broken :: () -> int {
+    assert(false, "task helper failed");
+    return 0;
+}

@@ -1,0 +1,60 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+
+TaskCalls :: (mode: int, waits: bool) -> native.Instruction[] {
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Call, abi.IntStorage, 0, 1, 0, 0, i64(mode)),
+             Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0),
+             Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Suspend, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 7),
+             Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    if (!waits) { code[5] = Code(native.Jump, 0, 0, 0, 0, 2, 0); }
+    return code;
+}
+TaskCallModule :: (code: native.Instruction[]) -> native.Result {
+    return Emit([Function(abi.IntStorage, 0, 0, 1, 0, 4, 0, 0),
+                 Function(abi.IntStorage, 0, 1, 1, 4, 5, 0, 0)], [],
+                [abi.IntStorage, abi.IntStorage], code, []);
+}
+@test
+PlainCallsCannotUseACoroutineRampAsAScalarFunction :: () {
+    Rejects(TaskCallModule(TaskCalls(native.CallPlain, true)), "native plain call cannot name a waiting function");
+}
+@test
+AwaitedCallsRequireACoroutine :: () {
+    Rejects(TaskCallModule(TaskCalls(native.CallAwaited, false)),
+            "native awaited call or spawn names a function that does not wait");
+    Emitted(TaskCallModule(TaskCalls(native.CallAwaited, true)));
+    Emitted(TaskCallModule(TaskCalls(native.CallPlain, false)));
+}
+@test
+UnusedInstructionNumbersRemainRejected :: () {
+    code := TaskCalls(native.CallPlain, false);
+    // 83 remains reserved; 76–79 now carry collector operations.
+    for (op in [int(83), native.InstructionCount]) {
+        code[1] = Code(op, abi.IntStorage, 0, 0, 0, 0, 0);
+        Rejects(TaskCallModule(code), "unsupported native scalar instruction");
+    }
+}
+@test
+FunctionAddressesCannotUseACoroutineRamp :: () {
+    code := [Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.FunctionAddress, abi.WordStorage, 0, 1, 0, 0, 0),
+             Code(native.Constant, abi.IntStorage, 1, 0, 0, 0, 0),
+             Code(native.Publish, abi.IntStorage, 0, 1, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0),
+             Code(native.Check, 0, 0, 0, 0, 0, 0),
+             Code(native.Suspend, 0, 0, 0, 0, 0, 0),
+             Code(native.Constant, abi.IntStorage, 0, 0, 0, 0, 7),
+             Code(native.Publish, abi.IntStorage, 0, 0, 0, 0, 0),
+             Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    result := Emit([Function(abi.IntStorage, 0, 0, 2, 0, 5, 0, 0),
+                    Function(abi.IntStorage, 0, 2, 1, 5, 5, 0, 0)], [],
+                   [abi.WordStorage, abi.IntStorage, abi.IntStorage], code, []);
+    Rejects(result, "native function address cannot name a waiting function");
+}

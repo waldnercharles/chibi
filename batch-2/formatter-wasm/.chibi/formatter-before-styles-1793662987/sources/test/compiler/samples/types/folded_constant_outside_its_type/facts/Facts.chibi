@@ -1,0 +1,4 @@
+package facts
+Big :: () -> int { return 1 << 32; }
+
+// error: 2:27: Constant value is outside the range of int

@@ -1,0 +1,100 @@
+package task_results
+
+Main :: () -> int {
+    handle := Worker(9);
+    alias := handle;
+    if (handle) { } else { return 1; }
+    result := await handle;
+    if (handle) { return 2; }
+    if (result is Cancelled) { return 3; }
+    else { if (result != 9) { return 4; } }
+    again := await alias;
+    if (again is Cancelled) { return 5; }
+    else { if (again != 9) { return 6; } }
+
+    // Different producers with the same success type are interchangeable.
+    // Replacement and self-assignment retain before releasing the old value.
+    handle = Other();
+    handle = handle;
+    other := await handle;
+    if (other is Cancelled) { return 7; }
+    else { if (other != 23) { return 8; } }
+
+    stopped := Worker(88);
+    stop_alias := stopped;
+    cancel stopped
+    if (stop_alias) { return 9; }
+    absent := await stop_alias;
+    if (absent is not Cancelled) { return 10; }
+    absent_again := await stopped;
+    if (absent_again is not Cancelled) { return 11; }
+
+    empty := Nothing();
+    done := await empty;
+    if (done is Cancelled) { return 12; }
+    empty = NothingElse();
+    done_again := await empty;
+    if (done_again is Cancelled) { return 13; }
+
+    truth := Truth();
+    boolean := await truth;
+    if (boolean is Cancelled) { return 14; }
+    else { if (!boolean) { return 15; } }
+    decimal := Decimal();
+    number := await decimal;
+    if (number is Cancelled) { return 16; }
+    else { if (number != 2.5) { return 17; } }
+
+    // Leaving a scope gives up observers while execution still belongs to
+    // the program, including a call whose result is discarded immediately.
+    if (true) { orphan := Detached(); copy := orphan; }
+    Detached();
+    yield
+    yield
+    if (Count(false) != 2) { return 18; }
+
+    // Completed result frames must be reclaimed as each scope leaves. The
+    // allocator audit bounds the peak across thousands of observed joins.
+    for (index in 0..<4096) {
+        pending := Worker(index);
+        joined := await pending;
+        if (joined is Cancelled) { return 21; }
+        else { if (joined != index) { return 22; } }
+    }
+
+    // Cancelling a suspended frame releases all of its local observers.
+    parent := Parent();
+    cancel parent
+    cancelled_parent := await parent;
+    if (cancelled_parent is not Cancelled) { return 19; }
+    yield
+    if (Count(false) != 2) { return 20; }
+    return 0;
+}
+
+Worker :: (value: int) -> int { yield
+    return value; }
+Other :: () -> int { yield
+    return 23; }
+Nothing :: () { yield }
+NothingElse :: () { yield }
+Truth :: () -> bool { yield
+    return true; }
+Decimal :: () -> number { yield
+    return 2.5; }
+Count :: (add: bool) -> int {
+    value: retain int = 0;
+    if (add) { value += 1; }
+    return value;
+}
+Detached :: () -> int { yield
+    Count(true);
+    return 7;
+}
+Parent :: () -> int {
+    child := Detached();
+    alias := child;
+    yield
+    await alias
+    return 1;
+}

@@ -1,0 +1,19 @@
+package facts
+import lib "project:imports/lib"
+import strings "core:strings"
+Total :: (n: int) -> int { return lib.Twice(n) + lib.Sum(lib.Make(n, 3)); }
+Local :: () -> int { p: lib.Point = {x: 2, y: 5}; return lib.Sum(p) + p.x; }
+Shapes :: () -> int {
+    return lib.Size(lib.Shape.Dot(lib.Make(1, 2))) + lib.Size(lib.Shape.Line(7)) * 10 +
+        lib.Size(lib.Shape.Nothing);
+}
+Match :: (n: int) -> int {
+    shape := lib.Shape.Line(n);
+    switch shape { case .Line(size): return size; case: return 0; }
+    return -1;
+}
+Measure :: (s: string) -> int {
+    return strings.ByteLength(s) * 10 + strings.Compare(s, "m") + lib.Width(s) * 100;
+}
+Echo :: (p: lib.Point) -> lib.Point { return p; }
+Points :: (n: int) -> lib.Point[] { points: lib.Point[] = [lib.Make(n, n)]; return points; }

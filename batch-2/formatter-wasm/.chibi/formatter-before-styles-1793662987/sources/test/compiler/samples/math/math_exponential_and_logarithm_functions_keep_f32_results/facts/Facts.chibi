@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { a := exp(vec2(0, 1)); b := log(vec2(1, 2.7182818)); return a.x == 1.0 && abs(a.y - 2.7182818) < 0.000001 && b.x == 0.0 && abs(b.y - 1.0) < 0.000001 && exp2(vec3(-1, 0, 1)) == vec3(0.5, 1, 2) && log2(vec3(0.5, 1, 4)) == vec3(-1, 0, 2); }

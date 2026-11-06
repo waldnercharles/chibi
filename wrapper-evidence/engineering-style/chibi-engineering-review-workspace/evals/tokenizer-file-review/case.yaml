@@ -1,0 +1,4 @@
+schema_version: "1.1"
+name: tokenizer-file-review
+expected_outcome: |
+  A Muratori-style performance and architecture review of the stage-one tokenizer: sized estimate of per-byte work, identified waste with counts, a concrete target shape, representation issues, and restraint on SIMD/threads/micro-tuning.

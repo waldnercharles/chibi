@@ -1,0 +1,45 @@
+{
+  "base": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+  "current_light_checks": {
+    "status": "passed",
+    "cases": 33,
+    "assertions": 2282,
+    "authored_math_per_vm": 44,
+    "receipt": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/validation-receipt.json",
+    "new_failures": []
+  },
+  "inherited_open_failures": [
+    {
+      "id": "scoped-reference-write-effect",
+      "owner": "shared compiler/effect owner",
+      "trigger": "managed dereference store rewritten to ReferencePlace",
+      "observed": "normal authored source compiler reports WRITE=0 where C compiler reports WRITE=2",
+      "attribution": "inherited shared Steps.WriteStep summary gap; unchanged by accepted Body/collection reachability",
+      "private_proof": "old Body/Compile plus private WriteEffect patch passed GC matrix; not combined candidate proof",
+      "normal_source_fix_integrated": false,
+      "observation_basis": "Historical strict declaration replay at runtime308 normal math source; current source still has same WriteStep gap; current full source compiler/GC replay not run",
+      "status": "shared owner integration and fresh combined proof pending"
+    }
+  ],
+  "resolved_inherited_failures": [
+    {
+      "id": "old-record-values-and-compatibility",
+      "state": "passed at accepted74a math snapshot; source unchanged by current reachability",
+      "rerun_current": false
+    },
+    {
+      "id": "native-wide-record-layout-accounting",
+      "state": "accepted PR802 source+runtime pin delivered; E1 runtime unchanged",
+      "rerun_current": false
+    }
+  ],
+  "math_acceptance_pending": [
+    "recoverable public results",
+    "source constant folding",
+    "compositional math records",
+    "advanced quaternion functions",
+    "AOT and shader checks",
+    "combined ABI/prepared/bootstrap/SDK acceptance"
+  ],
+  "current_failures": []
+}

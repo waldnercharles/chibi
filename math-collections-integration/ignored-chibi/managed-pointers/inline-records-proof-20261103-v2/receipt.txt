@@ -1,0 +1,23 @@
+InlineRecords recursive root regression, 2026-11-03
+
+Fixture: /Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/test/native_aot/managed_pointers/InlineRecords.chibi
+Matched builder: /private/tmp/chibi-gc-schema-proof/stage3
+LLVM: /private/tmp/chibi-bba9-proof/llvm22
+Heavy wrapper: /Users/cwaldner/Personal/chibi/handoffs/heavy.sh
+
+Private snapshots and fixture bytes are recorded in sources.sha256.
+The matching SourceProbe binary was reused from the initial proof, with provenance in source-probe-origin.txt and build timing in source-probe-build.log.
+
+Initial emission rejected the record-1 wrapper because resize([true], n) did not initialize every traceable element. The original failing sources/log remain in ../inline-records-proof-20261103. The production owner fixed explicit per-record initialization before this v2 snapshot.
+
+Positive: emitter build 9.18s; callback proof 1.84s. All normal/forced-GC x O0/O2 cases pass with managed source live 0 peak 2 total 2.
+Negative: emitter build 9.29s; callback proof 0.71s. Removing only nested-record child tracing gives source-probe exit1, child status134 with native failure: another failure in the first normal O0 case. The harness stops there; negative O2/forced cases were not run.
+
+negative-source.diff preserves pointer/view tracing and omits only the nested child trace append.
+negative-ir.diff is exactly one removed call: @chibi_managed.trace.record0 from wrapper record1 field1. Python verified the emitted modules are byte-identical after removing precisely that one line.
+Main receives the wrapper, polls, then extracts Leaf and its managed pointer and resolves the scalar tag -123 before asserting 7. Helper pointer/Leaf frame roots have ended at the poll. The wrapper is its only initialized caller cell root.
+
+Positive saved IR/log: positive/InlineRecords.ll; positive/emit.log; positive/callbacks.log.
+Negative saved IR/log: negative/InlineRecords.ll; negative/emit.log; negative/callbacks.log; negative/emitter-build.log.
+Generators: inline-records; inline-records-negative. Harness: source-probe.
+No shared production or existing runner was edited by this test lane.

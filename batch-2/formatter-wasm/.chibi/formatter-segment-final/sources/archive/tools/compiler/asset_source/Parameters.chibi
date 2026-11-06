@@ -1,0 +1,141 @@
+package asset_source
+
+import strings "core:strings"
+
+// Parameters are syntax-only: this service never invokes the asset's helpers.
+ParameterLiteral :: (source: string, binding: Binding) -> string {
+    assert(!binding.computed && binding.literal_start >= 0, "Parameters require scalar literal constructors");
+    // Inspect normalizes the writer's scaled-Real form to numeric JSON text;
+    // never slice its source expression into the parameter JSON document.
+    text := binding.literal_text;
+    if (binding.kind == 5 || binding.kind == 1) {
+        return text;
+    }
+    assert(binding.kind >= 2 && binding.kind <= 4, "Parameters require scalar literal constructors");
+    bytes := strings.Bytes(text);
+    negative := length(bytes) > 0 && bytes[0] == 45;
+    at: int = 0;
+    if (negative) {
+        at = 1;
+    }
+    hexadecimal := length(bytes) > at + 2 && bytes[at] == 48 && (bytes[at + 1] == 120 || bytes[at + 1] == 88);
+    if (binding.kind != 4 || hexadecimal) {
+        base: u64 = 10;
+        if (hexadecimal) {
+            base = 16;
+            at += 2;
+        }
+        magnitude: u64 = 0;
+        while (at < length(bytes)) {
+            digit := bytes[at] - 48;
+            if (bytes[at] >= 65 && bytes[at] <= 70) {
+                digit = bytes[at] - 55;
+            }
+            if (bytes[at] >= 97 && bytes[at] <= 102) {
+                digit = bytes[at] - 87;
+            }
+            assert(digit >= 0 && u64(digit) < base, "Invalid scalar parameter literal");
+            assert(magnitude <= (18446744073709551615 - u64(digit)) / base, "Parameter integer exceeds uint64 range");
+            magnitude = magnitude * base + u64(digit);
+            at += 1;
+        }
+        if (binding.kind == 2) {
+            if (negative) {
+                assert(magnitude <= 9223372036854775808, "Parameter exceeds int64 range");
+            } else {
+                assert(magnitude <= 9223372036854775807, "Parameter exceeds int64 range");
+            }
+        }
+        if (binding.kind == 3) {
+            assert(!negative, "Unsigned parameter cannot be negative");
+        }
+        text = format_text("{}", magnitude);
+        if (negative) {
+            text = strings.Join(["-", text], "");
+        }
+    }
+    if (binding.kind == 4 && !hexadecimal) {
+        first: int = 0;
+        if (negative) {
+            first = 1;
+        }
+        while (first + 1 < strings.ByteLength(text) && strings.ByteAt(text, first) == 48 &&
+               strings.ByteAt(text, first + 1) >= 48 && strings.ByteAt(text, first + 1) <= 57) {
+            text = strings.Join([strings.Slice(text, 0, first), strings.Slice(text, first + 1, strings.ByteLength(text) - first - 1)], "");
+        }
+    }
+    if (binding.kind == 4 && !strings.ContainsAny(text, ".eE")) {
+        text = strings.Join([text, ".0"], "");
+    }
+    return text;
+}
+
+pub Parameters :: (source: string) -> u8[] {
+    if (!MetadataActive(source, "parameters")) {
+        return SourceBytes("{}");
+    }
+    switch Inspect(source, "Parameters") {
+        case .Rejected(start, end, message):
+            assert(false, "Asset source metadata is not directly editable");
+            return [];
+        case .Found(bindings, alias):
+            if (length(bindings) == 0) {
+                return SourceBytes("{}");
+            }
+            assert(bindings[0].kind == 6 && !bindings[0].computed, "Parameters must return a literal data.Object");
+            parts: string[] = ["{"];
+            count: int = 0;
+            index: int = 1;
+            while (index < length(bindings)) {
+                item := bindings[index];
+                assert(item.parent == 0 && item.kind >= 1 && item.kind <= 5, "Parameters require scalar literal constructors");
+                if (count > 0) {
+                    parts.append(",");
+                }
+                parts.append(Quoted(item.key));
+                parts.append(":");
+                parts.append(ParameterLiteral(source, item));
+                count += 1;
+                index += 1;
+            }
+            parts.append("}");
+            return SourceBytes(strings.Join(parts, ""));
+    }
+}
+
+pub SetParameter :: (source: string, name: string, kind: int, value_text: string,
+                     signed: i64, unsigned: u64, real: f64, boolean: bool) -> u8[] {
+    switch Inspect(source, "Parameters") {
+        case .Rejected(start, end, message):
+            assert(false, "Asset source metadata is not directly editable");
+            return [];
+        case .Found(bindings, alias):
+            for (item in bindings) {
+                if (item.parent == 0 && item.key == name) {
+                    assert(!item.computed && item.literal_start >= 0, "Parameter must be a scalar literal");
+                    assert(kind == item.kind, "Parameter edits must preserve the established scalar type");
+                    constructor := Scalar(kind, value_text, signed, unsigned, real, boolean);
+                    prefix := "data.Value.Text(";
+                    if (kind == 1) {
+                        prefix = "data.Value.Bool(";
+                    }
+                    if (kind == 2) {
+                        prefix = "data.Value.Int(";
+                    }
+                    if (kind == 3) {
+                        prefix = "data.Value.UInt(";
+                    }
+                    if (kind == 4) {
+                        prefix = "data.Value.Real(";
+                    }
+                    literal := strings.Slice(constructor, strings.ByteLength(prefix), strings.ByteLength(constructor) - strings.ByteLength(prefix) - 1);
+                    return SourceBytes(strings.Join([
+                        strings.Slice(source, 0, item.literal_start), RetainComments(source, item.literal_start, item.literal_end, literal),
+                        strings.Slice(source, item.literal_end, strings.ByteLength(source) - item.literal_end)
+                    ], ""));
+                }
+            }
+            assert(false, "Unknown parameter");
+            return [];
+    }
+}

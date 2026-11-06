@@ -1,0 +1,37 @@
+{
+  "native_c": [
+    "--semantic",
+    "--package-tests",
+    "--record-prepared",
+    "--record-runtime",
+    "--record-semantic",
+    "--record-values",
+    "--record-compatibility",
+    "--execution",
+    "--execution-scope"
+  ],
+  "source_compiler_after_shared_fix": [
+    "--package-compiler-chibi-types",
+    "--package-compiler-chibi-scalar",
+    "--package-compiler-chibi-imports",
+    "--package-compiler-chibi-collections"
+  ],
+  "coordinator_producer_gates": [
+    "matching-target compiler artifact generation/recovery",
+    "two-stage self-build",
+    "full math asset packaging and inventory",
+    "normal installed math SDK acceptance"
+  ],
+  "holds": {
+    "shared_body_optimization": "not overlaid",
+    "shared_write_step": "private proof only; original normal-candidate WRITE metadata gap remains",
+    "checked_authored_artifact": "unchanged 27-source bootstrap; f1a stays private",
+    "heavy_producers": "held while results owns slot"
+  },
+  "notes": [
+    "Lightweight module/native tests do not execute the complete authored compiler.",
+    "The normal GC-pressure source compiler assertion remains an inherited WRITE metadata gap until the separately reviewed shared fix is integrated.",
+    "If Body or Steps production text changes, compare all ordered compiler inputs again and record a new generation; f1a reuse then requires renewed identity, not count equality.",
+    "No heavy producer runs in this preparation lane while Results owns its repair slot."
+  ]
+}

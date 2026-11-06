@@ -1,0 +1,30 @@
+package timing_inline
+foreign import testclock "system:c"
+foreign testclock { TestTime :: (now: f64) -> int }
+Main :: () -> int {
+    Advance(0);
+    parent := Parent();
+    Advance(5);
+    yield
+    if (Count(false) != 0) { return 1; }
+    Advance(10);
+    yield
+    await parent
+    if (Count(false) != 1) { return 2; }
+    return 0;
+}
+Advance :: (now: f64) -> int { return TestTime(now); }
+Parent :: () -> int {
+    value := await Inner();
+    return value;
+}
+Inner :: () -> int {
+    await Delay(10)
+    yield
+    return Count(true);
+}
+Count :: (increment: bool) -> int {
+    count: retain int = 0;
+    if (increment) { count += 1; }
+    return count;
+}

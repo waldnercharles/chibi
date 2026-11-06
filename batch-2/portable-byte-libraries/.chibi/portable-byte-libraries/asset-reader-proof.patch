@@ -1,0 +1,139 @@
+diff --git a/test/fixtures/portable-byte-asset/Build.chibi b/test/fixtures/portable-byte-asset/Build.chibi
+new file mode 100644
+--- /dev/null
++++ b/test/fixtures/portable-byte-asset/Build.chibi
+@@ -0,0 +1,25 @@
++package portable_byte_asset
++
++import data "game:assets"
++import bytes "core:bytes"
++import strings "core:strings"
++import bits "core:math/bits"
++import fnv "core:hash/fnv"
++import adler32 "core:hash/adler32"
++import crc32 "core:hash/crc32"
++
++pub Build :: () -> u8[] {
++    buffer := bytes.FromString("A\u0000B");
++    retained := bytes.ToString(buffer);
++    buffer[0] = u8(90);
++    return data.Encode(data.Object([
++        data.Field.Named("size", data.Value.UInt(u64(strings.ByteLength(retained)))),
++        data.Field.Named("nul", data.Value.UInt(u64(strings.ByteAt(retained, 1)))),
++        data.Field.Named("retainedhead", data.Value.UInt(u64(strings.ByteAt(retained, 0)))),
++        data.Field.Named("mutatedhead", data.Value.UInt(u64(buffer[0]))),
++        data.Field.Named("bits", data.Value.UInt(u64(bits.CountOnes32(0xF0F0)))),
++        data.Field.Named("fnv", data.Value.UInt(u64(fnv.Fnv1a32(bytes.FromString("hello"))))),
++        data.Field.Named("adler", data.Value.UInt(u64(adler32.Sum(bytes.FromString("Wikipedia"))))),
++        data.Field.Named("crc", data.Value.UInt(u64(crc32.Ieee(bytes.FromString("123456789")))))
++    ]));
++}
+diff --git a/test/language/portable_asset_source.h.in b/test/language/portable_asset_source.h.in
+new file mode 100644
+--- /dev/null
++++ b/test/language/portable_asset_source.h.in
+@@ -0,0 +1,4 @@
++#ifndef CHIBI_TEST_PORTABLE_ASSET_SOURCE_H
++#define CHIBI_TEST_PORTABLE_ASSET_SOURCE_H
++static const char PORTABLE_ASSET_SOURCE[] = { @CHIBI_PORTABLE_ASSET_BYTES@ 0 };
++#endif
+diff --git a/test/language/asset_compiler_host.c b/test/language/asset_compiler_host.c
+--- a/test/language/asset_compiler_host.c
++++ b/test/language/asset_compiler_host.c
+@@ -3,6 +3,7 @@
+ #include "assets/prototype.h"
+ #include "assets/scene_document.h"
+ #include "execution/function.h"
++#include "portable_asset_source.h"
+ #include "support/array.h"
+ #include "support/asset_value.h"
+ #include "third_party/pico_headers/pico_unit.h"
+@@ -171,6 +172,45 @@
+         REQUIRE(!behavior_execution_scope_active());
+         av_doc_free(document);
+         document = NULL;
++    }
++    return true;
++}
++TEST_CASE(asset_source_public_byte_libraries_reach_owned_document)
++{
++    asset_compiler_options config = options();
++    asset_compiler_diagnostic error;
++    document = asset_source_read(
++        PORTABLE_ASSET_SOURCE,
++        "/project/portable-byte-asset/Build.chibi",
++        &config,
++        &error
++    );
++    if (!document) {
++        fprintf(
++            stderr,
++            "portable byte asset: %s:%d:%d %s\n",
++            error.source,
++            error.line,
++            error.column,
++            error.message
++        );
++    }
++    REQUIRE(document && !error.message[0]);
++    asset_source_release_thread();
++    REQUIRE(!behavior_execution_scope_active());
++    const av_value *root = av_doc_root(document);
++    REQUIRE(av_is_obj(root) && av_obj_size(root) == 8);
++    static const struct
++    {
++        const char *name;
++        uint64_t value;
++    } expected[] = { { "size", 3 },           { "nul", 0 },
++                     { "retainedhead", 65 },  { "mutatedhead", 90 },
++                     { "bits", 8 },           { "fnv", 0x4F9F2CAB },
++                     { "adler", 0x11E60398 }, { "crc", 0xCBF43926 } };
++    for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
++        const av_value *field = av_obj_get(root, expected[i].name);
++        REQUIRE(av_is_uint(field) && av_get_uint(field) == expected[i].value);
+     }
+     return true;
+ }
+@@ -488,6 +528,7 @@
+     pu_setup(NULL, cleanup);
+     RUN_TEST_CASE(asset_source_keeps_the_16_mib_source_bound);
+     RUN_TEST_CASE(asset_source_public_scene_build_and_reuse);
++    RUN_TEST_CASE(asset_source_public_byte_libraries_reach_owned_document);
+     RUN_TEST_CASE(asset_source_authored_validation_rejects_duplicate_field);
+     RUN_TEST_CASE(asset_source_malformed_build_reports_position);
+     RUN_TEST_CASE(asset_source_native_scene_values_own_their_storage);
+diff --git a/test/language/CMakeLists.txt b/test/language/CMakeLists.txt
+--- a/test/language/CMakeLists.txt
++++ b/test/language/CMakeLists.txt
+@@ -305,6 +305,12 @@
+         PROPERTIES INCLUDE_DIRECTORIES "${CHIBI_LANGUAGE_TEST_ROOT}/src")
+ endif()
+ if(TARGET Chibi::asset_compiler_host)
++    set(portable_asset_source "${CHIBI_LANGUAGE_TEST_ROOT}/test/fixtures/portable-byte-asset/Build.chibi")
++    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${portable_asset_source}")
++    file(READ "${portable_asset_source}" portable_asset_hex HEX)
++    string(REGEX REPLACE "(..)" "0x\\1," CHIBI_PORTABLE_ASSET_BYTES "${portable_asset_hex}")
++    configure_file(portable_asset_source.h.in
++        "${CMAKE_CURRENT_BINARY_DIR}/testing/include/portable_asset_source.h" @ONLY)
+     add_library(chibi_asset_compiler_consumer OBJECT asset_compiler_host.c)
+     target_include_directories(chibi_asset_compiler_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+     target_link_libraries(chibi_asset_compiler_consumer PRIVATE Chibi::asset_compiler_host Chibi::behavior_runtime
+diff --git a/tools/graph/engine/Targets.chibi b/tools/graph/engine/Targets.chibi
+--- a/tools/graph/engine/Targets.chibi
++++ b/tools/graph/engine/Targets.chibi
+@@ -3600,6 +3600,7 @@
+             "test/parallel.h=test/parallel.h",
+             "package_core_source.h=test/language/package_core_source.h.in",
+             "core_strings_tests_source.h=test/language/core_strings_tests_source.h.in",
++            "portable_asset_source.h=test/language/portable_asset_source.h.in",
+             "package_portable_source.h=test/language/package_portable_source.h.in",
+             "package_portable_consumer.h=test/language/package_portable_consumer.h.in",
+             "docs_markdown_source.h=test/language/docs_markdown_source.h.in",
+@@ -3658,6 +3659,7 @@
+     if (target == "chibi_language_testing") {
+         return [
+             "CHIBI_ASSET_PACKAGING_BYTES=bytes:tools/compiler/asset_packaging/Packaging.chibi",
++            "CHIBI_PORTABLE_ASSET_BYTES=bytes:test/fixtures/portable-byte-asset/Build.chibi",
+             "CHIBI_ASSET_GENERATOR_BYTES=bytes:tools/graph/asset_compiler/Generate.chibi",
+             "CHIBI_ANALYSIS_STATE_BYTES=bytes:tools/compiler/analysis_state/State.chibi",
+             "CHIBI_BOUNDED_COMPILE_BYTES=bytes:tools/compiler/bounded_compiler/Compile.chibi",

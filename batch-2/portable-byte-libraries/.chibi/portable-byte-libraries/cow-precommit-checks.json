@@ -1,0 +1,33 @@
+{
+  "source_head": "4800a2a9d5c83a0ff63666a0252bb922df9e534d",
+  "merge_head": "7c6ca2f5d2c0fd10b4577f2c319ab5680b66ad62",
+  "state": "resolved merge before integration commit",
+  "steps": [
+    {
+      "name": "language-package-portable",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-portable"
+      ],
+      "exit_code": 0,
+      "seconds": 1.697656000033021,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-cow-precommit-language-package-portable.log",
+      "log_sha256": "22d087e62faffaa6ff12b9c8747934455a9e95b59e8325909db8e65326d045bd"
+    },
+    {
+      "name": "language-package-portable-compiler",
+      "argv": [
+        "python3",
+        "tools/test_policy.py",
+        "tool",
+        "language-package-portable-compiler"
+      ],
+      "exit_code": 0,
+      "seconds": 54.6826450410299,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-cow-precommit-language-package-portable-compiler.log",
+      "log_sha256": "b4158e26157c9981110925e6c9a729f53ce71b2ed0223dc9394ad36e2b802db6"
+    }
+  ]
+}

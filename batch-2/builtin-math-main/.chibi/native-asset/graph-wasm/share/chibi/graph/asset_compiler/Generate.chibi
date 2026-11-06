@@ -1,0 +1,428 @@
+package asset_compiler_stage
+
+import files "graph:files"
+import os "core:os"
+import target "core:target"
+import strings "core:strings"
+
+// Writes `output` as a C file declaring the array `symbol` with the input's
+// bytes, sixteen to a row, and `symbol_size`. An output that already holds
+// exactly this text is left alone so nothing rebuilds from it; true when it was
+// written. The build host has it as a native; a native program writes the same
+// text itself.
+when target.Native == 1 {
+    Digit :: (nibble: int) -> u8 {
+        if (nibble < 10) {
+            return u8(48 + nibble);
+        }
+        return u8(87 + nibble);
+    }
+
+    // Appends the bytes of `text` to `out` in place.
+    Spell :: (out: u8[], text: string) {
+        for (index in 0..<text_byte_length(text)) {
+            out.append(u8(text_byte_at(text, index)));
+        }
+    }
+
+    WriteBlob :: (input: string, output: string, symbol: string) -> bool {
+        read := os.ReadBytes(input);
+        if (read.error != nil) {
+            return false;
+        }
+        out: u8[] = [];
+        Spell(out, format_text("#include <stddef.h>\n\nconst unsigned char {}[] = {\n    ", symbol));
+        for (index in 0..<length(read.data)) {
+            if (index > 0 && index % 16 == 0) {
+                out.append(10);
+                for (indent in 0..<4) {
+                    out.append(32);
+                }
+            }
+            out.append(48);
+            out.append(120);
+            out.append(Digit(int(read.data[index]) / 16));
+            out.append(Digit(int(read.data[index]) % 16));
+            out.append(44);
+            if (index + 1 < length(read.data) && (index + 1) % 16 != 0) {
+                out.append(32);
+            }
+        }
+        Spell(out, format_text("\n};\nconst size_t {}_size = sizeof {};\n", symbol, symbol));
+        before := os.ReadBytes(output);
+        if (before.error == nil && length(before.data) == length(out)) {
+            same := true;
+            for (index in 0..<length(out)) {
+                same = same && before.data[index] == out[index];
+            }
+            if (same) {
+                return false;
+            }
+        }
+        partial := format_text("{}.partial", output);
+        if (os.WriteBytes(partial, out) != nil || os.Rename(partial, output) != nil) {
+            return false;
+        }
+        return true;
+    }
+} else {
+    WriteBlob :: (input: string, output: string, symbol: string) -> bool {
+        return build.embed_file(input, output, symbol);
+    }
+}
+
+// Retain each fragment once per level, not every growing prefix.
+Join :: (parts: string[]) -> string {
+    while (length(parts) > 1) {
+        next: string[] = [];
+        index: int = 0;
+        while (index < length(parts)) {
+            if (index + 1 < length(parts)) {
+                next.append(format_text("{}{}", parts[index], parts[index + 1]));
+            } else {
+                next.append(parts[index]);
+            }
+            index += 2;
+        }
+        parts = next;
+    }
+    if (length(parts) == 0) {
+        return "";
+    }
+    return parts[0];
+}
+
+// A request quotes every source it carries, about 2 MB, so each byte costs
+// only integer tests; text between escapes is copied in runs.
+Quote :: (text: string) -> string {
+    parts := ["\""];
+    start: int = 0;
+    index: int = 0;
+    for (value in strings.Bytes(text)) {
+        if (value < 32 || value == 34 || value == 92) {
+            parts.append(strings.Slice(text, start, index - start));
+            parts.append(Escape(value));
+            start = index + 1;
+        }
+        index += 1;
+    }
+    parts.append(strings.Slice(text, start, index - start));
+    parts.append("\"");
+    return Join(parts);
+}
+
+// The JSON escape of a quote, a backslash or a control byte.
+Escape :: (value: int) -> string {
+    if (value == 34) {
+        return "\\\"";
+    }
+    if (value == 92) {
+        return "\\\\";
+    }
+    if (value == 10) {
+        return "\\n";
+    }
+    if (value == 13) {
+        return "\\r";
+    }
+    if (value == 9) {
+        return "\\t";
+    }
+    digits := "0123456789abcdef";
+    return Join(["\\u00", strings.Slice(digits, value / 16, 1), strings.Slice(digits, value % 16, 1)]);
+}
+
+Array :: (values: string[]) -> string {
+    parts: string[] = [];
+    for (value in values) {
+        parts.append(Quote(value));
+    }
+    return Join(["[", strings.Join(parts, ","), "]"]);
+}
+
+Sources :: (folder: string) -> string[] {
+    paths: string[] = [];
+    for (name in files.Names(folder)) {
+        path := Join([folder, "/", name]);
+        if (os.IsDirectory(path)) {
+            for (nested in Sources(path)) {
+                paths.append(Join([name, "/", nested]));
+            }
+        } else if (strings.HasSuffix(name, ".chibi")) {
+            paths.append(name);
+        }
+    }
+    return paths;
+}
+
+pub InventoryDirectories :: () -> string[] {
+    return ["tools/compiler/package_compiler", "tools/compiler/scalar_facts", "tools/compiler/asset_compiler",
+            "packages/core", "tools/graph/asset_compiler", "tools/compiler/math_types"];
+}
+
+pub Inventory :: (root: string) -> string {
+    entries: string[] = [];
+    for (directory in InventoryDirectories()) {
+        for (path in Sources(Join([root, "/", directory]))) {
+            entries.append(Join([directory, "/", path, "\n"]));
+        }
+    }
+    return Join(entries);
+}
+
+Read :: (root: string, paths: string[]) -> string[] {
+    sources: string[] = [];
+    for (path in paths) {
+        if (strings.HasPrefix(path, "/sdk/core/")) {
+            sources.append(files.Text(Join([root, "/packages/core/", strings.Slice(path, 10, strings.ByteLength(path))])));
+        } else {
+            sources.append(files.Text(Join([root, "/tools/compiler/", path])));
+        }
+    }
+    return sources;
+}
+
+Request :: (first: string, paths: string[], sources: string[], target: string) -> string {
+    ordered_paths := [first];
+    ordered_sources: string[] = [];
+    index: int = 0;
+    while (index < length(paths)) {
+        if (paths[index] == first) {
+            ordered_sources.append(sources[index]);
+        }
+        index += 1;
+    }
+    if (length(ordered_sources) != 1) {
+        return "";
+    }
+    index = 0;
+    while (index < length(paths)) {
+        if (paths[index] != first) {
+            ordered_paths.append(paths[index]);
+            ordered_sources.append(sources[index]);
+        }
+        index += 1;
+    }
+    target = strings.TrimSpace(target);
+    if (!strings.HasPrefix(target, "[") || !strings.HasSuffix(target, "]")) {
+        return "";
+    }
+    collections := "[\"/project\",[\"core\"],[\"/sdk/core\"],";
+    return Join([collections, Array(ordered_paths), ",", Array(ordered_sources),
+                 ",false,", strings.Slice(target, 1, strings.ByteLength(target) - 2), "]"]);
+}
+
+Invoke :: (host: string, artifact: string, callable: string, input: string, output: string, timeout: string) -> bool {
+    generated := os.Capture([host, "--artifact", artifact, "--entry", callable, "--input", input, "--backend", "sljit",
+                             "--budget", "10000000000", "--timeout-ms", timeout, "--output-bytes", output]);
+    if (generated.status != 0) {
+        os.Print(Join(["asset compiler generation failed: ", generated.stderr]));
+        if (callable == "0x140a9546d9e8c296") {
+            diagnosed := os.Capture([host, "--artifact", artifact, "--entry", "0x19dfb0cfc681eb4b", "--input", input,
+                                     "--backend", "sljit", "--budget", "10000000000", "--timeout-ms", timeout]);
+            os.Print(diagnosed.stdout);
+        }
+        return false;
+    }
+    return true;
+}
+
+// A compiled product depends on its request, the seed that compiles it and the
+// compiler host that runs the seed: the seed calls native functions in the host,
+// its parser included, and the target facts in the request do not identify
+// those implementations. The product is kept under the digest of the three in
+// `cache`, a directory shared by every checkout on the machine: a build whose
+// sources, seed and host did not change copies it instead of compiling the
+// compiler's sources again. An empty `cache` keeps nothing. The key is "" when
+// the host or the seed cannot be read, and no product is made or used then.
+pub Key :: (host: string, seed: string, request: string) -> string {
+    host_digest := files.Digest(host);
+    seed_digest := files.Digest(seed);
+    if (host_digest == "" || seed_digest == "") {
+        return "";
+    }
+    return Digest(Join([host_digest, "\n", seed_digest, "\n", request]));
+}
+
+// The SHA-256 of `text` as 64 lowercase hex digits. Every digest the generator
+// takes goes through here.
+Digest :: (text: string) -> string {
+    return os.HashText(text);
+}
+
+pub Product :: (host: string, seed: string, callable: string, request: string, key: string, output: string,
+            cache: string, timeout: string, inputs: string) -> bool {
+    if (key == "") {
+        os.Print("asset compiler: the compiler host or the seed cannot be read");
+        return false;
+    }
+    stored := Join([cache, "/", key]);
+    if (cache != "" && os.Exists(stored) && !os.Copy(stored, output)) {
+        Refresh(stored, Number(Stamp()));
+        return true;
+    }
+    if (os.WriteText(inputs, request) ||
+        !Invoke(host, seed, callable, inputs, Join([output, ".tmp"]), timeout)) {
+        return false;
+    }
+    // Publish whole: another checkout may be reading the cache.
+    if (cache != "") {
+        pending := Join([stored, ".new"]);
+        if (os.MakeDirectory(cache) || os.Copy(Join([output, ".tmp"]), pending) || os.Rename(pending, stored)) {
+            os.Print(Join(["asset compiler: caching product failed: ", key]));
+        }
+    }
+    return !os.Rename(Join([output, ".tmp"]), output);
+}
+
+// Whole seconds from the system clock, for the phase timings the log reports.
+Stamp :: () -> string {
+    clock := os.Capture(["date", "+%s"]);
+    return strings.TrimSpace(clock.stdout);
+}
+
+// Explicit filesystem snapshots and atomic products; source compilation and
+// resource generation execute ordinary Chibi in the prepared compiler host.
+// Reports are buffered until normal return/unwinding, not live flushed traces;
+// a killed or crashed host may not publish them.
+pub Generate :: (root: string, host: string, folder: string, target: string, compiler_timeout: string) -> bool {
+    os.Print("asset compiler: entered generator");
+    inventory := Inventory(root);
+    records: string[] = [];
+    stamps: string[] = [];
+    // Capture non-text snapshot inputs before any host invocation reads them.
+    for (path in ["tools/compiler/bootstrap/compiler.chibip", "tools/compiler/bootstrap/bootstrap.json",
+                  "tools/graph/asset_compiler/Generate.chibi", "tools/graph/asset_compiler/Cache.chibi", "tools/graph/files/Files.chibi", "tools/compiler/asset_compiler/CompilerSources.txt",
+                  "tools/toolchain/AssetCompiler.chibi"]) {
+        checksum := files.Digest(Join([root, "/", path]));
+        records.append(Join(["{\"path\":", Quote(path), ",\"sha256\":", Quote(checksum), "}"]));
+        stamps.append(Join([checksum, " ", path, "\n"]));
+    }
+    native_facts := Join([folder, "/native_target.json"]);
+    if (os.MakeDirectory(folder) || os.Run([host, "--target-json", native_facts]) != 0) {
+        return false;
+    }
+    native_target := strings.TrimSpace(files.Text(native_facts));
+    if (target == "") {
+        target = native_target;
+    }
+    paths: string[] = [];
+    for (path in strings.Lines(files.Text(Join([root, "/tools/compiler/asset_compiler/CompilerSources.txt"])))) {
+        if (path != "") {
+            paths.append(path);
+        }
+    }
+    for (directory in ["package_compiler"]) {
+        for (file in files.Names(Join([root, "/tools/compiler/", directory]))) {
+            path := Join([directory, "/", file]);
+            found := false;
+            for (item in paths) {
+                if (item == path) {
+                    found = true;
+                }
+            }
+            if (!found && strings.HasSuffix(file, ".chibi")) {
+                paths.append(path);
+            }
+        }
+    }
+    // Compiler implementation dependencies are explicit in CompilerSources.txt.
+    for (file in files.Names(Join([root, "/tools/compiler/asset_compiler"]))) {
+        if (strings.HasSuffix(file, ".chibi")) {
+            paths.append(Join(["asset_compiler/", file]));
+        }
+    }
+    sources := Read(root, paths);
+    inputs := Join([folder, "/input.json"]);
+    facade := Join([folder, "/native_facade.chibip"]);
+    artifact := Join([folder, "/asset_compiler.chibip"]);
+    // The checked seed compiles the facade, its own sources included, once:
+    // it only has to compile them, so no stage-one compiler is built first.
+    seed := Join([root, "/tools/compiler/bootstrap/compiler.chibip"]);
+    closure_entry := "0x140a9546d9e8c296"; // package_compiler.CompileClosure
+    cache := Location(os.Getenv("CHIBI_ASSET_COMPILER_CACHE"), os.Getenv("XDG_CACHE_HOME"), os.Getenv("HOME"), root);
+    os.Print("asset compiler: serialize facade request");
+    facade_request := Request("asset_compiler/Compile.chibi", paths, sources, native_target);
+    facade_key := Key(host, seed, facade_request);
+    kept := [facade_key];
+    os.Print(format_text("asset compiler: invoke facade compiler at {} ({} sources, {} bytes)", Stamp(), length(paths),
+                         strings.ByteLength(facade_request)));
+    if (!Product(host, seed, closure_entry, facade_request, facade_key, facade, cache, compiler_timeout, inputs)) {
+        return false;
+    }
+    os.Print(format_text("asset compiler: facade ready at {}", Stamp()));
+    if (target == native_target) {
+        if (os.Copy(facade, artifact)) {
+            return false;
+        }
+    } else {
+        os.Print("asset compiler: serialize target request");
+        target_request := Request("asset_compiler/Compile.chibi", paths, sources, target);
+        target_key := Key(host, seed, target_request);
+        kept.append(target_key);
+        os.Print("asset compiler: invoke target compiler");
+        if (!Product(host, seed, closure_entry, target_request, target_key, artifact, cache, compiler_timeout, inputs)) {
+            return false;
+        }
+    }
+    if (os.IsDirectory(cache)) {
+        Evict(cache, Budget, kept);
+    }
+    // The resource is the artifact's address and size; C never sees source text.
+    os.Print("asset compiler: write resource");
+    resource := Join([folder, "/asset_compiler_packaged.c"]);
+    text := Join(["#include \"authoring/asset_compiler_host.h\"\n#include \"asset_compiler_blob.inc\"\n",
+                  "const asset_compiler_options *asset_compiler_packaged_options() {\n",
+                  "static const asset_compiler_options options = {\n",
+                  ".compiler = asset_compiler_blob, .compiler_length = sizeof asset_compiler_blob\n};\n",
+                  "return &options;\n}\n"]);
+    if (os.WriteText(Join([resource, ".tmp"]), text) || os.Rename(Join([resource, ".tmp"]), resource)) {
+        return false;
+    }
+    index: int = 0;
+    while (index < length(paths)) {
+        path := paths[index];
+        disk := Join(["tools/compiler/", path]);
+        if (strings.HasPrefix(path, "/sdk/")) {
+            disk = Join(["packages/", strings.Slice(path, 5, strings.ByteLength(path))]);
+        }
+        digest := Digest(sources[index]);
+        stamps.append(Join([digest, " ", disk, "\n"]));
+        records.append(Join(["{\"path\":", Quote(disk), ",\"sha256\":", Quote(digest), "}"]));
+        index += 1;
+    }
+    manifest := Join(["{\"format\":1,\"artifact\":\"asset_compiler.chibip\",\"artifact_sha256\":",
+                      Quote(files.Digest(artifact)), ",\"resource_sha256\":",
+                      Quote(files.Digest(Join([folder, "/asset_compiler_packaged.c"]))),
+                      ",\"target\":", target, ",\"sources\":[", strings.Join(records, ","), "]}\n"]);
+    for (stamp in stamps) {
+        checksum := strings.Partition(stamp, " ").head;
+        path := strings.TrimSpace(strings.Partition(stamp, " ").tail);
+        if (files.Digest(Join([root, "/", path])) != checksum) {
+            os.Print(Join(["asset compiler source changed during generation: ", path]));
+            return false;
+        }
+    }
+    if (Inventory(root) != inventory) {
+        os.Print("asset compiler source inventory changed during generation");
+        return false;
+    }
+    if (os.WriteText(Join([folder, "/inventory.txt"]), inventory) ||
+        os.WriteText(Join([folder, "/inventory-directories.txt"]), Join([strings.Join(InventoryDirectories(), "\n"), "\n"])) ||
+        os.WriteText(Join([folder, "/sources.sha256"]), Join(stamps)) ||
+        os.WriteText(Join([folder, "/manifest.json"]), manifest) ||
+        os.WriteText(Join([folder, "/target.json"]), target)) {
+        return false;
+    }
+    os.Print("asset compiler: embed artifact");
+    blob := Join([folder, "/asset_compiler_blob.inc"]);
+    embedded := WriteBlob(artifact, blob, "asset_compiler_blob");
+    if (!os.Exists(blob)) {
+        return false;
+    }
+    if (os.Remove(inputs) || os.Remove(facade) || os.Remove(native_facts)) {
+        return false;
+    }
+    os.Print("asset compiler: generation complete");
+    return true;
+}

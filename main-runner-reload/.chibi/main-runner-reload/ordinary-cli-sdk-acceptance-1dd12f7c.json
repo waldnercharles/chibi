@@ -1,0 +1,169 @@
+{
+  "source": {
+    "dirty": false,
+    "revision": "1dd12f7c1bc569bfac085fef14f322d2fc54d901",
+    "snapshot_sha256": "3f6f2b5084dc64eea70291d1b5bc81939573eb36d2bef2f194e7bfeaf4d29cec"
+  },
+  "source_tree": "3bdc2f1bab1c7bd63e748bb79f70c00463330175",
+  "sdk_prefix": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk",
+  "package_build_id": "e1294e799f907fecdddb33874a3eba2c876711f5e3eaac61ef5e0a03597d1cc4",
+  "engine_build_id": "e16df301a651ecf5d6710907186aa52de8eccc80494f92419737d31f7ef1df5d",
+  "package_manifest_sha256": "35d5e1dbd527d706499223b8495d1a3a40e32dcce03331687dd0c7c321320018",
+  "installed_checks": [
+    {
+      "selector": "chibi-cli-installed",
+      "phase": "clean-1dd12f7c",
+      "returncode": 0,
+      "wall_seconds": 29.401,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-installed-ordinary-cli-clean-1dd12f7c.log",
+      "command": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+        "tool",
+        "chibi-cli-installed"
+      ],
+      "passed": 15,
+      "failed": 0,
+      "cases": 15,
+      "suites": 0,
+      "assertions": 213,
+      "runner_wall_seconds": 29.312
+    },
+    {
+      "selector": "chibi-cli-export",
+      "phase": "clean-1dd12f7c",
+      "returncode": 0,
+      "wall_seconds": 9.922,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/chibi-cli-export-ordinary-cli-clean-1dd12f7c.log",
+      "command": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/tools/test_policy.py",
+        "native",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/tools/test_tools",
+        "--chibi-cli-export",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/bin/chibi"
+      ],
+      "passed": 2,
+      "failed": 0,
+      "cases": 2,
+      "suites": 0,
+      "assertions": 25,
+      "runner_wall_seconds": 9.833
+    }
+  ],
+  "isolated_consumer": [
+    {
+      "phase": "clean-1dd12f7c",
+      "sdk_source": {
+        "dirty": false,
+        "revision": "1dd12f7c1bc569bfac085fef14f322d2fc54d901",
+        "snapshot_sha256": "3f6f2b5084dc64eea70291d1b5bc81939573eb36d2bef2f194e7bfeaf4d29cec"
+      },
+      "step": "configure",
+      "returncode": 0,
+      "wall_seconds": 0.472,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/installed-program-consumer-configure-1dd12f7c-clean-1dd12f7c.log",
+      "command": [
+        "cmake",
+        "-S",
+        "test/tools",
+        "-B",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-installed-consumer",
+        "-G",
+        "Ninja",
+        "-DCHIBI_TEST_PROGRAM_ONLY=ON",
+        "-DCMAKE_PREFIX_PATH=/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk",
+        "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang",
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
+      ]
+    },
+    {
+      "phase": "clean-1dd12f7c",
+      "sdk_source": {
+        "dirty": false,
+        "revision": "1dd12f7c1bc569bfac085fef14f322d2fc54d901",
+        "snapshot_sha256": "3f6f2b5084dc64eea70291d1b5bc81939573eb36d2bef2f194e7bfeaf4d29cec"
+      },
+      "step": "build",
+      "returncode": 0,
+      "wall_seconds": 1.525,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/installed-program-consumer-build-1dd12f7c-clean-1dd12f7c.log",
+      "command": [
+        "cmake",
+        "--build",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-installed-consumer",
+        "--parallel",
+        "8"
+      ]
+    },
+    {
+      "phase": "clean-1dd12f7c",
+      "sdk_source": {
+        "dirty": false,
+        "revision": "1dd12f7c1bc569bfac085fef14f322d2fc54d901",
+        "snapshot_sha256": "3f6f2b5084dc64eea70291d1b5bc81939573eb36d2bef2f194e7bfeaf4d29cec"
+      },
+      "step": "program-sdk",
+      "returncode": 0,
+      "wall_seconds": 0.539,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/installed-program-consumer-program-sdk-1dd12f7c-clean-1dd12f7c.log",
+      "command": [
+        "/opt/homebrew/opt/python@3.13/bin/python3.13",
+        "tools/test_policy.py",
+        "tool",
+        "program-sdk"
+      ],
+      "cases": 2,
+      "passed": 2,
+      "failed": 0,
+      "assertions": 17
+    },
+    {
+      "phase": "clean-1dd12f7c",
+      "step": "exported-header-isolation",
+      "sources": 2,
+      "include_flags": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/program-installed-consumer/testing/include",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/asset_values",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/authoring",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/behavior_runtime",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/capabilities",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/compiler",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/core_capabilities",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/ecs",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/events",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/execution",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/execution_contract",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/input_action",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/input_map",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/language",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/language_syntax",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/native_capabilities",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/program",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/prototype_document",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/reference_index",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/scene_document",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/scene_runtime",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/source_catalog",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/support",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/tasks",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/types",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk/include/chibi/vendor/tree_sitter/1"
+      ],
+      "passed": true
+    }
+  ],
+  "identity_smoke": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-identity-1dd12f7c.json",
+  "rendering": {
+    "assertions": "hidden320x180 two-frame captures before export and after archive relocation; source project and copied SDK removed",
+    "backend": null,
+    "device": null,
+    "reason": "successful fixture removes its child renderer logs; no backend/device inferred"
+  },
+  "unexecuted": [
+    "Windows runtime",
+    "Linux native LLVM runtime on this macOS host"
+  ],
+  "scope": "immutable clean1dd SDK acceptance; later source integration is a separate attribution"
+}

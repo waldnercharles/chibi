@@ -1,0 +1,183 @@
+package scalar_llvm
+
+import facts "project:scalar_facts"
+import native "project:llvm_native"
+
+// Promotion is a variable property. Repeated addresses share its original
+// cell and complete semantic identity, including negative i64 bit patterns.
+ManagedBoxes :: struct {
+    boxed: bool[];
+    tags: i64[];
+    records: int[];
+    error: string;
+}
+ManagedVariables :: (rows: facts.Row[], head: int, last: int) -> ManagedBoxes {
+    maximum := -1;
+    for (at in head + 1..<last) {
+        if (rows[at].kind != facts.ManagedAddressRow) { continue; }
+        value := rows[at].value;
+        if (value < 0 || value > last - head || rows[at].literal == 0) {
+            return {boxed: [], tags: [], records: [], error: "invalid managed variable identity"};
+        }
+        if (value > maximum) { maximum = value; }
+    }
+    if (maximum < 0) { return {boxed: [], tags: [], records: [], error: ""}; }
+    found: ManagedBoxes = {boxed: resize([false], maximum + 1),
+        tags: resize([i64(0)], maximum + 1), records: resize([int(0)], maximum + 1), error: ""};
+    for (at in head + 1..<last) {
+        row := rows[at];
+        if (row.kind != facts.ManagedAddressRow) { continue; }
+        if (found.boxed[row.value] && (found.tags[row.value] != row.literal || found.records[row.value] != row.count)) {
+            found.error = "managed variable has conflicting pointee identities";
+            return found;
+        }
+        found.boxed[row.value] = true;
+        found.tags[row.value] = row.literal;
+        found.records[row.value] = row.count;
+    }
+    return found;
+}
+ManagedVariable :: (boxed: bool[], variable: int) -> bool {
+    return variable >= 0 && variable < length(boxed) && boxed[variable];
+}
+// The optional tag and its plain payload can be copied as bytes. This
+// closed shape excludes backing owners and collector edges from cell payloads.
+ManagedOptional :: (rows: facts.Row[], records: int[], type: int) -> bool {
+    payload := OptionalPayloadType(rows, records, type);
+    if (Scalar(payload)) { return true; }
+    if (payload < facts.RecordType || payload >= facts.ArrayType || payload - facts.RecordType >= length(records)) { return false; }
+    head := records[payload - facts.RecordType];
+    if (rows[head].kind != facts.RecordRow || After(rows, head) < 0) { return false; }
+    for (field in head + 1..<head + 1 + rows[head].count) {
+        if (rows[field].kind != facts.MemberRow || !Scalar(rows[field].type) || rows[field].literal == i64(facts.CharNominal)) { return false; }
+    }
+    return true;
+}
+ManagedValue :: (rows: facts.Row[], records: int[], type: int, tag: i64) -> bool {
+    if (Scalar(type) || type == facts.PointerType) { return tag != 0; }
+    if (type >= facts.ArrayType && type < facts.MapType &&
+        (Scalar(type - facts.ArrayType) || type - facts.ArrayType == facts.StringType)) { return tag != 0; }
+    if (type < facts.RecordType || type >= facts.ArrayType || type - facts.RecordType >= length(records)) { return false; }
+    head := records[type - facts.RecordType];
+    return (rows[head].kind == facts.RecordRow || ManagedOptional(rows, records, type)) &&
+           rows[head].literal != 0 && rows[head].literal == tag;
+}
+
+ManagedPins :: struct {
+    before: native.Instruction[];
+    after: native.Instruction[];
+    types: int[];
+    next: int;
+}
+// A canonical owner keeps its stable place registered until its lifetime
+// ends. Descriptor replacement changes that same place without a root walk.
+ManagedOwnerLocal :: (type: int, place: int, live: bool) -> native.Instruction[] {
+    if (type != native.ArrayType + native.PointerType) { return []; }
+    mode := native.ManagedTrackLocal;
+    if (!live) { mode = native.ManagedClearLocal; }
+    return [Op(native.ManagedTrack, type, 0, place, 0, mode)];
+}
+// Expression temporaries need roots only during this poll. Existing call
+// pins already protect them at collecting calls before the statement boundary.
+// The list is bounded by this statement's operands, not all live locals.
+ManagedPollCode :: (slot: int, pc: int, fresh: int[], slots: int[], first_slot: int) -> native.Instruction[] {
+    output: native.Instruction[] = [];
+    array := native.ArrayType + native.PointerType;
+    for (value in fresh) {
+        if (slots[first_slot + value] == array) {
+            output.append(Op(native.ManagedTrack, array, 0, value, 0, native.ManagedTrackSlot));
+        }
+    }
+    at := pc + length(output);
+    output.extend([Op(native.ManagedPending, 1, slot, 0, 0, 0),
+        Op(native.Branch, 0, 0, slot, 0, at + 3), Op(native.Jump, 0, 0, 0, 0, at + 4),
+        Op(native.ManagedPoll, 0, 0, 0, 0, 0)]);
+    for (value in fresh) {
+        if (slots[first_slot + value] == array) {
+            output.append(Op(native.ManagedTrack, array, 0, value, 0, native.ManagedClearSlot));
+        }
+    }
+    return output;
+}
+// Pin current owners, never borrowed array Read slots. A canonical root uses
+// the descriptor's stable address, so replacement through a scoped call is
+// observed. Fresh owners are stable slots until this collecting call returns.
+ManagedPinOwners :: (vars: int[], owned: int[], places: int[], locals: int[], first_local: int,
+                     fresh: int[], slots: int[], first_slot: int, frames: Frame[], next_slot: int, next_root: int, frame_owners: bool, records: native.Record[], layout: native.ValueLayout) -> ManagedPins {
+    output: ManagedPins = {before: [], after: [], types: [], next: next_root};
+    roots: int[] = [];
+    modes: int[] = [];
+    array := native.ArrayType + native.PointerType;
+    reference := native.RefType + array;
+    for (index in 0..<length(vars)) {
+        if (owned[index] != array) { continue; }
+        place := places[vars[index]];
+        held := locals[first_local + place];
+        assert(held == array || held == reference);
+        address := next_slot + length(output.types);
+        output.types.append(reference);
+        op := native.LocalAddress;
+        if (held == reference) { op = native.Local; }
+        output.before.append(Op(op, reference, address, place, 0, 0));
+        roots.append(address);
+        modes.append(1);
+    }
+    // A traversal owns its historical container after the source variable
+    // changes. Its hidden frame place must remain a root until loop exit.
+    for (frame in frames) {
+        if (frame.held < 0 || frame.held_type != array) { continue; }
+        address := next_slot + length(output.types);
+        output.types.append(reference);
+        output.before.append(Op(native.LocalAddress, reference, address, frame.held, 0, 0));
+        roots.append(address);
+        modes.append(1);
+    }
+    for (slot in fresh) {
+        if (slots[first_slot + slot] == array) { roots.append(slot); modes.append(0); }
+    }
+    for (index in 0..<length(roots)) {
+        type := array;
+        if (modes[index] == 1) { type = reference; }
+        output.before.append(Op(native.ManagedPin, type, 0, roots[index], next_root + index, modes[index]));
+    }
+    index := length(roots) - 1;
+    while (index >= 0) {
+        output.after.append(Op(native.ManagedUnpin, 0, 0, 0, next_root + index, 0));
+        index -= 1;
+    }
+    output.next += length(roots);
+    if (frame_owners) {
+        owners := TaskOwnerPins(vars, owned, places, frames, fresh, slots, first_slot, records, layout);
+        output.before.extend(owners.before);
+        owners.after.extend(output.after);
+        output.after = owners.after;
+    }
+    return output;
+}
+
+TaskOwnerPins :: (vars: int[], owned: int[], places: int[], frames: Frame[], fresh: int[], slots: int[],
+                  first_slot: int, records: native.Record[], layout: native.ValueLayout) -> ManagedPins {
+    output: ManagedPins = {before: [], after: [], types: [], next: 0};
+    for (index in 0..<length(vars)) {
+        type := owned[index];
+        if (!native.TaskOwnedType(records, layout, type)) { continue; }
+        output.before.append(Op(native.OwnerPin, type, 0, places[vars[index]], 0, 1));
+    }
+    for (frame in frames) {
+        if (frame.held < 0 || !native.TaskOwnedType(records, layout, frame.held_type)) { continue; }
+        output.before.append(Op(native.OwnerPin, frame.held_type, 0, frame.held, 0, 1));
+    }
+    for (slot in fresh) {
+        type := slots[first_slot + slot];
+        if (native.TaskOwnedType(records, layout, type)) {
+            output.before.append(Op(native.OwnerPin, type, 0, slot, 0, 0));
+        }
+    }
+    index := length(output.before) - 1;
+    while (index >= 0) {
+        item := output.before[index];
+        output.after.append(Op(native.OwnerUnpin, 0, 0, item.left, 0, item.target));
+        index -= 1;
+    }
+    return output;
+}

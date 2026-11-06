@@ -1,0 +1,19 @@
+{
+  "commit": "696719e1f9aae8346a7c29af31b990685ec81490",
+  "tree": "3741bfab1d2f4e27256bffa56bb9f02b1c227d48",
+  "base": "7c6ca2f5d2c0fd10b4577f2c319ab5680b66ad62",
+  "branch": "codex/compositional-records-integrate-694-20261028",
+  "source_patch_sha256": "ef28ef1fdef613b7fdbbc9c2449b52520d242fbb29c26ea444d43b4e5a685dcf",
+  "checked_artifacts_unchanged": true,
+  "diagnostic_exceptions": [
+    "missing-field-initializers",
+    "string-concatenation",
+    "unused-but-set-global"
+  ],
+  "binaries": {
+    "build-records-language/test_language": "42ea0a10da30dbb097e2a393d8c8a45a4749dd12b834b6d196acb12810bc2e77",
+    "build-records-language-asan/test_language": "65603ec46b66be96296e3ed0cc4ababdfa44118083dbe4421419b914d45d4afa",
+    "build-records-tools/test_tools": "dccd1097779a0ad8627d0c3ba87844b998bfe2c9010345a00f3b551bf599bffd",
+    "build-records-tools-asan/test_tools": "09aa7b312e4933da2cb33b03b6003c8cd794a2e772bb6db01952b18e70446ba9"
+  }
+}

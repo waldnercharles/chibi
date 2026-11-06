@@ -1,0 +1,15 @@
+{
+  "command": [
+    "cmake",
+    "--build",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/canonical-build",
+    "--target",
+    "test_language",
+    "--parallel",
+    "4"
+  ],
+  "status": 1,
+  "wall_seconds": 28.96395045891404,
+  "initializer_warning_exception": false,
+  "fixture_compile_commands": "strict-fixture-commands.json"
+}

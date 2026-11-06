@@ -1,0 +1,8 @@
+package facts
+
+import lib "project:foreign_library/lib"
+
+@test
+Calls :: () {
+    assert(lib.Magnitude(i32(-4)) == i32(4), "magnitude")
+}

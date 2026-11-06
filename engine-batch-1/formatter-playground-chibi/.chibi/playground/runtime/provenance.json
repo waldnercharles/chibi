@@ -1,0 +1,7 @@
+{
+  "purpose": "Local formatter playground recovery; not a published SDK",
+  "source_revision": "03541717a866b6a2515d0865f56242e791828c32",
+  "borrowed_sdk": "/Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/build-release",
+  "launcher_sha256": "b4e676a81e08eb79309b11c6db65b717db25073386a07c730596f2d5dfa9257a",
+  "compatibility": "Playground host explicitly imports all six packages for older launchers"
+}

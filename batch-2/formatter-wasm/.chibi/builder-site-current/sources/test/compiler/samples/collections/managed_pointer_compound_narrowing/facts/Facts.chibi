@@ -1,0 +1,10 @@
+package facts
+Run :: () -> number {
+    x: number = 1.0;
+    d: f64 = 2.0;
+    p := &x;
+    p^ += d;
+    return x;
+}
+
+// error: 6:5: compound assignment needs number operands of its type

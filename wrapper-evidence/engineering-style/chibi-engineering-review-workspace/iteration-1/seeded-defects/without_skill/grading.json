@@ -1,0 +1,126 @@
+{
+  "expectations": [
+    {
+      "text": "The review flags assert(matches++ <= array->count) in pin_array_count_type as a bug because the assert has a side effect that changes the returned count in debug builds.",
+      "passed": true,
+      "evidence": "'B5. The C `assert` has a side effect, so debug and release builds return different counts' / 'With assertions on, `matches` is incremented, so every debug or sanitizer build returns the true count plus one.'"
+    },
+    {
+      "text": "The review flags the 'if (!array) return 0;' guard in pin_array_count_type as a silent guard on a state only a bug produces, recommending an assert or removal rather than keeping it.",
+      "passed": true,
+      "evidence": "'**The NULL check is defensive, against fail-fast** (`array.c:124-126`). CLAUDE.md: \"avoid defensive NULL checks that mask defects\" ... Use `assert(array && type_name)` and remove the early return.'"
+    },
+    {
+      "text": "The review flags the per-element xstrdup/free inside the pin_array_count_type loop as needless allocation.",
+      "passed": true,
+      "evidence": "'**It allocates on the heap once per element for nothing** (`array.c:130-134`). `xstrdup` followed by `free` around a read-only `strcmp` is wasted allocator traffic. Compare `value.type_name` directly.'"
+    },
+    {
+      "text": "The review flags comparing forest[index].kind against the string \"call_expression\" inside the per-node loop in CollectCalls.",
+      "passed": false,
+      "evidence": "The only mention is 'Use the package's helper for kind checks. Write `Is(forest, index, \"call_expression\")` rather than `forest[index].kind == ...` (`Tree.chibi:51`), as the rest of the package does.' This is a consistency point. `Is` does the same `forest[node].kind == kind` string comparison for every node, so the review doesn't say the per-node string comparison is a problem."
+    },
+    {
+      "text": "The review flags LineOf/ColumnOf rescanning the text from the start for every call site (quadratic work) or notes that SnapshotNode already stores row and column, so line/column are duplicated or derivable.",
+      "passed": true,
+      "evidence": "'M5. `LineOf` and `ColumnOf` recompute data the node already has, at O(sites × bytes)' / '`SnapshotNode` already carries `row` and `column` (`Snapshot.chibi:37-38`)'."
+    },
+    {
+      "text": "The review flags CountCallsInForest as a wrapper that only forwards to CollectCalls and should be deleted.",
+      "passed": true,
+      "evidence": "'**`CountCallsInForest` is a pure alias** (`CallCensus.chibi:39-42`). It forwards to `CollectCalls` under a misleading name ... Delete it.'"
+    },
+    {
+      "text": "The review flags the is_dead bool on CallSite (filtered by LiveSites, set by MarkDead) as list membership encoded in a flag, or flags MarkDead's sites-by-removed nested loop.",
+      "passed": true,
+      "evidence": "It passes on the MarkDead clause: 'Cost is O(sites × removed). Use `removed.contains(site.callee)`, or build a `[string: bool]` set once.' It doesn't make the list-membership point about is_dead ('`is_dead` is mutable state with no use case yet')."
+    },
+    {
+      "text": "The review flags that the commit adds no test (no @test and no C test case) for the new behavior.",
+      "passed": true,
+      "evidence": "'M7. No tests ... \"Add or update an authored `@test` for every expressible behavior change, or a pico_unit case for a native boundary\". There are none.'"
+    },
+    {
+      "text": "The review flags that the new procedures or the new C function have no callers in the repository (speculative or dead code).",
+      "passed": true,
+      "evidence": "'M1. Dead code in both languages: nothing calls any of it' / '`git grep` finds no reference to `pin_array_count_type`, `CallCensus`, `CollectCalls`, `CountCallsInForest`, `MarkDead` or `LiveSites` outside their own definitions.'"
+    },
+    {
+      "text": "Every reported finding gives concrete evidence (a count, measurement, named consumer/caller, or failing input) rather than only restating a rule.",
+      "passed": false,
+      "evidence": "Most findings carry concrete evidence, but several only restate a rule or a preference. M5: 'Minor point: `10` should be a named newline constant. The compiler often writes bytes as numbers, but a name costs nothing here.' Minor: 'The struct initializer is noisier than it needs to be ... the zero values are the defaults.' (no citation). Commit hygiene: 'The commit skipped the pre-commit checklist. CLAUDE.md asks for a whole-diff review before committing' (a rule plus an inference it can't check). M3 is mostly CLAUDE.md quotes ('Counting array elements by type is trivial in Chibi')."
+    },
+    {
+      "text": "The review does not recommend adding defensive NULL checks, fallback values or extra validation for internal invariants.",
+      "passed": true,
+      "evidence": "No defensive additions. It recommends 'Use `assert(array && type_name)` and remove the early return' and criticises the NULL-to-\"\" fallback. It suggests reusing `Text`, which returns \"\" for -1, but that existing helper replaces equivalent code; it isn't a new fallback."
+    },
+    {
+      "text": "The review does not recommend splitting any function purely because of its length.",
+      "passed": true,
+      "evidence": "No function-split recommendation. The only split concerns the commit: 'Split them, or, per M1 and M3, drop the C half.'"
+    }
+  ],
+  "summary": {
+    "passed": 10,
+    "failed": 2,
+    "total": 12,
+    "pass_rate": 0.83
+  },
+  "timing": {
+    "total_tokens": 128256,
+    "duration_ms": 462932,
+    "total_duration_seconds": 462.9
+  },
+  "claims": [
+    {
+      "claim": "test/tools/compiler_bootstrap.c:268 asserts the 'does not list it' message",
+      "type": "factual",
+      "verified": true,
+      "evidence": "test/tools/compiler_bootstrap.c:268"
+    },
+    {
+      "claim": "intrinsics.c:2453/2467/2545/2563 build PIN_I32 values with type_name unset while :580 sets \"int\"",
+      "type": "factual",
+      "verified": true,
+      "evidence": "src/execution/intrinsics.c at those lines"
+    },
+    {
+      "claim": "strings.Concat doesn't exist; Concatenate at Strings.chibi:551",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Strings.chibi:551"
+    },
+    {
+      "claim": "Is helper at Tree.chibi:51; Text slices end - start and returns \"\" for -1",
+      "type": "factual",
+      "verified": true,
+      "evidence": "package_compiler/Tree.chibi"
+    },
+    {
+      "claim": "This is the first `..<` range loop in tools/compiler/* sources",
+      "type": "factual",
+      "verified": false,
+      "evidence": "llvm_native/Emit.chibi:285 already has `for (index in 0..<count)`. Only the bare header form `for index in 0..<n` is new."
+    }
+  ],
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "assertion": "The review flags comparing forest[index].kind against the string \"call_expression\" inside the per-node loop in CollectCalls.",
+        "reason": "Ambiguous about why the comparison is a defect. SnapshotNode.kind is declared `kind: string` (source_snapshot/Snapshot.chibi), and the package's own `Is` helper (package_compiler/Tree.chibi:51) does the same `forest[node].kind == kind` comparison. with_skill noticed the per-node string comparison and declined it with accurate reasoning. without_skill flagged the line only to say 'use Is()', which keeps the same string comparison. A lenient grader would pass without_skill for a style point and fail with_skill for a deliberate, correct decline. Reword it to name the expected point, for example 'flags the per-node string comparison as cost and proposes an interned or enum kind', or drop it if declining because the forest stores kinds as strings is acceptable."
+      },
+      {
+        "assertion": "The review does not recommend splitting any function purely because of its length.",
+        "reason": "Nearly always passes on this diff. No function in the commit is longer than about 20 lines, so neither review was tempted to split one. A11 (defensive checks) is also weak. To make these discriminate, seed a long but cohesive function, or a spot where a defensive check looks attractive."
+      },
+      {
+        "reason": "Only one assertion separates the runs. 10 of 12 have the same result for both runs (A1-3 and A5-12 pass for both, A4 fails for both), and only A10 (concrete evidence) differs. The baseline review finds every seeded defect."
+      },
+      {
+        "reason": "No assertion covers the most severe true defects, and both reviews found them. (a) CallCensus.chibi isn't listed in asset_compiler/CompilerSources.txt: it lists 18 package_compiler files and the folder has 19. compiler_bootstrap.c packages_complete therefore rejects the package with 'is in the package of a compiler source but ... does not list it', which breaks compiler load and recovery. (b) `strings.Concat` doesn't exist; only `Concatenate(a: string[])` at Strings.chibi:551. (c) CalleeName passes `end` where `strings.Slice(value, start, count)` takes a count, so every callee text is wrong. (d) CollectCalls iterates the whole multi-document forest but reads offsets from one document's text. (e) `counts` keys carry a 'call:' prefix that the sites don't have, and MarkDead never updates `counts`. (f) For packed arrays, pin_array_count_type's answer is always count or 0. Found only by without_skill: element `type_name` is set inconsistently for scalars (src/execution/intrinsics.c:580 sets \"int\"; :2453, :2467, :2545 and :2563 leave it NULL), so `type_name` is an unreliable discriminator. Whether these were seeded or accidental, add assertions for at least (a) and (c)."
+      }
+    ],
+    "overall": "The seeded defects are too easy: the baseline catches all of them. Only A10 separates the runs. The highest-severity bugs in the commit (unlisted compiler source, missing strings.Concat, Slice count/end mixup, cross-document offsets) have no assertion, and A4 needs a clearer statement of the expected point."
+  }
+}

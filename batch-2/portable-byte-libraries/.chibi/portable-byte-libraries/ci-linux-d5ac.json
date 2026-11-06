@@ -1,0 +1,14 @@
+{
+  "head": "d5ac3310ee9d34615cb210bd5bd77e9685ffb7ec",
+  "job": {
+    "id": 122846297770,
+    "head_sha": "d5ac3310ee9d34615cb210bd5bd77e9685ffb7ec",
+    "name": "Engine build and native tests",
+    "status": "completed",
+    "conclusion": "failure"
+  },
+  "run": 40696984674,
+  "logTruncated": true,
+  "source": "Codex read_pull_request_check_diagnostics job log",
+  "summary": "Native-build suite 0/10: scalar emitter did not compile, compiler entry returned no bytes. Published-docs 3/58 and CLI22/279 pass."
+}

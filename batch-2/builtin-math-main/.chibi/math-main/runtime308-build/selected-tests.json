@@ -1,0 +1,320 @@
+{
+  "base": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+  "environment": {
+    "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build",
+    "CHIBI_COMPILER_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-compiler-host",
+    "CHIBI_BUILD_HOST": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-build-host"
+  },
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation",
+  "binaries": {
+    "test_language": {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/test_language",
+      "bytes": 15479088,
+      "sha256": "ea8c848adee80c6284d70d25570e7c3580af12caef58bfa0f026a81e9ff34835"
+    },
+    "chibi-build-host": {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-build-host",
+      "bytes": 1969120,
+      "sha256": "670096ae8a352164f3571815deba00bddaaa2b4764118012b76361587032043e"
+    },
+    "chibi-compiler-host": {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-compiler-host",
+      "bytes": 1350592,
+      "sha256": "813f3162e4ea1facf0854832c528a085f88f4f83e61be438afc85c52f0b89b67"
+    }
+  },
+  "target_comparison_passed": true,
+  "requested_selectors": [
+    "--semantic",
+    "--program",
+    "--native-calls",
+    "--record-values",
+    "--record-compatibility",
+    "--asset-packaging-chibi",
+    "--package-tests",
+    "--package-compiler-chibi-types",
+    "--record-prepared",
+    "--borrow",
+    "--component-write",
+    "--component-write-layout",
+    "--package-compiler-chibi-sharing"
+  ],
+  "runs": [
+    {
+      "selector": "--semantic",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-semantic"
+      ],
+      "status": 0,
+      "wall_seconds": 0.8796294999774545,
+      "log": "semantic.log",
+      "log_sha256": "ae55c4a3458b9afb524e35ad3bfa4fdb526696ac218768f1d6f86e6dd5855669",
+      "summary": {
+        "passed": 80,
+        "failed": 0,
+        "total": 80,
+        "suites": 0,
+        "assertions": 1113
+      },
+      "policy_wall_seconds": 0.796
+    },
+    {
+      "selector": "--program",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-program"
+      ],
+      "status": 0,
+      "wall_seconds": 0.8015246249269694,
+      "log": "program.log",
+      "log_sha256": "dc8a8f92e817ed7aceb6b2b5cd61655306eda7fb65ec0dcddc9a94c3f0abbf1c",
+      "summary": {
+        "passed": 209,
+        "failed": 0,
+        "total": 209,
+        "suites": 0,
+        "assertions": 14083
+      },
+      "policy_wall_seconds": 0.734
+    },
+    {
+      "selector": "--native-calls",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-native-calls"
+      ],
+      "status": 0,
+      "wall_seconds": 0.3204406250733882,
+      "log": "native-calls.log",
+      "log_sha256": "c16c0236e6a1a7980e96cdda58605cf827197696e8242c852239f789292bb2dc",
+      "summary": {
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "suites": 1,
+        "assertions": 758
+      },
+      "policy_wall_seconds": 0.252
+    },
+    {
+      "selector": "--record-values",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-record-values"
+      ],
+      "status": 0,
+      "wall_seconds": 0.1815085830166936,
+      "log": "record-values.log",
+      "log_sha256": "c62edc4394386c28b59ac3212cf12fb8182d344b24100faf5c86937c4c7f12b2",
+      "summary": {
+        "passed": 15,
+        "failed": 0,
+        "total": 15,
+        "suites": 0,
+        "assertions": 318
+      },
+      "policy_wall_seconds": 0.118
+    },
+    {
+      "selector": "--record-compatibility",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-record-compatibility"
+      ],
+      "status": 0,
+      "wall_seconds": 0.18827929208055139,
+      "log": "record-compatibility.log",
+      "log_sha256": "5efa2d443cafc532700be00cd9c0d1f8b7e8ad5fd5e2709346a8e664fab71da9",
+      "summary": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "suites": 0,
+        "assertions": 1480
+      },
+      "policy_wall_seconds": 0.124
+    },
+    {
+      "selector": "--asset-packaging-chibi",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-asset-packaging-chibi"
+      ],
+      "status": 0,
+      "wall_seconds": 4.816190249985084,
+      "log": "asset-packaging-chibi.log",
+      "log_sha256": "7f424efa9914ca00c5530e35a9915d2de89e2731592d70a5e883a075a765a2f3",
+      "summary": {
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "suites": 0,
+        "assertions": 24922
+      },
+      "policy_wall_seconds": 4.753
+    },
+    {
+      "selector": "--package-tests",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-package-tests"
+      ],
+      "status": 0,
+      "wall_seconds": 0.45449124998413026,
+      "log": "package-tests.log",
+      "log_sha256": "da9e801c7f6b43e20ba121ead85600be86731d90d67c6dd4c1c8b536b62c3f4b",
+      "summary": {
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "suites": 0,
+        "assertions": 338
+      },
+      "policy_wall_seconds": 0.398
+    },
+    {
+      "selector": "--package-compiler-chibi-types",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-types"
+      ],
+      "status": 0,
+      "wall_seconds": 82.21992800012231,
+      "log": "package-compiler-chibi-types.log",
+      "log_sha256": "7d78726b844bee355ad5b92f66cd083aae44a6556c3f178a59dce1f60cd13421",
+      "summary": {
+        "passed": 3,
+        "failed": 0,
+        "total": 3,
+        "suites": 0,
+        "assertions": 19958
+      },
+      "policy_wall_seconds": 82.137
+    },
+    {
+      "selector": "--record-prepared",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-record-prepared"
+      ],
+      "status": 0,
+      "wall_seconds": 0.8728132080286741,
+      "log": "record-prepared.log",
+      "log_sha256": "f3ff5abf6a78cc0cf9891b8afd3cc7dc1fc2a522c44a604c83253a64f72e5bae",
+      "summary": {
+        "passed": 16,
+        "failed": 0,
+        "total": 16,
+        "suites": 0,
+        "assertions": 6089
+      },
+      "policy_wall_seconds": 0.678
+    },
+    {
+      "selector": "--borrow",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-borrow"
+      ],
+      "status": 0,
+      "wall_seconds": 0.38163129216991365,
+      "log": "borrow.log",
+      "log_sha256": "5e613669e87d35b0ab3bed882adca4521b009ea7cba4d1a39713257f6089164c",
+      "summary": {
+        "passed": 31,
+        "failed": 0,
+        "total": 31,
+        "suites": 0,
+        "assertions": 900
+      },
+      "policy_wall_seconds": 0.258
+    },
+    {
+      "selector": "--component-write",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-component-write"
+      ],
+      "status": 0,
+      "wall_seconds": 0.3574520410038531,
+      "log": "component-write.log",
+      "log_sha256": "8f81b43b9ad65db953364a4cb947ef7885de354cbca097f00dc84cbd12c19d1d",
+      "summary": {
+        "passed": 15,
+        "failed": 0,
+        "total": 15,
+        "suites": 0,
+        "assertions": 3344
+      },
+      "policy_wall_seconds": 0.241
+    },
+    {
+      "selector": "--component-write-layout",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-component-write-layout"
+      ],
+      "status": 0,
+      "wall_seconds": 0.340217666933313,
+      "log": "component-write-layout.log",
+      "log_sha256": "2a7ce5b2f8dd471378f576e271aedbb21bbe51439f3c12234bd316a4ad72ad72",
+      "summary": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "suites": 0,
+        "assertions": 14
+      },
+      "policy_wall_seconds": 0.248
+    },
+    {
+      "selector": "--package-compiler-chibi-sharing",
+      "command": [
+        "python3",
+        "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-validation/tools/test_policy.py",
+        "tool",
+        "language-package-compiler-chibi-sharing"
+      ],
+      "status": 0,
+      "wall_seconds": 33.35782749997452,
+      "log": "package-compiler-chibi-sharing.log",
+      "log_sha256": "d30044232071e2af704d24a08d136e476c4528f4390e407a3e8baabd6d6eab38",
+      "summary": {
+        "passed": 1,
+        "failed": 0,
+        "total": 1,
+        "suites": 0,
+        "assertions": 193
+      },
+      "policy_wall_seconds": 33.238
+    }
+  ],
+  "source_files_unchanged": true,
+  "binaries_unchanged": true,
+  "not_run": []
+}

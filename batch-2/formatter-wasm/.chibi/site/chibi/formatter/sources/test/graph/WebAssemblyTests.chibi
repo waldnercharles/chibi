@@ -1,0 +1,30 @@
+package graph_webassembly_tests
+
+import engine "graph:engine"
+import json "core:encoding/json"
+import strings "core:strings"
+
+pub Run :: () -> int {
+    products := engine.WebAssemblyProducts();
+    assert(length(products) == 1, "one explicit browser SDK component");
+    for (product in products) {
+        assert(!engine.Selected([], product), "a default desktop build does not require Emscripten");
+        assert(!engine.Selected(["--target", "chibi"], product), "native compiler builds do not select browser tools");
+        assert(engine.Selected(["--target", product], product), "the explicit browser target is selected");
+        assert(!engine.NativeProducts().contains(product), "cross-target archives are not desktop executables");
+    }
+    plan := engine.WebAssemblyCommands("/bootstrap compiler", "/native LLVM", "/Emscripten/emcc", "/Wasm LLVM", "/source", "/build output");
+    commands := json.JsonItems(plan);
+    assert(length(commands) == 3, "the dry plan bootstraps the current compiler, builder, then archive");
+    bootstrap := json.JsonItems(json.JsonGet(commands[0], "arguments"));
+    assert(json.JsonText(bootstrap[0]) == "/bootstrap compiler", "the verified bootstrap argv stays intact");
+    assert(strings.Contains(commands[0], "--package") && strings.Contains(commands[0], "native_driver"),
+           "the pinned compiler uses its supported low-level package interface");
+    assert(!strings.Contains(plan, "compiler.chibip") && !strings.Contains(plan, "chibi-build-host"),
+           "the browser component has no host or bytecode preparation");
+    built := json.JsonItems(json.JsonGet(commands[2], "arguments"));
+    assert(length(built) == 6 && json.JsonText(built[2]) == json.JsonText(json.JsonGet(commands[0], "output")),
+           "the authored builder receives the newly bootstrapped compiler");
+    assert(json.JsonText(built[5]) == engine.WebAssemblyDirectory("/build output"), "the archive directory keeps spaces");
+    return 0;
+}

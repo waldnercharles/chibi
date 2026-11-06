@@ -1,0 +1,11 @@
+package source_directives
+
+import strings "core:strings"
+
+// Call only for a parsed comment token, never arbitrary source or string
+// contents. Suffix text after a directive is allowed for an author's reason.
+pub Apply :: (comment: string, verbatim: bool) -> bool {
+    if (strings.HasPrefix(comment, "// chibi fmt: off")) { return true; }
+    if (strings.HasPrefix(comment, "// chibi fmt: on")) { return false; }
+    return verbatim;
+}

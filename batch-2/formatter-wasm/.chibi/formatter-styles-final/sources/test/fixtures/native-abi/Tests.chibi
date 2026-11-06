@@ -1,0 +1,16 @@
+package native_abi_checks
+
+@test
+TargetsAreExplicit :: () {
+    assert(TargetChecks() == 0, "exact destination triples and pointer widths");
+}
+
+@test
+OtherTargetsAreRejected :: () {
+    assert(RejectedTargetChecks() == 0, "unsupported targets must not inherit an admitted ABI");
+}
+
+@test
+OnlyScalarStoragesHaveScalarTypes :: () {
+    assert(ScalarTypeChecks() == 0, "only bool, the integer types, float and double have an internal LLVM type");
+}

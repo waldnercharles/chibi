@@ -1,0 +1,18 @@
+{
+  "eval_name": "seeded-defects",
+  "prompt": "Do a picky engineering review of the latest commit (HEAD) in the Chibi checkout at /Users/cwaldner/Personal/chibi/.worktrees/review-eval/chibi. It adds a call-site census in Chibi and a typed element count in C. Read only, don't change anything. Save the review as review.md.",
+  "assertions": [
+    "The review states a minimum-work versus actual-work estimate for the change with concrete numbers (for example call sites or nodes multiplied by bytes scanned).",
+    "The review flags LineOf/ColumnOf rescanning the text from the start for every call site, gives a quantified cost (a count or operation estimate), and recommends using the row/column SnapshotNode already stores.",
+    "The review flags the per-element xstrdup/free in pin_array_count_type as needless allocation and recommends comparing in place.",
+    "The review flags the per-site strings.Concat(\"call:\", callee) key building (allocation per site and/or the pointless prefix) as waste or a design defect.",
+    "The review flags CallSite's derivable or flag fields (offset/line/column copies or the is_dead list-membership bool) as a representation problem.",
+    "The review flags CountCallsInForest as a layer that only forwards and should be deleted.",
+    "The review sketches a concrete target shape for the census (for example sites as node indices, or derived counts) instead of only listing defects.",
+    "The review addresses comparing forest[index].kind against the string \"call_expression\", either as a finding or explicitly left alone with a stated reason about the forest's string-kind representation.",
+    "Architecture and performance findings come before correctness or bug findings in the review's ordering, or bugs are kept in a clearly separate secondary section.",
+    "Every performance finding states the work removed or its scale (a count, an estimate or a measurement).",
+    "The review does not recommend SIMD, threading or micro-optimizations (unrolling, branch hints) for this code.",
+    "The review does not recommend splitting functions for length or adding defensive NULL checks."
+  ]
+}

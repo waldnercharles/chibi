@@ -1,0 +1,14 @@
+package facts
+
+// grouped signed floating literals
+@test
+Calls :: () {
+    a1_0: f64 = 2;
+    r1: f64 = Scale(a1_0);
+    e1: f64 = 2.0;
+    assert(r1 == e1, "Scale call 1");
+    a2_0: number = 4;
+    r2: number = Half(a2_0);
+    e2: number = -2.0;
+    assert(r2 == e2, "Half call 2");
+}

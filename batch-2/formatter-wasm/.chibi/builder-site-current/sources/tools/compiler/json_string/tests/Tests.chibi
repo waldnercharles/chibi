@@ -1,0 +1,195 @@
+package json_string_tests
+
+import bytes "core:bytes"
+import json "project:json_string"
+import strings "core:strings"
+
+// Each case is a literal and the bytes it decodes to. Metadata decoding is
+// strict about Unicode; value decoding keeps every raw byte.
+Case :: struct {
+    name: string;
+    literal: string;
+    expected: int[];
+}
+
+Raw :: (data: int[]) -> string {
+    out: u8[] = [];
+    for byte in data {
+        out.append(u8(byte));
+    }
+    return bytes.ToString(out);
+}
+
+Decoded :: (literal: string, strict: bool) -> json.Decoded {
+    if (strict) {
+        return json.Metadata(literal);
+    }
+    return json.Value(literal);
+}
+
+Same :: (left: int[], right: int[]) -> bool {
+    if (length(left) != length(right)) {
+        return false;
+    }
+    for index in 0..<length(left) {
+        if (left[index] != right[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The name of the first case a decoder gets wrong, or "". A case is accepted
+// when both decoders return its bytes and length.
+Accepted :: (cases: Case[]) -> string {
+    for item in cases {
+        for strict in [true, false] {
+            decoded := Decoded(item.literal, strict);
+            if (!decoded.valid || !Same(strings.Bytes(decoded.value), item.expected) ||
+                decoded.byte_length != length(item.expected)) {
+                return item.name;
+            }
+        }
+    }
+    return "";
+}
+
+// The name of the first case either decoder accepts, or "". A rejection is
+// invalid with empty text and zero length.
+Rejected :: (cases: Case[]) -> string {
+    for item in cases {
+        for strict in [true, false] {
+            decoded := Decoded(item.literal, strict);
+            if (decoded.valid || decoded.value != "" || decoded.byte_length != 0) {
+                return item.name;
+            }
+        }
+    }
+    return "";
+}
+
+C :: (name: string, literal: string, expected: int[]) -> Case {
+    return {name: name, literal: literal, expected: expected};
+}
+
+@test
+PlainTextAndWhitespace :: () {
+    assert(Accepted([C("text", "\"abc\"", [97, 98, 99]),
+             C("empty", "\"\"", []),
+             C("space", "\"a b\"", [97, 32, 98]),
+             C("padded", " \t\n\r\"x\" \n", [120]),
+             C("raw utf8", "\"é€😀\"", [195, 169, 226, 130, 172, 240, 159, 152, 128]),
+             C("raw 7f", Raw([34, 127, 34]), [127])]) == "");
+}
+
+@test
+SingleCharacterEscapes :: () {
+    assert(Accepted([C("quote", "\"\\\"\"", [34]),
+             C("backslash", "\"\\\\\"", [92]),
+             C("slash", "\"\\/\"", [47]),
+             C("controls", "\"\\b\\f\\n\\r\\t\"", [8, 12, 10, 13, 9]),
+             C("mixed", "\"a\\nb\"", [97, 10, 98])]) == "");
+}
+
+@test
+UnicodeEscapes :: () {
+    assert(Accepted([C("ascii", "\"\\u0041\"", [65]),
+             C("nul", "\"\\u0000\"", [0]),
+             C("two bytes", "\"\\u00e9\"", [195, 169]),
+             C("upper hex", "\"\\u00E9\"", [195, 169]),
+             C("three bytes", "\"\\u20AC\"", [226, 130, 172]),
+             C("boundary 7f", "\"\\u007f\"", [127]),
+             C("boundary 80", "\"\\u0080\"", [194, 128]),
+             C("boundary 7ff", "\"\\u07ff\"", [223, 191]),
+             C("boundary 800", "\"\\u0800\"", [224, 160, 128]),
+             C("before surrogates", "\"\\ud7ff\"", [237, 159, 191]),
+             C("after surrogates", "\"\\ue000\"", [238, 128, 128]),
+             C("pair", "\"\\ud83d\\ude00\"", [240, 159, 152, 128]),
+             C("lowest pair", "\"\\ud800\\udc00\"", [240, 144, 128, 128]),
+             C("highest pair", "\"\\udbff\\udfff\"", [244, 143, 191, 191]),
+             C("after pair", "\"\\ud83d\\ude00x\"", [240, 159, 152, 128, 120])]) == "");
+}
+
+@test
+NonStringsAndTrailingTextAreRejected :: () {
+    assert(Rejected([C("empty literal", "", []),
+             C("blank", "  ", []),
+             C("bare", "abc", []),
+             C("number", "12", []),
+             C("single quotes", "'abc'", []),
+             C("unclosed", "\"abc", []),
+             C("lone quote", "\"", []),
+             C("trailing text", "\"abc\"x", []),
+             C("two strings", "\"a\" \"b\"", []),
+             C("trailing nul", Raw([34, 97, 34, 0]), []),
+             C("bom", Raw([239, 187, 191, 34, 97, 34]), []),
+             C("vertical tab padding", Raw([11, 34, 97, 34]), []),
+             C("form feed padding", Raw([12, 34, 97, 34]), []),
+             C("trailing vertical tab", Raw([34, 97, 34, 11]), [])]) == "");
+}
+
+@test
+BadEscapesAreRejected :: () {
+    assert(Rejected([C("unknown", "\"\\q\"", []),
+             C("single quote escape", "\"\\'\"", []),
+             C("hex escape", "\"\\x41\"", []),
+             C("octal escape", "\"\\0\"", []),
+             C("upper b", "\"\\B\"", []),
+             C("dangling backslash", "\"a\\", []),
+             C("escaped closing quote", "\"a\\\"", []),
+             C("short unicode", "\"\\u12\"", []),
+             C("short unicode at end", "\"\\u123", []),
+             C("bad digit", "\"\\u12G4\"", []),
+             C("lone high", "\"\\ud800\"", []),
+             C("high then text", "\"\\ud800x\"", []),
+             C("high then escape", "\"\\ud800\\u0041\"", []),
+             C("high then high", "\"\\ud800\\ud800\"", []),
+             C("lone low", "\"\\udc00\"", []),
+             C("low then high", "\"\\udc00\\ud800\"", []),
+             C("high then short", "\"\\ud800\\u12\"", [])]) == "");
+}
+
+@test
+RawControlBytesAndBadUtf8AreMetadataErrors :: () {
+    bad := [C("newline", Raw([34, 10, 34]), [10]),
+            C("nul", Raw([34, 0, 34]), [0]),
+            C("tab", Raw([34, 9, 34]), [9]),
+            C("lone continuation", Raw([34, 128, 34]), [128]),
+            C("ff", Raw([34, 255, 34]), [255]),
+            C("overlong two", Raw([34, 192, 128, 34]), [192, 128]),
+            C("overlong three", Raw([34, 224, 128, 128, 34]), [224, 128, 128]),
+            C("surrogate", Raw([34, 237, 160, 128, 34]), [237, 160, 128]),
+            C("truncated three", Raw([34, 226, 130, 34]), [226, 130]),
+            C("above range", Raw([34, 244, 144, 128, 128, 34]), [244, 144, 128, 128]),
+            C("five byte lead", Raw([34, 245, 128, 128, 128, 34]), [245, 128, 128, 128])];
+    // The metadata decoder rejects each; the value decoder keeps its bytes.
+    for item in bad {
+        strict := Decoded(item.literal, true);
+        assert(!strict.valid && strict.value == "" && strict.byte_length == 0);
+    }
+    for item in bad {
+        value := Decoded(item.literal, false);
+        assert(value.valid && Same(strings.Bytes(value.value), item.expected) && value.byte_length == length(item.expected));
+    }
+    // An unclosed literal is rejected either way.
+    assert(!Decoded(Raw([34, 195]), true).valid && !Decoded(Raw([34, 195]), false).valid);
+}
+
+@test
+WellFormedUtf8ThroughTheStrictPath :: () {
+    assert(Accepted([C("e0 lower bound", Raw([34, 224, 160, 128, 34]), [224, 160, 128]),
+             C("ed upper bound", Raw([34, 237, 159, 191, 34]), [237, 159, 191]),
+             C("f0 lower bound", Raw([34, 240, 144, 128, 128, 34]), [240, 144, 128, 128]),
+             C("f4 upper bound", Raw([34, 244, 143, 191, 191, 34]), [244, 143, 191, 191]),
+             C("c2 lower bound", Raw([34, 194, 128, 34]), [194, 128])]) == "");
+}
+
+@test
+LongLiteralsDecodeInOnePass :: () {
+    body := strings.Repeat("ab\\n\\u00e9\\ud83d\\ude00", 2000);
+    literal := strings.Concatenate(["\"", body, "\""]);
+    decoded := json.Metadata(literal);
+    assert(decoded.valid);
+    assert(decoded.byte_length == 2000 * (2 + 1 + 2 + 4));
+    assert(json.Value(literal).value == decoded.value);
+}

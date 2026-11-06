@@ -1,0 +1,43 @@
+package clock
+
+import time "core:time"
+
+// Why a clock read or comparison failed. A host that omits the clock grant
+// reports Denied; a platform without a monotonic clock reports Unavailable;
+// a failed or invalid sample reports Failed with the platform's error code.
+pub Denied: int : 1;
+pub Unavailable: int : 2;
+pub Failed: int : 3;
+pub DomainMismatch: int : 4;
+
+@error
+pub ClockError :: struct {
+    kind: int;
+    code: int;
+}
+
+// The host's monotonic clock. On failure the instant is zero and the error
+// says why. Instants carry the grant's process-local domain.
+pub Now :: () -> (instant: time.Instant, error: ClockError?) {
+    sample := Sample();
+    empty: time.Instant = {nanoseconds: 0, domain: 0};
+    if (sample.status != 0) {
+        failed: ClockError = {kind: sample.status, code: sample.platform_error};
+        return (empty, failed);
+    }
+    now: time.Instant = {nanoseconds: sample.nanoseconds, domain: sample.domain};
+    return (now, nil);
+}
+
+// The time from earlier to later, negative when later precedes earlier.
+// Instants from different clock domains are not comparable and report
+// DomainMismatch with a zero duration.
+pub Between :: (earlier: time.Instant, later: time.Instant) -> (duration: time.Duration, error: ClockError?) {
+    zero: time.Duration = {nanoseconds: 0};
+    if (earlier.domain != later.domain) {
+        mismatch: ClockError = {kind: DomainMismatch, code: 0};
+        return (zero, mismatch);
+    }
+    elapsed: time.Duration = {nanoseconds: later.nanoseconds - earlier.nanoseconds};
+    return (elapsed, nil);
+}

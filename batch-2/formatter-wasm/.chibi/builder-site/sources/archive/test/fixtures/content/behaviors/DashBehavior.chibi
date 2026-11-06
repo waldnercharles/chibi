@@ -1,0 +1,127 @@
+DashBehavior :: behavior {
+    import_component_write_1 :: (import_arg_0: number, import_arg_1: entity = self) -> (Value: Dash) {
+        if import_arg_1 == 0 {
+            import_arg_1 = self
+        }
+        import_arg_1.Dash.remaining = import_arg_0
+        return import_arg_1.Dash
+    }
+
+    Just_Started := false
+    // The last frame step, for the input handler and timers.
+    Step: number = 0
+    Struck_Entities: entity[] = []
+    on Dash :: () {
+        if Step >= self.Dash.cooldown_remaining {
+            if 0.0 >= self.Dash.remaining {
+                await Start_Dash()
+            }
+        }
+    }
+    on Tick :: (dt: number s) {
+        Step = dt
+        await Advance_Dash_Timers()
+        if 0.0 < self.Dash.remaining {
+            await Drive_Dash()
+        }
+    }
+    on Contact_Begin :: (Other: entity) {
+        await Strike_Target(Other)
+    }
+    Capture_Dash_Direction :: () {
+        if abs(break_vec2(self.Input.move).x) + abs(break_vec2(self.Input.move).y) >= 0.0001 {
+            self.Dash.direction = vec2_norm(self.Input.move)
+            return
+        } else {
+            self.Dash.direction = vec2_norm(self.Aim.direction)
+            return
+        }
+    }
+    Drive_Dash :: () {
+        self.Velocity = self.Dash.direction * self.Dash.speed
+        self.Orientation = DirectionMath.Direction_Orientation(break_vec2(self.Dash.direction).x, break_vec2(self.Dash.direction).y)
+        return
+    }
+    Restore_Movement :: () {
+        if self.Input {
+            self.Velocity = MovementActions.Movement_Velocity(self.Input.move, self.Movement)
+            return
+        } else {
+            self.Velocity = {
+                x: 0.0,
+                y: 0.0
+            }
+            return
+        }
+    }
+    Advance_Dash :: () {
+        action set_gamedash_remaining = import_component_write_1(max(self.Dash.remaining - Step, 0.0))
+        set_gamedash_remaining()
+        after set_gamedash_remaining {
+            if 0.0 < set_gamedash_remaining.Value.remaining {
+                return
+            } else {
+                await Restore_Movement()
+                return
+            }
+        }
+    }
+    Advance_Dash_Timers :: () {
+        if Just_Started {
+            Just_Started = false
+            return
+        } else {
+            self.Dash.cooldown_remaining = max(self.Dash.cooldown_remaining - Step, 0.0)
+            if 0.0 < self.Dash.remaining {
+                await Advance_Dash()
+                return
+            } else {
+                return
+            }
+        }
+    }
+    Strike_Target :: (Other: entity = 0) {
+        if 0.0 < self.Dash.remaining {
+            if Other.Health {
+                if Other.Collider {
+                    if has_any_flags(Other.Collider.category, 2) {
+                        if contains(Struck_Entities, Other) {
+                            return
+                        } else {
+                            Struck_Entities = append(Struck_Entities, Other)
+                            await emit Other.Damage(self.Dash.damage, self)
+                            return
+                        }
+                    } else {
+                        return
+                    }
+                } else {
+                    return
+                }
+            } else {
+                return
+            }
+        } else {
+            return
+        }
+    }
+    Strike_Current_Contacts :: () {
+        for (foreach_2 in get_contact_entities(self, 2)) {
+            await Strike_Target(foreach_2)
+        }
+        return
+    }
+    Start_Dash :: () {
+        if self.Health.current >= 1 {
+            await Capture_Dash_Direction()
+            self.Dash.remaining = self.Dash.duration
+            self.Dash.cooldown_remaining = self.Dash.cooldown
+            Just_Started = true
+            Struck_Entities = []
+            await Strike_Current_Contacts()
+            return
+        } else {
+            return
+        }
+    }
+}

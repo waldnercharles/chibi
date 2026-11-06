@@ -1,0 +1,4 @@
+package facts
+Answer :: () -> int { return missing; }
+
+// error: 2:30: Unknown name 'missing'

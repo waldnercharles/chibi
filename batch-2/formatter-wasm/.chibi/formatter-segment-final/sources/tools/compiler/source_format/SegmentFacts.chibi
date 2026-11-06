@@ -1,0 +1,638 @@
+package source_format
+
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+
+// Control and return statements retain the Other category and have a
+// separate additional-code tag. Category/RHS IDs are in SegmentSimilarity.
+SegmentNoAdditional: int : 0;
+SegmentReturn: int : 1;
+SegmentControl: int : 2;
+SegmentExit: int : 3;
+SegmentDefinition: int : 4;
+SegmentLabel: int : 5;
+
+SegmentVariableBinding: int : 1;
+SegmentNamespaceBinding: int : 2;
+SegmentCallableBinding: int : 3;
+SegmentTypeBinding: int : 4;
+
+// All public-to-this-package handles are one-based; zero means absent.
+// Node indices and token indices remain zero-based, with -1 for absence.
+SegmentBinding :: struct {
+    name: int;
+    name_id: int;
+    scope: int;
+    kind: int;
+    type_node: int;
+    declaration: int;
+    alias: int;
+    address_alias: bool;
+}
+
+SegmentSequence :: struct {
+    node: int;
+    first: int;
+    count: int;
+    owner_kind: int;
+    is_function: bool;
+}
+
+SegmentUnit :: struct {
+    node: int;
+    end_node: int;
+    parent: int;
+    sequence: int;
+    first: int;
+    last: int;
+    size: int;
+    category: int;
+    additional: int;
+    target: int;
+    receiver: int;
+    rhs_category: int;
+    rhs_function: int;
+    rhs_receiver: int;
+    call_node: int;
+    type_node: int;
+    name: int;
+    type_name: int;
+    refs_first: int;
+    refs_count: int;
+    defs_first: int;
+    defs_count: int;
+}
+
+SegmentOccurrence :: struct {
+    node: int;
+    owner: int;
+    read: bool;
+    written: bool;
+}
+
+// Repeated references are retained as occurrences. A phase that needs a set
+// can use a binding-indexed stamp array, without sorting or truncating names.
+// A control unit owns its header; each nested body has its own unit sequence.
+SegmentFacts :: struct {
+    sequences: SegmentSequence[];
+    units: SegmentUnit[];
+    bindings: SegmentBinding[];
+    refs: int[];
+    defs: int[];
+    node_bindings: int[];
+    name_ids: int[];
+    owners: int[];
+    occurrences: SegmentOccurrence[];
+    occurrence_first: int[];
+    occurrence_count: int[];
+}
+
+SegmentName :: struct {
+    node: int;
+    start: int;
+    end: int;
+}
+
+SegmentChild :: (rows: diag.Node[], fields: int[], node: int, field: int) -> int {
+    if (node < 0) { return -1; }
+    return ChildByField(rows, fields, node, field);
+}
+
+SegmentNameOrder :: (bytes: int[], left: SegmentName, right: SegmentName) -> int {
+    size := left.end - left.start;
+    other := right.end - right.start;
+    if (size > other) { size = other; }
+    for (offset in 0..<size) {
+        a := bytes[left.start + offset];
+        b := bytes[right.start + offset];
+        if (a < b) { return -1; }
+        if (a > b) { return 1; }
+    }
+    if (left.end - left.start < right.end - right.start) { return -1; }
+    if (left.end - left.start > right.end - right.start) { return 1; }
+    return 0;
+}
+
+// Intern source spans once. The merge buffers are flat invocation arrays;
+// comparing a name reads bytes without allocating a substring per token.
+SegmentNames :: (bytes: int[], rows: diag.Node[], fields: int[]) -> int[] {
+    names: SegmentName[] = [];
+    for (node in 0..<length(rows)) {
+        if (rows[node].kind == diag.Identifier) {
+            names.append({node: node, start: rows[node].start, end: rows[node].end});
+        } else if (rows[node].kind == diag.ImportDeclaration || rows[node].kind == diag.ForeignImportDeclaration) {
+            if (SegmentChild(rows, fields, node, diag.FieldAlias) >= 0) { continue; }
+            path := SegmentChild(rows, fields, node, diag.FieldPath);
+            if (path < 0) { continue; }
+            start := rows[path].start + 1;
+            end := rows[path].end - 1;
+            for (at in start..<end) {
+                if (bytes[at] == 58 || bytes[at] == 47) { start = at + 1; }
+            }
+            names.append({node: node, start: start, end: end});
+        }
+    }
+    scratch := names;
+    width: int = 1;
+    while (width < length(names)) {
+        first: int = 0;
+        while (first < length(names)) {
+            middle := first + width;
+            final := first + width * 2;
+            if (middle > length(names)) { middle = length(names); }
+            if (final > length(names)) { final = length(names); }
+            left := first;
+            right := middle;
+            for (at in first..<final) {
+                if (right >= final || (left < middle && SegmentNameOrder(bytes, names[left], names[right]) <= 0)) {
+                    scratch[at] = names[left];
+                    left += 1;
+                } else {
+                    scratch[at] = names[right];
+                    right += 1;
+                }
+            }
+            first = final;
+        }
+        swap := names;
+        names = scratch;
+        scratch = swap;
+        width *= 2;
+    }
+    ids := resize([int(0)], length(rows));
+    id: int = 0;
+    for (at in 0..<length(names)) {
+        if (at == 0 || SegmentNameOrder(bytes, names[at - 1], names[at]) != 0) { id += 1; }
+        ids[names[at].node] = id;
+    }
+    return ids;
+}
+
+SegmentScope :: (kind: int) -> bool {
+    return kind == diag.SourceFile || kind == diag.FunctionDeclaration || kind == diag.MacroDeclaration ||
+           kind == diag.LambdaExpression || kind == diag.RecordDeclaration || kind == diag.UnionDeclaration ||
+           kind == diag.Block || kind == diag.CallableBody || kind == diag.ForStatement ||
+           kind == diag.SwitchArm || kind == diag.IfStatement || kind == diag.WhileStatement ||
+           kind == diag.Library || kind == diag.DeclarationBody;
+}
+
+SegmentStatement :: (kind: int) -> bool {
+    return kind == diag.LocalDeclaration || kind == diag.ConstantDeclaration || kind == diag.StateDeclaration ||
+           kind == diag.Assignment || kind == diag.ExpressionStatement || kind == diag.ReturnStatement ||
+           kind == diag.IfStatement || kind == diag.WhileStatement || kind == diag.ForStatement ||
+           kind == diag.SwitchStatement || kind == diag.BreakStatement || kind == diag.ContinueStatement ||
+           kind == diag.CancelStatement || kind == diag.DeleteStatement || kind == diag.YieldStatement ||
+           kind == diag.SequenceStatement || kind == diag.GotoStatement || kind == diag.LabelStatement ||
+           kind == diag.FunctionDeclaration || kind == diag.RecordDeclaration || kind == diag.UnionDeclaration ||
+           kind == diag.MacroDeclaration || kind == diag.ActionDeclaration || kind == diag.EventDeclaration;
+}
+
+SegmentList :: (kind: int) -> bool {
+    return kind == diag.Block || kind == diag.CallableBody;
+}
+
+// Wrapper/root and storage-root summaries are computed bottom-up once.
+// Storage roots follow the base of member/index expressions and a chained
+// method's receiver. They never follow a call argument or a bare function.
+SegmentRoots :: (rows: diag.Node[], fields: int[]) -> (values: int[], storage: int[]) {
+    values := resize([int(-1)], length(rows));
+    storage := resize([int(-1)], length(rows));
+    at := length(rows) - 1;
+    while (at >= 0) {
+        kind := rows[at].kind;
+        values[at] = at;
+        storage[at] = -1;
+        if (kind == diag.Identifier) { storage[at] = at; }
+        if (kind == diag.ParenthesizedExpression) {
+            value := SegmentChild(rows, fields, at, diag.FieldExpression);
+            if (value >= 0) { values[at] = values[value]; storage[at] = storage[value]; }
+        } else if (kind == diag.MemberExpression || kind == diag.IndexExpression) {
+            object := SegmentChild(rows, fields, at, diag.FieldObject);
+            if (object >= 0) { storage[at] = storage[object]; }
+        } else if (kind == diag.CallExpression) {
+            function := SegmentChild(rows, fields, at, diag.FieldFunction);
+            if (function >= 0) {
+                function = values[function];
+                if (rows[function].kind == diag.MemberExpression || rows[function].kind == diag.OptionalMemberExpression) {
+                    storage[at] = storage[function];
+                }
+            }
+        } else if (kind == diag.AddressExpression || kind == diag.DereferenceExpression ||
+                   kind == diag.OptionalMemberExpression || kind == diag.ForceUnwrapExpression) {
+            operand := SegmentChild(rows, fields, at, diag.FieldOperand);
+            if (operand >= 0) { storage[at] = storage[operand]; }
+        } else if (kind == diag.AwaitExpression) {
+            value := SegmentChild(rows, fields, at, diag.FieldValue);
+            if (value >= 0) { values[at] = values[value]; }
+        }
+        at -= 1;
+    }
+    return (values, storage);
+}
+
+SegmentDeclarationKind :: (kind: int) -> int {
+    if (kind == diag.FunctionDeclaration || kind == diag.MacroDeclaration || kind == diag.ForeignFunction) {
+        return SegmentCallableBinding;
+    }
+    if (kind == diag.RecordDeclaration || kind == diag.UnionDeclaration) { return SegmentTypeBinding; }
+    if (kind == diag.LocalDeclaration || kind == diag.ConstantDeclaration || kind == diag.StateDeclaration ||
+        kind == diag.Parameter || kind == diag.ActionDeclaration || kind == diag.EventDeclaration ||
+        kind == diag.ForStatement) { return SegmentVariableBinding; }
+    return 0;
+}
+
+SegmentLiteralKind :: (kind: int) -> bool {
+    return kind == diag.Number || kind == diag.String || kind == diag.Character || kind == diag.Boolean ||
+           kind == diag.Nil || kind == diag.ArrayExpression || kind == diag.StructExpression || kind == diag.MapExpression;
+}
+
+SegmentAdditional :: (kind: int) -> int {
+    if (kind == diag.ReturnStatement) { return SegmentReturn; }
+    if (kind == diag.IfStatement || kind == diag.WhileStatement || kind == diag.ForStatement ||
+        kind == diag.SwitchStatement || kind == diag.SequenceStatement) { return SegmentControl; }
+    if (kind == diag.BreakStatement || kind == diag.ContinueStatement || kind == diag.GotoStatement ||
+        kind == diag.CancelStatement || kind == diag.DeleteStatement || kind == diag.YieldStatement) { return SegmentExit; }
+    if (kind == diag.FunctionDeclaration || kind == diag.RecordDeclaration || kind == diag.UnionDeclaration ||
+        kind == diag.MacroDeclaration || kind == diag.ActionDeclaration || kind == diag.EventDeclaration) { return SegmentDefinition; }
+    if (kind == diag.LabelStatement) { return SegmentLabel; }
+    return SegmentNoAdditional;
+}
+
+// This pass reads the parser's preorder rows. It does O(rows log rows + refs)
+// work and uses flat invocation tables. A normal file should take milliseconds;
+// its names, scopes and statement lists have no fixed cardinality limit.
+SegmentSummarize :: (bytes: int[], rows: diag.Node[], fields: int[], tokens: Token[]) -> SegmentFacts {
+    count := length(rows);
+    names := SegmentNames(bytes, rows, fields);
+    roots := SegmentRoots(rows, fields);
+    values := roots.values;
+    storage := roots.storage;
+    end_nodes := resize([int(0)], count);
+    scopes := resize([int(0)], count);
+    patterns := resize([int(-1)], count);
+    controls := resize([int(-1)], count);
+    first_names := resize([int(0)], count);
+    declaration_nodes := resize([int(0)], count);
+    node_bindings := resize([int(0)], count);
+    excluded := resize([false], count);
+    for (node in 0..<count) {
+        end_nodes[node] = node;
+        patterns[node] = -1;
+        controls[node] = -1;
+        parent := rows[node].parent;
+        if (parent >= 0) {
+            scopes[node] = scopes[parent]; excluded[node] = excluded[parent];
+            patterns[node] = patterns[parent]; controls[node] = controls[parent];
+        }
+        if (rows[node].kind == diag.IsExpression) { patterns[node] = node; }
+        if (rows[node].kind == diag.IfStatement || rows[node].kind == diag.WhileStatement) { controls[node] = node; }
+        if (rows[node].kind == diag.Identifier) { first_names[node] = node + 1; }
+        if (SegmentScope(rows[node].kind)) { scopes[node] = node + 1; }
+        if (fields[node] == diag.FieldType || rows[node].kind == diag.Type || rows[node].kind == diag.TypeName ||
+            rows[node].kind == diag.Attribute || rows[node].kind == diag.ArgumentName ||
+            rows[node].kind == diag.PackageHeader) { excluded[node] = true; }
+    }
+    at := count - 1;
+    while (at >= 0) {
+        parent := rows[at].parent;
+        if (parent >= 0) {
+            if (end_nodes[at] > end_nodes[parent]) { end_nodes[parent] = end_nodes[at]; }
+            if (first_names[at] > 0 && (first_names[parent] == 0 || first_names[at] < first_names[parent])) {
+                first_names[parent] = first_names[at];
+            }
+        }
+        at -= 1;
+    }
+
+    // Each binding has one activation and one scope-exit event. Name heads
+    // restore the previous binding on exit, resolving shadowing in O(1).
+    bindings: SegmentBinding[] = [];
+    activate := resize([int(0)], count + 1);
+    expire := resize([int(0)], count + 1);
+    activate_next: int[] = [];
+    expire_next: int[] = [];
+    restore: int[] = [];
+    max_name: int = 0;
+    for (name in names) { if (name > max_name) { max_name = name; } }
+    heads := resize([int(0)], max_name + 1);
+    for (node in 0..<count) {
+        kind := rows[node].kind;
+        parent := rows[node].parent;
+        name_node: int = -1;
+        declaration := node;
+        scope := scopes[node];
+        binding_kind := SegmentDeclarationKind(kind);
+        visible := end_nodes[node] + 1;
+        finish: int = -1;
+        if (binding_kind > 0) {
+            name_node = SegmentChild(rows, fields, node, diag.FieldName);
+            if (kind == diag.FunctionDeclaration || kind == diag.MacroDeclaration ||
+                kind == diag.RecordDeclaration || kind == diag.UnionDeclaration) {
+                if (parent >= 0) { scope = scopes[parent]; }
+                visible = scope - 1;
+            } else if (kind == diag.Parameter) {
+                visible = node + 1;
+            } else if (kind == diag.ForStatement) {
+                visible = SegmentChild(rows, fields, node, diag.FieldBody);
+            } else if (kind == diag.ConstantDeclaration || kind == diag.StateDeclaration) {
+                if (parent >= 0 && !SegmentList(rows[parent].kind)) { visible = scope - 1; }
+            }
+        } else if (kind == diag.ImportDeclaration || kind == diag.ForeignImportDeclaration) {
+            name_node = SegmentChild(rows, fields, node, diag.FieldAlias);
+            if (name_node < 0) { name_node = node; }
+            binding_kind = SegmentNamespaceBinding;
+            visible = scope - 1;
+        } else if (kind == diag.Identifier && (ParentKind(rows, node) == diag.PatternBindings ||
+                   fields[node] == diag.FieldBinding || (ParentKind(rows, node) == diag.ForStatement && fields[node] == diag.FieldKey))) {
+            name_node = node;
+            declaration = parent;
+            binding_kind = SegmentVariableBinding;
+            visible = node + 1;
+            if (ParentKind(rows, node) == diag.ForStatement) {
+                visible = SegmentChild(rows, fields, parent, diag.FieldBody);
+            } else if (patterns[node] >= 0 && controls[node] >= 0) {
+                visible = end_nodes[patterns[node]] + 1;
+                body := SegmentChild(rows, fields, controls[node], diag.FieldConsequence);
+                if (body < 0) { body = SegmentChild(rows, fields, controls[node], diag.FieldBody); }
+                if (body >= 0) { finish = end_nodes[body] + 1; }
+            }
+            excluded[node] = false;
+        }
+        if (name_node < 0 || names[name_node] == 0 || scope == 0 || visible < 0) { continue; }
+        if (finish < 0) { finish = end_nodes[scope - 1] + 1; }
+        if (visible >= finish) { continue; }
+        type_node := SegmentChild(rows, fields, declaration, diag.FieldType);
+        spelling := name_node + 1;
+        if (name_node == node && kind != diag.Identifier) { spelling = 0; }
+        bindings.append({name: spelling, name_id: names[name_node], scope: scope, kind: binding_kind, type_node: type_node,
+                         declaration: declaration, alias: 0, address_alias: false});
+        id := length(bindings);
+        declaration_nodes[name_node] = id;
+        node_bindings[name_node] = id;
+        activate_next.append(activate[visible]);
+        activate[visible] = id;
+        expire_next.append(expire[finish]);
+        expire[finish] = id;
+        restore.append(0);
+    }
+    for (node in 0..<count) {
+        id := expire[node];
+        while (id > 0) {
+            heads[bindings[id - 1].name_id] = restore[id - 1];
+            id = expire_next[id - 1];
+        }
+        id = activate[node];
+        while (id > 0) {
+            name := bindings[id - 1].name_id;
+            restore[id - 1] = heads[name];
+            heads[name] = id;
+            id = activate_next[id - 1];
+        }
+        if (rows[node].kind == diag.Identifier && declaration_nodes[node] == 0 && !excluded[node] &&
+            fields[node] != diag.FieldMember && fields[node] != diag.FieldName && fields[node] != diag.FieldAlias) {
+            node_bindings[node] = heads[names[node]];
+        }
+    }
+
+    // Alias facts describe the source dependency. Address aliases are marked
+    // explicitly; a value copy never merges two lexical binding identities.
+    for (index in 0..<length(bindings)) {
+        declaration := bindings[index].declaration;
+        value := SegmentChild(rows, fields, declaration, diag.FieldValue);
+        if (value < 0) { continue; }
+        value = values[value];
+        if (rows[value].kind == diag.Identifier || rows[value].kind == diag.AddressExpression) {
+            root := storage[value];
+            if (root >= 0) {
+                bindings[index].alias = node_bindings[root];
+                bindings[index].address_alias = rows[value].kind == diag.AddressExpression;
+            }
+        }
+    }
+
+    // Token extents and logical token counts fold once over the syntax tree.
+    first := resize([int(0)], count);
+    last := resize([int(0)], count);
+    sizes := resize([int(0)], count);
+    for (index in 0..<length(tokens)) {
+        token := tokens[index];
+        if (token.comment) { continue; }
+        first[token.node] = index + 1;
+        last[token.node] = index + 1;
+        kind := rows[token.node].kind;
+        if (kind != tk.Semicolon && kind != tk.Comma) { sizes[token.node] = 1; }
+    }
+    at = count - 1;
+    while (at >= 0) {
+        parent := rows[at].parent;
+        if (parent >= 0) {
+            if (first[at] > 0 && (first[parent] == 0 || first[at] < first[parent])) { first[parent] = first[at]; }
+            if (last[at] > last[parent]) { last[parent] = last[at]; }
+            sizes[parent] += sizes[at];
+        }
+        at -= 1;
+    }
+
+    // Prefix sums give every statement list one contiguous unit range even
+    // when its children contain further statement lists.
+    sequences: SegmentSequence[] = [];
+    sequence_nodes := resize([int(0)], count);
+    unit_nodes := resize([int(0)], count);
+    owners := resize([int(0)], count);
+    total: int = 0;
+    for (node in 0..<count) {
+        if (!SegmentList(rows[node].kind)) { continue; }
+        unit_count: int = 0;
+        child := rows[node].first_child;
+        while (child >= 0) {
+            if (SegmentStatement(rows[child].kind) && first[child] > 0) { unit_count += 1; }
+            child = rows[child].next_sibling;
+        }
+        owner_kind := ParentKind(rows, node);
+        sequences.append({node: node, first: total + 1, count: unit_count, owner_kind: owner_kind,
+                          is_function: owner_kind == diag.FunctionDeclaration || owner_kind == diag.MacroDeclaration ||
+                                       owner_kind == diag.LambdaExpression});
+        sequence_nodes[node] = length(sequences);
+        total += unit_count;
+    }
+    empty_unit: SegmentUnit = {node: -1, end_node: -1, parent: 0, sequence: 0, first: -1, last: -1, size: 0, category: SegmentOther,
+                               additional: 0, target: 0, receiver: 0, rhs_category: 0, rhs_function: 0,
+                               rhs_receiver: 0, call_node: -1, type_node: -1, name: 0, type_name: 0, refs_first: 0, refs_count: 0,
+                               defs_first: 0, defs_count: 0};
+    units := resize([empty_unit], total);
+    for (sequence_index in 0..<length(sequences)) {
+        slot := sequences[sequence_index].first;
+        child := rows[sequences[sequence_index].node].first_child;
+        while (child >= 0) {
+            if (SegmentStatement(rows[child].kind) && first[child] > 0) {
+                units[slot - 1].node = child;
+                units[slot - 1].sequence = sequence_index + 1;
+                unit_nodes[child] = slot;
+                slot += 1;
+            }
+            child = rows[child].next_sibling;
+        }
+    }
+    for (node in 0..<count) {
+        parent := rows[node].parent;
+        if (parent >= 0) { owners[node] = owners[parent]; }
+        if (unit_nodes[node] > 0) { owners[node] = unit_nodes[node]; }
+        // A declaration's signature and a lambda's body do not execute as
+        // reads of the enclosing statement. Their own body units replace it.
+        if (rows[node].kind == diag.FunctionDeclaration || rows[node].kind == diag.MacroDeclaration ||
+            rows[node].kind == diag.LambdaExpression) { owners[node] = 0; }
+    }
+
+    // Mark syntactic definitions. Assignment bases are the only written
+    // references; method names supply no effect or purity information.
+    written := resize([false], count);
+    read_write := resize([false], count);
+    for (node in 0..<count) { written[node] = declaration_nodes[node] > 0; }
+    for (index in 0..<length(units)) {
+        node := units[index].node;
+        kind := rows[node].kind;
+        units[index].first = first[node] - 1;
+        units[index].end_node = end_nodes[node];
+        parent := rows[node].parent;
+        if (parent >= 0) { units[index].parent = owners[parent]; }
+        units[index].last = last[node] - 1;
+        units[index].size = sizes[node];
+        units[index].call_node = -1;
+        units[index].additional = SegmentAdditional(kind);
+        units[index].type_node = SegmentChild(rows, fields, node, diag.FieldType);
+        if (units[index].type_node >= 0) { units[index].type_name = first_names[units[index].type_node]; }
+        value := SegmentChild(rows, fields, node, diag.FieldValue);
+        if (kind == diag.LocalDeclaration || kind == diag.ConstantDeclaration || kind == diag.StateDeclaration) {
+            name := SegmentChild(rows, fields, node, diag.FieldName);
+            if (name >= 0) { units[index].target = node_bindings[name]; units[index].name = name + 1; written[name] = true; }
+            units[index].category = SegmentDeclare;
+            if (value >= 0) { units[index].category = SegmentInit; }
+        } else if (kind == diag.Assignment) {
+            target := SegmentChild(rows, fields, node, diag.FieldTarget);
+            if (target >= 0 && storage[target] >= 0) {
+                root := storage[target];
+                units[index].target = node_bindings[root];
+                units[index].name = root + 1;
+                written[root] = true;
+                operator := SegmentChild(rows, fields, node, diag.FieldOperator);
+                read_write[root] = values[target] != root || (operator >= 0 && rows[operator].kind != tk.Eq);
+                if (values[target] != root) { units[index].receiver = node_bindings[root]; }
+            }
+            units[index].category = SegmentAssign;
+        } else if (kind == diag.ExpressionStatement) {
+            value = rows[node].first_child;
+        }
+        if (value < 0) { continue; }
+        value = values[value];
+        rhs_kind := rows[value].kind;
+        units[index].rhs_category = SegmentRhsOther;
+        if (SegmentLiteralKind(rhs_kind)) {
+            units[index].rhs_category = SegmentRhsConstant;
+            if (rhs_kind == diag.ArrayExpression || rhs_kind == diag.MapExpression || rhs_kind == diag.StructExpression) {
+                units[index].rhs_category = SegmentRhsCreation;
+            }
+        }
+        else if (rhs_kind == diag.Identifier) { units[index].rhs_category = SegmentRhsName; }
+        else if (rhs_kind == diag.BinaryExpression) { units[index].rhs_category = SegmentRhsInfix; }
+        else if (rhs_kind == diag.UnaryExpression || rhs_kind == diag.AddressExpression) { units[index].rhs_category = SegmentRhsPrefix; }
+        else if (rhs_kind == diag.DereferenceExpression || rhs_kind == diag.ForceUnwrapExpression) { units[index].rhs_category = SegmentRhsPostfix; }
+        else if (rhs_kind == diag.AsExpression) { units[index].rhs_category = SegmentRhsCast; }
+        else if (rhs_kind == diag.CallExpression) {
+            units[index].call_node = value;
+            function := SegmentChild(rows, fields, value, diag.FieldFunction);
+            if (function < 0) { continue; }
+            function = values[function];
+            units[index].rhs_category = SegmentRhsMethod;
+            if (rows[function].kind == diag.Identifier) {
+                units[index].rhs_function = function + 1;
+                binding := node_bindings[function];
+                if (binding > 0 && bindings[binding - 1].kind == SegmentTypeBinding) {
+                    units[index].rhs_category = SegmentRhsCreation;
+                }
+            }
+            else if (rows[function].kind == diag.MemberExpression || rows[function].kind == diag.OptionalMemberExpression) {
+                member := SegmentChild(rows, fields, function, diag.FieldMember);
+                if (member >= 0) { units[index].rhs_function = member + 1; }
+                root := storage[function];
+                if (root >= 0) {
+                    receiver := node_bindings[root];
+                    if (receiver > 0 && bindings[receiver - 1].kind == SegmentVariableBinding) {
+                        units[index].rhs_category = SegmentRhsObjectMethod;
+                        units[index].rhs_receiver = receiver;
+                    }
+                }
+            }
+            if (kind == diag.ExpressionStatement) {
+                units[index].category = SegmentMethod;
+                if (units[index].rhs_receiver > 0) {
+                    units[index].category = SegmentObjectMethod;
+                    units[index].receiver = units[index].rhs_receiver;
+                }
+            }
+        }
+    }
+
+    // Count then fill occurrence ranges. Every identifier occurrence enters
+    // at most one unit; no statement rescans its complete expression subtree.
+    for (node in 0..<count) {
+        owner := owners[node];
+        binding := node_bindings[node];
+        if (owner == 0 || binding == 0 || bindings[binding - 1].kind != SegmentVariableBinding || excluded[node]) { continue; }
+        if (written[node]) { units[owner - 1].defs_count += 1; }
+        if ((!written[node] && declaration_nodes[node] == 0) || read_write[node]) { units[owner - 1].refs_count += 1; }
+    }
+    ref_total: int = 0;
+    def_total: int = 0;
+    for (index in 0..<length(units)) {
+        units[index].refs_first = ref_total;
+        units[index].defs_first = def_total;
+        ref_total += units[index].refs_count;
+        def_total += units[index].defs_count;
+    }
+    refs := resize([int(0)], ref_total);
+    defs := resize([int(0)], def_total);
+    ref_slots := resize([int(0)], length(units));
+    def_slots := resize([int(0)], length(units));
+    for (node in 0..<count) {
+        owner := owners[node];
+        binding := node_bindings[node];
+        if (owner == 0 || binding == 0 || bindings[binding - 1].kind != SegmentVariableBinding || excluded[node]) { continue; }
+        unit := owner - 1;
+        if (written[node]) {
+            defs[units[unit].defs_first + def_slots[unit]] = binding;
+            def_slots[unit] += 1;
+        }
+        if ((!written[node] && declaration_nodes[node] == 0) || read_write[node]) {
+            refs[units[unit].refs_first + ref_slots[unit]] = binding;
+            ref_slots[unit] += 1;
+        }
+    }
+    occurrence_first := resize([int(0)], length(bindings) + 1);
+    occurrence_count := resize([int(0)], length(bindings) + 1);
+    for (node in 0..<count) {
+        binding := node_bindings[node];
+        if (binding > 0 && bindings[binding - 1].kind == SegmentVariableBinding && !excluded[node]) {
+            occurrence_count[binding] += 1;
+        }
+    }
+    occurrence_total: int = 0;
+    for (binding in 1..length(bindings)) {
+        occurrence_first[binding] = occurrence_total;
+        occurrence_total += occurrence_count[binding];
+    }
+    empty_occurrence: SegmentOccurrence = {node: 0, owner: 0, read: false, written: false};
+    occurrences := resize([empty_occurrence], occurrence_total);
+    occurrence_slots := resize([int(0)], length(bindings) + 1);
+    for (node in 0..<count) {
+        binding := node_bindings[node];
+        if (binding == 0 || bindings[binding - 1].kind != SegmentVariableBinding || excluded[node]) { continue; }
+        offset := occurrence_first[binding] + occurrence_slots[binding];
+        occurrences[offset] = {node: node, owner: owners[node],
+                               read: (!written[node] && declaration_nodes[node] == 0) || read_write[node],
+                               written: written[node] || declaration_nodes[node] > 0};
+        occurrence_slots[binding] += 1;
+    }
+    return {sequences: sequences, units: units, bindings: bindings, refs: refs, defs: defs,
+            node_bindings: node_bindings, name_ids: names, owners: owners,
+            occurrences: occurrences, occurrence_first: occurrence_first, occurrence_count: occurrence_count};
+}

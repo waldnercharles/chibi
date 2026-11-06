@@ -1,0 +1,129 @@
+package source_format
+
+import syntax "project:compiler_syntax"
+import diag "project:syntax_diagnostics"
+
+SegmentRefineFixtureFacts :: (categories: int[]) -> SegmentFacts {
+    units: SegmentUnit[] = [];
+    for (category in categories) {
+        units.append({node: -1, end_node: -1, parent: 0, sequence: 1, first: 0, last: 0, size: 0,
+                      category: category, additional: 0, target: 0, receiver: 0, rhs_category: 0, rhs_function: 0,
+                      rhs_receiver: 0, call_node: -1, type_node: -1, name: 0, type_name: 0, refs_first: 0, refs_count: 0,
+                      defs_first: 0, defs_count: 0});
+    }
+    return {sequences: [], units: units, bindings: [], refs: [], defs: [], node_bindings: [], name_ids: [],
+            owners: [], occurrences: [], occurrence_first: [], occurrence_count: []};
+}
+
+@test
+SegmentRefinementSplitsWeakerSimilarityWindows :: () {
+    names := SegmentFixtureNames(["getPixels", "getBuffer", "getCount", "readFile", "readRows", "readLines"]);
+    categories: int[] = [SegmentMethod, SegmentMethod, SegmentMethod, SegmentMethod, SegmentMethod, SegmentMethod];
+    facts := SegmentRefineFixtureFacts(categories);
+    features: SegmentFeature[] = [];
+    for (index in 0..<6) { features.append(SegmentFixtureFeature(SegmentMethod, 0, 0, SegmentRhsNone, 0, index + 1)); }
+    parts: SegmentPart[] = [{first: 0, last: 5, kind: SegmentSyntaxPart}];
+    refined := SegmentRefine(facts, names, features, parts, resize([false], 6), [], []);
+    assert(length(refined) == 2 && refined[0].first == 0 && refined[0].last == 2 &&
+           refined[1].first == 3 && refined[1].last == 5,
+           "the published sliding window splits the weakest boundary between stable runs");
+    parts = [{first: 0, last: 2, kind: SegmentSyntaxPart}];
+    refined = SegmentRefine(facts, names, features, parts, resize([false], 6), [], []);
+    assert(length(refined) == 1 && refined[0].last == 2, "three-statement SynS parts stay intact");
+    for (index in 0..<6) { features[index].method = 1; }
+    parts = [{first: 0, last: 5, kind: SegmentSyntaxPart}];
+    refined = SegmentRefine(facts, names, features, parts, resize([false], 6), [], []);
+    assert(length(refined) == 1 && refined[0].last == 5, "a uniform similarity sequence stays intact");
+}
+
+@test
+SegmentSingletonsMergeCreationRhsLikeListingSixEleven :: () {
+    names := SegmentFixtureNames(["label1", "searchNameField", "label2"]);
+    categories: int[] = [SegmentInit, SegmentAssign, SegmentInit];
+    facts := SegmentRefineFixtureFacts(categories);
+    features: SegmentFeature[] = [];
+    parts: SegmentPart[] = [];
+    for (index in 0..<3) {
+        features.append(SegmentFixtureFeature(categories[index], 0, index + 1, SegmentRhsCreation, 0, 0));
+        parts.append({first: index, last: index, kind: SegmentSyntaxPart});
+    }
+    refined := SegmentRefine(facts, names, features, parts, resize([false], 3), [], []);
+    assert(length(refined) == 1 && refined[0].first == 0 && refined[0].last == 2,
+           "initialization/assignment singleton blocks merge through similar creation RHS syntax");
+    hard := resize([false], 3); hard[1] = true;
+    refined = SegmentRefine(facts, names, features, parts, hard, [], []);
+    assert(length(refined) == 2 && refined[0].last == 0 && refined[1].first == 1,
+           "hard boundaries survive otherwise compatible singleton merging");
+}
+
+@test
+SegmentSingletonsChoosePreviousBeforeNext :: () {
+    names := SegmentFixtureNames(["oneValue"]);
+    categories: int[] = [SegmentInit, SegmentInit, SegmentAssign, SegmentInit, SegmentInit];
+    facts := SegmentRefineFixtureFacts(categories);
+    features: SegmentFeature[] = [];
+    for (category in categories) { features.append(SegmentFixtureFeature(category, 0, 1, SegmentRhsConstant, 0, 0)); }
+    parts: SegmentPart[] = [{first: 0, last: 1, kind: SegmentObjectPart},
+                           {first: 2, last: 2, kind: SegmentSyntaxPart},
+                           {first: 3, last: 4, kind: SegmentObjectPart}];
+    refined := SegmentRefine(facts, names, features, parts, resize([false], 5), [], []);
+    assert(length(refined) == 2 && refined[0].last == 2 && refined[1].first == 3,
+           "a singleton compatible with both neighbors joins the previous part");
+    kinds: int[] = [SegmentControlPart, SegmentReturnPart, SegmentIsolatedPart];
+    for (kind in kinds) {
+        parts[1].kind = kind;
+        refined = SegmentRefine(facts, names, features, parts, resize([false], 5), [], []);
+        assert(length(refined) == 3 && refined[1].first == 2 && refined[1].last == 2,
+               "control, return and isolated singleton parts retain their boundaries");
+    }
+    parts[1].kind = SegmentSyntaxPart;
+    units := facts.units; units[2].sequence = 2; facts.units = units;
+    refined = SegmentRefine(facts, names, features, parts, resize([false], 5), [], []);
+    assert(length(refined) == 3, "a merge cannot cross statement sequences");
+}
+
+SegmentParameterFixture :: (source: string, expected: bool) {
+    switch syntax.Parse(source) {
+        case .Rejected(diagnostic):
+            print_string(diagnostic.message);
+            assert(false, "parameter similarity fixture parses");
+        case .Parsed(rows, fields, named, extras, root):
+            categories: int[] = [SegmentMethod, SegmentObjectMethod];
+            facts := SegmentRefineFixtureFacts(categories);
+            units := facts.units;
+            count: int = 0;
+            for (node in 0..<length(rows)) {
+                if (rows[node].kind == diag.ExpressionStatement) {
+                    assert(count < 2, "fixture has exactly two calls");
+                    units[count].node = node;
+                    units[count].call_node = rows[node].first_child;
+                    count += 1;
+                }
+            }
+            assert(count == 2, "fixture has both call roots");
+            facts.units = units;
+            names := SegmentIndexNames(text_bytes(source), rows);
+            parameters := SegmentCallParameters(facts, rows, fields);
+            assert(SegmentParametersSimilar(names, parameters, 0, 1) == expected,
+                   "parameter similarity uses equal nonempty arity and corresponding known syntax/name features");
+            features := [SegmentFixtureFeature(SegmentMethod, 0, 0, SegmentRhsNone, 0, 0),
+                         SegmentFixtureFeature(SegmentObjectMethod, 0, 0, SegmentRhsNone, 0, 0)];
+            parts: SegmentPart[] = [{first: 0, last: 0, kind: SegmentSyntaxPart},
+                                   {first: 1, last: 1, kind: SegmentSyntaxPart}];
+            refined := SegmentRefine(facts, names, features, parts, resize([false], 2), rows, fields);
+            expected_count := 2;
+            if (expected) { expected_count = 1; }
+            assert(length(refined) == expected_count, "Table 6.3 parameter similarity can merge distinct call names");
+    }
+}
+
+@test
+SegmentSingletonParametersUsePreparedArgumentFeatures :: () {
+    SegmentParameterFixture("package p\nMain :: () { getPixels(leftValue, 1); object.readBuffer(leftOther, \"two\"); }\n", true);
+    SegmentParameterFixture("package p\nMain :: () { getPixels(value: (leftValue)); object.readBuffer(value: leftOther); }\n", true);
+    SegmentParameterFixture("package p\nMain :: () { getPixels(getPrintAction()); object.readBuffer(getCloseAction()); }\n", true);
+    SegmentParameterFixture("package p\nMain :: () { getPixels(leftValue); object.readBuffer(rightOther); }\n", false);
+    SegmentParameterFixture("package p\nMain :: () { getPixels(1); object.readBuffer(1, 2); }\n", false);
+    SegmentParameterFixture("package p\nMain :: () { getPixels(); object.readBuffer(); }\n", false);
+    SegmentParameterFixture("package p\nMain :: () { getPixels(object.member); object.readBuffer(object.member); }\n", false);
+}

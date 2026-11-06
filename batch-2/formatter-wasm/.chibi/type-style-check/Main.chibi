@@ -1,0 +1,176 @@
+package source_type_style_tests
+
+import style "project:source_type_style"
+import compiler "project:package_compiler"
+import catalog "project:compiler_catalog"
+import strings "core:strings"
+
+Check :: (source: string, mode: int, expected: string, count: int) {
+    switch style.Rewrite(source, mode) {
+        case .Rejected(message):  assert(false, "type style accepts valid input");
+        case .Rewritten(text, changed, skipped, notes):
+            if (text != expected || changed != count || skipped != 0 || notes != "") {
+                
+            }
+            assert(text == expected, "type-style assertion");
+            assert(changed == count, "type-style assertion");
+            assert(skipped == 0 && notes == "", "type-style assertion");
+            switch style.Rewrite(text, mode) {
+                case .Rejected(message):  assert(false, "type style accepts valid input");
+                case .Rewritten(second, again, missed, detail):
+                    assert(second == text && again == 0 && missed == 0 && detail == "", "type style reaches a fixed point");
+            }
+    }
+}
+
+@test
+AddsActualCompilerTypesToLocalsAndConstants :: () {
+    Check("package p\nLimit :: 4\nCount :: () -> i8 { return 2; }\nMain :: () { count := Count(); yes := true; word := \"hello\"; total := 3; }\n", style.Explicit,
+          "package p\nLimit: int : 4\nCount :: () -> i8 { return 2; }\nMain :: () { count: i8 = Count(); yes: bool = true; word: string = \"hello\"; total: int = 3; }\n", 5);
+}
+
+@test
+OmitsOnlyWhenTypedProgramStaysIdentical :: () {
+    Check("package p\nLimit: int : 4\nCount :: () -> i8 { return 2; }\nMain :: () { count: i8 = Count(); yes: bool = true; }\n", style.OmitRedundant,
+          "package p\nLimit :: 4\nCount :: () -> i8 { return 2; }\nMain :: () { count := Count(); yes := true; }\n", 3);
+}
+
+@test
+NumericContextIsPreserved :: () {
+    source := "package p\nMain :: () { small: i8 = 1; }\n";
+    switch style.Rewrite(source, style.OmitRedundant) {
+        case .Rejected(message):  assert(false, "type style accepts valid input");
+        case .Rewritten(text, changed, skipped, notes):
+            assert(text == source && changed == 0 && skipped == 1, "narrow numeric storage stays annotated");
+            assert(strings.Contains(notes, "contextual"), "the skipped rewrite is visible");
+    }
+}
+
+@test
+CanonicalRecordAndArrayTypes :: () {
+    Check("package p\nPoint :: struct { x: int; }\nMake :: () -> Point { return {x: 1}; }\nMain :: () { point := Make(); values := [1, 2]; }\n", style.Explicit,
+          "package p\nPoint :: struct { x: int; }\nMake :: () -> Point { return {x: 1}; }\nMain :: () { point: Point = Make(); values: int[] = [1, 2]; }\n", 2);
+}
+
+@test
+CommentedAnnotationsRemainAttached :: () {
+    source := "package p\nMain :: () { value: /* storage */ int = 1; }\n";
+    switch style.Rewrite(source, style.OmitRedundant) {
+        case .Rejected(message):  assert(false, "type style accepts valid input");
+        case .Rewritten(text, changed, skipped, notes):
+            assert(text == source && changed == 0 && skipped == 1 && notes != "", "comments survive and skip is visible");
+    }
+}
+
+@test
+UnavailableProjectContextIsReported :: () {
+    source := "package p\nimport math \"project:missing\"\nMain :: () { value := math.Count(); }\n";
+    switch style.Rewrite(source, style.Explicit) {
+        case .Rejected(message):  assert(false, "type style accepts valid input");
+        case .Rewritten(text, changed, skipped, notes):
+            assert(text == source && changed == 0 && strings.Contains(notes, "not applied"), "unresolved imports are not guessed");
+    }
+}
+
+@test
+CompilerComparisonChecksTypesOperationsAndEffects :: () {
+    a := "package p\nMain :: () { value: i8 = 1; }\n";
+    b := "package p\nMain :: () { value := 1; }\n";
+    switch compiler.AnalyzeSources("/formatter", [], [], ["/formatter/Main.chibi"], [a], catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities()) {
+        case .Rejected(problem):  assert(false, "compiler accepts valid input");
+        case .Analyzed(sites, signature):
+            switch compiler.AnalyzeSources("/formatter", [], [], ["/formatter/Main.chibi"], [b], catalog.TargetFacts(), catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities()) {
+                case .Rejected(problem):  assert(false, "compiler accepts valid input");
+                case .Analyzed(other, next): assert(!compiler.SameSemantics(signature, next), "compiling both is not enough");
+            }
+    }
+}
+
+@test
+ContextualBindingDoesNotBlockIndependentOmissions :: () {
+    source := "package p\nNarrow :: () -> i8 { return 4; }\nMain :: () { small: i8 = 1; yes: bool = true; other: i8 = Narrow(); }\n";
+    expected := "package p\nNarrow :: () -> i8 { return 4; }\nMain :: () { small: i8 = 1; yes := true; other := Narrow(); }\n";
+    switch style.Rewrite(source, style.OmitRedundant) {
+        case .Rejected(message):  assert(false, "type style accepts valid input");
+        case .Rewritten(text, changed, skipped, notes):
+            assert(text == expected && changed == 2 && skipped == 1, "type-style assertion");
+            assert(strings.Contains(notes, "contextual"), "intentional numeric context is identified");
+    }
+}
+
+@test
+ShadowedLocalNamesUseTheirOwnResolvedTypes :: () {
+    Check("package p\nMain :: () { item := 1; if true { item := \"inside\"; } }\n", style.Explicit,
+          "package p\nMain :: () { item: int = 1; if true { item: string = \"inside\"; } }\n", 2);
+}
+
+@test
+ImportedRecordTypesUseTheFileAlias :: () {
+    source := "package p\nimport lib \"project:lib\"\nMain :: () { point := lib.Make(); }\n";
+    dependency := "package lib\npub Point :: struct { x: int; }\npub Make :: () -> Point { return {x: 3}; }\n";
+    switch style.RewriteProject(source, style.Explicit, "/formatter", [], [],
+                               ["/formatter/Main.chibi", "/formatter/lib/Lib.chibi"], [source, dependency]) {
+        case .Rejected(message):  assert(false, "type style accepts valid input");
+        case .Rewritten(text, changed, skipped, notes):
+            assert(text == "package p\nimport lib \"project:lib\"\nMain :: () { point: lib.Point = lib.Make(); }\n", "type-style assertion");
+            assert(changed == 1 && skipped == 0 && notes == "", "dependency context is analyzed without IO");
+    }
+}
+
+@test
+GenericBodiesAreNeverSpecializedByFormatting :: () {
+    source := "package p\nIdentity :: (value: $T) -> T { local := value; return local; }\nMain :: () { copied := Identity(3); }\n";
+    switch style.Rewrite(source, style.Explicit) {
+        case .Rejected(message):  assert(false, "type style accepts valid input");
+        case .Rewritten(text, changed, skipped, notes):
+            assert(strings.Contains(text, "local := value"), "generic local retains its source-level inference");
+            assert(!strings.Contains(text, "local: int"), "one instantiation does not specialize the template");
+            assert(skipped > 0 && notes != "", "type-style assertion");
+    }
+}
+
+@test
+PartialDraftDoesNotPretendTypePolicyApplied :: () {
+    source := "package p\nMain :: () { value := ";
+    switch style.Rewrite(source, style.Explicit) {
+        case .Rejected(message):  assert(false, "type style accepts valid input");
+        case .Rewritten(text, changed, skipped, notes):
+            assert(text == source && changed == 0 && strings.Contains(notes, "not applied"), "partial input has an explicit analysis diagnostic");
+    }
+}
+
+@test
+NativeOverloadAndResultTypesComeFromTheCompiler :: () {
+    Check("package p\nMain :: () { message := format_text(\"{}\", 3); count := length([1, 2]); }\n", style.Explicit,
+          "package p\nMain :: () { message: string = format_text(\"{}\", 3); count: int = length([1, 2]); }\n", 2);
+}
+
+@test
+LambdaIdentityChangesAreConservativelyDiagnosed :: () {
+    source := "package p\nApply :: (value: int, operation: fn(x: int) -> int) -> int { return operation(x: value); }\nMain :: () { earlier := 1; result := Apply(3, (x: int) => x + 1); }\n";
+    switch style.Rewrite(source, style.Explicit) {
+        case .Rejected(message):  assert(false, "type style accepts valid input");
+        case .Rewritten(text, changed, skipped, notes):
+            // Current compiler-generated lambda identities include their byte
+            // offset. Preserve the file until those identities can be compared
+            // independently of source spelling; do not weaken dispatch checks.
+            assert(text == source && changed == 0 && skipped > 0 && notes != "", "conservative lambda comparison is visible");
+    }
+}
+
+Main :: () {
+    AddsActualCompilerTypesToLocalsAndConstants();
+    OmitsOnlyWhenTypedProgramStaysIdentical();
+    NumericContextIsPreserved();
+    CanonicalRecordAndArrayTypes();
+    CommentedAnnotationsRemainAttached();
+    UnavailableProjectContextIsReported();
+    CompilerComparisonChecksTypesOperationsAndEffects();
+    ContextualBindingDoesNotBlockIndependentOmissions();
+    ShadowedLocalNamesUseTheirOwnResolvedTypes();
+    ImportedRecordTypesUseTheFileAlias();
+    GenericBodiesAreNeverSpecializedByFormatting();
+    PartialDraftDoesNotPretendTypePolicyApplied();
+    NativeOverloadAndResultTypesComeFromTheCompiler();
+    LambdaIdentityChangesAreConservativelyDiagnosed();
+}

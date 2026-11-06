@@ -1,0 +1,154 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// These owners contain no collector edges. Direct pointer-array roots keep
+// their separate persistent-root path; maps and views remain closed here.
+pub TaskOwnedType :: (records: Record[], layout: ValueLayout, type: int) -> bool {
+    if (type == abi.TextStorage) { return true; }
+    if (type >= ArrayType && type < MapType) {
+        element := ElementType(records, type);
+        return element != 0 && ValueValid(layout, element);
+    }
+    return type >= RecordType && type < ArrayType && type - RecordType < length(layout.owned) &&
+           layout.valid[type - RecordType] && layout.owned[type - RecordType];
+}
+
+// One pointer per distinct owning location, eight bytes on desktop. NULL means
+// inactive. Calls reuse the same location instead of growing frame metadata.
+// Compiler-side location: three int indices, 12 bytes, one per touched owner.
+TaskOwnerLocation :: struct { type: int; index: int; kind: int; }
+TaskOwnerLocations :: (shape: Function, code: Instruction[]) -> TaskOwnerLocation[] {
+    found: TaskOwnerLocation[] = [];
+    first := 0;
+    while (first < shape.code && code[shape.first_code + first].op != OwnerPin) { first += 1; }
+    if (first == shape.code) { return found; }
+    slots := resize([false], shape.slots);
+    locals := resize([false], shape.locals);
+    for (pc in first..<shape.code) {
+        item := code[shape.first_code + pc];
+        if (item.op != OwnerPin) { continue; }
+        if (item.target == 0) {
+            if (slots[item.left]) { continue; }
+            slots[item.left] = true;
+        } else {
+            if (locals[item.left]) { continue; }
+            locals[item.left] = true;
+        }
+        found.append({type: item.type, index: item.left, kind: item.target});
+    }
+    return found;
+}
+TaskOwnerName :: (kind: int, index: int) -> string {
+    prefix := "s";
+    if (kind == 1) { prefix = "l"; }
+    return format_text("owner.{}{}", prefix, index);
+}
+TaskOwnerPrologue :: (locations: TaskOwnerLocation[]) -> string {
+    out: string[] = [];
+    for (location in locations) {
+        name := TaskOwnerName(location.kind, location.index);
+        out.append(format_text("  %{} = alloca ptr\n  store ptr null, ptr %{}\n", name, name));
+    }
+    return strings.Join(out, "");
+}
+TaskOwnerInstruction :: (item: Instruction, pc: int, locals: int[], first_local: int) -> string {
+    name := TaskOwnerName(item.target, item.left);
+    place := "null";
+    out := format_text("p{}:\n", pc);
+    if (item.op == OwnerPin) {
+        place = format_text("%s{}", item.left);
+        if (item.target == 1) {
+            place = format_text("%l{}", item.left);
+            if (locals[first_local + item.left] >= RefType) {
+                out = format_text("{}  %owner.place{} = load ptr, ptr {}\n", out, pc, place);
+                place = format_text("%owner.place{}", pc);
+            }
+        }
+    }
+    return format_text("{}  store ptr {}, ptr %{}\n  br label %p{}\n", out, place, name, pc + 1);
+}
+TaskOwnerCleanup :: (locations: TaskOwnerLocation[], prefix: string) -> string {
+    out: string[] = [];
+    for (location, index in locations) {
+        name := TaskOwnerName(location.kind, location.index);
+        stem := format_text("{}.owner{}", prefix, index);
+        type := TypeName(location.type);
+        out.append(format_text("  %{}.place = load ptr, ptr %{}\n  %{}.active = icmp ne ptr %{}.place, null\n", stem, name, stem, stem));
+        out.append(format_text("  br i1 %{}.active, label %{}.drop, label %{}.next\n{}.drop:\n", stem, stem, stem, stem));
+        out.append(format_text("  %{}.value = load {}, ptr %{}.place\n  store {} zeroinitializer, ptr %{}.place\n  store ptr null, ptr %{}\n", stem, type, stem, type, stem, name));
+        if (location.type == abi.TextStorage) {
+            out.append(format_text("  %{}.backing = extractvalue {} %{}.value, 2\n  call void @chibi_scalar.free(ptr %ctx, ptr %{}.backing)\n", stem, type, stem, stem));
+        } else if (location.type >= ArrayType) {
+            out.append(format_text("  call void @chibi_array.{}.drop(ptr %ctx, {} %{}.value)\n", location.type, type, stem));
+        } else {
+            out.append(format_text("  call void @chibi_value.{}.drop(ptr %ctx, {} %{}.value)\n", location.type, type, stem));
+        }
+        out.append(format_text("  br label %{}.next\n{}.next:\n", stem, stem));
+    }
+    return strings.Join(out, "");
+}
+
+TaskOwnerBoundary :: (op: int) -> bool {
+    return op == ClockSample || op == Call || op == ForeignCall || op == ManagedNew || op == Format ||
+           op == Suspend || op == Delay || op == AwaitHandle || op == AwaitResult || op == Fail;
+}
+TaskOwnersValid :: (code: Instruction[], slots: int[], locals: int[], records: Record[], layout: ValueLayout) -> string {
+    active_kinds: int[] = [];
+    active_indices: int[] = [];
+    slot_types := resize([int(0)], length(slots));
+    local_types := resize([int(0)], length(locals));
+    active_slots := resize([false], length(slots));
+    active_locals := resize([false], length(locals));
+    interior := resize([false], length(code));
+    called := false;
+    active_count := 0;
+    for (item, pc in code) {
+        interior[pc] = active_count > 0;
+        if (item.op == ManagedPin || item.op == ManagedUnpin) { continue; }
+        if (item.op == OwnerPin || item.op == OwnerUnpin) {
+            local := item.target == 1;
+            count := length(slots);
+            if (local) { count = length(locals); }
+            if (item.target < 0 || item.target > 1 || !Index(item.left, count) ||
+                item.output != 0 || item.right != 0 || item.literal != 0) {
+                return "native frame owner differs from its canonical location";
+            }
+            if (item.op == OwnerPin) {
+                held := 0;
+                previous := 0;
+                present := false;
+                if (local) { held = locals[item.left]; previous = local_types[item.left]; present = active_locals[item.left]; }
+                else { held = slots[item.left]; previous = slot_types[item.left]; present = active_slots[item.left]; }
+                if (local && held >= RefType) { held -= RefType; }
+                if (called || present || held != item.type || !TaskOwnedType(records, layout, item.type) ||
+                    (previous != 0 && previous != item.type)) {
+                    return "native frame owner has an invalid type or overlapping lifetime";
+                }
+                if (local) { local_types[item.left] = item.type; active_locals[item.left] = true; }
+                else { slot_types[item.left] = item.type; active_slots[item.left] = true; }
+                if (active_count == length(active_kinds)) {
+                    active_kinds.append(item.target); active_indices.append(item.left);
+                } else { active_kinds[active_count] = item.target; active_indices[active_count] = item.left; }
+                active_count += 1;
+            } else {
+                last := active_count - 1;
+                if (!called || last < 0 || item.type != 0 || active_kinds[last] != item.target || active_indices[last] != item.left) {
+                    return "native frame owners must close in reverse order";
+                }
+                if (local) { active_locals[item.left] = false; } else { active_slots[item.left] = false; }
+                active_count = last;
+                if (last == 0) { called = false; }
+            }
+        } else if (active_count > 0) {
+            if (called || !TaskOwnerBoundary(item.op)) { return "native frame owners must bracket one fallible or waiting call"; }
+            called = true;
+        }
+    }
+    if (active_count > 0) { return "native frame owners must close before control flow leaves"; }
+    for (item in code) {
+        if ((item.op == Jump || item.op == Branch) && interior[item.target]) { return "native control flow cannot enter a frame owner region"; }
+    }
+    return "";
+}

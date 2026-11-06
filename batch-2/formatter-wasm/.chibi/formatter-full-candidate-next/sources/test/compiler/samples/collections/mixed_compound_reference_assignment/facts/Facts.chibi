@@ -1,0 +1,4 @@
+package facts
+Grow :: (a: ^int, b: u8) { a^ += b; }
+
+// error: 2:28: Mismatched integer types int and u8; convert one operand

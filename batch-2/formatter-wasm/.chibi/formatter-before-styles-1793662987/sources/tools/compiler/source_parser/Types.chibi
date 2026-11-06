@@ -1,0 +1,325 @@
+package source_parser
+
+import tk "project:source_tokenizer"
+import syntax "project:syntax_diagnostics"
+
+// type: a single type or a union of them. A union is a `type` holding one
+// `union_type`, whose members are `type` nodes.
+ParseType :: (c: ^Cursor, n: ^(Node[])) -> int {
+    first := ParseSingleType(c, n);
+    if (c.token != tk.Or) {
+        return first;
+    }
+    joined := New(n, syntax.UnionType);
+    Add(n, joined, first, syntax.FieldMember);
+    while (!c.failed && c.token == tk.Or) {
+        Take(c, n, joined, syntax.FieldNone);
+        Add(n, joined, ParseSingleType(c, n), syntax.FieldMember);
+    }
+    outer := New(n, syntax.Type);
+    Add(n, outer, joined, syntax.FieldNone);
+    return outer;
+}
+
+// Traits, one primary, then `[]` and `?` suffixes, all children of one `type`.
+ParseSingleType :: (c: ^Cursor, n: ^(Node[])) -> int {
+    t := New(n, syntax.Type);
+    while (!c.failed && IsTrait(c, n)) {
+        if (c.token == tk.Wildcard) {
+            Take(c, n, t, syntax.FieldTrait);
+            Expect(c, n, t, tk.OpenParen, syntax.FieldTrait);
+            Expect(c, n, t, tk.Integer, syntax.FieldTrait);
+            Expect(c, n, t, tk.CloseParen, syntax.FieldTrait);
+        } else {
+            word := Take(c, n, t, syntax.FieldTrait);
+            // `view` and `self` are words; plain, service and setting keep their token kinds.
+            if (IsWordAt(c, n, word, "view")) {
+                n^[word].kind = syntax.View;
+            } else if (IsWordAt(c, n, word, "self")) {
+                n^[word].kind = syntax.Self;
+            }
+            n^[word].named = false;
+        }
+    }
+    ParseTypePrimary(c, n, t);
+    while (!c.failed) {
+        if (c.token == tk.OpenBracket && Peek(c, n, 1) == tk.CloseBracket) {
+            Take(c, n, t, syntax.FieldNone);
+            Take(c, n, t, syntax.FieldNone);
+        } else if (c.token == tk.Question) {
+            Take(c, n, t, syntax.FieldNone);
+        } else {
+            break;
+        }
+    }
+    return t;
+}
+
+// A trait word comes before a type: `plain`, `service`, `setting`,
+// `wildcard(N)`, `view` and `self` when something that starts a type follows.
+IsTrait :: (c: ^Cursor, n: ^(Node[])) -> bool {
+    token := c.token;
+    if (token == tk.Plain || token == tk.Service || token == tk.Setting || token == tk.Wildcard) {
+        return true;
+    }
+    if (IsWord(c, n, "view") || IsWord(c, n, "self")) {
+        return StartsType(Peek(c, n, 1));
+    }
+    return false;
+}
+
+StartsType :: (token: int) -> bool {
+    return IsName(token) || token == tk.Xor || token == tk.OpenBracket || token == tk.OpenParen ||
+           token == tk.Dollar || token == tk.Plain || token == tk.Service ||
+           token == tk.Setting || token == tk.Wildcard;
+}
+
+// The primary of a type, added to `t`: a name, a binder, an application, a
+// map, a pointer or a parenthesized type.
+ParseTypePrimary :: (c: ^Cursor, n: ^(Node[]), t: int) {
+    token := c.token;
+    if (token == tk.Dollar) {
+        binder := New(n, syntax.TypeBinder);
+        Take(c, n, binder, syntax.FieldNone);
+        TakeName(c, n, binder, syntax.FieldName);
+        Add(n, t, binder, syntax.FieldName);
+        return;
+    }
+    if (token == tk.Xor) {
+        pointer := New(n, syntax.PointerType);
+        Take(c, n, pointer, syntax.FieldNone);
+        target := New(n, syntax.Type);
+        ParseTypePrimary(c, n, target);
+        Add(n, pointer, target, syntax.FieldTarget);
+        Add(n, t, pointer, syntax.FieldNone);
+        return;
+    }
+    if (token == tk.OpenBracket) {
+        map := New(n, syntax.MapType);
+        Take(c, n, map, syntax.FieldNone);
+        Add(n, map, ParseType(c, n), syntax.FieldKey);
+        Expect(c, n, map, tk.Colon, syntax.FieldNone);
+        Add(n, map, ParseType(c, n), syntax.FieldValue);
+        Expect(c, n, map, tk.CloseBracket, syntax.FieldNone);
+        Add(n, t, map, syntax.FieldMap);
+        return;
+    }
+    if (token == tk.OpenParen) {
+        group := New(n, syntax.ParenthesizedType);
+        Take(c, n, group, syntax.FieldNone);
+        Add(n, group, ParseType(c, n), syntax.FieldType);
+        Expect(c, n, group, tk.CloseParen, syntax.FieldNone);
+        Add(n, t, group, syntax.FieldNone);
+        return;
+    }
+    if (StartsFn(c, n, c.pos)) {
+        Add(n, t, ParseCallableType(c, n), syntax.FieldNone);
+        return;
+    }
+    name := ParseTypeName(c, n);
+    if (c.failed) {
+        return;
+    }
+    if (c.token == tk.OpenParen) {
+        application := New(n, syntax.TypeApplication);
+        Add(n, application, name, syntax.FieldFunction);
+        Add(n, application, ParseArguments(c, n), syntax.FieldArguments);
+        Add(n, t, application, syntax.FieldNone);
+        return;
+    }
+    Add(n, t, name, syntax.FieldName);
+}
+
+// Whether `fn (` starts at token `at`: the word that makes a callable type or
+// an inline function. Construct marks the leaf `fn`; reading it as a name
+// (TakeName) makes it an identifier again.
+StartsFn :: (c: ^Cursor, n: ^(Node[]), at: int) -> bool {
+    return n^[at].kind == syntax.Fn && n^[at + 1].token == tk.OpenParen;
+}
+
+// `fn (parameters) [-> result]`, a function a parameter takes.
+ParseCallableType :: (c: ^Cursor, n: ^(Node[])) -> int {
+    callable := New(n, syntax.CallableType);
+    word := Take(c, n, callable, syntax.FieldNone);
+    n^[word].kind = syntax.Fn;
+    n^[word].named = false;
+    Add(n, callable, ParseParameters(c, n), syntax.FieldParameters);
+    if (Accept(c, n, callable, tk.ArrowRight, syntax.FieldNone)) {
+        if (c.token == tk.OpenParen && (Peek(c, n, 1) == tk.CloseParen ||
+                                          (IsName(Peek(c, n, 1)) && Peek(c, n, 2) == tk.Colon))) {
+            Add(n, callable, ParseParameters(c, n), syntax.FieldResults);
+        } else {
+            Add(n, callable, ParseType(c, n), syntax.FieldResults);
+        }
+    }
+    return callable;
+}
+
+// type_name: a name, then `.name` parts.
+ParseTypeName :: (c: ^Cursor, n: ^(Node[])) -> int {
+    name := New(n, syntax.TypeName);
+    TakeName(c, n, name, syntax.FieldNone);
+    while (!c.failed && c.token == tk.Period && IsName(Peek(c, n, 1))) {
+        Take(c, n, name, syntax.FieldNone);
+        TakeName(c, n, name, syntax.FieldNone);
+    }
+    return name;
+}
+
+// The position after the type that starts at token `at`, or -1 when none does.
+// It reads tokens only, so a caller can ask before it commits to a parse.
+SkipType :: (n: ^(Node[]), at: int, final: int) -> int {
+    at = SkipSingleType(n, at, final);
+    while (at >= 0 && n^[at].token == tk.Or) {
+        at = SkipSingleType(n, at + 1, final);
+    }
+    return at;
+}
+
+SkipSingleType :: (n: ^(Node[]), at: int, final: int) -> int {
+    while (at >= 0 && at < final) {
+        token := n^[at].token;
+        if (token == tk.Plain || token == tk.Service || token == tk.Setting) {
+            at += 1;
+        } else if (token == tk.Wildcard) {
+            at += 4;
+        } else if (token == tk.Ident && (n^[at + 1].token == tk.Ident || n^[at + 1].token == tk.Xor ||
+                                         n^[at + 1].token == tk.Dollar)) {
+            at += 1;
+        } else {
+            break;
+        }
+    }
+    return SkipTypeSuffixes(n, SkipTypePrimary(n, at, final), final);
+}
+
+SkipTypePrimary :: (n: ^(Node[]), at: int, final: int) -> int {
+    if (at < 0 || at >= final) {
+        return -1;
+    }
+    token := n^[at].token;
+    if (token == tk.Dollar) {
+        if (!IsName(n^[at + 1].token)) {
+            return -1;
+        }
+        return at + 2;
+    }
+    if (token == tk.Xor) {
+        return SkipTypePrimary(n, at + 1, final);
+    }
+    if (token == tk.OpenBracket) {
+        key := SkipType(n, at + 1, final);
+        if (key < 0 || n^[key].token != tk.Colon) {
+            return -1;
+        }
+        value := SkipType(n, key + 1, final);
+        if (value < 0 || n^[value].token != tk.CloseBracket) {
+            return -1;
+        }
+        return value + 1;
+    }
+    if (n^[at].kind == syntax.Fn && n^[at + 1].token == tk.OpenParen) {
+        return SkipCallableType(n, at + 1, final);
+    }
+    if (token == tk.OpenParen) {
+        inner := SkipType(n, at + 1, final);
+        if (inner < 0 || n^[inner].token != tk.CloseParen) {
+            return -1;
+        }
+        return inner + 1;
+    }
+    if (!IsName(token)) {
+        return -1;
+    }
+    at += 1;
+    while (at + 1 < final && n^[at].token == tk.Period && IsName(n^[at + 1].token)) {
+        at += 2;
+    }
+    if (n^[at].token == tk.OpenParen) {
+        return SkipBrackets(n, at, final);
+    }
+    return at;
+}
+
+// The position after `fn (parameters) [-> result]` whose `(` is at `at`.
+SkipCallableType :: (n: ^(Node[]), at: int, final: int) -> int {
+    end := SkipBrackets(n, at, final);
+    if (end < 0 || n^[end].token != tk.ArrowRight) {
+        return end;
+    }
+    if (n^[end + 1].token == tk.OpenParen) {
+        return SkipBrackets(n, end + 1, final);
+    }
+    return SkipType(n, end + 1, final);
+}
+
+SkipTypeSuffixes :: (n: ^(Node[]), at: int, final: int) -> int {
+    while (at >= 0 && at < final) {
+        if (n^[at].token == tk.OpenBracket && n^[at + 1].token == tk.CloseBracket) {
+            at += 2;
+        } else if (n^[at].token == tk.Question) {
+            at += 1;
+        } else {
+            break;
+        }
+    }
+    return at;
+}
+
+// The position after the bracket group that opens at `at`, or -1.
+SkipBrackets :: (n: ^(Node[]), at: int, final: int) -> int {
+    depth: int = 0;
+    while (at < final) {
+        token := n^[at].token;
+        if (token == tk.OpenParen || token == tk.OpenBracket || token == tk.OpenBrace) {
+            depth += 1;
+        } else if (token == tk.CloseParen || token == tk.CloseBracket || token == tk.CloseBrace) {
+            depth -= 1;
+            if (depth == 0) {
+                return at + 1;
+            }
+        }
+        at += 1;
+    }
+    return -1;
+}
+
+// A unit: terms with optional `^N` powers, joined by `/`.
+ParseUnit :: (c: ^Cursor, n: ^(Node[])) -> int {
+    unit := New(n, syntax.Unit);
+    ParseUnitTerm(c, n, unit);
+    while (!c.failed && c.token == tk.Quo) {
+        Take(c, n, unit, syntax.FieldNone);
+        ParseUnitTerm(c, n, unit);
+    }
+    return unit;
+}
+
+ParseUnitTerm :: (c: ^Cursor, n: ^(Node[]), unit: int) {
+    Expect(c, n, unit, tk.Ident, syntax.FieldNone);
+    if (Accept(c, n, unit, tk.Xor, syntax.FieldNone)) {
+        Expect(c, n, unit, tk.Integer, syntax.FieldNone);
+    }
+}
+
+// Whether a unit alone starts here: `m/s` or `m^2`.
+StartsUnit :: (c: ^Cursor, n: ^(Node[])) -> bool {
+    return c.token == tk.Ident && (Peek(c, n, 1) == tk.Xor || Peek(c, n, 1) == tk.Quo);
+}
+
+// A type, a type measured in a unit, or a unit alone.
+ParseSignatureType :: (c: ^Cursor, n: ^(Node[])) -> int {
+    if (StartsUnit(c, n)) {
+        return ParseUnit(c, n);
+    }
+    base := ParseType(c, n);
+    if (c.failed || c.token != tk.Ident) {
+        return base;
+    }
+    measured := New(n, syntax.MeasuredType);
+    Add(n, measured, base, syntax.FieldBase);
+    Add(n, measured, ParseUnit(c, n), syntax.FieldUnit);
+    return measured;
+}
+
+

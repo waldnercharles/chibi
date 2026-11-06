@@ -1,0 +1,3 @@
+package rejected_character
+Echo :: (value: char) -> char { return value; }
+Main :: () -> int { value := 65; return int(Echo(value)); }

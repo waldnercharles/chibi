@@ -1,0 +1,70 @@
+{
+  "source": "7c6ca2f5d2c0fd10b4577f2c319ab5680b66ad62",
+  "binary": "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/baseline/build-release/test_language",
+  "binary_sha256": "12feb4410af2b3aedc3d80084c5c34b5728d180e5bb9b61f30ab6246022fbd76",
+  "runs": [
+    {
+      "selector": "language-record-state",
+      "exit": 1,
+      "supervisor_wall_seconds": 1.263,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/integration-baseline-language-record-state.log",
+      "summary": [
+        "(FAILED: ../test/language/record_state.c (201): pin_record_valid(v->record) && v->type_name == v->record->type.name)",
+        "(FAILED: ../test/language/record_state.c (338): row(&detached_row, \"first\", 0) && rows(&detached_rows, 3, \"first\", 0))",
+        "(FAILED: ../test/language/record_state.c (507): arena_contains(&saved, field.text))",
+        "(FAILED: ../test/language/record_state.c (591): owned(&values[i]))",
+        "Summary: Passed: 1 Failed: 2 Total: 3 Suites: 0 Asserts: 1942",
+        "Test command wall time: 1.066s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "selector": "language-record-prepared",
+      "exit": 0,
+      "supervisor_wall_seconds": 0.462,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/integration-baseline-language-record-prepared.log",
+      "summary": [
+        "Summary: Passed: 16 Failed: 0 Total: 16 Suites: 0 Asserts: 6089",
+        "Test command wall time: 0.370s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "selector": "language-record-values",
+      "exit": 0,
+      "supervisor_wall_seconds": 0.331,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/integration-baseline-language-record-values.log",
+      "summary": [
+        "Summary: Passed: 15 Failed: 0 Total: 15 Suites: 0 Asserts: 318",
+        "Test command wall time: 0.221s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "selector": "language-record-compatibility",
+      "exit": 0,
+      "supervisor_wall_seconds": 0.405,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/integration-baseline-language-record-compatibility.log",
+      "summary": [
+        "Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 1480",
+        "Test command wall time: 0.267s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "selector": "language-prepared-writer-chibi",
+      "exit": 1,
+      "supervisor_wall_seconds": 2.533,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/integration-baseline-language-prepared-writer-chibi.log",
+      "summary": [
+        "(FAILED: ../test/language/prepared_writer_chibi.c (1050): writes_like_native(b, package->module, CORPUS[c]))",
+        "(FAILED: ../test/language/prepared_writer_chibi.c (1092): written)",
+        "Summary: Passed: 1 Failed: 2 Total: 3 Suites: 0 Asserts: 369",
+        "Test command wall time: 2.374s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    }
+  ],
+  "source_status_after": "",
+  "checked_source_hashes_unchanged": true,
+  "checked_source_hashes": {
+    "tools/compiler/bootstrap/bootstrap.json": "812635d0e2c0c5336071dda2394b881dfcd1ed8aef17999d92511a506f5d2485",
+    "tools/compiler/bootstrap/compiler.chibip": "bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a",
+    "tools/compiler/runtime.json": "ae4c16cd0935f9642ff194bab6ebfabfc49d33c407b0077500b21191bcdc555c"
+  }
+}

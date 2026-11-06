@@ -1,0 +1,10 @@
+package facts
+
+// A constant count folds exactly even where an intermediate passes i64's
+// maximum: the count is 1.
+@test
+Calls :: () {
+    value: i8 = 1;
+    shifted: i8 = Shift(value);
+    assert(shifted == 2, "count 1");
+}

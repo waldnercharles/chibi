@@ -1,0 +1,23 @@
+native-driver-cache 1
+target aarch64-apple-darwin
+entry Main
+mode 2
+lines false
+static false
+shared false
+cli-errors false
+compiler /Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/build-native-self-host/timing/chibi-retirement
+compiler-sha256 a29650f245d3393d72b6b9b12def7de27ab5ead883f4a5b0284c466f09baeda4
+opt /tmp/chibi-llvm22/opt
+opt-sha256 2bd5eaa23de1e47480d02ac50d9376df0e071130d995e34f1fd3f2b76d1bb3d6
+llc /tmp/chibi-llvm22/llc
+llc-sha256 71ae3605805a8667d8875d11e9945be073baf6449a2468561a16086c90b03136
+linker /tmp/chibi-llvm22/ld64.lld
+linker-sha256 b46796ecf50def5ccf45ffefafd29f83854fb2f7789c0d7f00ec1270b33eb1a8
+collection core=/Users/cwaldner/Personal/chibi/.worktrees/compositional-records-integration/chibi/packages/core
+source ArrayPayload.chibi
+source-sha256 88e9ab259626c3cbd15e1bdae7f2c2e752cc2289daff942da7a77e8a4d21f99d
+key 7e5f7f22e577f8ab66da779051503a5d6a4850e9c034c1a3cd146b2642957f0b
+output-kind executable
+linkage dynamic libSystem
+program-sha256 50abf1d8ae672ad23dcc578b9fdd623be401f0e6c11f58ab72c13be02f8ae5b3

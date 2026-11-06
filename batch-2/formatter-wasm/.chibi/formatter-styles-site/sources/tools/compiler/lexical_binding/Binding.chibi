@@ -1,0 +1,233 @@
+package lexical_binding
+
+import syntax "project:syntax_diagnostics"
+import strings "core:strings"
+
+// Borrowed tables become ordinary owned invocation values at the ABI boundary.
+// Indices and scope-parent chains retain the analyzer's structural invariants.
+pub Scope :: struct {
+    parent: int;
+    function: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
+pub Symbol :: struct {
+    name: string;
+    kind: int;
+    scope: int;
+    id_slot: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
+pub Function :: struct {
+    symbol: int;
+    scope: int;
+}
+pub Environment :: union {
+    Tables(scopes: Scope[], symbols: Symbol[], functions: Function[],
+           ids: u64[], document_keys: string[])
+}
+pub Context :: struct {
+    identity: string;
+    scope: int;
+    function: int;
+    package_scope: int;
+    has_identity: bool;
+    has_documents: bool;
+}
+pub Request :: struct {
+    name: string;
+    kind: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
+pub Declaration :: union {
+    Appended(id: u64, diagnostics: syntax.Diagnostic[])
+    | Existing(symbol: int, diagnostics: syntax.Diagnostic[])
+}
+
+pub FunctionKind: int : 1;
+MacroKind: int : 2;
+StateKind: int : 4;
+SharedStateKind: int : 5;
+ParameterKind: int : 6;
+ResultKind: int : 7;
+LocalKind: int : 8;
+ActionKind: int : 9;
+
+pub FindName :: (environment: Environment, scope: int, name: string) -> int {
+    switch environment {
+        case .Tables(scopes, symbols, functions, ids, keys):
+            current := scope;
+            while (current >= 0) {
+                index := length(symbols) - 1;
+                while (index >= 0) {
+                    symbol := symbols[index];
+                    if (symbol.scope == current && symbol.kind != FunctionKind &&
+                        symbol.kind != MacroKind && symbol.name == name) {
+                        return index;
+                    }
+                    index -= 1;
+                }
+                current = scopes[current].parent;
+            }
+            return -1;
+    }
+}
+pub FindStorage :: (environment: Environment, scope: int, name: string, kind: int) -> int {
+    switch environment {
+        case .Tables(scopes, symbols, functions, ids, keys):
+            current := scope;
+            while (current >= 0) {
+                index := length(symbols) - 1;
+                while (index >= 0) {
+                    symbol := symbols[index];
+                    if (symbol.scope == current && symbol.name == name &&
+                        (symbol.kind == kind || (kind == StateKind && symbol.kind == SharedStateKind))) {
+                        return index;
+                    }
+                    index -= 1;
+                }
+                current = scopes[current].parent;
+            }
+            return -1;
+    }
+}
+pub FindCallable :: (environment: Environment, scope: int, name: string) -> int {
+    found := FindName(environment, scope, name);
+    switch environment {
+        case .Tables(scopes, symbols, functions, ids, keys):
+            if (found >= 0 && symbols[found].kind == ActionKind) {
+                return found;
+            }
+            current := scope;
+            while (current >= 0) {
+                index := length(symbols) - 1;
+                while (index >= 0) {
+                    symbol := symbols[index];
+                    if (symbol.scope == current &&
+                        (symbol.kind == FunctionKind || symbol.kind == MacroKind) && symbol.name == name) {
+                        return index;
+                    }
+                    index -= 1;
+                }
+                current = scopes[current].parent;
+            }
+            return -1;
+    }
+}
+Diagnostic :: (request: Request, message: string) -> syntax.Diagnostic {
+    return {start: request.start, end: request.end, line: request.line,
+            column: request.column, document: request.document,
+            message: strings.Slice(message, 0, 191)};
+}
+Previous :: (symbol: Symbol, message: string) -> syntax.Diagnostic {
+    return {start: symbol.start, end: symbol.end, line: symbol.line,
+            column: symbol.column, document: symbol.document,
+            message: strings.Slice(message, 0, 191)};
+}
+
+// The existing catalog ABI uses FNV-1a over domain, ':', then name, returning
+// one when the hash is zero, reserving zero as an absent ID. Arithmetic wraps64.
+pub ID :: (prefix: string, name: string) -> u64 {
+    hash: u64 = 14695981039346656037;
+    prime: u64 = 1099511628211;
+    index: int = 0;
+    count := strings.ByteLength(prefix);
+    while (index < count) {
+        hash = (hash ^ u64(strings.ByteAt(prefix, index))) * prime;
+        index += 1;
+    }
+    hash = (hash ^ 58) * prime;
+    index = 0;
+    count = strings.ByteLength(name);
+    while (index < count) {
+        hash = (hash ^ u64(strings.ByteAt(name, index))) * prime;
+        index += 1;
+    }
+    if (hash == 0) {
+        return 1;
+    }
+    return hash;
+}
+SymbolID :: (environment: Environment, context: Context, request: Request, result_parameter: bool) -> u64 {
+    suffix := "";
+    if (request.kind == FunctionKind || request.kind == MacroKind) {
+        suffix = ":callable";
+    } else if (result_parameter) {
+        suffix = ":result";
+        if (request.kind == LocalKind) {
+            suffix = ":local";
+        }
+    }
+    program := "";
+    if (context.has_identity) {
+        program = context.identity;
+    }
+    if (context.has_documents && context.scope == context.package_scope) {
+        return ID("package-symbol", format_text("{}:{}:{}{}", program, request.kind, request.name, suffix));
+    }
+    switch environment {
+        case .Tables(scopes, symbols, functions, ids, keys):
+            if (context.has_documents && context.function >= 0 && functions[context.function].symbol >= 0) {
+                function := functions[context.function];
+                owner_id := ids[symbols[function.symbol].id_slot];
+                scope := scopes[context.scope];
+                start := scope.start;
+                if (context.scope == function.scope) {
+                    start = -1;
+                }
+                return ID("package-local", format_text("{}:{}:{}:{}:{}{}", owner_id, keys[scope.document],
+                                                       start, request.kind, request.name, suffix));
+            }
+            return ID("symbol", format_text("{}:{}:{}{}", program, context.scope, request.name, suffix));
+    }
+}
+
+// Admission reports diagnostics in source order and still permits appending
+// reserved Cancelled when no duplicate exists, matching the current analyzer.
+pub Declare :: (environment: Environment, context: Context, request: Request) -> Declaration {
+    diagnostics: syntax.Diagnostic[] = [];
+    if (request.name == "Cancelled") {
+        diagnostics.append(Diagnostic(request, "'Cancelled' is reserved for the cancellation singleton"));
+    }
+    existing := FindName(environment, context.scope, request.name);
+    packageDeclaration := context.has_documents && context.scope == context.package_scope;
+    switch environment {
+        case .Tables(scopes, symbols, functions, ids, keys):
+            if (packageDeclaration || request.kind == FunctionKind || request.kind == MacroKind) {
+                existing = -1;
+                index := length(symbols) - 1;
+                while (index >= 0) {
+                    candidate := symbols[index];
+                    if (candidate.scope == context.scope && candidate.name == request.name &&
+                        (packageDeclaration || candidate.kind == FunctionKind || candidate.kind == MacroKind)) {
+                        existing = index;
+                        break;
+                    }
+                    index -= 1;
+                }
+            }
+            resultParameter := false;
+            if (existing >= 0 && (request.kind == ResultKind || request.kind == LocalKind)) {
+                resultParameter = symbols[existing].kind == ParameterKind;
+            }
+            if (existing >= 0 && symbols[existing].scope == context.scope && !resultParameter) {
+                diagnostics.append(Diagnostic(request, format_text("Duplicate declaration '{}'", request.name)));
+                if (packageDeclaration) {
+                    diagnostics.append(Previous(symbols[existing], format_text("Previous declaration '{}' is here", request.name)));
+                }
+                return Declaration.Existing(existing, diagnostics);
+            }
+            return Declaration.Appended(SymbolID(environment, context, request, resultParameter), diagnostics);
+    }
+}

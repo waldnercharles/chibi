@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_fmt.a "CMakeFiles/chibi_fmt.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/third_party/fmt/fmt.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_fmt.a

@@ -1,0 +1,40 @@
+package source_parser_tests
+
+@test
+NamedDefinitionsAcceptFnAndBareResults :: () {
+    Accepts("package p\nDouble :: fn(value: int) int { return value * 2; }\n");
+    Accepts("package p\nDouble :: (value: int) int { return value * 2; }\n");
+    Accepts("package p\nforeign { Count :: fn() int; }\n");
+    Accepts("package p\nMain :: () { Apply(fn(value: int) int => value + 1); }\n");
+    Accepts("package p\nMain :: () { Apply(fn(value) { return value + 1; }); }\n");
+    Accepts("package p\nSpeed :: () int m/s { return 1; }\n");
+    Accepts("package p\nArea :: () int m^2 => 1;\n");
+    Accepts("package p\nUnit :: () m^2 => 1;\n");
+    Accepts("package p\nIdentity :: fn(value: $T) T => value;\n");
+    Has(Shape("package p\nDouble :: fn(value: int) int { return value * 2; }\n"), ":function_declaration");
+}
+
+@test
+NamedExpressionBodiesUseReturnNodes :: () {
+    source := "package p\nDouble :: fn(value: int) int => value * 2;\n";
+    Accepts(source);
+    Has(Shape(source), "body:callable_body");
+    Has(Shape(source), ":return_statement");
+    Has(Shape(source), "value:binary_expression");
+    Accepts("package p\nDouble :: (value: int) -> int => value * 2\nMain :: () {}\n");
+    Accepts("package p\nPair :: () (first: int, second: bool) { return (1, true); }\n");
+}
+
+@test
+FunctionStyleSpellingsDoNotStealGroupedConstants :: () {
+    Accepts("package p\nA :: (1) + 2;\nB :: (true) || false;\n");
+    Accepts("package p\nAlias :: (int);\nF :: () -> int { return 1; }\n");
+    Accepts("package p\nF :: () -> int => { return 1; }\n");
+}
+
+@test
+ForBodiesAcceptOneScopedStatement :: () {
+    Accepts("package p\nMain :: () { for index in 0..<3 total += index; }\n");
+    Accepts("package p\nMain :: () { for (index in 0..<3)\n    if index > 0 continue;\n}\n");
+    Rejects("package p\nMain :: () { for index in 0..<3 ; }\n", 2, 33);
+}

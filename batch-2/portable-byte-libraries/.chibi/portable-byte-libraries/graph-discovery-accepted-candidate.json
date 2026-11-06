@@ -1,0 +1,15 @@
+{
+  "state": "clean local checkpoint after accepted804 fixture-only merge; source verification only",
+  "head": "2d10d6fc420bb0a815772362f9add03648d38851",
+  "tree": "5032bf6606f73004c5d4cdabde9f829c2537e8d0",
+  "accepted_base": "dafe746411182c3320281c0b1fe4e75e7b9b6456",
+  "previous": "4413d960d1fe43cfcab6dd15cb8041378ade5a05",
+  "feature_paths": 42,
+  "feature_patch_sha256": "734284259b4f5ffe8071466c301227c60dd1481e90e460e0e16dad260e0fe3d9",
+  "feature_patch_identical_to": "runtime-accepted-candidate.patch",
+  "runtime_compiler_and_artifacts_unchanged_by_this_merge": true,
+  "no_producer_interruption_or_automatic_build_test_regeneration": true,
+  "matching_rebuild_requirement": "Pre797 objects and hosts remain historical; use matching rebuilt native headers/objects/hosts for next assigned proof.",
+  "holds": "Body/artifact,801capability-effect,privatebank803,SDKandfeaturepublication remain unchanged.",
+  "verification": "graph-discovery-merge-verification.json"
+}

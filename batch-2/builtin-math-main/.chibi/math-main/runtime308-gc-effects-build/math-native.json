@@ -1,0 +1,74 @@
+{
+  "selector": "--package-compiler-chibi-math-native",
+  "command": [
+    "python3",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-validation/tools/test_policy.py",
+    "native",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build/test_language",
+    "--package-compiler-chibi-math-native"
+  ],
+  "status": 0,
+  "wall_seconds": 37.80855704192072,
+  "admitted_command_exact": true,
+  "binary_sha256": "ee4572c397aee09ea70473f1d8893e95fd528fc359a3fb3b689343119740d5cf",
+  "log_sha256": "0cbeb90a64962ca94e3423f2e08f5d71cfd9e5ee969fbc050faafb474a4d4112",
+  "pressure_records": [
+    {
+      "backend": "BYTECODE",
+      "collection_marks": 850,
+      "mask": 63,
+      "calls": 3,
+      "path": "C oracle -> BYTECODE"
+    },
+    {
+      "backend": "SLJIT",
+      "collection_marks": 850,
+      "mask": 63,
+      "calls": 3,
+      "path": "C oracle -> SLJIT"
+    },
+    {
+      "backend": "BYTECODE",
+      "collection_marks": 431,
+      "mask": 63,
+      "calls": 3,
+      "path": "BYTECODE compiler -> BYTECODE"
+    },
+    {
+      "backend": "SLJIT",
+      "collection_marks": 431,
+      "mask": 63,
+      "calls": 3,
+      "path": "BYTECODE compiler -> SLJIT"
+    },
+    {
+      "backend": "BYTECODE",
+      "collection_marks": 431,
+      "mask": 63,
+      "calls": 3,
+      "path": "SLJIT compiler -> BYTECODE"
+    },
+    {
+      "backend": "SLJIT",
+      "collection_marks": 431,
+      "mask": 63,
+      "calls": 3,
+      "path": "SLJIT compiler -> SLJIT"
+    }
+  ],
+  "summary": {
+    "passed": 1,
+    "failed": 0,
+    "total": 1,
+    "suites": 0,
+    "assertions": 741
+  },
+  "policy_wall_seconds": 37.321,
+  "pressure_log_requirements_passed": true,
+  "all_original_and_pressure_paths_completed": true,
+  "runtime_execution_count": 12,
+  "source_files_unchanged": true,
+  "binary_unchanged": true,
+  "protected_artifacts_unchanged": true,
+  "admission_unchanged": true
+}

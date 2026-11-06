@@ -1,0 +1,44 @@
+package source_type_style_tests
+
+import style "project:source_type_style"
+@test
+ArrayBindingsCanOmitInferredTypes :: () {
+    Check("package p\nMain :: () { values: int[] = [int(1), 2]; copied: int[] = values; }\n", style.OmitRedundant,
+          "package p\nMain :: () { values := [int(1), 2]; copied := values; }\n", 2);
+}
+
+@test
+PointerBindingsCanOmitInferredTypes :: () {
+    Check("package p\nMain :: () { value: int = 1; pointer: ^(int) = &value; copied: ^(int) = pointer; }\n", style.OmitRedundant,
+          "package p\nMain :: () { value := 1; pointer := &value; copied := pointer; }\n", 3);
+}
+
+@test
+OptionalBindingsCanOmitInferredTypes :: () {
+    Check("package p\nMaybe :: () -> int? { return 1; }\nMain :: () { value: int? = Maybe(); copied: int? = value; }\n", style.OmitRedundant,
+          "package p\nMaybe :: () -> int? { return 1; }\nMain :: () { value := Maybe(); copied := value; }\n", 2);
+}
+
+@test
+ParametersInferFromLiteralDefaults :: () {
+    Check("package p\nChoose :: (value = 3, yes = true, text = \"hello\") -> int { if yes { return value; } return 0; }\nMain :: () { result := Choose(); }\n", style.Explicit,
+          "package p\nChoose :: (value = 3, yes = true, text = \"hello\") -> int { if yes { return value; } return 0; }\nMain :: () { result: int = Choose(); }\n", 1);
+}
+
+@test
+NamedResultsCanBeInferred :: () {
+    Check("package p\nCount :: () { return 3; }\nMain :: () { result := Count(); }\n", style.Explicit,
+          "package p\nCount :: () { return 3; }\nMain :: () { result: int = Count(); }\n", 1);
+}
+
+@test
+NamedVoidExpressionResultIsInferred :: () {
+    Check("package p\nWrite :: () { return print_string(\"hello\"); }\nMain :: () { Write(); }\n", style.Explicit,
+          "package p\nWrite :: () { return print_string(\"hello\"); }\nMain :: () { Write(); }\n", 0);
+}
+
+@test
+NamedResultInferenceFollowsForwardCalls :: () {
+    Check("package p\nForward :: () { return Later(); }\nLater :: () { return 3; }\nMain :: () { result := Forward(); }\n", style.Explicit,
+          "package p\nForward :: () { return Later(); }\nLater :: () { return 3; }\nMain :: () { result: int = Forward(); }\n", 1);
+}

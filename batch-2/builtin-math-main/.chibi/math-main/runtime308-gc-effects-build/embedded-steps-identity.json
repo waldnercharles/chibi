@@ -1,0 +1,8 @@
+{
+  "header": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build/testing/include/package_compiler_chibi_source.h",
+  "header_sha256": "120278c2d3ab09da47257cfce5092f1dd470c4b1370ff0ef30fd8adc6aa2c131",
+  "embedded_steps_sha256": "a0a09a1594962cb119a402161814563a85c83b7cfe74b067e311730e8259aa75",
+  "private_steps_sha256": "a0a09a1594962cb119a402161814563a85c83b7cfe74b067e311730e8259aa75",
+  "matches_private_source": true,
+  "matches_f1a": false
+}

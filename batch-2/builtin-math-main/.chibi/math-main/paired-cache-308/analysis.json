@@ -1,0 +1,37 @@
+{
+  "runtime": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+  "math_tree": "706782b1239626574a999d1577aec7ea95018478",
+  "cache_blob": "7eb2fc5eaecdb1dd0c6a92a11372e2101ef4a516",
+  "baseline_status": 1,
+  "baseline_seconds": 94.655,
+  "baseline_failure": "project:asset_source prepared authored layout work limit exceeded at packaging after successful facade",
+  "cache_status": 0,
+  "cache_seconds": 98.996,
+  "cache_completed_phases": "bootstrap reuse0, facade, packaging, embedding, generation complete",
+  "inventory_verification": {
+    "command": [
+      "cmake",
+      "-DROOT=/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/paired-cache-308/baseline-source",
+      "-DRESOURCE=/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/paired-cache-308/cache-assets",
+      "-P",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/paired-cache-308/baseline-source/cmake/verify_source_snapshot.cmake"
+    ],
+    "status": 0,
+    "seconds": 0.092,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/paired-cache-308/cache-inventory.log"
+  },
+  "targets_identical": true,
+  "target_sha256": "da01568aa036f6307fe67a4f274ab253d91f00ebf6d080db85e2428383167767",
+  "common_completed_files_equal": {
+    "asset_compiler.chibip": {
+      "bytes": 24516370,
+      "sha256": "3fb089ac37b604da543512211fdcbfb26d278c2ee0e1730212f55c1572cd050b"
+    }
+  },
+  "common_files_with_different_bytes": [],
+  "source_difference_only": "src/execution/prepared_record.c",
+  "source_artifact_host_hashes_unchanged": true,
+  "no_bootstrap_fallback_or_extra_producer": true,
+  "no_limits_changed": true,
+  "conclusion": "Reviewed writer reuse is sufficient to complete the exact frozen math asset workload on accepted308; baseline still reproduces the layout-work failure. This is task-private evidence, not accepted-main or Math publication/SDK-release acceptance. New scoped WRITE metadata pressure failure remains a separate explicit gate. Times are failure/success wall times, not speedup evidence."
+}

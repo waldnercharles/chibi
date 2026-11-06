@@ -1,0 +1,52 @@
+package number_literal_tests
+
+import compiler "project:package_compiler"
+
+@test
+GroupedFloatLiteralsKeepBothIeeeRepresentations :: () {
+    switch compiler.LiteralBits("1_234.5_678e-0_2", false) {
+        case .OutOfRange: assert(false, "grouped float literal is finite");
+        case .Finite(wide, fits, narrow):
+            switch compiler.LiteralBits("1234.5678e-02", false) {
+                case .OutOfRange: assert(false, "reference float literal is finite");
+                case .Finite(other, other_fits, other_narrow):
+                    assert(wide == other && fits == other_fits && narrow == other_narrow,
+                           "separators change neither f32 nor f64 rounding");
+            }
+    }
+    switch compiler.LiteralBits("0xFF_FF", false) {
+        case .OutOfRange: assert(false, "grouped hexadecimal literal is finite");
+        case .Finite(wide, fits, narrow):
+            switch compiler.LiteralBits("0xFFFF", false) {
+                case .OutOfRange: assert(false, "reference hexadecimal literal is finite");
+                case .Finite(other, other_fits, other_narrow):
+                    assert(wide == other && narrow == other_narrow && fits == other_fits,
+                           "hexadecimal separators preserve numeric conversion");
+            }
+    }
+}
+
+@test
+GroupedWholeDecimalsRetainExactIntegerMagnitude :: () {
+    switch compiler.IntegralOf("1_234.00e+0_2") {
+        case .Whole(magnitude): assert(magnitude == 123400, "whole decimal magnitude ignores digit grouping");
+        case: assert(false, "grouped whole decimal remains integral");
+    }
+    switch compiler.IntegralOf("1_234.5") {
+        case .Fraction:
+            assert(true, "separator removal does not discard a fraction");
+        case: assert(false, "fractional grouped decimal cannot become an integer");
+    }
+}
+
+@test
+PublicNumericReadersRejectMalformedSeparators :: () {
+    for (value in ["1__0", "1_e2", "0x_FF", "1.0_"]) {
+        switch compiler.LiteralBits(value, false) {
+            case .OutOfRange:
+                assert(true, "malformed separators do not gain a numeric value");
+            case .Finite(wide, fits, narrow):
+                assert(false, "malformed separators must reject");
+        }
+    }
+}

@@ -1,0 +1,19 @@
+{
+  "command": [
+    "cmake",
+    "--build",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/canonical-build",
+    "--target",
+    "test_language",
+    "--parallel",
+    "4"
+  ],
+  "status": 0,
+  "wall_seconds": 4.092052957974374,
+  "strict_flags_unchanged": true,
+  "source_sha256": "8e99a1d3c4a1d9ac9b0f45e213fe633b3ff30920dd2c261ee7770efa9bfb4559",
+  "helper_patches": [],
+  "binary": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/canonical-build/test_language",
+  "binary_bytes": 15479088,
+  "binary_sha256": "c13c94461e2c97e88a0dc80bb4e0a06afa4f2c7b2753a7858d72ac377cb97008"
+}

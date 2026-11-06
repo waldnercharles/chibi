@@ -1,0 +1,21 @@
+{
+  "source": "fee955dc26861bbe836ca28d15685838b3a56322",
+  "binary_sha256": {
+    "chibi": "0dfcfffcd18d35fbb3441881d1731fea57ca9794171647c19eea3152ab46f949",
+    "chibi-compile": "3d1b44b9d0b7b7d5d77e787a03ecfeb09d44f17fe24f1244b28bef92103893e6",
+    "chibi-player": "8a6956c133b2f44f7772e7dcf5ddbc1aba9fc25c50badca112df11c5c4b0e125"
+  },
+  "resource_trees": {
+    "apps": {
+      "chibi/Projects.chibi": "fe0cff221557c36be718b1cbeb6b958cabc5662096049df6889615d153a67220",
+      "chibi/Main.chibi": "01224d8cbdb32f5538a4305ed4225c7e3d6f170e753b082aab1d66c99e1fe2ac",
+      "chibi/Programs.chibi": "bd92bdbe85eada3df268e8697fd44f865c17836d9997b6e70291c0b68900861d",
+      "chibi/Inspect.chibi": "05f82bb77e060597637c22fa4a50dfd25c8ca18149139fcdb57adc11ed616683",
+      "chibi/Export.chibi": "c6dc953e8ade59aa98165287e2344b09de2c4e38a16cb43fb8d554e4a8ae4590",
+      "chibi/Arguments.chibi": "0945b3fac31799b6a509cccd24e479b7263c12e00a7ed1f6eb4b0e600c3ccd40"
+    },
+    "core": {
+      "strings/Strings.chibi": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df"
+    }
+  }
+}

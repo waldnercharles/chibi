@@ -1,0 +1,39 @@
+[
+  {
+    "check": "authored-tests",
+    "returncode": 0,
+    "wall_seconds": 0.135,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/authored-tests-ordinary-cli-accepted817.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi",
+      "test",
+      "apps/chibi"
+    ]
+  },
+  {
+    "check": "version",
+    "returncode": 0,
+    "wall_seconds": 0.067,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/version-ordinary-cli-accepted817.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi",
+      "version"
+    ]
+  },
+  {
+    "check": "self-version",
+    "returncode": 0,
+    "wall_seconds": 0.127,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/self-version-ordinary-cli-accepted817.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/sdk/chibi",
+      "apps/chibi",
+      "--",
+      "version"
+    ]
+  },
+  {
+    "check": "version-byte-identity",
+    "passed": true
+  }
+]

@@ -1,0 +1,5 @@
+package facts
+One :: (a: int) -> int { return a; }
+Two :: () -> int { return One(); }
+
+// error: 3:27: call has the wrong number of arguments

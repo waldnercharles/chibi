@@ -1,0 +1,253 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import abi "project:native_abi"
+import scalar "project:scalar_llvm"
+import strings "core:strings"
+import syntax "project:syntax_diagnostics"
+import route "project:driver_paths"
+
+// The native compiler's pure core: the sources of a program's closure in, one
+// LLVM module or the first rejection out. It touches no file and no global, so
+// Main runs it natively and the VM-hosted compiler runs it as an entry.
+
+// A large program's module is several pieces, each after the first begun by
+// a `; chibi-piece` line (llvm_native's Pieces).
+pub Output :: union {
+    Rejected(message: string) | Emitted(text: string)
+}
+
+Target :: (triple: string) -> abi.Target {
+    if (triple == "wasm32-unknown-emscripten") { return abi.WebAssembly32(); }
+    if (triple == "arm64-apple-macosx11.0.0" || strings.HasPrefix(triple, "aarch64-apple")) {
+        return abi.MacOSArm64();
+    }
+    if (strings.HasPrefix(triple, "x86_64-pc-windows")) {
+        return abi.WindowsX64();
+    }
+    if (triple == "x86_64-unknown-linux-gnu") { return abi.LinuxX64(); }
+    return {triple: triple, pointer_bits: 0};
+}
+
+// Scalar lowering needs the destination pointer width for core:target and
+// foreign pointer-sized scalars. These are not a prepared VM layout for Wasm.
+PointerFacts :: (target: abi.Target) -> compiler.Target {
+    facts := TargetFacts();
+    facts.pointer_size = target.pointer_bits / 8;
+    if (target.pointer_bits == 32) { facts.pointer_storage = 7; }
+    return facts;
+}
+
+TargetPlatform :: struct { os: int; arch: int; }
+
+// core:target's platform numbers follow the canonical destination ABI, so
+// accepted spellings of one target select identical declarations and offsets.
+PlatformFor :: (target: abi.Target) -> TargetPlatform {
+    if (abi.Same(target, abi.MacOSArm64())) { return {os: 2, arch: 2}; }
+    if (abi.Same(target, abi.WindowsX64())) { return {os: 3, arch: 1}; }
+    if (abi.Same(target, abi.WebAssembly32())) { return {os: 4, arch: 3}; }
+    return {os: 1, arch: 1};
+}
+
+// The function whose declaration lies last before byte `at` of `text`.
+FunctionAt :: (text: string, at: int) -> string {
+    lines := strings.SplitLines(strings.Slice(text, 0, at));
+    index := length(lines) - 1;
+    while (index >= 0) {
+        line := lines[index];
+        marker := strings.Index(line, " :: (");
+        if (marker > 0 && !strings.HasPrefix(line, " ") && !strings.HasPrefix(line, "/")) {
+            return strings.TrimPrefix(strings.Slice(line, 0, marker), "pub ");
+        }
+        index -= 1;
+    }
+    return "(entry)";
+}
+
+// The public command owns physical roots. Pure Module callers retain their
+// logical source names; resolving a diagnostic does no work on a success.
+DiagnosticOrigins :: struct {
+    root: string;
+    source: string;
+    directories: string[];
+    entry: string;
+    runtime_assertions: bool;
+}
+
+// A logical input path as the command read it. The explicit first source can
+// sit outside the project; collection paths can use the Windows-visible spelling.
+PhysicalSource :: (origins: DiagnosticOrigins, path: string, document: int) -> string {
+    if (origins.root == "") { return path; }
+    if (document == 0 && origins.source != "") { return origins.source; }
+    shown := path;
+    for (directory in origins.directories) {
+        prefix := strings.Concatenate([route.Visible(directory), "/"]);
+        if (strings.HasPrefix(shown, prefix)) {
+            return strings.Concatenate([directory, "/", strings.TrimPrefix(shown, prefix)]);
+        }
+    }
+    if (!strings.HasPrefix(shown, "/") &&
+        !(strings.ByteLength(shown) > 2 && strings.ByteAt(shown, 1) == 58)) {
+        shown = strings.Concatenate([origins.root, "/", shown]);
+    }
+    return shown;
+}
+
+// The file and line byte `at` of the joined sources lies in; each source is
+// followed by a newline when it lacks one, as the producer joins them.
+// source_size ends at the last retained document when parsing stopped early.
+Where :: (collections: string[], directories: string[], paths: string[], sources: string[],
+          os: int, arch: int, pointer_bits: int, source_size: int, at: int, origins: DiagnosticOrigins) -> string {
+    offset := 0;
+    for (index in 0..<length(paths)) {
+        text := sources[index];
+        if (compiler.TargetPackagePath(collections, directories, paths[index])) {
+            // Match the producer's actual source, not the on-disk target template.
+            text = compiler.TargetPackageText(os, arch, pointer_bits, 1);
+        }
+        size := strings.ByteLength(text);
+        if (!strings.HasSuffix(text, "\n")) {
+            size += 1;
+        }
+        if (at < offset + size || (at == source_size && at == offset + size)) {
+            before := strings.Slice(text, 0, at - offset);
+            line := strings.Count(before, "\n") + 1;
+            if (origins.root == "") { return format_text("{}:{}", paths[index], line); }
+            path := PhysicalSource(origins, paths[index], index);
+            column := at - offset - strings.LastIndex(before, "\n");
+            return format_text("{}:{}:{}", path, line, column);
+        }
+        offset += size;
+    }
+    return "?";
+}
+
+// `paths[0]` and `sources[0]` are the entry file, the others its closure: project
+// packages by project-relative path and collection packages by path under their
+// `directories`. The program starts at the function `chosen` in the root package,
+// or the first file's first function when `chosen` is "". With a `directory`,
+// the module has line tables naming the source in it (Linux x86-64 only).
+// A rejection message reads `rejected FUNCTION: MESSAGE`.
+pub Module :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+               chosen: string, directory: string) -> Output {
+    return ModuleWith(collections, directories, paths, sources, triple, chosen, directory, false, {root: "", source: "", directories: [], entry: "", runtime_assertions: false});
+}
+
+// Package generations expose Main/Frame and retained states to the native host.
+pub ModuleShared :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+                     chosen: string, directory: string) -> Output {
+    if (directory != "") {
+        return Output.Rejected("shared package generations have no line tables yet");
+    }
+    return ModuleWith(collections, directories, paths, sources, triple, chosen, "", true, {root: "", source: "", directories: [], entry: "", runtime_assertions: false});
+}
+
+ModuleWith :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+               chosen: string, directory: string, shared: bool, origins: DiagnosticOrigins) -> Output {
+    target := Target(triple);
+    if (!abi.Supported(target)) { return Output.Rejected("unsupported native target"); }
+    platform := PlatformFor(target);
+    rows: facts.Row[] = [];
+    if (shared) {
+        rows = compiler.CollectScalarGeneration("/project", collections, directories, paths, sources, PointerFacts(target), Names(),
+                                               Natives(), Ports(), Identities(), platform.os, platform.arch);
+    } else {
+        rows = compiler.CollectScalarProgram("/project", collections, directories, paths, sources, PointerFacts(target), Names(),
+                                            Natives(), Ports(), Identities(), platform.os, platform.arch, chosen);
+    }
+    return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, shared, origins);
+}
+
+// Program rows already checked by the collector, with the same diagnostics,
+// target substitutions and LLVM validator as the ordinary program boundary.
+CollectedModule :: (collections: string[], directories: string[], paths: string[], sources: string[], triple: string,
+                    rows: facts.Row[], directory: string, origins: DiagnosticOrigins) -> Output {
+    target := Target(triple);
+    if (!abi.Supported(target)) { return Output.Rejected("unsupported native target"); }
+    platform := PlatformFor(target);
+    return EmitRows(collections, directories, paths, sources, platform.os, platform.arch, rows, target, directory, false, origins);
+}
+
+// The parser distinguishes library declarations from package generations,
+// including comments and nonstandard whitespace before the declaration.
+LibrarySource :: (source: string) -> bool {
+    switch compiler.ParseSyntax(source) {
+        case .Rejected(diagnostic): return false;
+        case .Parsed(nodes, fields, is_named, is_extra, root):
+            child := nodes[root].first_child;
+            while (child >= 0) {
+                if (!is_extra[child] && is_named[child]) {
+                    return nodes[child].kind == syntax.Library;
+                }
+                child = nodes[child].next_sibling;
+            }
+    }
+    return false;
+}
+
+// The existing single-source library producer; package libraries and line
+// tables are not supported here.
+LibraryModule :: (path: string, source: string, triple: string, origins: DiagnosticOrigins) -> Output {
+    rows := compiler.CollectScalar("/project", path, source, TargetFacts(), Names(), Natives(), Ports(), Identities());
+    target := Target(triple);
+    platform := PlatformFor(target);
+    return EmitRows([], [], [path], [source], platform.os, platform.arch, rows, target, "", false, origins);
+}
+
+// Both producers return the same facts rows and rejection contract. A
+// rejection names its file and line in the closure the producer read, with
+// the target `os` and `arch` (core:target's numbers) that chose its text.
+EmitRows :: (collections: string[], directories: string[], paths: string[], sources: string[], os: int, arch: int,
+             rows: facts.Row[], target: abi.Target, directory: string, shared: bool, origins: DiagnosticOrigins) -> Output {
+    if (length(rows) < 2 || rows[1].kind == facts.RejectionRow) {
+        rejected := rows[length(rows) - 1];
+        place := Where(collections, directories, paths, sources, os, arch, target.pointer_bits,
+                       strings.ByteLength(rows[0].text), rejected.start, origins);
+        function := FunctionAt(rows[0].text, rejected.start);
+        if (origins.root != "") {
+            if (function == "(entry)" && origins.entry != "") { function = origins.entry; }
+            return Output.Rejected(format_text("rejected {}: {}: {}", function, place, rejected.text));
+        }
+        return Output.Rejected(format_text("rejected {}: {} ({})", function, rejected.text, place));
+    }
+    emitted: scalar.Result = scalar.Result.Invalid("");
+    prepared := rows;
+    if (!shared && origins.runtime_assertions) {
+        prepared = AssertionLocations(collections, directories, paths, sources, rows, target, os, arch, origins);
+    }
+    if (shared) {
+        emitted = scalar.EmitShared(target, rows);
+    } else if (directory == "") {
+        emitted = scalar.EmitProgramFor(target, prepared, "");
+    } else {
+        emitted = scalar.EmitProgramFor(target, prepared, directory);
+    }
+    switch emitted {
+        case .Rejected(rejected):
+            return Output.Rejected(strings.Concatenate(["rejected (module): ", rejected[length(rejected) - 1].text]));
+        case .Invalid(message):
+            return Output.Rejected(strings.Concatenate(["rejected (module): ", message]));
+        case .Emitted(text):
+            return Output.Emitted(text);
+    }
+}
+
+// The compiler host's entry: the module's bytes, or a 0 byte and then the
+// rejection's text.
+pub Compile :: (core: string, paths: string[], sources: string[], triple: string) -> u8[] {
+    switch Module(["core"], [core], paths, sources, triple, "", "") {
+        case .Rejected(message):
+            flagged: u8[] = [0];
+            for (byte in strings.Bytes(message)) {
+                flagged.append(u8(byte));
+            }
+            return flagged;
+        case .Emitted(text):
+            module: u8[] = [];
+            for (item in strings.Bytes(text)) {
+                module.append(u8(item));
+            }
+            return module;
+    }
+}

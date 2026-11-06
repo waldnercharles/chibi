@@ -1,0 +1,66 @@
+{
+  "binary": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/release/test_language",
+  "binary_sha256": "7bbae2fd72595b783046c0c4898570a3702343e97c98857d2628e0f74f6a5616",
+  "results": [
+    {
+      "selector": "--semantic",
+      "status": 0,
+      "seconds": 1.8,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/current--semantic.log"
+    },
+    {
+      "selector": "--package-tests",
+      "status": 0,
+      "seconds": 0.77,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/current--package-tests.log"
+    },
+    {
+      "selector": "--program",
+      "status": 0,
+      "seconds": 1.828,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/current--program.log"
+    },
+    {
+      "selector": "--native-char-results",
+      "status": 0,
+      "seconds": 0.381,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/current--native-char-results.log"
+    },
+    {
+      "selector": "--asset-packaging-chibi",
+      "status": 0,
+      "seconds": 6.656,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/current--asset-packaging-chibi.log"
+    },
+    {
+      "selector": "--native-calls",
+      "status": 0,
+      "seconds": 0.564,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/current--native-calls.log"
+    },
+    {
+      "selector": "--component-write",
+      "status": 0,
+      "seconds": 0.473,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/current--component-write.log"
+    },
+    {
+      "selector": "--borrow",
+      "status": 0,
+      "seconds": 0.289,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/current--borrow.log"
+    },
+    {
+      "selector": "--record-compatibility",
+      "status": 0,
+      "seconds": 0.232,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/current--record-compatibility.log"
+    },
+    {
+      "selector": "--record-values",
+      "status": 0,
+      "seconds": 0.307,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/current--record-values.log"
+    }
+  ]
+}

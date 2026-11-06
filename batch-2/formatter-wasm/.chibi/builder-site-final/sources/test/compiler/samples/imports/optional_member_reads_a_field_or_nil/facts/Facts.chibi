@@ -1,0 +1,21 @@
+package facts
+
+Point :: struct {
+    x: int;
+    y: int;
+}
+
+Main :: () -> int {
+    p: Point? = {x: 4, y: 5};
+    q: Point? = nil;
+    total := 0;
+    x := p?.x;
+    if x {
+        total += x;
+    }
+    nothing := q?.x;
+    if nothing == nil {
+        total += 100;
+    }
+    return total + (p?.y ?? 0) + (q?.y ?? 7);
+}

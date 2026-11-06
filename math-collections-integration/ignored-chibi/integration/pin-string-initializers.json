@@ -1,0 +1,28 @@
+{
+  "base_head": "ea596f9dfd9d353e129e6e7cb11d3cdd811d794c",
+  "changed_paths": [
+    "test/language/record_publication.c",
+    "test/language/outliner_projection.c"
+  ],
+  "patch_sha256": "c33a6d609bad87b21b696da1708d0a6d7c5320be2e689106d56960b60561701b",
+  "source_sha256": {
+    "test/language/record_publication.c": "0d66c3c8ef1be066ab4bfe7f6e70c98fff914a2d12539c64c27d68de3531a3e9",
+    "test/language/outliner_projection.c": "04f5a4917d25cf08ded4bd57afd9e6e24fabccd5499631df80298dfd7514257b"
+  },
+  "red_build_log": ".chibi/integration/wasm-build.log",
+  "red_build_log_sha256": "6e58879b6b0a9e3f8cf072f14772beb9668ef7217d7d709997e1d3e436c9fa6c",
+  "command": [
+    "cmake",
+    "--build",
+    ".chibi/integration/wasm",
+    "--target",
+    "CMakeFiles/test_language.dir/record_publication.c.o",
+    "CMakeFiles/test_language.dir/outliner_projection.c.o",
+    "--parallel",
+    "4"
+  ],
+  "exit_code": 0,
+  "wall_seconds": 1.4607257500756532,
+  "green_log": ".chibi/integration/pin-string-initializers-green.log",
+  "green_log_sha256": "28707763d38cead56eef57213ac872220e71811df9cde1114863c7176022e742"
+}

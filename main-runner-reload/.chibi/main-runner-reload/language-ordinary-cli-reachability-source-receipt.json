@@ -1,0 +1,70 @@
+{
+  "head": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+  "recorded_utc": "2026-10-29T01:08:13.446775+00:00",
+  "driver": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+  "driver_sha256": "0545350219b6d74a34d64738b2a7014bd0099d456b67c10d0d7d1e312aacc4c2",
+  "driver_modified_utc": "2026-10-29T01:06:54.659657+00:00",
+  "sources": {
+    "src/authoring/program.c": {
+      "sha256": "494dcd04eb14f697bde26df9112aa4e726deb4554b7cb1d2fb6a72c2aff26e53",
+      "modified_utc": "2026-10-28T23:10:56.646381+00:00"
+    },
+    "src/authoring/program.h": {
+      "sha256": "dfb605298bc5fd15777359cd02096c538292d44becc1348ff4135650ac1d42ab",
+      "modified_utc": "2026-10-28T23:10:55.158106+00:00"
+    },
+    "src/authoring/program_service.c": {
+      "sha256": "8d50ed5a14f75bb74027a7bb9bd36628ce98cfec0e035a22c49608bf8b377915",
+      "modified_utc": "2026-10-28T23:10:56.040001+00:00"
+    },
+    "src/authoring/program_service.h": {
+      "sha256": "074ece01dc3c2d8d2aa7a227dd1ea7e7b0e9bf797f365b1dfc41c2ccc2e027c6",
+      "modified_utc": "2026-10-28T23:10:56.647632+00:00"
+    },
+    "src/authoring/source_package_prepare.c": {
+      "sha256": "b5e232f27c91c31aeaaf0ee7a61ae9d01f0d1021c3dba1a39616367a9a0e46e8",
+      "modified_utc": "2026-10-29T01:02:10.894215+00:00"
+    },
+    "src/authoring/source_package_prepare.h": {
+      "sha256": "630e6060810758a84fa88acae253e942d83742f8b75340a243bba5b9da204823",
+      "modified_utc": "2026-10-29T01:02:10.894363+00:00"
+    },
+    "src/execution/program.c": {
+      "sha256": "264c77d34717e84af38e61144255b07e5b0682963d9a51a221c28dbc58b1a509",
+      "modified_utc": "2026-10-28T21:01:50.619948+00:00"
+    },
+    "src/execution/module.h": {
+      "sha256": "91579a718bcca7932158e64db44db07d6e1a30856f5401b9ef3a16dd95236a70",
+      "modified_utc": "2026-10-28T20:52:04.106709+00:00"
+    },
+    "test/language/program_session.c": {
+      "sha256": "085f59260af4fe6520ceebc199fe27104320f0de5b3949ce49918ac56f1ba655",
+      "modified_utc": "2026-10-29T01:04:04.584390+00:00"
+    },
+    "test/language/program.c": {
+      "sha256": "8b20d92e126bf39a3ae1b2057eece7cff82ab18b0b156bb22916a8c341a5ceaf",
+      "modified_utc": "2026-10-28T21:02:41.969480+00:00"
+    },
+    "test/language/main.c": {
+      "sha256": "b4555b36a428b57e700eebf504006514c3d53a1eb47948cb891cc7a527c90435",
+      "modified_utc": "2026-10-28T22:47:26.202957+00:00"
+    },
+    "test/language/publication.c": {
+      "sha256": "73d2458733dac481c09e07400ff9f6a29a1edfc97d0eb063548a84395d3d137d",
+      "modified_utc": "2026-10-28T20:47:00.747957+00:00"
+    },
+    "test/language/record_publication.c": {
+      "sha256": "c74dd85958c97c0aa23fbc8e219e96be910b8146640796d391b4b91de3deb637",
+      "modified_utc": "2026-10-28T20:47:00.749973+00:00"
+    },
+    "test/language/record_prepared_runtime.c": {
+      "sha256": "41c9009a20b0ebb13a385dca0d95adb187ecae5442710af4669355b0ede68681",
+      "modified_utc": "2026-10-28T23:19:26.741076+00:00"
+    },
+    "test/language/modules.c": {
+      "sha256": "72f5a045b54335ec700985b5af3bcd04d6d21d5d3c9555676505cd329c0eb74e",
+      "modified_utc": "2026-10-28T20:47:00.734472+00:00"
+    }
+  },
+  "driver_newer_than_listed_sources": true
+}

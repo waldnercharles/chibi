@@ -1,0 +1,34 @@
+package source_type_style_tests
+
+import style "project:source_type_style"
+import compiler "project:package_compiler"
+import catalog "project:compiler_catalog"
+
+@test
+GenericMethodUpdatesRetainTheirSemanticWriteMarkers :: () {
+    source := "package p\nforeign { Address :: () -> rawptr }\nMain :: () { getter: fn() -> i64 = Address(); values: i64[] = []; values.append(getter()); visible := true; }\n";
+    expected := "package p\nforeign { Address :: () -> rawptr }\nMain :: () { getter: fn() -> i64 = Address(); values: i64[] = []; values.append(getter()); visible: bool = true; }\n";
+    normal := compiler.Compile("/formatter", [], [], ["/formatter/Main.chibi"], [source], false, catalog.TargetFacts(), 1,
+                                catalog.Names(), catalog.Natives(), catalog.Ports(), catalog.Identities());
+    if (normal.error != nil) { print_string(normal.error.message); }
+    Check(source, style.Explicit, expected, 1);
+    assert(normal.error == nil && normal.module != 0, "ordinary compilation and formatter analysis share the stable write contract");
+}
+
+@test
+RequiredRawAddressCallableSignaturesDoNotBlockOtherOmissions :: () {
+    source := "package p\nforeign { Address :: () -> rawptr }\nMain :: () { getter: fn() -> i64 = Address(); values: i64[] = []; values.append(getter()); visible: bool = true; }\n";
+    expected := "package p\nforeign { Address :: () -> rawptr }\nMain :: () { getter: fn() -> i64 = Address(); values: i64[] = []; values.append(getter()); visible := true; }\n";
+    preferences := style.Defaults(); preferences.bindings = style.OmitRedundant;
+    CheckPreferences(source, preferences, expected, 1, 2);
+}
+
+@test
+TypedForeignCallableResultsCanShowOrOmitTheirInferredSignature :: () {
+    source := "package p\nforeign { Address :: () -> fn() -> i64 }\nMain :: () { getter := Address(); values: i64[] = []; values.append(getter()); }\n";
+    explicit := "package p\nforeign { Address :: () -> fn() -> i64 }\nMain :: () { getter: fn() -> i64 = Address(); values: i64[] = []; values.append(getter()); }\n";
+    preferences := style.Defaults(); preferences.bindings = style.Explicit;
+    CheckPreferences(source, preferences, explicit, 1, 0);
+    preferences.bindings = style.OmitRedundant;
+    CheckPreferences(explicit, preferences, source, 1, 1);
+}

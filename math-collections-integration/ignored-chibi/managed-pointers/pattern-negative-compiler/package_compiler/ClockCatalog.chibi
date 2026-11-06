@@ -1,0 +1,75 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+
+// Private host transport. Its ports and identities are shared by catalog
+// construction and the typed native projection; source spelling grants no access.
+pub ClockNativeName :: () -> string { return "host:clock.RawSample"; }
+pub ClockNativeID: u64 : 11949858876914716475;
+pub ClockNativeABI: u64 : 7844862165656852738;
+pub ClockNativeEffect: int : 8;
+
+pub ClockNative :: (first: int) -> Native {
+    return {name: ClockNativeName(), first: first, parameters: 0, results: 4,
+            variadic: false, effects: ClockNativeEffect};
+}
+pub ClockPorts :: () -> Port[] {
+    return [{name: "nanoseconds", storage: ScalarStorage("i64"), container: 0, c_string: false},
+            {name: "domain", storage: WordStorage, container: 0, c_string: false},
+            {name: "status", storage: IntStorage, container: 0, c_string: false},
+            {name: "platform_error", storage: IntStorage, container: 0, c_string: false}];
+}
+
+// The caller already checked all catalog spans. Reserve this capability's
+// identity even when another row claims it; ambiguity must never choose a provider.
+// -1 is absent, -2 a noncanonical capability, otherwise its unchanged native index.
+ScalarClockCapability :: (natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[]) -> int {
+    selected := -1;
+    identities_seen := 0;
+    for (native, index in natives) {
+        if (identities[2 * index] == ClockNativeID) { identities_seen += 1; }
+        if (native.qualified_name == ClockNativeName()) {
+            if (selected >= 0) { return -2; }
+            selected = index;
+        }
+    }
+    if (selected < 0) { return -1; }
+    native := natives[selected];
+    if (identities_seen != 1 || identities[2 * selected] != ClockNativeID ||
+        identities[2 * selected + 1] != ClockNativeABI || native.name != ClockNativeName() ||
+        native.source || !native.direct || native.variadic || native.kind != NativeFunctionKind ||
+        native.intrinsic != 0 || native.parameters != 0 || native.results != 4 || native.effects != ClockNativeEffect) {
+        return -2;
+    }
+    expected := ClockPorts();
+    for (port, index in expected) {
+        actual := ports[native.first + index];
+        if (actual.name != port.name || actual.storage != port.storage || actual.container != 0 ||
+            actual.c_string || actual.record != -1 || actual.has_default || actual.default_owner ||
+            actual.default_supported || actual.default_bits != 0 || actual.default_text != "") { return -2; }
+    }
+    return selected;
+}
+
+// Body host rows retain actual resolved call sites. Only direct unannotated
+// result-bank locals are projected; every read then uses that one sampled value.
+ScalarClockSites :: struct { capability: int; record: int; nodes: int[]; }
+ScalarClockLocal :: (forest: snapshot.SnapshotNode[], call: int) -> int {
+    node := call;
+    parent := forest[node].parent;
+    while (Is(forest, parent, syntax.ParenthesizedExpression)) { node = parent; parent = forest[node].parent; }
+    if (!Is(forest, parent, syntax.LocalDeclaration) || Field(forest, parent, syntax.FieldValue) != node ||
+        Field(forest, parent, syntax.FieldType) >= 0) { return -1; }
+    return parent;
+}
+ScalarClockRecord :: (types: TypeDecl[], members: TypeMember[], record: int) -> bool {
+    if (record < 0 || types[record].kind != RecordDecl || types[record].count != 4) { return false; }
+    expected := ClockPorts();
+    for (port, index in expected) {
+        field := members[types[record].first + index];
+        if (field.name != port.name || field.storage != port.storage || field.container != 0 || field.record != -1 ||
+            field.c_string || field.constant || field.read != -1) { return false; }
+    }
+    return true;
+}

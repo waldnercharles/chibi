@@ -1,0 +1,168 @@
+package source_format
+
+import diag "project:syntax_diagnostics"
+import strings "core:strings"
+
+SegmentFixtureNames :: (identifiers: string[]) -> SegmentNameWords {
+    text := strings.Concatenate(identifiers);
+    rows: diag.Node[] = [];
+    offset: int = 0;
+    for (identifier in identifiers) {
+        end := offset + strings.ByteLength(identifier);
+        rows.append({kind: diag.Identifier, start: offset, end: end, row: 0, column: offset,
+                     parent: -1, first_child: -1, next_sibling: -1});
+        offset = end;
+    }
+    return SegmentIndexNames(text_bytes(text), rows);
+}
+
+@test
+SegmentIdentifierSimilarityFollowsPublishedCases :: () {
+    identifiers := ["x", "y", "strTmp", "strMsg", "redPixels", "greenBuffer", "srcPixels",
+                    "dstInPixels", "redStart", "redInMiddle", "foo", "fooBar", "oneTwo",
+                    "oneTwoThreeFour", "abcDef", "defAbc", "xyzDef", "", "__123"];
+    names := SegmentFixtureNames(identifiers);
+    left: int[] = [1, 3, 5, 7, 9, 11, 13, 15, 15, 18, 19, 0];
+    right: int[] = [2, 4, 6, 8, 10, 12, 14, 16, 17, 1, 19, 1];
+    expected := [true, true, false, true, true, false, false, false, true, false, false, false];
+    for (index in 0..<length(left)) {
+        assert(SegmentNameSimilar(names, left[index], right[index]) == expected[index],
+               "published ID similarity rules include arbitrary single words and exact aligned words");
+        assert(SegmentNameSimilar(names, right[index], left[index]) == expected[index],
+               "ID similarity is symmetric");
+    }
+}
+
+@test
+SegmentWordIndexMatchesLiteralWords :: () {
+    names := SegmentFixtureNames(["strTmp", "strMsg", "HTTPReader", "XMLReader", "_label12",
+                                  "label34", "red_23Pixels", "RedPixels", "abCDef", "__123"]);
+    counts: int[] = [2, 2, 2, 2, 1, 1, 2, 2, 3, 0];
+    words := ["str", "Tmp", "str", "Msg", "HTTP", "Reader", "XML", "Reader", "label",
+              "label", "red", "Pixels", "Red", "Pixels", "ab", "C", "Def"];
+    assert(length(names.words) == length(words), "delimiters produce the expected number of literal words");
+    for (index in 0..<length(counts)) {
+        assert(names.counts[index] == counts[index], "camel case, acronym and numeric boundaries are explicit");
+    }
+    // A deliberately simple reference checks every equality in this small
+    // fixture, independently of the production mergesort/interning path.
+    for (left in 0..<length(words)) {
+        for (right in 0..<length(words)) {
+            assert((names.words[left] == names.words[right]) == (words[left] == words[right]),
+                   "integer word equality agrees with exact case-sensitive string equality");
+        }
+    }
+}
+
+SegmentFixtureFeature :: (category: int, type_name: int, name: int, rhs_kind: int,
+                          receiver: int, method: int) -> SegmentFeature {
+    return {category: category, type_name: type_name, name: name, receiver: receiver,
+            method: method, rhs_kind: rhs_kind, rhs_method: method};
+}
+
+@test
+SegmentRhsSimilarityUsesSyntaxAndCallNames :: () {
+    names := SegmentFixtureNames(["getPrintAction", "getCloseAction", "readBufferSize"]);
+    kinds := [SegmentRhsConstant, SegmentRhsName, SegmentRhsCreation, SegmentRhsInfix,
+              SegmentRhsPrefix, SegmentRhsPostfix, SegmentRhsCast, SegmentRhsMethod, SegmentRhsObjectMethod];
+    for (left in 0..<length(kinds)) {
+        a := SegmentFixtureFeature(SegmentAssign, 0, 0, kinds[left], 0, 1);
+        for (right in 0..<length(kinds)) {
+            b := SegmentFixtureFeature(SegmentAssign, 0, 0, kinds[right], 0, 2);
+            expected := left == right || (left >= 7 && right >= 7);
+            assert(SegmentRhsSimilar(names, a, b) == expected,
+                   "RHS similarity compares syntax, and call syntax compares method names");
+        }
+    }
+    a := SegmentFixtureFeature(SegmentAssign, 0, 0, SegmentRhsMethod, 0, 1);
+    b := SegmentFixtureFeature(SegmentAssign, 0, 0, SegmentRhsObjectMethod, 0, 3);
+    assert(!SegmentRhsSimilar(names, a, b), "different multi-word call names are dissimilar");
+    b.rhs_method = 0;
+    assert(!SegmentRhsSimilar(names, a, b), "missing call names do not create a similarity");
+    a.rhs_kind = SegmentRhsNone; b.rhs_kind = SegmentRhsNone;
+    assert(!SegmentRhsSimilar(names, a, b), "absent RHSs have no RHS similarity");
+    a.rhs_kind = SegmentRhsOther; b.rhs_kind = SegmentRhsOther;
+    assert(!SegmentRhsSimilar(names, a, b), "unclassified RHSs do not invent a syntax category");
+}
+
+@test
+SegmentStatementLevelsFollowTableSixTwo :: () {
+    names := SegmentFixtureNames(["redType", "blueShape", "leftName", "rightValue",
+                                  "firstObject", "secondTarget", "getPixels", "readBuffer"]);
+    expected_init: int[] = [0, 1, 0, 2, 1, 2, 1, 3];
+    for (mask in 0..<8) {
+        right_type := 2; right_name := 4; right_rhs := SegmentRhsInfix;
+        if ((mask & 1) != 0) { right_type = 1; }
+        if ((mask & 2) != 0) { right_name = 3; }
+        if ((mask & 4) != 0) { right_rhs = SegmentRhsConstant; }
+        left := SegmentFixtureFeature(SegmentInit, 1, 3, SegmentRhsConstant, 5, 7);
+        right := SegmentFixtureFeature(SegmentInit, right_type, right_name, right_rhs, 6, 8);
+        assert(SegmentPairSimilarity(names, left, right) == expected_init[mask],
+               "initialization similarity follows every type/name/RHS combination");
+        left.category = SegmentDeclare; right.category = SegmentDeclare;
+        expected_type: int = 0;
+        if ((mask & 1) != 0) { expected_type = 1; }
+        assert(SegmentPairSimilarity(names, left, right) == expected_type,
+               "declarations compare type names only");
+        left.category = SegmentAssign; right.category = SegmentAssign;
+        expected_assign: int = 0;
+        if ((mask & 2) != 0) { expected_assign += 1; }
+        if ((mask & 4) != 0) { expected_assign += 1; }
+        assert(SegmentPairSimilarity(names, left, right) == expected_assign,
+               "assignments count name and RHS similarity");
+    }
+    for (mask in 0..<4) {
+        receiver := 6; method := 8;
+        if ((mask & 1) != 0) { receiver = 5; }
+        if ((mask & 2) != 0) { method = 7; }
+        left := SegmentFixtureFeature(SegmentObjectMethod, 0, 0, SegmentRhsNone, 5, 7);
+        right := SegmentFixtureFeature(SegmentObjectMethod, 0, 0, SegmentRhsNone, receiver, method);
+        expected: int[] = [0, 1, 1, 2];
+        assert(SegmentPairSimilarity(names, left, right) == expected[mask],
+               "object calls count object and method name similarity");
+        left.category = SegmentMethod; right.category = SegmentMethod;
+        expected_method: int = 0;
+        if ((mask & 2) != 0) { expected_method = 1; }
+        assert(SegmentPairSimilarity(names, left, right) == expected_method,
+               "bare calls compare method names only");
+        right.category = SegmentOther;
+        assert(SegmentPairSimilarity(names, left, right) == 0,
+               "different syntactic categories do not form a SynS similarity");
+    }
+}
+
+@test
+SegmentHighSimilarityUsesCategoryThreshold :: () {
+    for (category in SegmentOther..<SegmentMethod + 1) {
+        for (level in 0..<4) {
+            expected := level >= 2;
+            if (category == SegmentDeclare || category == SegmentMethod) { expected = level >= 1; }
+            assert(SegmentHighlySimilar(category, level) == expected,
+                   "declare and bare calls need level one; other categories need level two");
+        }
+    }
+}
+
+@test
+SegmentSingletonCompatibilityFollowsTableSixThree :: () {
+    names := SegmentFixtureNames(["redType", "blueShape", "leftName", "rightValue", "getPixels", "readBuffer"]);
+    left := SegmentFixtureFeature(SegmentInit, 1, 3, SegmentRhsConstant, 0, 5);
+    right := SegmentFixtureFeature(SegmentDeclare, 1, 4, SegmentRhsNone, 0, 6);
+    assert(SegmentSingletonCompatible(names, left, right, false), "init and declare merge for similar types");
+    right.type_name = 2;
+    assert(!SegmentSingletonCompatible(names, left, right, true), "unrelated type declarations do not merge");
+    right.category = SegmentAssign; right.rhs_kind = SegmentRhsConstant;
+    assert(SegmentSingletonCompatible(names, left, right, false), "init and assign merge for similar RHS syntax");
+    right.rhs_kind = SegmentRhsInfix;
+    assert(!SegmentSingletonCompatible(names, left, right, true), "unrelated init/assign names and RHS syntax stay apart");
+    right.name = 3;
+    assert(SegmentSingletonCompatible(names, left, right, false), "init and assign may instead share a similar name");
+    left.category = SegmentMethod; right.category = SegmentObjectMethod;
+    assert(!SegmentSingletonCompatible(names, left, right, false), "unrelated call names and parameters stay apart");
+    assert(SegmentSingletonCompatible(names, left, right, true), "similar parameters join bare and object calls");
+    right.method = 5;
+    assert(SegmentSingletonCompatible(names, left, right, false), "similar method names join bare and object calls");
+    assert(SegmentSingletonCompatible(names, right, left, false), "singleton compatibility is symmetric");
+    right.category = SegmentMethod;
+    assert(!SegmentSingletonCompatible(names, left, right, true), "same-category pairs belong to the SynS phases");
+}

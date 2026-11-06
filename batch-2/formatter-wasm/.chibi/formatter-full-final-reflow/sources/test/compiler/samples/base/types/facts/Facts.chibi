@@ -1,0 +1,4 @@
+package facts
+Answer :: () -> int { return true; }
+
+// error: 2:23: returned value differs from the result type

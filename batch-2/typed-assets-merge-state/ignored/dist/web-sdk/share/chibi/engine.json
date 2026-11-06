@@ -1,0 +1,203 @@
+{
+  "artifact_formats": {
+    "events": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/runtime/event_catalog.h",
+      "header_sha256": "9f950415396a519cb7ef1af23c1bb1675dddf128d937cfcb58b4797de385521d",
+      "sha256": "df4e0bb8a1a34a1337d1063d998c3339691205fb711ebe42b0d3611b1957fd48",
+      "source": "src/runtime/event_catalog.c",
+      "version": 3
+    },
+    "execution": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/execution/prepared.h",
+      "header_sha256": "50468500004529a465d64d6236f6d57cc7ce4dcbb6cfe0be0de948466b4186ce",
+      "implementation": [
+        {
+          "sha256": "f534ae6dc76558f9f2c72ccee4e5273fcf54016409c2a419c736edb92f620e0a",
+          "source": "src/execution/prepared_function.c"
+        },
+        {
+          "sha256": "d3abd1768ef2b1b7058f48221f563c366dc325a1bd5c901cb84fefef4ec86658",
+          "source": "src/execution/prepared_record.c"
+        }
+      ],
+      "sha256": "0657d31c420dfc38090ac63ad11eabeeadd9147662fd986ae7636af4854fb441",
+      "source": "src/execution/prepared.c",
+      "version": 20
+    },
+    "field": {
+      "header": "src/runtime/fields/prepared.h",
+      "header_sha256": "78472be0a94fbfc8a7ab67f2269829d08cc52018e01051d0d9c3bf0f911e2edb",
+      "sha256": "1cc20f8fe87b8843a04561384603fb799bff16ff1143dd02f4cc9638cdaa03d5",
+      "source": "src/runtime/fields/prepared.c",
+      "version": 1
+    },
+    "font": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/runtime/ui/font.h",
+      "header_sha256": "c89267c8f2d96ebc9a58f8ac3b0df6a1c36a7da75c48925322355808b7b41161",
+      "sha256": "3a80d597b796364ef5d1e65dd9c2a71828aa7ac57ab5d45f33445659a7436722",
+      "source": "src/runtime/ui/font.c",
+      "version": 2
+    },
+    "image": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/runtime/images/catalog.h",
+      "header_sha256": "c8805778ed77f6d0bc1d8dfba5933ee032f4acbd1ed3c41ef2546e813825ec74",
+      "sha256": "01f18c31769bd6a6462d83c4c4ea222665bd1d55a73294150ad8948fdedebd20",
+      "source": "src/runtime/images/catalog.c",
+      "version": 2
+    },
+    "material_fields": {
+      "header": "src/runtime/material_field_prepared.h",
+      "header_sha256": "cfaf2f823c2343e59ea8d58fccb363fd1667164ebd2bfaaaa1b9de8f0d594411",
+      "sha256": "f68cb8afbb430b5f7999946c98e6b10c94fc5dfcb516207f845191330a30c06b",
+      "source": "src/runtime/material_field_prepared.c",
+      "version": 1
+    },
+    "mesh": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/runtime/geometry/mesh_prepared.h",
+      "header_sha256": "345c387ed75eaae6351471c0baf2d773ff41fa1252941aab6b021c35ecb356ca",
+      "sha256": "ea2e1bb4757b42fa8896c3efc2c1af03c7a7f3249f823552e29189eda95dba8a",
+      "source": "src/runtime/geometry/mesh_prepared.c",
+      "version": 3
+    },
+    "model": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/runtime/models/prepared.h",
+      "header_sha256": "8b166b06b2775e11b9b74a39a959c29aa10247b4cbc002f6fbd8c3d5acd2c895",
+      "sha256": "d52f3bbf926ec476c3b0a8f12d9efcad60ce879cef5baa77dfe2e74f9de22e0f",
+      "source": "src/runtime/models/prepared.c",
+      "version": 2
+    },
+    "parts": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/render/scene3d_parts.h",
+      "header_sha256": "8d0315195245c5012d5b03d9f5d7f3db7ebe132185057e3512049b604ab03263",
+      "sha256": "090cd33dc94368546978bf6fbfde88267ea12c184db988599e3b93fb6c551180",
+      "source": "src/render/scene3d_parts.c",
+      "version": 2
+    },
+    "player": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/runtime/player_prepared.h",
+      "header_sha256": "faa73e15b31af130ee96f81a47ec6c3b7c0ab05e3fe928a90198a422a295accd",
+      "sha256": "798511add5824f8c29be0ed60e4ee43d335562e63916fd8e0fb1f5ebe5e89090",
+      "source": "src/runtime/player_prepared.c",
+      "version": 16
+    },
+    "scene": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/runtime/scenes/prepared.h",
+      "header_sha256": "14dbb5cde8c7ae5388b092dab6414af0f0a28927c1eaf8f4aee7ba82a5b7965a",
+      "sha256": "c4f59f1ecb38c4c9958527615141fd9f289fd5ee67fd71e0c16ea54b6f481811",
+      "source": "src/runtime/scenes/prepared.c",
+      "version": 5
+    },
+    "shader": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/runtime/shaders/prepared.h",
+      "header_sha256": "7c962e2f07f1d4b14ceaf3c4493facf4c13cd431e103693f2bff71025744cd18",
+      "sha256": "890e8a134f39f16bf43179abbe8905094154c742852ec09e31b34bd86ddd81d4",
+      "source": "src/runtime/shaders/prepared.c",
+      "version": 3
+    },
+    "shader_values": {
+      "header": "src/render/shader_catalog.h",
+      "header_sha256": "5d22a9ebb215666aca7f152382e9d3f3c61c3f96767ba0c81a9a35271f8aedd9",
+      "sha256": "176999b57c15d88ebdeb6e75f82ef51bfea21c20847520fcde097a9189e9f2fe",
+      "source": "src/render/shader_values.c",
+      "version": 1
+    },
+    "sky": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/runtime/images/sky.h",
+      "header_sha256": "c1cc9b0c549e9b01ee648aa4e23beaf73c29da74458dbc336c2d6eb70f65cb5d",
+      "sha256": "f765928cd387a51870a51d0def0f4cbeb4d166eab61c3b392d2e32f3d244f92b",
+      "source": "src/runtime/images/sky.c",
+      "version": 1
+    },
+    "ui": {
+      "codec": {
+        "header": "src/types/value_wire.h",
+        "header_sha256": "e0b03b0316a69445d4f1d3d1dfb74b9b37bcac03268870f6bf1c9b3a514f000d",
+        "sha256": "e9966bcd8f1745c8c50fafdf9f60ce6f7ddc235ddb540d8fe65273303a59d90a",
+        "source": "src/types/value_wire.c"
+      },
+      "header": "src/runtime/ui/documents.h",
+      "header_sha256": "64012a662aded4da7b1db17958838a1c8a7d191b8132a2f620c83e0d762de15f",
+      "sha256": "242f6ec1e42f811e4eb936a301c87367446477e7a4f2814d3f0f4387bed099f8",
+      "source": "src/runtime/ui/documents.c",
+      "version": 2
+    }
+  },
+  "backends": [
+    "bytecode",
+    "wasm"
+  ],
+  "build_id": "066647c3cc88b60206fb2d91ee070b8f5c84c7796e474dda0e7f7e68641b7579",
+  "manifest_format": 1,
+  "processors": [
+    "x86"
+  ],
+  "project_version": 33,
+  "sdk_version": "0.1.0",
+  "system": "Emscripten"
+}

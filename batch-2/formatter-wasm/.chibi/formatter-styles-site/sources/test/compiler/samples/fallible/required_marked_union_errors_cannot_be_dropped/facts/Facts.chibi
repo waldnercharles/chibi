@@ -1,0 +1,6 @@
+package facts
+@error Failure :: union { Denied | Platform(code: int) }
+Read :: () -> Failure { return Failure.Denied; }
+Use :: () { Read(); }
+
+// error: 4:13: Error result is ignored on a reachable path; check, report, store or return it

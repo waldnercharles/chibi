@@ -1,0 +1,64 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+MapLoanCode :: (key: int) -> native.Instruction[] {
+    array := native.ArrayType + abi.ByteStorage;
+    mapped := native.MapType + array * 16 + key;
+    literal: i64 = 1;
+    if (key != abi.TextStorage) { literal = 7; }
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, mapped, 0, 0, 0, 0, 0),
+            Code(native.Save, mapped, 0, 0, 0, 0, 0),
+            Code(native.LocalAddress, native.RefType + mapped, 1, 0, 0, 0, 0),
+            Code(native.Constant, key, 2, 0, 0, 0, literal),
+            Code(native.Local, mapped, 3, 0, 0, 0, 0),
+            Code(native.MapGet, array, 4, 3, 2, 0, i64(mapped)),
+            Code(native.ArrayLoan, array, 6, 4, 1, native.ArrayLoanMap, 2),
+            Code(native.ForeignCall, abi.IntStorage, 7, 0, 0, 1, 0),
+            Code(native.ArrayDrop, array, 0, 6, 0, 0, 0),
+            Code(native.Constant, abi.IntStorage, 8, 0, 0, 0, 0),
+            Code(native.Publish, abi.IntStorage, 0, 8, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+MapLoanModule :: (code: native.Instruction[], key: int) -> native.Result {
+    array := native.ArrayType + abi.ByteStorage;
+    mapped := native.MapType + array * 16 + key;
+    function: native.Function = {result: abi.IntStorage, first_parameter: 0, parameters: 0,
+        first_slot: 0, slots: 9, first_local: 0, locals: 1, first_code: 0, code: length(code), first_argument: 0, arguments: 1};
+    return native.Emit(abi.LinuxX64(), [function], [],
+        [mapped, native.RefType + mapped, key, mapped, array, array, array, abi.IntStorage, abi.IntStorage],
+        [mapped], code, [6], [], [], ["probe", "key"], {file: "", directory: ""}, [], [], [], false, 1);
+}
+@test
+MapLoansResolveTheirKeysAgainBeforeCallingC :: () {
+    integer := Emitted(MapLoanModule(MapLoanCode(abi.IntStorage), abi.IntStorage));
+    text := Emitted(MapLoanModule(MapLoanCode(abi.TextStorage), abi.TextStorage));
+    assert(strings.Contains(integer, "i1 false)\n"));
+    assert(strings.Contains(integer, ".matches = phi i1"));
+    assert(strings.Contains(text, ".key.owner = extractvalue"));
+    assert(strings.Contains(text, "call void @chibi_scalar.retain(ptr %owner7)"));
+}
+@test
+MapLoansRejectBadKeysAndBrokenCaptureChains :: () {
+    code := MapLoanCode(abi.IntStorage);
+    original := code[7];
+    for literal in [i64(-1), i64(9), i64(2147483648)] {
+        item := original; item.literal = literal; code[7] = item;
+        Rejects(MapLoanModule(code, abi.IntStorage), "native map buffer loan differs from its capture");
+    }
+    code = MapLoanCode(abi.IntStorage);
+    item := original; item.right = 2; code[7] = item;
+    Rejects(MapLoanModule(code, abi.IntStorage), "native map buffer loan differs from its capture");
+    code = MapLoanCode(abi.IntStorage);
+    item = code[6]; item.right = 8; code[6] = item;
+    Rejects(MapLoanModule(code, abi.IntStorage), "native map buffer loan differs from its capture");
+    code = MapLoanCode(abi.IntStorage);
+    code.insert(7, Code(native.Check, 0, 0, 0, 0, 0, 0));
+    Rejects(MapLoanModule(code, abi.IntStorage), "native map buffer loan differs from its capture");
+    code = MapLoanCode(abi.IntStorage);
+    item = original; item.target = native.ArrayLoanMap + 1; code[7] = item;
+    Rejects(MapLoanModule(code, abi.IntStorage), "native foreign buffer loan differs from its array or place");
+}

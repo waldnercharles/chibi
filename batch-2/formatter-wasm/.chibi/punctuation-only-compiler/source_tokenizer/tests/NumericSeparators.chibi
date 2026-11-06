@@ -1,0 +1,29 @@
+package source_tokenizer_tests
+
+import tk "project:source_tokenizer"
+
+@test
+NumericSeparatorsStayInsideLiterals :: () {
+    switch tk.Tokenize("1_000 0xAB_CD 1_234.5_678e1_0") {
+        case .Scanned(kinds, starts, ends, rows, columns, errors, error_offsets, error_rows, error_columns):
+            assert(length(errors) == 0, "grouped numbers tokenize without errors");
+            assert(kinds[0] == tk.Integer && kinds[1] == tk.Integer && kinds[2] == tk.Float,
+                   "separators keep decimal, hexadecimal and floating token kinds");
+            assert(ends[0] == 5 && starts[1] == 6 && ends[1] == 13, "ranges include separators");
+    }
+    assert(tk.NumericText("1_234.5_678E1_0") == "1234.5678E10", "numeric readers see exact unseparated digits");
+    assert(tk.NumericText("0xAB_CD") == "0xABCD", "hexadecimal spelling retains its prefix and digits");
+    assert(tk.NumericText("1__0") == "1__0" && tk.NumericText("1_e2") == "1_e2",
+           "public readers cannot normalize misplaced separators into a valid value");
+}
+
+@test
+NumericSeparatorsRequireDigitsOnBothSides :: () {
+    for (source in ["1_", "1__0", "0x_AB", "0xAB_", "1.2_", "1e2_", "1e2__3"]) {
+        switch tk.Tokenize(source) {
+            case .Scanned(kinds, starts, ends, rows, columns, errors, error_offsets, error_rows, error_columns):
+                assert(length(errors) > 0, "misplaced separators produce a tokenizer diagnostic");
+                assert(errors[0] == "numeric separator must occur between digits", "separator error is specific");
+        }
+    }
+}

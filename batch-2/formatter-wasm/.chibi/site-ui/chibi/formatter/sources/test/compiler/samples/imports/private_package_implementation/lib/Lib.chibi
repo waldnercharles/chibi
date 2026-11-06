@@ -1,0 +1,6 @@
+package lib
+Hidden :: 7;
+Secret :: struct { x: int; }
+Twice :: (value: int) -> int { return value * 2; }
+pub Value :: (value: int) -> int { return Twice(value) + Hidden; }
+pub Make :: (value: int) -> Secret { return {x: value}; }

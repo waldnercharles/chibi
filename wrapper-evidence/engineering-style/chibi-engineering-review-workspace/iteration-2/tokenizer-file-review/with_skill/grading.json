@@ -1,0 +1,133 @@
+{
+  "expectations": [
+    {
+      "text": "The review states the input scale (bytes or tokens of real Chibi source) and estimates the per-byte or per-token work, with numbers.",
+      "passed": true,
+      "evidence": "Brief: '238 files, 3,221,141 bytes and 72,259 lines'; 'Tokens: about 590,400, or 5.5 bytes per token'; minimum work 'about 3 operations per byte ... about 10M for the corpus' and 'about 15 operations per token'; actual work traced per token class ('about 30 compares and 2 calls' per punctuation token, 'under 20 steps per byte'). The corpus numbers match find/wc exactly."
+    },
+    {
+      "text": "The review identifies at least one concrete source of per-byte or per-token waste in Tokenizer.chibi with a path:line and a count or estimate of its cost.",
+      "passed": true,
+      "evidence": "Finding 3 'Tokenizer.chibi:188: text_bytes boxes every source byte in a 48-byte value' with '15.8 MB for Steps.chibi ... 155 MB over the corpus'; Finding 2 'Tokenizer.chibi:263-282, 754-911' with 'about 30 compares and 2 calls' per punctuation token and 'about 10M compares and 700k calls'; Finding 5 'Tokenizer.chibi:610-622' with '183,837 native calls'."
+    },
+    {
+      "text": "The review sketches a concrete target shape for the hot scanning path (for example a data layout, a table or switch keyed by byte, or a loop structure).",
+      "passed": true,
+      "evidence": "Dedicated 'Target shape' section: classes[256], singles[256], assigns[256], doubles[256], arrows[256], slots[512], a flat 'spelled' keyword byte array, and a loop sketch ('Letter -> one inline loop that scans and hashes; probe; compare bytes against spelled'; 'Punct -> assigns/doubles/arrows chosen by the second byte, else singles[c]'), plus 'What disappears'."
+    },
+    {
+      "text": "The review addresses the hand-numbered token-kind constants and the parallel KindNames table as a representation issue, taking into account that stage one lacks enums.",
+      "passed": true,
+      "evidence": "Finding 4 '[ARCH] Tokenizer.chibi:7-126, 171-185, 347, 569: token kinds have three hand-synchronized definitions, and they drifted', with interim fixes usable now (named FirstKeyword/LastKeyword range, tables derived from KindNames, an @test for length(KindNames()) == KindCount) and 'Root cause: the enumerations with value names that docs/language-friction.md (\"No enumerations\") proposes ... Once those exist, KindNames, KindCount and the hand numbering go away.' Also notes 'Package-level constant arrays are not available in stage one'."
+    },
+    {
+      "text": "The review checks how the tokenizer is called (its consumers or call sites) and says whether it is on a hot path.",
+      "passed": true,
+      "evidence": "Brief 'Consumers': source_parser.Build (Parser.chibi:49-60), Construct (Parser.chibi:61-77), the C harness column_at, 'Nothing in production calls the parser yet'. 'Layer: cold today, since one test selector is the only caller. Hot by design: the compiler front end reads every compiled file, and a language server would read every edit. I reviewed it as a hot layer.'"
+    },
+    {
+      "text": "The review does not recommend SIMD or threading before the identified waste is removed, and makes no micro-optimization suggestion without a measurement.",
+      "passed": true,
+      "evidence": "No SIMD or threading anywhere (the only 'parallel' is 'Five parallel token columns'). Every performance fix carries a corpus count or estimate (F2 10M compares, F3 48x bytes, F5 183,837 native calls, F6 121,908 calls / 119,821 decided by first byte, F8 295,951 bytes), each with 'Confirm with a timed corpus run'. An unmeasured micro-optimization is explicitly withheld: 'The whitespace loop's second read of bytes[start] per byte (869k bytes): change it only if a profile shows it.' Note: 'measurement' here is read as counts/estimates; nothing in either review is timed."
+    },
+    {
+      "text": "Every finding includes concrete evidence (a count, estimate, measurement or named consumer).",
+      "passed": true,
+      "evidence": "All 12 findings have an explicit Evidence block. Quantitative ones carry counts (F2 test order and operator counts, F3 48 B / 155 MB, F5 183,837, F6 121,908, F8 295,951, F11 '111 comparisons', F12 '13 CASES', 64 vs 20). F7 names consumers (Parser.chibi:51-59, harness column_at). F9 and F10 have no number but cite the exact lines and commits that prove the defect (lines 268/274 and git blame a147a3269/5d57cd8c7; lines 196, 242, 304, 347), which I treated as concrete evidence for non-cost findings."
+    },
+    {
+      "text": "The review does not recommend splitting functions for length or adding defensive checks.",
+      "passed": true,
+      "evidence": "'What I would leave alone': 'The length of Tokenize. It is a lexer loop. Its defect is the context state of finding 1, not its size.' No defensive checks are proposed; the F6 'guard' is a fast-path test that preserves behavior, and invariants go into an authored @test."
+    }
+  ],
+  "summary": {
+    "passed": 8,
+    "failed": 0,
+    "total": 8,
+    "pass_rate": 1.0
+  },
+  "claims": [
+    {
+      "claim": "text_bytes stores each source byte in its own 48-byte pin_value: 15.8 MB for Steps.chibi and 155 MB over the corpus.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "src/runtime/text_format.c text_bytes_call fills bytes->items[i] = (pin_value){...} per byte. pin_value (src/types/value.h:56-81) is pin_type + 8-byte union + pin_container + three pointers = 48 B on 64-bit. 330,011 x 48 = 15.8 MB; 3,221,141 x 48 = 154.6 MB."
+    },
+    {
+      "claim": "The corpus is 238 files, 3,221,141 bytes, 72,259 lines; Steps.chibi is 330,011 bytes.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "find packages test tools -name '*.chibi' | wc -l = 238; cat | wc -c -l = 72259 3221141; wc -c Steps.chibi = 330011."
+    },
+    {
+      "claim": "Keyword drift: #698 (77f728083) removed \"ref\" from KindNames but kept the Ref constant; until 48f68bcd8 keywords from service to delete were registered under the constant one below (prototype -> Component, relationship -> Prototype, from -> Wildcard); ..< had no spelling and emit, ?? and Char had no kinds; 113 spellings.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "git show 77f728083 removes only \"ref\" from KindNames. At 48f68bcd8^ Ref: int : 102 and Service: 103 remain while KindNames goes plain -> service, so names[108] = \"prototype\" is registered as kind 108 = Component, names[109] = \"relationship\" as Prototype, names[105] = \"from\" as Wildcard; HalfOpenRange (113) has no spelling; no Emit/Coalesce/Char constants. Nuance: at 77f728083 itself Ref was 105; #701 renumbered it to 102."
+    },
+    {
+      "claim": "In Single, `,` is test 26, `.` 25, `;` 24, `:` 23, `}` 22 and `{` 21 of 26; Pair takes 4-5 compares for single-byte punctuation and the 268-281 chain 4 more.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Counted the if (c == ...) tests in Single (lines 831-911): 26 tests ending 123, 125, 58, 59, 46, 44. Pair for a non-'=' next byte: next == 61, c == 45, c == 61, c != next = 4 (5 when c is '-' or '='). Chain at 268-281 has 4 kind tests."
+    },
+    {
+      "claim": "The second ..< branch (line 274) can never run; the two branches came from a147a3269 (2026-10-24) and 5d57cd8c7 (2026-10-27).",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Line 268 ByteAt(bytes, start + 2) == 60 is equivalent to line 274 start + 2 < count && bytes[start + 2] == 60. git blame -L 268,276 shows a147a3269b 2026-10-24 for 268-271 and 5d57cd8c72 2026-10-27 for 274-276."
+    },
+    {
+      "claim": "Group, Variants and Embedded behave identically; the context is only ever tested against Statements, Fields or Literal.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Reads: line 239 (top == Statements || top == Fields), 348 (closed == Literal), 360 (top == Statements), BraceHolds 497 (outer == Fields) and 503 (outer != Statements). No comparison ever names Group, Variants or Embedded."
+    },
+    {
+      "claim": "The harness has 19 fixed sources and 13 CASES; docs/testing.md says about 145 files under 1 MiB.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Parsed SOURCES[] (line 495): 19 entries; CASES[] (line 702): 13 entries. docs/testing.md:1668-1669: 'about 145 files under 1 MiB'."
+    },
+    {
+      "claim": "The docs disagree on whether stage one compiles the tokenizer.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "docs/source-tokenizer.md:105 'Stage one has not compiled it yet' vs docs/language-friction.md:309-313 'it compiles the compiler, core:strings and the tokenizer'."
+    },
+    {
+      "claim": "Records can now hold array fields, so Tokens can become a struct (docs/compositional-records.md; CallCensus.chibi:18).",
+      "type": "factual",
+      "verified": true,
+      "evidence": "docs/compositional-records.md:3 'Nested records and array fields are implemented in both compiler stages'; CallCensus :: struct { sites: CallSite[]; ... }. The friction entry 'Records hold only scalar fields' exists at docs/language-friction.md:152."
+    },
+    {
+      "claim": "'I noticed no tokenizer behavior bug in the current file.'",
+      "type": "quality",
+      "verified": false,
+      "evidence": "ScanEscape (lines 706-731) accepts only \" \\ / b f n r t u, so the valid character literal '\\'' (stage zero: semantic_context.c:146-165; grammar.js character token accepts \\\\[^\\n]) produces an 'unknown escape sequence' error, a Char token for bytes 0-3 and a second unterminated Char. The grammar keyword view (grammar.js:62, added by #694) also has no kind. The review missed both, although it scoped out bug hunting."
+    }
+  ],
+  "timing": {
+    "total_tokens": 240556,
+    "duration_ms": 1374126,
+    "total_duration_seconds": 1374.1
+  },
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "reason": "No assertion covers correctness findings. This review explicitly says it found no behavior bug, yet the checkout (branch claude/review-eval-seeded-20261029) has the '\\'' escape bug and the missing view keyword, both of which the baseline found. A perfect 8/8 here hides that miss; add an assertion for the seeded defects."
+      },
+      {
+        "assertion": "Every finding includes concrete evidence (a count, estimate, measurement or named consumer).",
+        "reason": "The parenthetical does not fit non-cost findings (dead branch, shadowed name). I accepted exact line and commit citations for those; under a literal reading findings 9 and 10 would fail. State the rule for correctness and style findings."
+      },
+      {
+        "assertion": "The review does not recommend SIMD or threading before the identified waste is removed, and makes no micro-optimization suggestion without a measurement.",
+        "reason": "Neither review timed anything, so 'measurement' had to be read as counts or estimates. Say so in the assertion, or require that the review label counts as unmeasured."
+      }
+    ],
+    "overall": "Strong, well-evidenced performance and architecture review: hot/cold layer, target shape and a 'leave alone' list. Unique true findings: Group/Variants/Embedded are indistinguishable, the stage-one doc conflict, and that records already hold arrays (the baseline relied on a stale doc). Missed: the '\\'' character-escape bug, the missing view keyword, and the harness's circular keyword oracle (it notes only that a shift is invisible). Assertions 1-4 and 8 do not discriminate; both runs pass them."
+  }
+}

@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { v := vec3(2, 4, 8); return 2 - v == vec3(0, -2, -6) && v - 2 == vec3(0, 2, 6) && 16 / v == vec3(8, 4, 2) && v / 2 == vec3(1, 2, 4) && 2 + v == vec3(4, 6, 10) && v * 2 == vec3(4, 8, 16) && v * vec3(3, 2, 1) == vec3(6, 8, 8); }

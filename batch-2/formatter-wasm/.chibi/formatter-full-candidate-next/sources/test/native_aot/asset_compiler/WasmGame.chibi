@@ -1,0 +1,12 @@
+package wasm_game
+
+foreign { chibi_native_scope_begin :: (steps: u64) -> int }
+
+Main :: () -> int {
+    armed := chibi_native_scope_begin(32);
+    assert(armed == 0, "the game's own quota hook");
+    if (format_text("{}:{}", int(7), true) != "7:true") { return 1; }
+    sum := 0;
+    for (value in 0..<4) { sum += value; }
+    return 36 + sum;
+}

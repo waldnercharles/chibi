@@ -1,0 +1,5 @@
+package facts
+U :: union { A | B }
+One :: () -> U { return U.C; }
+
+// error: 3:25: Unknown variant 'C'

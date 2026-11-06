@@ -1,0 +1,5 @@
+package facts
+Point :: struct { x: int; }
+Id :: (v: ^Point) -> (x: ^Point) { return v; }
+
+// error: 3:23: named result type is not supported yet

@@ -1,0 +1,376 @@
+{
+  "status": "POST-803 MATCHING-SOURCE PLAN bound to new separate branch; callback case applied as source only. Producer grant/integer CPU boundary still pending; no build/test/producer/regen/push executed.",
+  "prepared_from": {
+    "branch": "codex/portable-byte-libraries-post803-20261028",
+    "final_validation_head": "c9cfe668e15896936086e0b7431d71588532b4e9",
+    "final_validation_tree": "0ebc105f1fb9a08394355833afdf7a739de39a2a",
+    "accepted_main": "79743c5675e5a18eeea14193d729cc6e45bdf926",
+    "accepted_main_merge": "45e2dc192795a31ca3ed9ce836c3cc9bb6e1dcfa",
+    "frozen_clean_status_verified": true,
+    "observed_status_at_write": "",
+    "pre803_branch": "codex/portable-byte-libraries-20261028",
+    "pre803_head": "3200134a8b7e35c22695c7f7e3527a85893da37f"
+  },
+  "authority": {
+    "source_of_truth": "The exact clean final merged #795 source tree, accepted bootstrap source manifest and accepted E1 runtime pin; existing receipts retain their original source identities.",
+    "bootstrap_only": "Accepted-main checked compiler and E1 private-six host binaries may seed normal builds only when assigned by the coordinator. They lack #795 public text-seven and do not prove final native runtime or SDK behavior.",
+    "final_proof": "Final native/Wasm runtime objects, copied/generated headers, CLI, build host, compiler host including values profile, asset host/resource and SDK consumer must be compiled from final merged #795 source (public text-seven/private-six). Coordinator outputs qualify only if their provenance is exactly this final #795 head and configuration.",
+    "compiler_reuse": "If all 27 accepted bootstrap manifest source inputs, target and checked closure match, reuse the accepted compiler pair with trace evidence. No duplicate compiler fixed-point/recovery production is scheduled here.",
+    "checked_compiler": {
+      "manifest_revision": "d1315047c0a533a3848569a39af83a33c98a8799",
+      "manifest_source_count": 27,
+      "closure": {
+        "file": "compiler.chibip",
+        "bytes": 20792064,
+        "sha256": "27d8f3d0568e442e1a70b167c04ba97c671ea0d0b1e85e3a7493d88fc59bb912"
+      }
+    },
+    "E1_runtime_pin": {
+      "format": 1,
+      "repository": "waldnercharles/chibi",
+      "tag": "compiler-runtime-prepared26-43eec64f98e6fb288935dacfcbf86296dbc43b02",
+      "source_revision": "43eec64f98e6fb288935dacfcbf86296dbc43b02",
+      "source_tree": "ee4e5e7a065e79db159b28e6c9d8101664d85b00",
+      "run_url": "https://github.com/waldnercharles/chibi/actions/runs/40768054554",
+      "platforms": {
+        "macos-arm64": {
+          "asset": "chibi-compiler-host-macos-arm64",
+          "sha256": "7526a0a611e4e4be562e7eb7b91633b61238c6d7fe762429c0139f2fa637951c",
+          "bytes": 1367136
+        },
+        "linux-x64": {
+          "asset": "chibi-compiler-host-linux-x64",
+          "sha256": "fb7de83bce7de2485c1bb2772e0a169db51b6102f9e103fde71c7ca421f09e62",
+          "bytes": 2118648
+        },
+        "windows-x64": {
+          "asset": "chibi-compiler-host-windows-x64.exe",
+          "sha256": "6a7130e5a693528cbdf4f5270b0cf3917b7105497306cc554dc400a1bc78a639",
+          "bytes": 2117120
+        }
+      }
+    },
+    "pin_boundary": "Keep accepted tools/compiler/bootstrap/{bootstrap.json,compiler.chibip} and tools/compiler/runtime.json intact. A locally source-built #795 host need not equal the accepted-main runtime asset binary hash because its public text role differs; record its own hash and provenance.",
+    "protocol": 14,
+    "ABI_note": "Accepted #803 raises build-host protocol to 14; checked compiler 27d8, E1 runtime pin, prepared format and public ABI remain unchanged. Final #795 public text-seven/private-six hosts still require exact new-branch source compilation."
+  },
+  "current_restrictions": [
+    "Do not execute while the integer owner holds the CPU boundary; root must explicitly grant producer/build/test work.",
+    "Only this clean frozen post-803 head/tree qualifies for new final proof. Old 320/dea binaries, headers, objects and receipts remain historical.",
+    "Accepted #803 source and the exact reviewed 95-line callback test are already applied; do not reapply the patch or copy the historical complete candidate file.",
+    "Preserve #801 ABI/effects/publication and all other explicit holds. #803 acceptance clears only its own prior hold.",
+    "No global test-time ceiling, warning suppression, work/budget/deadline increase, fallback bypass, removed tests, asset-host bypass or reduced normal SDK component set.",
+    "No general fixed-point compiler duplication when all 27 accepted manifest inputs/target match. Accepted E1/private-six artifacts are bootstrap-only; all final runtime roles must match merged #795 public-seven/private-six source.",
+    "No artifact pin/regeneration, publication or push is authorized by this plan. Root retains review/producer/publication control."
+  ],
+  "evidence_classes": {
+    "historical_dea": {
+      "head": "dea59917c76d665a3a117690b77a6b0717a798b0",
+      "tree": "e5cef072dfc749ab4bd6653b917714e33c4aa97b",
+      "native": "cow-native-proof.json records passing native portable/compiler/asset and related selectors; it also records bootstrap-recovery failure, so it is not an all-green aggregate.",
+      "sanitizer": "cow-sanitizer-proof.json: portable 5/1798 at 5.715 s; asset-host 12/110 at 1348.448 s; selected runs had no sanitizer diagnostic matches. Preserve; no blanket leak claim.",
+      "sdk_relocation": "cow-relocation-proof.json passed with original prefix hidden and restored; inventory, 34 public APIs, 23-test four native compiler/target pairs and CLI/docs are tied to dea binaries.",
+      "wasm": "The dea EmitBody work-guard failure is historical red. #807 bounded body emission and #817 reachability justify a fresh matrix; they do not retroactively make the old run green."
+    },
+    "source_only_merged": {
+      "receipts": [
+        "body-accepted-candidate.json",
+        "graph-discovery-accepted-candidate.json",
+        "runtime-accepted-candidate.json",
+        "fixture-accepted-candidate.json"
+      ],
+      "meaning": "Feature byte preservation, merge ancestry and accepted artifact/source identities establish source composition only. No matching final runtime, Wasm, sanitizer or SDK execution is inferred."
+    },
+    "needed_fresh": "Every execution claim below requires clean before/after final-head/tree checks, matching-source build provenance, exact environment/argv and binary/resource/log hashes.",
+    "source_only_post803": {
+      "head": "c9cfe668e15896936086e0b7431d71588532b4e9",
+      "tree": "0ebc105f1fb9a08394355833afdf7a739de39a2a",
+      "accepted_main": "79743c5675e5a18eeea14193d729cc6e45bdf926",
+      "applied_patch_sha256": "42ed6978a870cc3a6a4447792dce5436baf6e81aad273119356291a31ada276d",
+      "callback_added_lines": 95,
+      "callback_added_lines_equal_reviewed_patch": true,
+      "diff_sha256": "13946a5c94aeaf7313ac78dbcde451534ff58272e15fb1fe704a50539e8cc619",
+      "source_only_checks_reported_by_root": [
+        "format",
+        "diff checks"
+      ],
+      "qualification": "No compilation/execution has occurred. Protocol 14/source composition and matching planning are not runtime proof."
+    }
+  },
+  "path_inputs": {
+    "FINAL_HEAD": "c9cfe668e15896936086e0b7431d71588532b4e9",
+    "BOOTSTRAP_HOST": "Coordinator-assigned protocol-14 build host for bootstrap only. Accepted E1 compiler-host/private-six artifact remains a separate bootstrap input. Never substitute accepted-main-only binaries for final #795 host/runtime proof.",
+    "NATIVE": "Fresh final-#795 Release Graph root, e.g. $ROOT/.chibi/f795-post803-native. Reuse an existing coordinator root only if it was built from the exact final #795 source/configuration, not accepted-main alone.",
+    "WASM": "Fresh $ROOT/.chibi/f795-post803-wasm (standalone test_language.js/wasm directory).",
+    "SAN": "Fresh $ROOT/.chibi/f795-post803-san (Graph root).",
+    "SDK_BUILD": "Fresh $ROOT/.chibi/f795-post803-sdk-build; SDK_REFLECT=$ROOT/.chibi/f795-post803-sdk-reflect.",
+    "SDK": "Fresh normal prefix $ROOT/.chibi/f795-post803-sdk; RELOCATED=$ROOT/.chibi/f795-post803-sdk-relocated; HIDDEN=$ROOT/.chibi/f795-post803-sdk-hidden.",
+    "SDK_TEST": "Fresh standalone installed-language harness $ROOT/.chibi/f795-post803-sdk-language.",
+    "THIRD_PARTY": "Exact vendor archive root named in the final Graph host .chibi-record files, not an arbitrary cached prefix.",
+    "TIMINGS": "Fresh existing directory $ROOT/.chibi/portable-byte-libraries/post803-compiler-tools-timings, created only after producer grant.",
+    "FINAL_TREE": "0ebc105f1fb9a08394355833afdf7a739de39a2a"
+  },
+  "runner_notes": {
+    "verify_candidate": "Existing .chibi/portable-byte-libraries/verify-candidate.py guards clean head/tree and binary stability and saves selector logs, but explicitly requires separate build provenance. Require relevant expected binaries to exist before invoking; its hash collection skips absent files.",
+    "native_layout": "--kind native/sanitizer --build takes a Graph root; runner appends /test/language and /test/tools.",
+    "wasm_layout": "--kind wasm --build takes the standalone directory containing test_language.js and test_language.wasm.",
+    "installed_layout": "For SDK_TEST standalone installed harness, set CHIBI_LANGUAGE_BUILD_DIR=$SDK_TEST directly. Do not pass SDK_TEST to verify-candidate native, which would append /test/language incorrectly.",
+    "historical_relocation_script": "cow-relocation-proof.py is a recipe, not directly rerunnable: it hard-codes dea, old directories, expected outputs and receipt destinations. Adapt only a new scratch recipe/receipt after freeze; preserve old scripts/receipts/logs.",
+    "provenance": "Keep build configuration/toolchain and selected source/header/object/archive/host/resource hashes, actual command records and external build timing separate from test tool wall time and outer wrapper elapsed."
+  },
+  "phases": [
+    {
+      "id": "0-freeze-and-provenance",
+      "owner": "Root/coordinator",
+      "run_after": "Source is frozen and #803 accepted. Integer CPU boundary release and explicit root producer grant remain prerequisites to execution.",
+      "actions": [
+        "Bind every new command and receipt to FINAL_HEAD=c9cfe668e15896936086e0b7431d71588532b4e9 / FINAL_TREE=0ebc105f1fb9a08394355833afdf7a739de39a2a. Old 320/dea proof identities cannot be restamped. Record final combined-source review and all remaining holds with root producer grant.",
+        "Record FINAL_HEAD/FINAL_TREE and status before/after all phases. Verify final feature diff/holds and accepted 79743c5675e5a18eeea14193d729cc6e45bdf926 ancestry.",
+        "Compare all 27 bootstrap source hashes, normalized target and closure bytes/hash to accepted manifest; accepted closure is 20,792,064 bytes / 27d8f3d0568e442e1a70b167c04ba97c671ea0d0b1e85e3a7493d88fc59bb912.",
+        "Consume coordinator bootstrap provenance rather than redoing its general compiler fixed-point work. Keep bootstrap-only host identity distinct from final #795 executable identity.",
+        "Record compiler runtime JSON E1 tag/source revision and accepted artifact hashes without replacing them.",
+        "Require build-host protocol 14 in the final source/provenance. The Makefile now admits protocol 14; do not rely on an old protocol-13 harness or command-line host."
+      ],
+      "pass_gate": "No source drift, no held overlay, no source/manifest mismatch. On a mismatch, return evidence to the owner; do not regenerate a pin here."
+    },
+    {
+      "id": "1-final-native-build",
+      "owner": "Root final build owner",
+      "run_after": "0; coordinator bootstrap input is explicitly assigned.",
+      "commands": [
+        "make build-release RELEASE_BUILD_DIR=\"$NATIVE\" BUILD_HOST=\"$BOOTSTRAP_HOST\" BUILD_TARGET=\"chibi chibi-compile chibi-build-host chibi-compiler-host chibi_ctl test_tools policy_worker test_language\" JOBS=3"
+      ],
+      "actions": [
+        "Use an empty final root or a proven exact-final-#795 root. Compile all final roles from the merged #795 source; accepted-main-only host binaries never stand in.",
+        "Release Graph normal target generation uses its own final hosts. Do not borrow stale dea or accepted-main-only values/asset hosts for final proof.",
+        "Record compile_commands, selected copied SDK headers, current runtime objects/archives, executable link .chibi-record files, source resources and generated test-source headers.",
+        "Specifically cover #797 support/arena.{c,h}, execution/{call,function,host}.{c,h}, types/array.c and compiler_host.c; #802 prepared_record.c and value_wire.{c,h}; and original byte boundary text_format.c/types/{text,array,trace}.c/asset_compiler_host.c. Verify exported arena/function/value_wire headers match final source and no old-prefix includes/object inputs remain.",
+        "Confirm normal compiler/asset generation trace reused the accepted checked compiler where all 27 inputs match; do not schedule another general fixed-point producer.",
+        "Ensure test_tools/policy_worker and the in-process chibi_build_host library are compiled from this new head, including accepted #803 callback ownership code. External command-line host identity alone cannot establish the linked private bank path."
+      ],
+      "pass_gate": "Successful ordinary final-source build plus provenance receipts, not only an unchanged git tree."
+    },
+    {
+      "id": "2-native-smoke-and-matrix",
+      "owner": "Portable validation owner",
+      "run_after": "1 complete.",
+      "commands": [
+        "python3 .chibi/portable-byte-libraries/verify-candidate.py --head \"$FINAL_HEAD\" --label post803-native --build \"$NATIVE\" --kind native language-compiler-fixture language-package-tests language-package-imports language-package-snapshot-chibi language-record-prepared language-execution language-native-calls language-package-portable language-package-portable-compiler language-package-core language-asset-compiler-host language-asset-packaging-chibi chibi-cli published-docs"
+      ],
+      "oracles": [
+        "#817 root interaction is already composed correctly: native discovery blank-imports all five core packages; adjacent compiler matrix supplies all five as project roots. Do not add a missing-root workaround or weaken discovery.",
+        "Portable discovery retains project-only defaults and exact collection boundaries. Both native BYTECODE and SLJIT run all 23 adjacent authored tests.",
+        "Consumer source still calls all 34 public APIs across bytes/bits/FNV/Adler32/CRC32 with literal/binary oracles.",
+        "Require four explicit stage-one compiler -> target pairs: BYTECODE->BYTECODE, BYTECODE->SLJIT, SLJIT->BYTECODE, SLJIT->SLJIT, each running all 23 adjacent cases. Public consumer executes in both compiler and target backends; no fallback/inspection substitution.",
+        "Native storage/profile case verifies public text-seven vs compiler-private-six, boxed/packed/shared backing detach, producer-arena retirement and live VIEW rejection.",
+        "Asset-source test exercises actual packaged reader and eight owned document fields after compiler/thread storage release.",
+        "Docs positive pages and compiler_syntax_parse negative both remain; existing costs/string/formatting oracles are retained."
+      ],
+      "efficiency": "Run the selected dispatchers once on exact final binaries. Broaden only for a new failure or material source change; do not run the unrelated full aggregates automatically."
+    },
+    {
+      "id": "2b-post803-private-bank-release",
+      "owner": "Private build-host/portable validation owner",
+      "state": "SOURCE APPLIED; execution active in this plan only after root producer grant and integer boundary release.",
+      "run_after": "Matching exact-head native build phase 1. Run once before heavy producer work; SAN repetition is integrated into phase 5, avoiding a duplicate SAN build.",
+      "patch": {
+        "path": ".chibi/portable-byte-libraries/byte-bridge-lifetime-proof/byte-bridge-native-lifetime.patch",
+        "sha256": "42ed6978a870cc3a6a4447792dce5436baf6e81aad273119356291a31ada276d",
+        "applied_commit": "c9cfe668e15896936086e0b7431d71588532b4e9",
+        "source_file": "test/tools/build_process.c",
+        "source_sha256": "90e7c41dcf74ea5bd1bda26ae0518161cc28dc5fa1b1c0800942c6105c4dae4f",
+        "additions": 95,
+        "added_lines_equal_reviewed_patch": true,
+        "registrations": [
+          "BUILD_PROCESS_FILES",
+          "BUILD_PROCESS_ALL"
+        ]
+      },
+      "commands": [
+        "CHIBI_TOOLS_BUILD_DIR=\"$NATIVE/test/tools\" CHIBI_BUILD_HOST=\"$NATIVE/sdk/chibi-build-host\" python3 tools/test_policy.py tool build-process-files"
+      ],
+      "build_requirement": "Phase 1 includes matching test_tools + policy_worker + private in-process chibi_build_host; Graph Runs(test_tools) retains normal workers/program dependencies. Do not reuse an old linked harness even if a new external host is present.",
+      "expected_dispatch": "Existing selector grows from three to four outer cases. private_core_bytes_survive_native_result_bank_reuse internally executes BYTECODE and SLJIT loops; no new executable or selector.",
+      "oracles": [
+        "Existing dispatcher grows from 3 to 4 outer cases; new private_core_bytes_survive_native_result_bank_reuse loops BYTECODE and SLJIT. Require actual selected-backend entries, no opposite/Wasm entries, overflow or inspection/size fallback.",
+        "Exact input/output bytes are A/NUL/0xFF/B = [65,0,255,66]. Use real core:bytes and fixture root, preserve exactly the two input/output arguments across build.platform/root/read/write/arguments callbacks and borrowed result-bank reuse. Root callback is exercised; the narrow case does not separately compare its returned root string to a literal.",
+        "Mutate raw[0] to 90 while retained read_text/kept/read_back remain exact A/NUL/0xFF/B. Native C reads exactly four output bytes plus EOF, checks no read error, and closes FILE before final content REQUIRE. Invoke succeeds with zero value/steps.",
+        "Run Release and instrumented C callback/import/cleanup paths without sanitizer suppressions/options or work-limit changes. Capture elapsed, exact argv/environment/executable/log hashes and diagnostics. SLJIT-generated code is not automatically sanitizer-instrumented; make no blanket leak claim."
+      ],
+      "coverage_boundary": "This reaches build_host_ready through in-process chibi_build_invoke/private result-bank callbacks. The five portable SAN cases never enter build_host_ready and cannot substitute for it; this callback proof also does not replace their shared boxed/packed detach and producer-arena retirement coverage.",
+      "cleanup_and_scope": "C callback/import/native-bank/cleanup code is instrumented in phase 5. SLJIT-generated code is not automatically sanitizer-instrumented. Exact root-argument strings and A/NUL/0xFF/B output are checked; root callback is exercised for bank reuse without a separate literal root-result oracle.",
+      "evidence": "Capture current head/tree, clean status, linked library/object/header/harness/worker/host hashes, exact environment/argv, tool/wrapper elapsed and complete diagnostic logs. Require no overflow or backend fallback. No blanket leak claim."
+    },
+    {
+      "id": "3-existing-compiler-tools-120s-gate",
+      "owner": "Root/coordinator SDK acceptance owner",
+      "run_after": "Matching final hosts and smoke proof; before concurrent heavy producer/sanitizer workloads. This is the next already-required accepted-combination SDK run, not a blind repeated timeout experiment.",
+      "environment": {
+        "CHIBI_TOOLS_BUILD_DIR": "$NATIVE/test/tools",
+        "CHIBI_BUILD_HOST": "$NATIVE/sdk/chibi-build-host",
+        "CHIBI_SDK_GRAPH_BUILD_DIR": "$NATIVE",
+        "CHIBI_SDK_THIRD_PARTY_DIR": "$THIRD_PARTY",
+        "CHIBI_BUILD_TIMINGS": "$TIMINGS"
+      },
+      "commands": [
+        "python3 tools/test_policy.py tool build-sdk"
+      ],
+      "operation": "Existing build_sdk.c install_from launches final host --root $ROOT --source $ROOT/tools/toolchain/SDK.chibi --core $ROOT/packages/core --entry CompilerTools --timeout-ms 120000 -- --build $NATIVE --output <fresh fixture prefix> --third-party $THIRD_PARTY. SDK_RUN_SECONDS remains 120. The selector retains its negative controls and relocated packaging oracle.",
+      "evidence": [
+        "Capture exact environment and command, final test/host/link-record/vendor/source/checked-compiler hashes, log plus all CHIBI_BUILD_TIMINGS TSV files and hashes.",
+        "Check final Graph compiler/core resource trees equal final source, and dependency archives match final executable records before interpreting runtime.",
+        "Separate wrapper/tool wall times and existing per-operation deadline. A new timeout remains a failure with its own exact source/input identity; it does not prove #795 causation or inheritance. Preserve completed timing traces and diagnostics."
+      ],
+      "on_failure": "No deadline/work-limit changes, held #803 overlay or immediate repeated rerun. Return the exact evidence to the coordinator; rerun only after a justified input/source/state change."
+    },
+    {
+      "id": "4-fresh-wasm",
+      "owner": "Portable Wasm validation owner",
+      "run_after": "0 and coordinator boundary release; may run independently after the controlled CompilerTools capture if resources permit.",
+      "commands": [
+        "make wasm-language-build WASM_BUILD_DIR=\"$WASM\" JOBS=3",
+        "python3 .chibi/portable-byte-libraries/verify-candidate.py --head \"$FINAL_HEAD\" --label post803-wasm --build \"$WASM\" --kind wasm wasm-package-portable wasm-package-portable-compiler"
+      ],
+      "oracles": [
+        "Fresh Emscripten configuration regenerates embedded current compiler/public package headers from final source and compiles matching final Wasm runtime objects. Preserve strict warnings, current prepared ABI and existing work guards.",
+        "All 23 portable tests execute on BYTECODE and WASM. Require all four compiler/target pairs BYTECODE->BYTECODE, BYTECODE->WASM, WASM->BYTECODE, WASM->WASM, each 23 tests, plus public consumer covering 34 APIs and actual WASM entry counters.",
+        "A recurrence of prior EmitBody guard failure is red; do not change the guard or use held compiler sources."
+      ],
+      "qualification": "Node Wasm evidence only; no browser/threaded/player proof is inferred."
+    },
+    {
+      "id": "5-fresh-sanitizer-ownership",
+      "owner": "Portable sanitizer validation owner",
+      "run_after": "0/1; do not compete with the diagnostic CompilerTools run.",
+      "commands": [
+        "make build BUILD_DIR=\"$SAN\" BUILD_HOST=\"$NATIVE/sdk/chibi-build-host\" BUILD_PROFILE=sanitizer BUILD_TARGET=\"test_language test_tools policy_worker chibi-build-host\" ASSET_GENERATOR_HOSTS=\"$NATIVE/sdk\" JOBS=3",
+        "python3 .chibi/portable-byte-libraries/verify-candidate.py --head \"$FINAL_HEAD\" --label post803-sanitizer --build \"$SAN\" --kind sanitizer build-process-files language-package-portable language-record-prepared language-asset-compiler-host"
+      ],
+      "environment": "MallocNanoZone=0; ASAN_OPTIONS/UBSAN_OPTIONS/LSAN_OPTIONS absent. No sanitizer-policy override.",
+      "evidence": [
+        "Verify actual compile commands contain -fsanitize=address,undefined for text_format.c, types/text.c,array.c,trace.c, authoring/asset_compiler_host.c, compiler_host.c and newly changed arena/function/host/prepared_record/value_wire implementation paths.",
+        "Capture executable/log hashes, source/header/compile database identity, exact environment and argv; scan logs for ASan, UBSan, runtime-error and fatal sanitizer diagnostics, including diagnostics despite exit 0.",
+        "Existing byte ownership cases prove shared boxed/packed mutation detachment, independent retained strings after producer arena destruction, failure output nonpublication and public/private role isolation. Record-prepared tests add #802 proof-cache/catalog-retirement and failure-atomicity coverage.",
+        "For the now-active callback case, also verify build_process.c, src/host/build_host.c/build_catalog.c/build_values.c and linked execution/types cleanup objects have actual address,undefined compile flags. Require build-process-files 4/4 and both native backend loops; five portable SAN cases do not enter build_host_ready."
+      ],
+      "qualification": "Only named selector sanitizer evidence; no blanket leak claim. Record actual elapsed; historical 1348.448 s asset-host time is context, not a cap or target."
+    },
+    {
+      "id": "6-full-normal-sdk-and-isolated-relocation",
+      "owner": "SDK/portable consumer validation owner",
+      "run_after": "Final-source build/CompilerTools capture; source remains frozen.",
+      "commands": [
+        "make package-sdk SDK_BUILD_DIR=\"$SDK_BUILD\" SDK_REFLECT_BUILD_DIR=\"$SDK_REFLECT\" SDK_PREFIX=\"$SDK\" SDK_CMAKE_FLAGS=\"-DCMAKE_BUILD_TYPE=Release -DCHIBI_ENABLE_SANITIZERS=OFF\" JOBS=3",
+        "cmake -S test/language -B \"$SDK_TEST\" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang -DCHIBI_INSTALLED_SDK=ON -DChibi_DIR=\"$RELOCATED/lib/cmake/Chibi\" --trace-expand --trace-source=\"$RELOCATED/lib/cmake/Chibi/ChibiConfig.cmake\"",
+        "cmake --build \"$SDK_TEST\" --target test_language --parallel 3",
+        "CHIBI_LANGUAGE_BUILD_DIR=\"$SDK_TEST\" python3 tools/test_policy.py tool language-package-portable",
+        "CHIBI_LANGUAGE_BUILD_DIR=\"$SDK_TEST\" python3 tools/test_policy.py tool language-package-portable-compiler",
+        "CHIBI_LANGUAGE_BUILD_DIR=\"$SDK_TEST\" python3 tools/test_policy.py tool language-asset-compiler-host"
+      ],
+      "ordered_actions": [
+        "Build the complete ordinary compiler/native/desktop SDK with source-built asset generation enabled. No CHIBI_TEST_ASSET_COMPILER_HOST=OFF, compiler-only SDK substitution, runtime-only subset or external stale producer shortcut.",
+        "Verify package.json reports FINAL_HEAD clean; record SDK pin, manifest, full entry/mode/symlink/file hash inventory, public/private headers, archives and every CLI/libexec host hash.",
+        "Run normal installed CLI version, external source-identical Consumer.chibi test (one PublicImports, all 34 APIs), and plain README docs probe once.",
+        "Clone normal SDK preserving all entries/modes, verify clone inventory equality, then hide original prefix in an exclusive window. Use try/finally and interruption handling to restore it even on failure.",
+        "Configure/build only the relocated installed harness above while original is unavailable; check Chibi_CORE_SOURCE_DIR, cache and link records resolve beneath RELOCATED, including shipped Tests.chibi and text capability archive. Require no original/hidden/build-tree fallback paths.",
+        "Run three relocated selectors and relocated CLI consumer/docs. Require all 23 tests and all four native authored compiler pairs. Recheck both SDK inventories unchanged by execution, source identity and old evidence hashes; restore original."
+      ],
+      "efficiency": "One full normal SDK build and one relocated installed harness build cover installed artifacts and relocation. Do not duplicate an equivalent normal installed harness matrix before cloning.",
+      "boundary": "If ordinary asset/facade generation fails, retain diagnostics/inputs and return evidence to its owner. Use accepted #803 source only through normal exact-head builds; never borrow held/unreviewed artifacts or alter guards."
+    },
+    {
+      "id": "7-platform-and-final-reconciliation",
+      "owner": "Root CI/review owner",
+      "run_after": "Fresh local phases and root scheduling.",
+      "actions": [
+        "Use exact final CI source identity for Linux/macOS required lanes. The Linux-only native-build ten cases cannot be counted from a macOS skipped selector; require its actual Linux evidence with admitted LLVM tools.",
+        "Reconcile final feature diff, API/test inventory, held changes, accepted manifest/runtime pins, build roots and all receipts. Label unsupported/unexecuted browser/Windows/renderer/Studio scope honestly.",
+        "A source change invalidates affected matching build/execution proof; freeze a new head and rerun affected checks only. Do not restamp historical receipts as current.",
+        "Root handles approvals/required server checks and publication separately."
+      ],
+      "done_when": "Final source, hosts/headers/objects, all eight native/Wasm compiler-target pair executions, selected sanitizer ownership, ordinary full SDK and isolated relocation proofs agree; any retained failures/open holds are explicit."
+    }
+  ],
+  "inspected_recipe_sha256": {
+    ".chibi/portable-byte-libraries/verify-candidate.py": "facd5ae167971cc14181f17edf1b0ae280e27dcacd8449fc7e9a1302050dde4f",
+    ".chibi/portable-byte-libraries/cow-relocation-proof.py": "89a5edf4f9d72013a73b6f1b86b5c559f77b06c11072fe08e8fb5c0c7b8f7995",
+    ".chibi/portable-byte-libraries/cow-native-proof.json": "6deaf8b4c345b05f6c9473fe89142253a60a793cce6a7702113d01e44d9af481",
+    ".chibi/portable-byte-libraries/cow-sanitizer-proof.json": "7e7efe9dfa1ec28174442c297231a6956ad43901380e0c23b3fe82f36a502dd8",
+    ".chibi/portable-byte-libraries/cow-relocation-proof.json": "d8e56943f6a43f0c6be906b5900a04c4b8a220c22c63a214e56832469094ffee",
+    ".chibi/portable-byte-libraries/sdk-timeout-fixture-804-context.json": "e68d26a28beef1759b0ecba7aea976ca59a4d3d5223ea00d8ceb0b7e5cc3e76f",
+    ".chibi/portable-byte-libraries/sdk-timeout-related-context.json": "ffe83975778c8727bd2e2699a6864218f9a377c751afb8f5278833cc9f2997be"
+  },
+  "work_performed_for_this_plan": "Read current git/source metadata and old plan; verified old-plan hash and reviewed added-line parity; wrote only this NEW scratch JSON. Old plan/old branch preserved. No source edits/build/tests/producer/artifact regeneration/push.",
+  "source_only_reachability_review": {
+    "kind": "Read-only source interaction review; no runtime validation",
+    "native_discovery": {
+      "path": "test/language/package_portable.c",
+      "lines": "97-126",
+      "fact": "The project sentinel already blank-imports all five core package identities before shared explicit core discovery. #817 reachable-package selection therefore retains every intended authored test package without a new root/import change."
+    },
+    "authored_adjacent_matrix": {
+      "path": "test/language/package_portable_compiler.c",
+      "lines": "448-489",
+      "fact": "The ten adjacent production/test inputs are project package roots; core strings is the collection input. All five tested project modules are required before executing any body, then the matrix requires exactly 23 tests per compiler/target pair."
+    },
+    "existing_counter_guards": "run_authored_package rejects overflow and inspection/size fallback, requires bytecode-only entries for target BYTECODE, and actual SLJIT/WASM entries with no bytecode entries for compiled targets.",
+    "values_profile_qualification": "The values-only host scope may execute its canonical instruction stream even when configured with a compiled loader; this lifecycle/profile test is not itself compiled-execution proof. The separate portable/compiler matrix supplies actual compiled-backend execution evidence.",
+    "missing_root_change_needed": false,
+    "source_sha256": {
+      "test/language/package_portable.c": "919b3ad03b8526b115fd3fdf54f774e0348391cf76a248972fc00e4aa7edea56",
+      "test/language/package_portable_compiler.c": "f8a7cc6aee8ec565254450140fd1e17973700ff271c2546ced780c948cf798e8",
+      "test/packages/portable_consumer/Consumer.chibi": "bde7427fca9f1b5b9e437f60c2b0511862fe032cbf5486a4fd990e91c0e40cf0"
+    },
+    "root_attestation": "Root reports all 34 APIs/23 tests preserved and checked compiler 27d8 with all 27 manifest source entries matching after the ordinary merge.",
+    "overall_independent_review": "Reviewed narrow callback test plus accepted #803 composition are source evidence only; root records exact new-head combined review with producer grant. No post-803 execution proof is inferred.",
+    "previous_review_head": "3200134a8b7e35c22695c7f7e3527a85893da37f",
+    "previous_review_tree": "bf72e3ee89918a030f5e5f11d305dbe1e41a01f3",
+    "head": "c9cfe668e15896936086e0b7431d71588532b4e9",
+    "tree": "0ebc105f1fb9a08394355833afdf7a739de39a2a",
+    "current_source_sha256": {
+      "test/language/package_portable.c": "919b3ad03b8526b115fd3fdf54f774e0348391cf76a248972fc00e4aa7edea56",
+      "test/language/package_portable_compiler.c": "f8a7cc6aee8ec565254450140fd1e17973700ff271c2546ced780c948cf798e8",
+      "test/packages/portable_consumer/Consumer.chibi": "bde7427fca9f1b5b9e437f60c2b0511862fe032cbf5486a4fd990e91c0e40cf0"
+    },
+    "source_bytes_unchanged_from_pre803_plan": true
+  },
+  "wasm_default_assessment": {
+    "kind": "Source-only confirmation; no configure/build/test run.",
+    "command": "make wasm-language-build WASM_BUILD_DIR=\"$WASM\" JOBS=3",
+    "explicit_sanitizer_OFF_required": false,
+    "reason": "The ordinary target configures standalone test/language in Release through emcmake. That path adds sdk directly, not root CMake native sanitizer defaults; both root native sanitizer flags and third-party sanitizer variants explicitly exclude Emscripten. Keep the planned fresh directory and record actual environment/cache/compile-link commands, without inherited native sanitizer flags.",
+    "sources": [
+      "Makefile:wasm-language-build",
+      "test/language/CMakeLists.txt:1-14",
+      "sdk/CMakeLists.txt:9-46",
+      "cmake/third_party.cmake:9-42",
+      "CMakeLists.txt:140-151"
+    ]
+  },
+  "current_gate_status": {
+    "source": "Clean frozen post-803 separate branch at c9cfe668e15896936086e0b7431d71588532b4e9 / 0ebc105f1fb9a08394355833afdf7a739de39a2a",
+    "source_checks": "Root reports normal accepted-main merge plus exact reviewed 95-line patch; format/diff checks passed.",
+    "execution": "No source/build/test/producer/regen/push work authorized now; integer still owns its CPU boundary.",
+    "publication": "#801 ABI/effects/publication and other holds remain."
+  },
+  "preserved_pre803_plan": {
+    "path": ".chibi/portable-byte-libraries/final-integration-validation-plan.json",
+    "sha256": "4e8b92be9b153417dffe32d7b951f5e6ea5c0112e33df676ea2ac3d2e478577c",
+    "head": "3200134a8b7e35c22695c7f7e3527a85893da37f",
+    "tree": "bf72e3ee89918a030f5e5f11d305dbe1e41a01f3",
+    "classification": "Immutable historical planning/source-review identity, not post-803 build or execution proof."
+  },
+  "post803_source_status": {
+    "accepted_803_main": "79743c5675e5a18eeea14193d729cc6e45bdf926",
+    "protocol": 14,
+    "callback_patch_already_applied": true,
+    "full_candidate_file_copied": false,
+    "reviewed_95_added_lines_match": true,
+    "current_compile_execution_status": "Not run",
+    "remaining_boundary": "Integer CPU boundary and root producer grant",
+    "holds": [
+      "#801 ABI/effects/publication",
+      "all other explicit holds"
+    ]
+  }
+}

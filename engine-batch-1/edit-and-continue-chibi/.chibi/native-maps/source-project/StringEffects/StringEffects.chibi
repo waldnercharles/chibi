@@ -1,0 +1,43 @@
+package string_evaluation_effects
+
+Text :: (value: int) -> string { return text_from_bytes([u8(65), 0, u8(value)]); }
+Change :: (value: ^string) -> int { value^ = Text(2); return 7; }
+Replace :: (value: ^string) -> string { value^ = Text(2); return Text(1); }
+Before :: (value: string, ignored: int) -> bool { return value == Text(1); }
+Main :: () -> int {
+    for (index in 0..<96) {
+        key := Text(1);
+        values: [string: int] = [:];
+        values[key] = Change(&key);
+        assert(values.has(Text(1)) && !values.has(Text(2)) && key == Text(2));
+        key = Text(1);
+        literal: [string: int] = [key: Change(&key)];
+        assert(literal.has(Text(1)) && !literal.has(Text(2)));
+        key = Text(1);
+        captured := Before(key, Change(&key));
+        assert(captured && key == Text(2));
+        key = Text(1);
+        compared := key == Replace(&key);
+        assert(compared && key == Text(2));
+        key = Text(1);
+        skipped := false && Before(key, Change(&key));
+        assert(!skipped && key == Text(1));
+        taken := true && (false || Before(key, Change(&key)));
+        assert(taken && key == Text(2));
+        key = Text(1);
+        aliased := Scoped(&key, &key);
+        assert(aliased && key == Text(2));
+        key = Text(1);
+        mapped := ScopedMap(&key, &key);
+        assert(mapped && key == Text(2));
+    }
+    return 0;
+}
+Scoped :: (read: ^string, changed: ^string) -> bool {
+    return Before(read^, Change(changed));
+}
+ScopedMap :: (read: ^string, changed: ^string) -> bool {
+    values: [string: int] = [:];
+    values[read^] = Change(changed);
+    return values.has(Text(1)) && !values.has(Text(2));
+}

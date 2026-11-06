@@ -1,0 +1,314 @@
+diff --git a/test/native_aot/map_programs/run.sh b/test/native_aot/map_programs/run.sh
+index 6f96c23d1..4b0b1fad8 100644
+--- a/test/native_aot/map_programs/run.sh
++++ b/test/native_aot/map_programs/run.sh
+@@ -10,7 +10,7 @@ case "$(uname -s)-$(uname -m)" in
+     Linux-x86_64) triple=x86_64-unknown-linux-gnu ;;
+     *) echo 'native map programs: unsupported test host' >&2; exit 2 ;;
+ esac
+-for name in Values Strings Iteration Records Effects Receivers; do
++for name in Values Strings Iteration Records Effects Receivers ManagedRecords; do
+     for level in 0 2; do
+         "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+             --source "$root/test/native_aot/map_programs/$name.chibi" --entry Main \
+@@ -34,4 +34,11 @@ if "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
+     exit 1
+ fi
+ grep -F 'native compound map assignment is not supported yet' "$work/compound.log" >/dev/null
++if "$compiler" --compiler "$root/tools/compiler" --core "$root/packages/core" \
++    --source "$root/test/native_aot/map_programs/ArrayBacked.chibi" --entry Main \
++    --output "$work/ArrayBacked" --llvm "$llvm" --target "$triple" --jobs 2 > "$work/array-backed.log" 2>&1; then
++    echo 'native map programs: array-backed record was accepted' >&2
++    exit 1
++fi
++grep -F 'native map operation differs from its operands' "$work/array-backed.log" >/dev/null
+ echo 'native map programs passed'
+diff --git a/test/native_aot/maps/Probe.chibi b/test/native_aot/maps/Probe.chibi
+index 3ef1ef9d1..7c80904b9 100644
+--- a/test/native_aot/maps/Probe.chibi
++++ b/test/native_aot/maps/Probe.chibi
+@@ -102,6 +102,17 @@ Main :: () -> int {
+     globals := format_text("\n@map_test.expected_index = internal constant i1 {}\n", expected_index);
+     runtime_text := runtime.text;
+     if (mode == "source") {
++        // Source modules need only their declared map types. The direct
++        // kernels exercise integer-map capacity bounds independently.
++        bounds := strings.Index(runtime_text, "define internal i1 @map_test.bounds(");
++        main := strings.Index(runtime_text, "\ndefine i32 @main(");
++        if (bounds < 0 || main < bounds) {
++            os.Print("native maps: the test runtime has no bounds section");
++            return 2;
++        }
++        runtime_text = strings.Concatenate([strings.Slice(runtime_text, 0, bounds),
++            "define internal i1 @map_test.bounds(ptr %ctx) { ret i1 true }\n",
++            strings.Slice(runtime_text, main, strings.ByteLength(runtime_text) - main)]);
+         runtime_text = strings.Concatenate([runtime_text,
+             "\ndefine void @chibi_native_step() { ret void }\n",
+             "define void @chibi_native_failure(i32 %kind) noreturn { call void @exit(i32 134)\n unreachable }\n"]);
+diff --git a/test/native_aot/maps/README.md b/test/native_aot/maps/README.md
+index f0ccf2793..5d88ad206 100644
+--- a/test/native_aot/maps/README.md
++++ b/test/native_aot/maps/README.md
+@@ -41,5 +41,11 @@ and reload it after key/value evaluation. These run under the poisoned allocator
+ Read, `has`, `in` and `not in` evaluate their receiver before a key callback.
+ Replacing the original map during that callback preserves the captured value,
+ including through aliased scoped parameters and binary string keys.
++Managed record values share the aggregate lifecycle for nested scalar/string
++fields. Copy, replacement, deletion, growth/shrink, temporary results and loop
++exits must retain each live payload and release it once. Array-backed record
++values remain rejected until their recursive backing ownership is available.
++Borrowed string and record array elements also survive later literal callbacks
++that replace the source element before the map is constructed.
+ 
+ A growth/shrink regression builds 4096 entries, deletes all but 64 and checks that logical entry/index capacity shrinks with the live map. Capacity planning near 2^30 is checked without allocating those buffers.
+diff --git a/test/native_aot/maps/run.sh b/test/native_aot/maps/run.sh
+index 0ebf9c6df..e6618553b 100755
+--- a/test/native_aot/maps/run.sh
++++ b/test/native_aot/maps/run.sh
+@@ -20,7 +20,7 @@ done
+ sh "$root/test/native_aot/map_programs/run.sh" "$compiler" "$llvm" "$work/programs"
+ # Compile authored source once, then run its emitted module through the same
+ # poisoned allocator and zero-outstanding-allocation check as the facts probes.
+-for name in Ownership Effects Receivers; do
++for name in Ownership Effects Receivers ManagedRecords; do
+     project=$work/source-project/$name
+     mkdir -p "$project"
+     cp "$root/test/native_aot/map_programs/$name.chibi" "$project/$name.chibi"
+diff --git a/tools/compiler/llvm_native/Emit.chibi b/tools/compiler/llvm_native/Emit.chibi
+index ab1fcbba0..678870ead 100644
+--- a/tools/compiler/llvm_native/Emit.chibi
++++ b/tools/compiler/llvm_native/Emit.chibi
+@@ -3017,7 +3017,7 @@ Module :: (target: abi.Target, functions: Function[], parameters: int[], slots:
+             out.append(format_text("\n{}", text));
+         }
+         copies := Copies(held);
+-        out.append(MapModule(held, ProgramMode(mode)));
++        out.append(MapModule(held, ProgramMode(mode), record_owners));
+         if (copies) {
+             out.append(format_text("\n{}", ArrayCopyHelper()));
+         }
+@@ -3934,10 +3934,10 @@ pub MapOf :: (key: int, value: int) -> int {
+ MapKeyed :: (key: int) -> bool {
+     return key == abi.BoolStorage || Integer(key) || key == abi.TextStorage;
+ }
+-// Scalars and records of scalar leaves copy safely by value. Owning leaves
+-// require recursive keep/drop before map operations may accept them.
++// Scalar/string records share the value lifecycle. Array-backed and task
++// fields remain outside this recursively checked payload domain.
+ MapPlainValue :: (records: Record[], fields: int[], type: int) -> bool {
+-    if (abi.ScalarType(type) != "") { return true; }
++    if (type == abi.TextStorage || abi.ScalarType(type) != "") { return true; }
+     if (type < RecordType || type >= ArrayType || type - RecordType >= length(records)) { return false; }
+     record := records[type - RecordType];
+     for (at in record.first..<record.first + record.count) {
+@@ -4093,9 +4093,16 @@ MapHelper :: (op: int) -> string {
+     return "has";
+ }
+ 
+-// LLVM text that releases, or adds a reference to, the owner of the string
+-// `value`, a name unique in the function by `tag`.
+-MapOwner :: (call: string, value: string, tag: string) -> string {
++// A copied payload acquires its owned leaves before another map can drop
++// them. `tag` makes the returned copied value unique within the helper.
++MapOwner :: (call: string, value: string, tag: string, type: int) -> string {
++    if (type != abi.TextStorage) {
++        if (call == "retain") {
++            return format_text("  %c.{} = call {} @chibi_value.{}.copy(ptr %ctx, {} {})\n", tag,
++                               TypeName(type), type, TypeName(type), value);
++        }
++        return format_text("  call void @chibi_value.{}.drop(ptr %ctx, {} {})\n", type, TypeName(type), value);
++    }
+     text := abi.TextType();
+     out := format_text("  %o.{} = extractvalue {} {}, 2\n", tag, text, value);
+     if (call == "retain") {
+@@ -4105,7 +4112,7 @@ MapOwner :: (call: string, value: string, tag: string) -> string {
+ }
+ // The reference changes for the live entry just copied or being dropped.
+ // Copy's `ymove` block ends in `yretained`, which its loop's phi names.
+-MapEach :: (call: string, entries: string, prefix: string, key: int, value: int) -> string {
++MapEach :: (call: string, entries: string, prefix: string, key: int, value: int, owners: bool[]) -> string {
+     offset := "%xoff";
+     if (call == "retain") {
+         offset = "%woff";
+@@ -4114,12 +4121,15 @@ MapEach :: (call: string, entries: string, prefix: string, key: int, value: int)
+     if (key == abi.TextStorage) {
+         out = format_text("  %{}k = getelementptr inbounds $E, ptr {}, i64 {}, i32 0\n", prefix, entries, offset);
+         out = format_text("{}  %{}kv = load $K, ptr %{}k\n{}", out, prefix, prefix,
+-                          MapOwner(call, format_text("%{}kv", prefix), format_text("{}k", prefix)));
++                          MapOwner(call, format_text("%{}kv", prefix), format_text("{}k", prefix), key));
+     }
+-    if (value == abi.TextStorage) {
++    if (ValueOwned(value, owners)) {
+         out = format_text("{}  %{}v = getelementptr inbounds $E, ptr {}, i64 {}, i32 1\n", out, prefix, entries, offset);
+         out = format_text("{}  %{}vv = load $V, ptr %{}v\n{}", out, prefix, prefix,
+-                          MapOwner(call, format_text("%{}vv", prefix), format_text("{}v", prefix)));
++                          MapOwner(call, format_text("%{}vv", prefix), format_text("{}v", prefix), value));
++        if (value != abi.TextStorage && call == "retain") {
++            out = format_text("{}  store $V %c.{}v, ptr %{}v\n", out, prefix, prefix);
++        }
+     }
+     if (call == "retain") {
+         out = format_text("{}  br label %yretained\nyretained:\n", out);
+@@ -4257,11 +4267,11 @@ MapShared :: () -> string {
+ 
+ // The helpers of map type `type`, named `@chibi_map.<type>.<helper>`: hash,
+ // same, find, get, has, set, delete, copy and drop.
+-MapHelpers :: (type: int, native_program: bool) -> string {
++MapHelpers :: (type: int, native_program: bool, owners: bool[]) -> string {
+     key := MapKey(type);
+     value := MapValue(type);
+     keyed := key == abi.TextStorage;
+-    valued := value == abi.TextStorage;
++    valued := ValueOwned(value, owners);
+     prehash := "  %wide = zext $K %key to i64";
+     same := "  %same = icmp eq $K %a, %b";
+     missing := "  ret $V zeroinitializer";
+@@ -4279,14 +4289,14 @@ MapHelpers :: (type: int, native_program: bool) -> string {
+     replaced: string[] = [];
+     deleted: string[] = [];
+     if (valued) {
+-        replaced.append(format_text("  %old = load $V, ptr %rv\n{}", MapOwner("release", "%old", "rv")));
++        replaced.append(format_text("  %old = load $V, ptr %rv\n{}", MapOwner("release", "%old", "rv", value)));
+         deleted.append(format_text("  %dv = getelementptr inbounds $E, ptr %hole, i32 0, i32 1\n  %dvv = load $V, ptr %dv\n{}",
+-                                   MapOwner("release", "%dvv", "dv")));
++                                   MapOwner("release", "%dvv", "dv", value)));
+     }
+     if (keyed) {
+-        replaced.append(MapOwner("release", "%key", "rk"));
++        replaced.append(MapOwner("release", "%key", "rk", key));
+         deleted.append(format_text("  %dk = getelementptr inbounds $E, ptr %hole, i32 0, i32 0\n  %dkv = load $K, ptr %dk\n{}",
+-                                   MapOwner("release", "%dkv", "dk")));
++                                   MapOwner("release", "%dkv", "dk", key)));
+     }
+     text := strings.Join([
+         "define internal i32 @chibi_map.$N.hash($K %key) {",
+@@ -4747,8 +4757,8 @@ MapHelpers :: (type: int, native_program: bool) -> string {
+     text = strings.ReplaceAll(text, "$MISSING", missing);
+     text = strings.ReplaceAll(text, "$REPLACED", strings.TrimSuffix(strings.Join(replaced, ""), "\n"));
+     text = strings.ReplaceAll(text, "$DELETED", strings.TrimSuffix(strings.Join(deleted, ""), "\n"));
+-    text = strings.ReplaceAll(text, "$RETAINED", strings.TrimSuffix(MapEach("retain", "%fresh", "r", key, value), "\n"));
+-    text = strings.ReplaceAll(text, "$RELEASED", strings.TrimSuffix(MapEach("release", "%entries", "x", key, value), "\n"));
++    text = strings.ReplaceAll(text, "$RETAINED", strings.TrimSuffix(MapEach("retain", "%fresh", "r", key, value, owners), "\n"));
++    text = strings.ReplaceAll(text, "$RELEASED", strings.TrimSuffix(MapEach("release", "%entries", "x", key, value, owners), "\n"));
+     text = strings.ReplaceAll(text, "$M", abi.MapType());
+     text = strings.ReplaceAll(text, "$E", format_text("{ {}, {}, i32 }", TypeName(key), TypeName(value)));
+     text = strings.ReplaceAll(text, "$K", TypeName(key));
+@@ -4756,14 +4766,14 @@ MapHelpers :: (type: int, native_program: bool) -> string {
+     return format_text("{}\n", strings.ReplaceAll(text, "$N", format_text("{}", type)));
+ }
+ // The helpers of the map types `code` works on, once each.
+-MapModule :: (code: Instruction[], native_program: bool) -> string {
++MapModule :: (code: Instruction[], native_program: bool, owners: bool[]) -> string {
+     types := MapTypes(code);
+     if (length(types) == 0) {
+         return "";
+     }
+     out: string[] = [MapShared()];
+     for (type in types) {
+-        out.append(MapHelpers(type, native_program));
++        out.append(MapHelpers(type, native_program, owners));
+     }
+     return format_text("\n{}", strings.Join(out, "\n"));
+ }
+diff --git a/tools/compiler/scalar_llvm/Emit.chibi b/tools/compiler/scalar_llvm/Emit.chibi
+index 043e6d4a6..e12715ee6 100644
+--- a/tools/compiler/scalar_llvm/Emit.chibi
++++ b/tools/compiler/scalar_llvm/Emit.chibi
+@@ -2546,6 +2546,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                 retained_element := false;
+                 retained_record := false;
+                 record_inputs: int[] = [];
++                extra := 0;
+                 if (operand.kind == facts.LiteralRow && operand.type == facts.StringType) {
+                     // A repeated literal or default shares one entry.
+                     item.literal = i64(length(texts));
+@@ -2729,11 +2730,21 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                     base := length(stack) - MapOperands(operand);
+                     op := operand.value;
+                     if (op == facts.MapNew) {
+-                        // Take every string reference before inserting. A
++                        // Take every owned reference before inserting. A
+                         // duplicate literal key may replace and release an
+                         // earlier value during the first sequence of sets.
+                         for (index in 0..<operand.count) {
+                             kept := stack[base + index];
++                            held := slots[shape.first_slot + kept];
++                            if (TrackedRecord(managed, held)) {
++                                if (Holds(fresh, kept)) { fresh = Without(fresh, kept); }
++                                else {
++                                    owned := RecordRefs(rows, declared, held, kept, slot + 1 + extra, true);
++                                    slots.extend(owned.slot_types);
++                                    body.extend(owned.code);
++                                    extra += length(owned.slot_types);
++                                }
++                            }
+                             if (slots[shape.first_slot + kept] == abi.TextStorage) {
+                                 if (Holds(fresh, kept)) {
+                                     fresh = Without(fresh, kept);
+@@ -2748,16 +2759,31 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                             value := stack[base + pair * 2 + 1];
+                             body.append(item);
+                             slots.append(type);
+-                            item = Op(native.MapSet, type, slot + 1, slot, key, value);
++                            item = Op(native.MapSet, type, slot + 1 + extra, slot, key, value);
+                             item.literal = 1;
+-                            slot += 1;
++                            slot += 1 + extra;
++                            extra = 0;
+                         }
+                     } else {
++                        if (op == facts.MapSet) {
++                            kept := stack[base + 2];
++                            held := slots[shape.first_slot + kept];
++                            if (TrackedRecord(managed, held)) {
++                                if (Holds(fresh, kept)) { fresh = Without(fresh, kept); }
++                                else {
++                                    owned := RecordRefs(rows, declared, held, kept, slot + 1 + extra, true);
++                                    slots.extend(owned.slot_types);
++                                    body.extend(owned.code);
++                                    extra += length(owned.slot_types);
++                                }
++                            }
++                        }
+                         if (op == facts.MapSet || op == facts.MapDelete) {
+                             slots.append(type);
+                             body.append(Op(native.Deref, type, slot, stack[base], 0, 0));
+                             stack[base] = slot;
+-                            slot += 1;
++                            slot += 1 + extra;
++                            extra = 0;
+                         }
+                         item = MapLowered(operand, type, slot, stack, base);
+                         if (op == facts.MapSet) {
+@@ -2773,6 +2799,7 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                         if (op != facts.MapSet && op != facts.MapDelete && Holds(fresh, stack[base])) {
+                             pending.append(stack[base]);
+                         }
++                        retained_record = (op == facts.MapGet || op == facts.MapValueAt) && TrackedRecord(managed, type);
+                         // A string read borrows from its map. Retain it before
+                         // a fresh input map is dropped, then track the result
+                         // as fresh so the statement either keeps or releases it.
+@@ -2814,11 +2841,12 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                         op == facts.ArrayJoin || op == facts.ArrayCopy || op == facts.ArrayText) {
+                         if (Holds(fresh, stack[base])) {
+                             pending.append(stack[base]);
+-                            // Keep a string result before dropping its temporary array.
+-                            retained_element = op == facts.ArrayGet && type == abi.TextStorage;
+-                            retained_record = op == facts.ArrayGet && TrackedRecord(managed, type);
+                         }
+                     }
++                    // A later operand can replace even a borrowed element's
++                    // array or slot, so acquire its value at the read.
++                    retained_element = op == facts.ArrayGet && type == abi.TextStorage;
++                    retained_record = op == facts.ArrayGet && TrackedRecord(managed, type);
+                     if ((op == facts.ArrayJoin || op == facts.ArrayExtend) && Holds(fresh, stack[base + 1])) {
+                         pending.append(stack[base + 1]);
+                     }
+@@ -2906,7 +2934,6 @@ Lower :: (target: abi.Target, rows: facts.Row[], directory: string, debug: bool,
+                     }
+                     stack = slice(stack, 0, base);
+                 }
+-                extra := 0;
+                 if (operand.kind == facts.ArrayRow && operand.value == facts.ArraySet &&
+                     TrackedRecord(managed, slots[shape.first_slot + item.target])) {
+                     // The replaced element may be the incoming value itself.

@@ -1,0 +1,7 @@
+package task_numeric_rejection
+Main :: () -> int {
+    pending := Worker();
+    return int(pending);
+}
+Worker :: () -> int { yield
+    return 1; }

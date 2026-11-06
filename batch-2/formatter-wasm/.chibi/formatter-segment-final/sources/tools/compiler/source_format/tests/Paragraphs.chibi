@@ -1,0 +1,134 @@
+package source_format_tests
+
+import format "project:source_format"
+import strings "core:strings"
+
+@test
+ParagraphsStayWithinExecutableBodies :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    source := "package p\nTools :: library {\nFirst :: () {}\nSecond :: () {}\nThird :: () {}\nFourth :: () {}\n}\n";
+    output := Run(source, options);
+    assert(!strings.Contains(output, "\n\n"), "library member lists are not method bodies");
+    assert(Run(output, options) == output, "declaration layout is stable");
+}
+
+@test
+LogicalParagraphsSeparateSyntacticRuns :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nfirst := 1;\nsecond := 2;\nStartFirst();\nStartSecond();\n}\n",
+         "package p\nMain :: () {\n    first := 1;\n    second := 2;\n\n    StartFirst();\n    StartSecond();\n}\n");
+}
+
+@test
+LogicalParagraphsKeepControlPreamblesAndSeparateReturns :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: () {\nitem := FindItem();\nif item == none { return; }\nvalue := ReadValue();\nreturn value;\n}\n",
+         "package p\nMain :: () {\n    item := FindItem();\n    if item == none {\n        return;\n    }\n\n    value := ReadValue();\n\n    return value;\n}\n");
+}
+
+@test
+LogicalParagraphsRecognizeReceiverRuns :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    With(options,
+         "package p\nMain :: (left: Point, right: Point) {\nleft.x = 1;\nleft.y = 2;\nright.x = 3;\nright.y = 4;\n}\n",
+         "package p\nMain :: (left: Point, right: Point) {\n    left.x = 1;\n    left.y = 2;\n\n    right.x = 3;\n    right.y = 4;\n}\n");
+}
+
+@test
+ParagraphModesPreserveCommentsAndProtectedBytes :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    input := "package p\nMain :: () {\nfirst := Read();\n// keep attached\nsecond := Read();\n// chibi fmt: off\nodd:=  1; next:=2;\n// chibi fmt: on\narea := first * second;\nsize := first + second;\nPrint(area);\nPrint(size);\n}\n";
+    output := Run(input, options);
+    assert(strings.Contains(output, "// chibi fmt: off\nodd:=  1; next:=2;\n// chibi fmt: on"), "protected bytes remain exact");
+    assert(strings.Contains(output, "    // keep attached\n    second := Read();"), "a leading comment stays attached");
+    assert(strings.Contains(output, "    size := first + second;"), "unprotected statements still format");
+    assert(Run(output, options) == output, "comment and protected boundaries reach a fixed point");
+}
+
+@test
+SyntaxParagraphsSeparateControlOperations :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 1;
+    With(options,
+         "package p\nMain :: () {\nfirst := 1;\nsecond := 2;\nif ready { Call(); }\nnext := 3;\nlast := 4;\n}\n",
+         "package p\nMain :: () {\n    first := 1;\n    second := 2;\n\n    if ready {\n        Call();\n    }\n\n    next := 3;\n    last := 4;\n}\n");
+}
+
+@test
+ParagraphPreserveAndInlinePoliciesRemainAvailable :: () {
+    source := "package p\nMain :: () {\na := Read();\nb := Read();\nx := a * b;\ny := a + b;\nPrint(x);\nPrint(y);\n}\n";
+    preserved := format.Defaults();
+    output := Run(source, preserved);
+    assert(!strings.Contains(output, "\n\n"), "preserve mode does not infer sections");
+    compact_block := preserved;
+    compact_block.statement_paragraphs = 2;
+    compact_block.keep_one_line_blocks = true;
+    With(compact_block, "package p\nMain :: () { a := 1; b := 2; Print(a); Print(b); }\n",
+         "package p\nMain :: () { a := 1; b := 2; Print(a); Print(b); }\n");
+}
+
+@test
+ParagraphsKeepUniformDeclarationRunsTogether :: () {
+    pieces := ["package p\nMain :: () {\n"];
+    for (index in 0..<80) { pieces.append(format_text("value{} := {};\n", index, index)); }
+    pieces.append("}\n");
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    output := Run(strings.Join(pieces, ""), options);
+    assert(!strings.Contains(output, "\n\n"), "uniform similarity does not create arbitrary size boundaries");
+    assert(Run(output, options) == output, "new separators do not accumulate on repeated formatting");
+}
+
+@test
+ParagraphsIgnoreTerminatorSpellingAndWrapping :: () {
+    pieces := ["package p\nMain :: () {\n"];
+    for (index in 0..<10) { pieces.append(format_text("value{} := {};\n", index, index)); }
+    pieces.append("Call(alpha, beta, gamma, delta, epsilon);\n}\n");
+    input := strings.Join(pieces, "");
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    options.max_blank_lines = 0;
+    options.semicolons = format.Omit;
+    options.preferred_width = 30;
+    output := Run(input, options);
+    assert(strings.Contains(output, "\n\n"), "paragraph minimum gaps apply with a zero preservation cap");
+    assert(Run(output, options) == output, "terminator omission and list wrapping do not shift section decisions");
+    options.semicolons = format.Always;
+    output = Run(output, options);
+    assert(Run(output, options) == output, "terminator insertion is stable too");
+}
+
+@test
+ParagraphsDoNotDetachLabelsFromTheirCode :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    source := "package p\nMain :: () {\nfirst := 1;\nsecond := 2;\ngoto done;\ndone:\nPrint(first);\nPrint(second);\n}\n";
+    output := Run(source, options);
+    assert(strings.Contains(output, "    done:\n    Print(first);"), "label and following statement stay adjacent");
+    assert(Run(output, options) == output, "label boundaries are stable");
+}
+
+@test
+ParagraphsRemainStableWhenWrappedListsGainTrailingCommas :: () {
+    options := format.Defaults();
+    options.statement_paragraphs = 2;
+    options.preferred_width = 30;
+    options.arguments_layout = 3;
+    options.arrays_layout = 3;
+    options.trailing_commas = 2;
+    source := "package p\nMain :: () {\nfirst := [1, 2, 3];\nsecond := [4, 5, 6];\ntotal := first[0] + second[0];\nother := first[1] + second[1];\nSend(total, other, 3);\nSave(total, other, 4);\n}\n";
+    policies := format.PunctuationDefaults();
+    policies.trailing_commas = format.Always;
+    wrapped := Run(source, options);
+    output := Run(PunctuationRun(wrapped, policies, true), options);
+    assert(strings.Contains(output, ",\n"), "wrapped lists gain their configured punctuation");
+    assert(Run(PunctuationRun(output, policies, true), options) == output,
+           "new commas cannot change statement relationships on the next pass");
+}

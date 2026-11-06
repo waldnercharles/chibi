@@ -1,0 +1,113 @@
+{
+  "state": "reviewed source preparation only; all combined executions unrun",
+  "base": "79743c5675e5a18eeea14193d729cc6e45bdf926",
+  "source_tree": "e0731ca621abf03d0632bac9ec2aa4485e88115f",
+  "code_tree": "43f0d0247611e88214efc3e321612f8df4d6c751",
+  "source_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime797-write-prep/source-forwardport.json",
+  "selected_write_patch_sha256": "e497dda37cd4cd57222040b82fbabb6df8f7439508ba7258164166bf4e93298c",
+  "source_gates": {
+    "exact_union": "passed independent review",
+    "accepted_protocol14_lifetime": "retained exact",
+    "full801_array_metadata": "excluded",
+    "27d8_bootstrap_and_E1_runtime": "retained exact; not matching Math compiler proof",
+    "ordered_source_inventory": "30 paths unchanged; Compile/Body/Steps differ from old f1a",
+    "historical_evidence": "554 files verified unchanged"
+  },
+  "execution_allocation": {
+    "current_math_native_build": false,
+    "full_authored_compiler_fixture": false,
+    "artifact_or_asset_producer": false,
+    "recovery_selfbuild": false,
+    "runtime_seed_or_sdk_publication": false
+  },
+  "next_owner_coordination": {
+    "scoped_write_oracles": "Coordinate selected scalar/record/caller and LocalBox/ScopedRead/CallRead rows with original #801 owner against this exact Math compiler input; Math does not own that fixture. Do not run the complete #801 fixture with held array-mask expectations or import22 metadata rows.",
+    "producer": "coordinator must allocate full fixture/compiler preparation before any execution"
+  },
+  "pending_execution_order": [
+    {
+      "phase": "matching native driver and source admission",
+      "action": "When allocated, freeze this exact tree, build strict matching C driver/objects and capture source/dependency/binary hashes; validate30 ordered raw compiler texts and all target facts. Do not use old f1a or old producer outputs. Preserve ordinary quotas/backend selection and no fallback controls."
+    },
+    {
+      "phase": "shared scoped writes and pure controls",
+      "owner": "original #801 owner plus Math/coordinator",
+      "cases": [
+        "StoreInt and StoreRecord fixed WRITE2 C/authored expectation",
+        "direct callers and supplied pointers inherit WRITE",
+        "owned-local caller distinction",
+        "LocalBox, ScopedRead and CallRead remain effect0",
+        "writes=false and Failed path unchanged"
+      ],
+      "run": "owner-scoped replay of existing --argument-effects-chibi rows on exact Math compiler source; full selector needs held array metadata and is not admitted as WRITE-only proof"
+    },
+    {
+      "phase": "Math source/native integration",
+      "selectors": [
+        "--package-compiler-chibi-types",
+        "--package-compiler-chibi-types-compiled"
+      ],
+      "covers": [
+        "all42 math source cases on both compiler VMs",
+        "native Math original/GC-pressure C and both authored compiler/target VM combinations",
+        "declarations/effects/points/watches/return values/receiver/RHS snapshots/backend selection/no fallback",
+        "typed package controls on both compiler VMs"
+      ],
+      "avoid_duplicate": "types already invokes math-native and both math source backends; do not immediately rerun --package-compiler-chibi-math-native unless a failure/change justifies a focused replay"
+    },
+    {
+      "phase": "collection and closure interactions",
+      "selectors": [
+        "--package-compiler-chibi-collections",
+        "--package-compiler-chibi-collections-compiled",
+        "--package-compiler-chibi-imports",
+        "--package-compiler-chibi-imports-compiled"
+      ],
+      "covers": [
+        "existing references/lent locals/compound-order/relay/Boxed controls",
+        "all nine accepted reachability import cases and compact closure assertions",
+        "exported module identity and imported schema paths"
+      ]
+    },
+    {
+      "phase": "prepared/schema and shared Body boundary",
+      "native_groups": [
+        "--record-prepared",
+        "--record-values",
+        "--record-compatibility"
+      ],
+      "source_groups": [
+        "--package-compiler-chibi-sharing",
+        "--package-compiler-chibi-debug-free"
+      ],
+      "scope": "Native record baselines are historical74a passes and unchanged by this small Steps correction; retain them separately. At combined artifact acceptance, select required math nominal/native/retained-schema/array roundtrips and sharing/debug checks; repeat native baselines only for changed matching runtime/ABI inputs or an unresolved boundary. No duplicate wide-record counter or installed E1 prerequisite proof."
+    },
+    {
+      "phase": "coordinator compiler production",
+      "requires": "explicit producer allocation after source/effect acceptance",
+      "checks": [
+        "matching regenerated30-source compiler artifact/manifest",
+        "recovery and written-artifact recovery on both VMs",
+        "two-stage selfbuild/fixed point and function budgets",
+        "ordinary builder math source-order/inventory/assets",
+        "matching installed SDK and backend/layout facts"
+      ],
+      "holds": [
+        "no compiler/artifact/seed run allocated now",
+        "ABI/SDK/publication still require exact combined proof",
+        "AOT/shader and public recoverable/constants/record stages remain separate"
+      ]
+    }
+  ],
+  "public_recoverable_gate": {
+    "contract": "typed final optional error with @error result-type inference",
+    "source_evidence": "e902fcf3:docs/recoverable-errors.md",
+    "historical": "per-function @fallible convention superseded",
+    "prerequisites": "admitted results source plus fresh native grammar/runtime support; no Results code imported in this checkpoint"
+  },
+  "historical_checks_not_promoted": {
+    "a253": "b4dbc77d:33native cases2282assertions and44math module cases perVM",
+    "private_gc": "runtime308 old Body/Compile + private WriteStep proof; does not establish current accepted797 combination"
+  },
+  "budgets": "No new global timing admission policy. Keep existing invocation/record/layout limits and report actual configure/build/test times when executed."
+}

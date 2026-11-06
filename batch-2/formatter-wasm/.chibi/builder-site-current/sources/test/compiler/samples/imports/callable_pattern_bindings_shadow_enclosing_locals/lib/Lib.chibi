@@ -1,0 +1,2 @@
+package lib
+pub Remap :: (value: int, transform: fn(value: int) -> int) -> int { return transform(value); }

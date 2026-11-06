@@ -1,0 +1,138 @@
+package toolchain
+
+Request :: struct {
+    path: string
+    watch: bool
+    valid: bool
+}
+
+Parse :: (arguments: string[]) -> Request {
+    request: Request = {path: "", watch: false, valid: false}
+    selected := false
+    run := false
+    index := 0
+    while index < length(arguments) {
+        argument := arguments[index]
+        if argument == "--project-root" {
+            if selected || index + 1 >= length(arguments) {
+                return request
+            }
+            index += 1
+            request.path = arguments[index]
+            if request.path == "" || request.path == "--project-root" ||
+               request.path == "--run" || request.path == "--watch" {
+                return request
+            }
+            selected = true
+        } else if argument == "--run" {
+            if run {
+                return request
+            }
+            run = true
+        } else if argument == "--watch" {
+            if request.watch {
+                return request
+            }
+            request.watch = true
+        } else {
+            return request
+        }
+        index += 1
+    }
+    request.valid = selected && run
+    return request
+}
+
+Run :: () -> int {
+    request := Parse(runner.arguments())
+    if !request.valid {
+        runner.report("Usage: chibi-compile --project-root PATH --run [--watch]")
+        return 2
+    }
+    if !runner.select(request.path) {
+        runner.report_error()
+        return 1
+    }
+    seen: u64 = 0
+    seen_error: u64 = 0
+    loaded := false
+    result := 1
+    while !runner.stopped() {
+        revision := runner.snapshot()
+        if revision == 0 {
+            error := runner.error_revision()
+            if error != seen_error {
+                seen_error = error
+                runner.report_error()
+            }
+            if !loaded {
+                return 1
+            }
+        } else {
+            seen_error = 0
+            if revision != seen {
+                // Remember rejected revisions too, so unchanged errors do not retry.
+                seen = revision
+                if runner.compile() && runner.prepare("Main") {
+                    runner.commit()
+                    loaded = true
+                    if runner.stopped() {
+                        return 0
+                    }
+                    result = runner.call()
+                    if result < 0 || result > 255 {
+                        runner.report("Main returned an exit status outside 0..255")
+                        result = 1
+                    }
+                } else {
+                    runner.report_error()
+                    runner.discard()
+                    if !loaded {
+                        return 1
+                    }
+                }
+            }
+        }
+        if !request.watch {
+            return result
+        }
+        if !runner.wait(250) {
+            return 0
+        }
+    }
+    return 0
+}
+
+@test
+RunParseAcceptsRequiredArguments :: () {
+    request := Parse(["--project-root", "Hello.chibi", "--run"])
+    assert(request.valid && request.path == "Hello.chibi" && !request.watch)
+    watched := Parse(["--watch", "--run", "--project-root", "/tmp/program with spaces"])
+    assert(watched.valid && watched.watch && watched.path == "/tmp/program with spaces")
+}
+
+@test
+RunParseRejectsMissingArguments :: () {
+    empty: string[] = []
+    assert(!Parse(empty).valid)
+    assert(!Parse(["--run"]).valid)
+    assert(!Parse(["--project-root", "Hello.chibi"]).valid)
+    assert(!Parse(["--run", "--project-root"]).valid)
+    assert(!Parse(["--project-root", "", "--run"]).valid)
+    assert(!Parse(["--project-root", "--watch", "--run"]).valid)
+    assert(!Parse(["--project-root", "--run"]).valid)
+}
+
+@test
+RunParseRejectsDuplicateArguments :: () {
+    assert(!Parse(["--project-root", "Hello.chibi", "--run", "--run"]).valid)
+    assert(!Parse(["--project-root", "Hello.chibi", "--run", "--watch", "--watch"]).valid)
+    assert(!Parse(["--project-root", "Hello.chibi", "--run", "--project-root", "Other.chibi"]).valid)
+}
+
+@test
+RunParseRejectsUnknownArguments :: () {
+    assert(!Parse(["--project-root", "Hello.chibi", "--run", "--unknown"]).valid)
+    assert(!Parse(["--project-root", "Hello.chibi", "--run", "extra"]).valid)
+    assert(!Parse(["Hello.chibi"]).valid)
+}

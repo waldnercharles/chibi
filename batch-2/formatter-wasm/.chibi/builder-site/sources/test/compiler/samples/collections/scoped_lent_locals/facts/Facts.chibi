@@ -1,0 +1,169 @@
+package facts
+Pair :: union { Row(xs: int[]) | None }
+Make :: (n: int) -> int[] {
+    xs: int[] = [];
+    for i in 0..<n {
+        xs.append(i + 1);
+    }
+    return xs;
+}
+Shape :: (xs: int[]) -> int {
+    return length(xs) * 10 + xs[length(xs) - 1];
+}
+Width :: (p: Pair) -> int {
+    switch p {
+        case .Row(xs):
+            return Shape(xs);
+        case:
+            return -1;
+    }
+}
+Param :: (xs: int[], flag: bool) -> int {
+    if flag {
+        alias := xs;
+        if length(alias) == 0 {
+            return -1;
+        }
+    }
+    return Shape(xs);
+}
+Scoped :: () -> int {
+    xs := Make(2);
+    if length(xs) > 0 {
+        alias := xs;
+        if length(alias) == 0 {
+            return -1;
+        }
+    }
+    return Shape(xs);
+}
+Passed :: () -> int {
+    xs := Make(4);
+    n := Param(xs, true);
+    return n * 100 + Shape(xs);
+}
+PassedFalse :: () -> int {
+    xs := Make(4);
+    n := Param(xs, false);
+    return n * 100 + Shape(xs);
+}
+Broken :: () -> int {
+    xs := Make(3);
+    total := 0;
+    for i in 0..<3 {
+        alias := xs;
+        total += length(alias);
+        if i == 1 {
+            break;
+        }
+    }
+    return total * 100 + Shape(xs);
+}
+Continued :: () -> int {
+    xs := Make(3);
+    total := 0;
+    for i in 0..<3 {
+        alias := xs;
+        if i == 1 {
+            continue;
+        }
+        total += length(alias);
+    }
+    return total * 100 + Shape(xs);
+}
+Returned :: () -> int {
+    xs := Make(3);
+    total := 0;
+    for i in 0..<3 {
+        alias := xs;
+        total += length(alias);
+        if i == 1 {
+            return total * 100 + Shape(xs);
+        }
+    }
+    return -1;
+}
+Whole :: () -> int {
+    held := Pair.Row(Make(3));
+    if Width(held) > 0 {
+        alias := held;
+        if Width(alias) < 0 {
+            return -1;
+        }
+    }
+    return Width(held);
+}
+Looped :: () -> int {
+    rows: int[][] = [Make(3), Make(1)];
+    total := 0;
+    for i in 0..<3 {
+        row := rows[0];
+        total += length(row);
+    }
+    return total * 100 + Shape(rows[0]);
+}
+RowBroken :: () -> int {
+    rows: int[][] = [Make(3), Make(1)];
+    total := 0;
+    for i in 0..<3 {
+        row := rows[0];
+        total += length(row);
+        if i == 1 {
+            break;
+        }
+    }
+    return total * 100 + Shape(rows[0]);
+}
+RowContinued :: () -> int {
+    rows: int[][] = [Make(3), Make(1)];
+    total := 0;
+    for i in 0..<3 {
+        row := rows[0];
+        if i == 1 {
+            continue;
+        }
+        total += length(row);
+    }
+    return total * 100 + Shape(rows[0]);
+}
+RowReturned :: () -> int {
+    rows: int[][] = [Make(3), Make(1)];
+    total := 0;
+    for i in 0..<3 {
+        row := rows[0];
+        total += length(row);
+        if i == 1 {
+            return total * 100 + Shape(rows[0]);
+        }
+    }
+    return -1;
+}
+Element :: () -> int {
+    pairs: Pair[] = [Pair.Row(Make(2)), Pair.None];
+    if length(pairs) > 0 {
+        pair := pairs[0];
+        if Width(pair) < 0 {
+            return -1;
+        }
+    }
+    return Width(pairs[0]);
+}
+Items :: () -> int {
+    rows: int[][] = [Make(3), Make(1)];
+    total := 0;
+    for row in rows {
+        total += length(row);
+    }
+    return total * 10000 + Shape(rows[0]) * 100 + Shape(rows[1]);
+}
+ItemsBroken :: () -> int {
+    rows: int[][] = [Make(3), Make(1)];
+    total := 0;
+    for row in rows {
+        total += length(row);
+        if length(row) == 3 {
+            break;
+        }
+    }
+    return total * 10000 + Shape(rows[0]) * 100 + Shape(rows[1]);
+}

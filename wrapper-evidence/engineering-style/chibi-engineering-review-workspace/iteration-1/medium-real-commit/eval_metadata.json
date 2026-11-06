@@ -1,0 +1,10 @@
+{
+  "eval_name": "medium-real-commit",
+  "prompt": "Can you give commit 2797053cb a thorough review? It's in the Chibi checkout at /Users/cwaldner/Personal/chibi/.worktrees/review-eval/chibi. Read only; save the review as review.md.",
+  "assertions": [
+    "Every finding in the review cites a specific path and line number.",
+    "The review assesses whether the iterative else-if parsing preserves behavior of the recursive version (e.g., node structure, diagnostics) and cites the test or input that shows it.",
+    "The review does not recommend defensive checks, compatibility shims, or splitting functions for length.",
+    "Every finding includes concrete evidence (a count, measurement, named caller/consumer or failing input), or the review states plainly that there are no substantive findings."
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "source": "/Users/cwaldner/.codex/worktrees/behavior-authoring-main/chibi-studio",
+  "source_commit": "78cb4d4c47242db9f7af2b9573653d9756050e99",
+  "source_tree": "a91bebf8c9226c4ef974e8fd061db34082ac0755",
+  "source_dirty": true,
+  "build": "/Users/cwaldner/.codex/worktrees/behavior-authoring-main/chibi/build-studio",
+  "sdk": "/Users/cwaldner/.codex/worktrees/behavior-authoring-main/chibi/dist/sdk",
+  "extraction_sha256": "351cb480551d04819d006d57e826b85d74b1927b4f5c9b11d97bd8a13ce06a07",
+  "compile_commands_sha256": "8699a8f8a309b9aa746145e4f4adcda15496609ce7c3a09e66aa997ce6f765bf",
+  "binary_sha256": "ba88fe47da5e793647a0ce3e9502f90303e871a3eea61fce5d0f42d9e8daef79",
+  "binary": "/Users/cwaldner/.codex/worktrees/behavior-authoring-main/chibi/build-studio/bin/studio-acceptance",
+  "files": {
+    "tests/acceptance/BROWSER.md": {
+      "bytes": 5280,
+      "sha256": "ed78b371893083791dbc713e28f7687e328291373dc98494d923f316c0429e36"
+    },
+    "tests/acceptance/README.md": {
+      "bytes": 27990,
+      "sha256": "8f3ba25d4fcef35500af371d92a285b6554bfa5f416bc1afc6c1fcc48295c5b8"
+    },
+    "tests/acceptance/application.c": {
+      "bytes": 303,
+      "sha256": "99f312f466e3abe43d30a47094f1dd03fa0a27672244eb0960ed4dc5e316ab3c"
+    },
+    "tests/acceptance/browser/published-editor.png": {
+      "bytes": 91459,
+      "sha256": "15b7784f149c685b8663ff62ef580d2e09214e69784e2df8e9af74f12cd2ae09"
+    },
+    "tests/acceptance/browser/storage-retry.png": {
+      "bytes": 85789,
+      "sha256": "c3499eede69382307d2a492e72590f4d4b51a0b580cb117de53d5c891af435c2"
+    },
+    "tests/acceptance/debugger.c": {
+      "bytes": 11932,
+      "sha256": "5731c49f75a563af39ba5a067655ed1cec125fc4e3b597fb23788aecfd37ce26"
+    },
+    "tests/acceptance/debugger.h": {
+      "bytes": 210,
+      "sha256": "c6aeeb427b4c75f2304df2826752c5708f03a1d327d1b98c331331d0a22822a8"
+    },
+    "tests/acceptance/host.c": {
+      "bytes": 569,
+      "sha256": "79336a3b1fe8ad01ff2df59fa77c0fcd71ef3e019ea67282c1af1400df36a033"
+    },
+    "tests/acceptance/main.c": {
+      "bytes": 191954,
+      "sha256": "9a8dd46fb953dcec5149e24b208e35013718ce81dff73094a04f8494b9e869d1"
+    },
+    "tests/acceptance/outliner_move.h": {
+      "bytes": 11593,
+      "sha256": "789746834bd66d69dea593a79c3a205e74e96c7c0bccca1727416b5cc25c5eac"
+    },
+    "tests/acceptance/panel_idle.h": {
+      "bytes": 22415,
+      "sha256": "c1795de05bc8dcd0c6a7097eb3949e48fdf19c5c02a52d0f84488f97d94c8a20"
+    },
+    "tests/acceptance/project/content/behaviors/Counter.chibi": {
+      "bytes": 92,
+      "sha256": "ab072105e163873d9d414fdf1cbc35f48a28a8b874139531ea61c3c581ac57cd"
+    },
+    "tests/acceptance/project/content/scenes/Start.kdl": {
+      "bytes": 39,
+      "sha256": "4512130a3539013e0ec2e50c0c0427cb9f027f9f997d95379b6a47950aee745b"
+    },
+    "tests/acceptance/project/project.kdl": {
+      "bytes": 79,
+      "sha256": "6ddf1d450404852e6872e95110e048dc05a439d0646bab7d6b60cf30cf1ae68e"
+    },
+    "tests/acceptance/scene_3d.h": {
+      "bytes": 717,
+      "sha256": "b61fed95bf665e0f8cff0c5d5864b31fc521f6adf1f2c80239cb2e2bd580d8df"
+    },
+    "tests/acceptance/scene_camera.h": {
+      "bytes": 13840,
+      "sha256": "a5c8980fc45869a1cd76b7ba8b1892373aa202f2d6a9216a63ae5a91b3dba12d"
+    },
+    "tests/acceptance/scene_collider3d.h": {
+      "bytes": 13371,
+      "sha256": "372ac478e9adb2250ac1d5413bab6bafcf05311ee5801a15523c3f6d198968c5"
+    },
+    "tests/acceptance/scene_gizmo3d.h": {
+      "bytes": 17349,
+      "sha256": "5179efab6447d5d8febd1fa0adfcca70c21a4f1ab7dd09f997f6e10ff3e60910"
+    },
+    "tests/acceptance/scene_move.h": {
+      "bytes": 18385,
+      "sha256": "046cf81e06322e5947bdc86af91eebc6774fee1973de21e4f9e9ccc7cb41a8fe"
+    },
+    "tests/acceptance/vendor/pico_unit.h": {
+      "bytes": 13953,
+      "sha256": "ae1c93c155941afbd914f2c7a1fb2128d72aafcc05bddf3ddb0bb6f72eef22b8"
+    }
+  },
+  "hidden": true,
+  "window": [
+    1920,
+    1080
+  ],
+  "fixed_dt": "0.016666666666666666",
+  "frames": 19,
+  "success": "Studio graph pointer accepted: frames=19",
+  "resources": {
+    "studio": [
+      264,
+      452512,
+      "5430d5bc456d62f6c3a8666e3f0ced83184c69249ee1c6b4ade7b7ba8018b134"
+    ],
+    "ui": [
+      2,
+      297,
+      "8505446e5ec71ec7c070f17b6729e0f6c41e2f9666dc7218b3c80a2f2d184e92"
+    ]
+  },
+  "execution_status": "not run; provenance admitted"
+}

@@ -1,0 +1,186 @@
+package source_format_tests
+
+import format "project:source_format"
+import strings "core:strings"
+
+PipelineOutput :: (result: format.Result) -> (text: string, notes: string) {
+    switch result {
+        case .Rejected(message):
+            print_string(message);
+            assert(false, "the public formatting pipeline accepts the fixture");
+            return ("", message);
+        case .Formatted(text, notes): return (text, notes);
+    }
+}
+
+PipelineFixedPoint :: (source: string, options: format.Options) -> (text: string, notes: string) {
+    first := PipelineOutput(format.Format(source, options));
+    second := PipelineOutput(format.Format(first.text, options));
+    if (first.text != second.text) {
+        print_string(first.text);
+        print_string(second.text);
+        print_string(second.notes);
+    }
+    assert(first.text == second.text, "the complete pipeline reaches a fixed point in one pass");
+    return (first.text, first.notes);
+}
+
+@test
+EveryProfileFormatsARealProgramToAFixedPoint :: () {
+    source := "package p\nDouble::(value:int)->int{return value*2;}\nMain::(){first:int=2;longer:int=Double(first);if(longer>first){longer-=1;}assert(longer==3,\"same value\");}\n";
+    outputs: string[] = [];
+    for (profile in 0..<4) {
+        result := PipelineFixedPoint(source, format.Profile(profile));
+        assert(strings.Contains(result.text, "Double") && strings.Contains(result.text, "same value"),
+               "profiles keep the callable and observable assertion");
+        outputs.append(result.text);
+    }
+    assert(strings.Contains(outputs[0], "Double :: (value: int) -> int {"), "current profile preserves function spelling");
+    assert(strings.Contains(outputs[1], "=>") && !strings.Contains(outputs[1], "first: int"),
+           "compact profile applies expression bodies and inferred bindings together");
+    assert(strings.Contains(outputs[2], "Double :: fn(") && strings.Contains(outputs[2], "\n{\n"),
+           "expanded profile applies explicit function spelling and next-line braces");
+    assert(outputs[0] != outputs[1] && outputs[0] != outputs[2] && outputs[0] != outputs[3],
+           "named profiles produce distinct developer-visible layouts");
+}
+
+@test
+FunctionTypeAndPunctuationPreferencesCompose :: () {
+    source := "package p\nDouble :: (value:int)->int { return ((value*2)); }\nMain :: () { count:int=2; if ((count>0)) { count=Double(count); } }\n";
+    options := format.Defaults();
+    options.function_body = 2; options.function_keyword = 2; options.return_arrow = 1;
+    options.binding_types = 1; options.return_types = 0; options.parameter_types = 0;
+    options.control_parens = 1; options.expression_parens = 1; options.branch_braces = 1;
+    result := PipelineFixedPoint(source, options);
+    expected := "package p\nDouble :: fn(value: int) int => value * 2;\nMain :: fn() {\n    count := 2;\n    if count > 0\n        count = Double(count);\n}\n";
+    if (result.text != expected) { print_string(result.text); print_string(result.notes); }
+    assert(result.text == expected, "types, function bodies, optional parentheses and branch braces all apply");
+}
+
+@test
+RecordExpressionBodiesKeepTheirRequiredGroupWithParenthesisOmission :: () {
+    source := "package p\nPoint :: struct { x: int; }\nMake :: () -> Point { return {x: 1}; }\n";
+    options := format.Defaults();
+    options.function_body = 2; options.function_keyword = 2; options.return_arrow = 1;
+    options.expression_parens = 1; options.flatten_parens = true;
+    result := PipelineFixedPoint(source, options);
+    expected := "package p\nPoint :: struct {\n    x: int;\n}\nMake :: fn() Point => ({x: 1});\n";
+    if (result.text != expected) { print_string(result.text); print_string(result.notes); }
+    assert(result.text == expected, "record return conversion and optional grouping policies preserve unambiguous syntax");
+}
+
+@test
+InferredResultsBecomeExplicitBeforeExpressionBodiesBecomeBlocks :: () {
+    source := "package p\nDouble :: (value:int) => value*2;\nMain :: () { count:=Double(2); }\n";
+    options := format.Defaults();
+    options.local_types = 2; options.return_types = 2;
+    options.function_body = 1; options.function_keyword = 2; options.return_arrow = 2;
+    result := PipelineFixedPoint(source, options);
+    expected := "package p\nDouble :: fn(value: int) -> int {\n    return value * 2;\n}\nMain :: fn() {\n    count: int = Double(2);\n}\n";
+    if (result.text != expected) { print_string(result.text); print_string(result.notes); }
+    assert(result.text == expected, "compiler result and local types compose with block and arrow policies");
+}
+
+@test
+UnsafeIgnoredResultsDoNotCancelIndependentFunctionStyles :: () {
+    source := "package p\nReader :: () -> int { return 7; }\nSafeReturn :: () -> int { return Reader(); }\nIgnored :: () { Reader(); }\n";
+    options := format.Defaults();
+    options.function_body = 2; options.function_keyword = 2; options.return_arrow = 1;
+    result := PipelineFixedPoint(source, options);
+    expected := "package p\nReader :: fn() int => 7;\nSafeReturn :: fn() int => Reader();\nIgnored :: fn() {\n    Reader();\n}\n";
+    if (result.text != expected) { print_string(result.text); print_string(result.notes); }
+    assert(result.text == expected, "an ignored int remains void while safe expression and signature styles apply");
+    assert(strings.Contains(result.notes, "Expression-statement bodies stayed as blocks"),
+           "the skipped semantic change has a visible explanation");
+}
+
+@test
+VoidCallBodiesUseExpressionSyntaxWhenCompilerProofSucceeds :: () {
+    source := "package p\nDone :: () {}\nInvoke :: () { Done(); }\n";
+    options := format.Defaults();
+    options.function_body = 2; options.function_keyword = 2;
+    result := PipelineFixedPoint(source, options);
+    expected := "package p\nDone :: fn() {}\nInvoke :: fn() => Done();\n";
+    if (result.text != expected) { print_string(result.text); print_string(result.notes); }
+    assert(result.text == expected, "a proved void call can become an expression body without gaining a value result");
+}
+
+@test
+ProjectTypesAndFunctionStylesUseTheSameDependencyContext :: () {
+    source := "package p\nimport lib \"project:lib\"\nRead :: () { return lib.Count(); }\nMain :: () { value:=Read(); }\n";
+    dependency := "package lib\npub Count :: () -> i8 { return 4; }\n";
+    context: format.Context = {project: "/formatter", collection_names: [], collection_paths: [],
+                               paths: ["/formatter/Main.chibi", "/formatter/lib/Lib.chibi"], sources: [source, dependency]};
+    options := format.Defaults();
+    options.local_types = 2; options.return_types = 2;
+    options.function_body = 2; options.function_keyword = 2; options.return_arrow = 1;
+    result := PipelineOutput(format.FormatProject(source, options, context));
+    expected := "package p\nimport lib \"project:lib\"\nRead :: fn() i8 => lib.Count();\nMain :: fn() {\n    value: i8 = Read();\n}\n";
+    if (result.text != expected) { print_string(result.text); print_string(result.notes); }
+    assert(result.text == expected, "imported result width reaches both the function signature and caller binding");
+    again := PipelineOutput(format.FormatProject(result.text, options, context));
+    assert(again.text == result.text, "project formatting substitutes current editable text on every pass");
+    assert(context.sources[0] == source && context.sources[1] == dependency, "context documents remain immutable");
+}
+
+@test
+CommentsLiteralsAndProtectedRegionsComposeWithFunctionStyles :: () {
+    protected := "// chibi fmt: off\nFrozen  :: () -> int { return 100000; }\n// chibi fmt: on\n";
+    source := strings.Join(["package p\n", protected,
+        "// This paragraph deliberately keeps its words while wrapping at a readable width.\n",
+        "Value :: () -> int { return 123456; }\n",
+        "Text :: () -> string { return \"literal // chibi fmt: off 123456\"; }\n",
+        "After :: () -> int { return 234567; }\n"], "");
+    options := format.Defaults();
+    options.function_body = 2; options.function_keyword = 2; options.return_arrow = 1;
+    options.numeric_separators = 2; options.numeric_min_digits = 4;
+    options.comment_reflow = 1; options.comment_width = 36;
+    result := PipelineFixedPoint(source, options);
+    assert(strings.Contains(result.text, protected), "every pass preserves protected source byte-for-byte");
+    assert(strings.Contains(result.text, "Value :: fn() int => 123_456;") &&
+           strings.Contains(result.text, "After :: fn() int => 234_567;"),
+           "numeric and function styles both apply outside protected regions");
+    assert(strings.Contains(result.text, "Text :: fn() string => \"literal // chibi fmt: off 123456\";"),
+           "quoted directive markers and digits keep their string value");
+    assert(!strings.Contains(result.text, "// This paragraph deliberately keeps its words while wrapping at a readable width."),
+           "prose wrapping also runs through the public pipeline");
+}
+
+@test
+SelectedSemanticChangesKeepUnselectedDeclarationsExact :: () {
+    source := "package p\nFirst :: () -> int {\n value: int = 1;\n return value;\n}\nSecond  :: () -> int { return 2; }\n";
+    options := format.Defaults();
+    options.start_line = 3; options.end_line = 3;
+    options.binding_types = 1; options.return_types = 0;
+    options.function_body = 2; options.function_keyword = 2; options.return_arrow = 1;
+    result := PipelineFixedPoint(source, options);
+    expected := "package p\nFirst :: fn() int {\n    value := 1;\n    return value;\n}\nSecond  :: () -> int { return 2; }\n";
+    if (result.text != expected) { print_string(result.text); print_string(result.notes); }
+    assert(result.text == expected, "selection keeps a proved type omission and signature change inside its declaration");
+    assert(strings.Contains(result.notes, "Formatted original lines"), "selection expansion is reported");
+}
+
+@test
+SelectedStatementCanOmitItsTypeWithoutChangingSiblingBytes :: () {
+    source := "package p\nMain  :: () {\n keep: int = 1;\n change: bool = true;\n}\n";
+    options := format.Defaults();
+    options.start_line = 4; options.end_line = 4; options.range_scope = 1;
+    options.binding_types = 1; options.function_keyword = 2;
+    result := PipelineFixedPoint(source, options);
+    expected := "package p\nMain  :: () {\n keep: int = 1;\n    change := true;\n}\n";
+    if (result.text != expected) { print_string(result.text); print_string(result.notes); }
+    assert(result.text == expected, "semantic range formatting retains the original header and sibling statement bytes");
+}
+
+@test
+UnresolvedTypesDoNotDiscardSafeSelectedWhitespace :: () {
+    source := "package p\nMain  :: () {\n first:=Read();\n second:bool=true;\n}\n";
+    options := format.Defaults();
+    options.start_line = 4; options.end_line = 4; options.range_scope = 1;
+    options.binding_types = 1;
+    result := PipelineFixedPoint(source, options);
+    expected := "package p\nMain  :: () {\n first:=Read();\n    second: bool = true;\n}\n";
+    if (result.text != expected) { print_string(result.text); print_string(result.notes); }
+    assert(result.text == expected, "failed semantic analysis leaves the annotation and still applies safe selected spacing");
+    assert(result.notes != "", "unresolved compiler context is reported");
+}

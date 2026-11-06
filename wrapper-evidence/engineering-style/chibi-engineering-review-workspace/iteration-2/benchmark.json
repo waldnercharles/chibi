@@ -1,0 +1,445 @@
+{
+  "metadata": {
+    "skill_name": "chibi-engineering-review",
+    "skill_path": "<path/to/skill>",
+    "executor_model": "<model-name>",
+    "analyzer_model": "<model-name>",
+    "timestamp": "2026-10-30T02:06:17Z",
+    "evals_run": [
+      "medium-real-commit",
+      "seeded-defects",
+      "tokenizer-file-review"
+    ],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": "medium-real-commit",
+      "eval_name": "medium-real-commit",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 1104.1,
+        "tokens": 239160,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "The review identifies that the change reshapes the parser to fit the VM's call-depth limit and treats it as an architecture issue, with a number (the limit, a depth count or the remaining headroom).",
+          "passed": true,
+          "evidence": "[ARCH] 'the grammar's call structure is fitted to stage zero's 64-call VM limit'. Evidence: 'SCRIPT_CALL_DEPTH_LIMIT is 64 (src/language/semantic.h:12) ... A nested call argument went from 7 frames to 3 ... The corpus model puts the peak at \u224878 frames before and \u224851 after, which leaves \u224813 frames ... of headroom'."
+        },
+        {
+          "text": "The review proposes a concrete alternative or target shape for that workaround (for example raising the limit, a different iteration structure, or restoring the removed procedures after a limit change).",
+          "passed": true,
+          "evidence": "Fix: 'remove the cause. Either run the differential on stage-one output, as deep_operands does, or raise SCRIPT_CALL_DEPTH_LIMIT ... Then restore ParseExpression (3 lines), call ParseIndexValue from ParseArguments, and either return ParseIf to recursion or keep the loop with the fix-up below.' The Target shape table also lists the depth-limit row and a ParseExpression sketch."
+        },
+        {
+          "text": "The review flags avoidable work in the change (such as the per-if array allocation in the ParseIf end fixup, or the rescans in the new error message) with a count or estimate.",
+          "passed": true,
+          "evidence": "[SIMPLIFY] Statements.chibi:211-224: 'Each if statement allocates one int[] (\u22486,040 per corpus parse, \u224824 k per test run)'. [PERF] Tree.chibi:116-118: '\u224810 discarded scans, or \u22480.6 M token reads, against one scan of at most pos tokens: about 10\u00d7'."
+        },
+        {
+          "text": "Architecture and performance findings come before correctness, test or commit-message findings in the review's ordering.",
+          "passed": true,
+          "evidence": "Findings order: [ARCH] depth limit, [PERF] Differ double build, [ARCH] Targets registration, [PERF] Expect discarded work, [SIMPLIFY] \u00d72, [TEST] \u00d72, [STYLE] \u00d72, then '## Correctness notes', which includes the commit-message note ('The commit message mentions none of this'). Every ARCH and PERF finding precedes every test, correctness and commit-message item."
+        },
+        {
+          "text": "Every architecture or performance finding includes a count, estimate or measurement.",
+          "passed": true,
+          "evidence": "ARCH depth: 51 call sites, 7\u21923 frames, \u224878/\u224851 peak, \u224813 headroom. PERF Differ: '2 \u00d7 2.89 MB per backend, or 4 builds per file per test run where 2 are enough'. ARCH Targets: 'three entries in the graph and two in CMake', two index-aligned arrays. PERF Expect: '\u224810 discarded scans, or \u22480.6 M token reads ... about 10\u00d7'. The SIMPLIFY findings also carry counts (\u22486,040 allocations; 'deletes 7 lines')."
+        },
+        {
+          "text": "The review does not recommend splitting functions for length or adding defensive checks.",
+          "passed": true,
+          "evidence": "No length-based splitting. 'What I would leave alone' keeps the folds: 'Folding ParsePostfix into ParseUnary and ParseArgument into ParseArguments. Each had one caller, and a single loop reads well'. Restoring ParseExpression is argued from the 51 duplicated call sites and the depth cause, not from length. The recommended 'if (c.failed) { return -1; }' guard skips discarded failure-path work and isn't a defensive check against invalid state."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": "seeded-defects",
+      "eval_name": "seeded-defects",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 12,
+        "failed": 0,
+        "total": 12,
+        "time_seconds": 601.7,
+        "tokens": 151545,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "The review states a minimum-work versus actual-work estimate for the change with concrete numbers (for example call sites or nodes multiplied by bytes scanned).",
+          "passed": true,
+          "evidence": "Brief has explicit 'Minimum work (census, one document)' ('Total: about 10\u2075 simple operations and about 0 bytes copied') and 'Actual work' ('Body.chibi needs \u03a3 2 \u00d7 start = 390,526,400 ByteAt calls, plus about 95 MB sliced') and a 'Gap' line: 'about 5 \u00d7 10\u2078 operations against about 10\u2075, so about 5,000\u00d7'."
+        },
+        {
+          "text": "The review flags LineOf/ColumnOf rescanning the text from the start for every call site, gives a quantified cost (a count or operation estimate), and recommends using the row/column SnapshotNode already stores.",
+          "passed": true,
+          "evidence": "[PERF] CallCensus.chibi:30-31,76-96 'LineOf and ColumnOf rescan the document from byte 0 for every call site'. Cost: '390,526,400 calls for Body.chibi and 2,488,538,616 across tools/compiler, against zero'. Fix: 'read forest[node].row + 1 and forest[node].column + 1 at the point of use'."
+        },
+        {
+          "text": "The review flags the per-element xstrdup/free in pin_array_count_type as needless allocation and recommends comparing in place.",
+          "passed": true,
+          "evidence": "[PERF] src/types/array.c:128-135 'duplicates every element's type name onto the heap only to compare it'. Fix: 'compare `value.type_name` in place ... Delete the xstrdup/free pair'."
+        },
+        {
+          "text": "The review flags the per-site strings.Concat(\"call:\", callee) key building (allocation per site and/or the pointless prefix) as waste or a design defect.",
+          "passed": true,
+          "evidence": "[PERF] CallCensus.chibi:28-29 'builds a prefixed string per call site only to use it as a map key'. Cost: 'one allocation and copy per site (1,777 in Body.chibi)'. Evidence: 'every key starts with the same \"call:\", so the prefix distinguishes nothing'."
+        },
+        {
+          "text": "The review flags CallSite's derivable or flag fields (offset/line/column copies or the is_dead list-membership bool) as a representation problem.",
+          "passed": true,
+          "evidence": "[SIMPLIFY] CallCensus.chibi:7-14,45-64 'CallSite stores five facts derivable from `node`, and `is_dead` encodes list membership that LiveSites filters and copies'. Fix: 'the census is `int[]` of node indices ... Delete is_dead, MarkDead and LiveSites'."
+        },
+        {
+          "text": "The review flags CountCallsInForest as a layer that only forwards and should be deleted.",
+          "passed": true,
+          "evidence": "In the [SIMPLIFY] no-consumer finding: 'CountCallsInForest (:40-42) is a forwarding wrapper with a duplicate doc comment and goes regardless'. 'What I would delete' lists 'CountCallsInForest (forwarder)'."
+        },
+        {
+          "text": "The review sketches a concrete target shape for the census (for example sites as node indices, or derived counts) instead of only listing defects.",
+          "passed": true,
+          "evidence": "'## Target shape' sketches 'call_callee: int[]', 'call_node: int[]' and a dense per-callee histogram, plus a syntactic fallback 'CallNodes :: (forest, node_start, node_end) -> int[]', and lists what each shape deletes."
+        },
+        {
+          "text": "The review addresses comparing forest[index].kind against the string \"call_expression\", either as a finding or explicitly left alone with a stated reason about the forest's string-kind representation.",
+          "passed": true,
+          "evidence": "'What I would leave alone': '`forest[index].kind == \"call_expression\"` ... compares kinds as strings. That is the package-wide representation (`SnapshotNode.kind: string`, `Is` at Tree.chibi:51, hundreds of callers). Interning kinds belongs in its own change, and one compare per node is about 10\u2075 operations'."
+        },
+        {
+          "text": "Architecture and performance findings come before correctness or bug findings in the review's ordering, or bugs are kept in a clearly separate secondary section.",
+          "passed": true,
+          "evidence": "Order: Brief \u2192 Target shape \u2192 Findings ([PERF], [PERF], [SIMPLIFY], [ARCH], [SIMPLIFY], [PERF], [SIMPLIFY], [STYLE], [TEST]) \u2192 a separate '## Correctness notes' section holding the five bugs. The Brief and Target shape only cross-reference it ('see Correctness notes')."
+        },
+        {
+          "text": "Every performance finding states the work removed or its scale (a count, an estimate or a measurement).",
+          "passed": true,
+          "evidence": "All three [PERF] findings state their scale. LineOf/ColumnOf: '390,526,400 calls for Body.chibi'. Concat key: '1,777 in Body.chibi ... about 95 MB copied'. C xstrdup: 'per element: strlen + malloc + memcpy + strcmp + free, against one strcmp ... For packed arrays (stride > 0), O(count) against O(1)'. The C finding has no magnitude because the function has no caller ('Element count unknown (no caller)'), but it states the work removed."
+        },
+        {
+          "text": "The review does not recommend SIMD, threading or micro-optimizations (unrolling, branch hints) for this code.",
+          "passed": true,
+          "evidence": "No SIMD, threading, unrolling or branch hints anywhere. The packed-array early return ('return strcmp(owner->type_name, type_name) ? 0 : array->count') is an algorithmic O(count)\u2192O(1) change, not a micro-optimization."
+        },
+        {
+          "text": "The review does not recommend splitting functions for length or adding defensive NULL checks.",
+          "passed": true,
+          "evidence": "No function-splitting advice. The [STYLE] finding recommends replacing the silent NULL guard with 'assert(array && type_name)', which follows the repo's fail-fast rule and isn't a defensive check. 'Leave alone' explicitly declines to change the neighboring '!array' early returns."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": "tokenizer-file-review",
+      "eval_name": "tokenizer-file-review",
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 1374.1,
+        "tokens": 240556,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "The review states the input scale (bytes or tokens of real Chibi source) and estimates the per-byte or per-token work, with numbers.",
+          "passed": true,
+          "evidence": "Brief: '238 files, 3,221,141 bytes and 72,259 lines'; 'Tokens: about 590,400, or 5.5 bytes per token'; minimum work 'about 3 operations per byte ... about 10M for the corpus' and 'about 15 operations per token'; actual work traced per token class ('about 30 compares and 2 calls' per punctuation token, 'under 20 steps per byte'). The corpus numbers match find/wc exactly."
+        },
+        {
+          "text": "The review identifies at least one concrete source of per-byte or per-token waste in Tokenizer.chibi with a path:line and a count or estimate of its cost.",
+          "passed": true,
+          "evidence": "Finding 3 'Tokenizer.chibi:188: text_bytes boxes every source byte in a 48-byte value' with '15.8 MB for Steps.chibi ... 155 MB over the corpus'; Finding 2 'Tokenizer.chibi:263-282, 754-911' with 'about 30 compares and 2 calls' per punctuation token and 'about 10M compares and 700k calls'; Finding 5 'Tokenizer.chibi:610-622' with '183,837 native calls'."
+        },
+        {
+          "text": "The review sketches a concrete target shape for the hot scanning path (for example a data layout, a table or switch keyed by byte, or a loop structure).",
+          "passed": true,
+          "evidence": "Dedicated 'Target shape' section: classes[256], singles[256], assigns[256], doubles[256], arrows[256], slots[512], a flat 'spelled' keyword byte array, and a loop sketch ('Letter -> one inline loop that scans and hashes; probe; compare bytes against spelled'; 'Punct -> assigns/doubles/arrows chosen by the second byte, else singles[c]'), plus 'What disappears'."
+        },
+        {
+          "text": "The review addresses the hand-numbered token-kind constants and the parallel KindNames table as a representation issue, taking into account that stage one lacks enums.",
+          "passed": true,
+          "evidence": "Finding 4 '[ARCH] Tokenizer.chibi:7-126, 171-185, 347, 569: token kinds have three hand-synchronized definitions, and they drifted', with interim fixes usable now (named FirstKeyword/LastKeyword range, tables derived from KindNames, an @test for length(KindNames()) == KindCount) and 'Root cause: the enumerations with value names that docs/language-friction.md (\"No enumerations\") proposes ... Once those exist, KindNames, KindCount and the hand numbering go away.' Also notes 'Package-level constant arrays are not available in stage one'."
+        },
+        {
+          "text": "The review checks how the tokenizer is called (its consumers or call sites) and says whether it is on a hot path.",
+          "passed": true,
+          "evidence": "Brief 'Consumers': source_parser.Build (Parser.chibi:49-60), Construct (Parser.chibi:61-77), the C harness column_at, 'Nothing in production calls the parser yet'. 'Layer: cold today, since one test selector is the only caller. Hot by design: the compiler front end reads every compiled file, and a language server would read every edit. I reviewed it as a hot layer.'"
+        },
+        {
+          "text": "The review does not recommend SIMD or threading before the identified waste is removed, and makes no micro-optimization suggestion without a measurement.",
+          "passed": true,
+          "evidence": "No SIMD or threading anywhere (the only 'parallel' is 'Five parallel token columns'). Every performance fix carries a corpus count or estimate (F2 10M compares, F3 48x bytes, F5 183,837 native calls, F6 121,908 calls / 119,821 decided by first byte, F8 295,951 bytes), each with 'Confirm with a timed corpus run'. An unmeasured micro-optimization is explicitly withheld: 'The whitespace loop's second read of bytes[start] per byte (869k bytes): change it only if a profile shows it.' Note: 'measurement' here is read as counts/estimates; nothing in either review is timed."
+        },
+        {
+          "text": "Every finding includes concrete evidence (a count, estimate, measurement or named consumer).",
+          "passed": true,
+          "evidence": "All 12 findings have an explicit Evidence block. Quantitative ones carry counts (F2 test order and operator counts, F3 48 B / 155 MB, F5 183,837, F6 121,908, F8 295,951, F11 '111 comparisons', F12 '13 CASES', 64 vs 20). F7 names consumers (Parser.chibi:51-59, harness column_at). F9 and F10 have no number but cite the exact lines and commits that prove the defect (lines 268/274 and git blame a147a3269/5d57cd8c7; lines 196, 242, 304, 347), which I treated as concrete evidence for non-cost findings."
+        },
+        {
+          "text": "The review does not recommend splitting functions for length or adding defensive checks.",
+          "passed": true,
+          "evidence": "'What I would leave alone': 'The length of Tokenize. It is a lexer loop. Its defect is the context state of finding 1, not its size.' No defensive checks are proposed; the F6 'guard' is a fast-path test that preserves behavior, and invariants go into an authored @test."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": "medium-real-commit",
+      "eval_name": "medium-real-commit",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.33,
+        "passed": 2,
+        "failed": 4,
+        "total": 6,
+        "time_seconds": 796.8,
+        "tokens": 174791,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "The review identifies that the change reshapes the parser to fit the VM's call-depth limit and treats it as an architecture issue, with a number (the limit, a depth count or the remaining headroom).",
+          "passed": true,
+          "evidence": "Finding 1, '(design, should follow up)': 'The depth reductions work around the 64-call limit in authored code instead of addressing it'. It quotes 'SCRIPT_CALL_DEPTH_LIMIT is 64 (src/language/semantic.h:12)' and shows the call-argument chain shrinking from 7 calls to 3."
+        },
+        {
+          "text": "The review proposes a concrete alternative or target shape for that workaround (for example raising the limit, a different iteration structure, or restoring the removed procedures after a limit change).",
+          "passed": true,
+          "evidence": "Finding 1 recommendation: 'Decide whether to raise the limit, or to count frame bytes as the entry suggests. Once the parser no longer needs it, restore ParseExpression, ParsePostfix and ParseArgument.'"
+        },
+        {
+          "text": "The review flags avoidable work in the change (such as the per-if array allocation in the ParseIf end fixup, or the rescans in the new error message) with a count or estimate.",
+          "passed": false,
+          "evidence": "The avoidable work is flagged but not quantified. Finding 3: 'allocates an int[] for every if statement, including ones without else'. Finding 4: 'Opener scans backwards from the end of the file, which can mean every token row, once per unwinding Expect ... The cost is bounded by the call depth'. Neither gives a count of if statements, allocations, scans or token reads, nor any magnitude estimate."
+        },
+        {
+          "text": "Architecture and performance findings come before correctness, test or commit-message findings in the review's ordering.",
+          "passed": false,
+          "evidence": "Findings order: 1 design/architecture, 2 'No regression tests ... (testing, should fix)', 3 ParseIf fixup allocation, 4 Opener rescans (performance), 5 duplication, 6 commit message. The test finding (2) comes before both performance findings (3, 4). The Verdict and the 'What the commit actually does' table also lead with test and commit-message gaps."
+        },
+        {
+          "text": "Every architecture or performance finding includes a count, estimate or measurement.",
+          "passed": false,
+          "evidence": "Finding 1 (architecture) has numbers (64, 51 sites). The two performance findings don't. Finding 3's int[] per if has no count, and Finding 4's rescans are only 'bounded by the call depth, so it isn't a budget risk'."
+        },
+        {
+          "text": "The review does not recommend splitting functions for length or adding defensive checks.",
+          "passed": false,
+          "evidence": "The review argues from function size. Finding 5: 'The loop body is also four levels deep, which conflicts with the small-functions rule. If the depth budget really requires this, say so in a comment. Otherwise call ParseIndexValue.' Finding 1 lists 'to keep functions small' among the reasons to restore ParseExpression, ParsePostfix and ParseArgument. Size is a secondary reason both times, after duplication and the depth limit, but it is still used to justify splitting."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": "seeded-defects",
+      "eval_name": "seeded-defects",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.75,
+        "passed": 9,
+        "failed": 3,
+        "total": 12,
+        "time_seconds": 462.9,
+        "tokens": 128256,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "The review states a minimum-work versus actual-work estimate for the change with concrete numbers (for example call sites or nodes multiplied by bytes scanned).",
+          "passed": false,
+          "evidence": "No minimum-work versus actual-work estimate with concrete numbers. The closest is M5's symbolic 'A file with k calls costs about 2\u00b7k\u00b7n native calls' against using the stored row/column. There is no call-site count, byte count or computed total for any real file, and no minimum-work figure."
+        },
+        {
+          "text": "The review flags LineOf/ColumnOf rescanning the text from the start for every call site, gives a quantified cost (a count or operation estimate), and recommends using the row/column SnapshotNode already stores.",
+          "passed": true,
+          "evidence": "M5 'LineOf and ColumnOf recompute data the node already has, at O(sites \u00d7 bytes)': 'scans from byte 0 to offset twice per call site ... A file with k calls costs about 2\u00b7k\u00b7n native calls. Both helpers should go; use forest[node].row + 1 and forest[node].column + 1'. The quantification is symbolic but is an explicit operation estimate, which the assertion allows."
+        },
+        {
+          "text": "The review flags the per-element xstrdup/free in pin_array_count_type as needless allocation and recommends comparing in place.",
+          "passed": true,
+          "evidence": "M4 bullet: 'It allocates on the heap once per element for nothing (array.c:130-134). xstrdup followed by free around a read-only strcmp is wasted allocator traffic. Compare value.type_name directly.'"
+        },
+        {
+          "text": "The review flags the per-site strings.Concat(\"call:\", callee) key building (allocation per site and/or the pointless prefix) as waste or a design defect.",
+          "passed": true,
+          "evidence": "M6: 'The keys have a prefix the sites don't ... The prefix carries no information because the map holds only calls.' B2: 'The prefix shouldn't be there at all, though (see M6).' This flags the prefix as a design defect. The per-site allocation isn't mentioned, but the assertion accepts either."
+        },
+        {
+          "text": "The review flags CallSite's derivable or flag fields (offset/line/column copies or the is_dead list-membership bool) as a representation problem.",
+          "passed": true,
+          "evidence": "Minor: 'CallSite stores derived data. offset, line and column all follow from node (M5). is_dead is mutable state with no use case yet. A site could be {node, callee} until a consumer needs more.'"
+        },
+        {
+          "text": "The review flags CountCallsInForest as a layer that only forwards and should be deleted.",
+          "passed": true,
+          "evidence": "Minor: 'CountCallsInForest is a pure alias (CallCensus.chibi:39-42). It forwards to CollectCalls under a misleading name ... Delete it.'"
+        },
+        {
+          "text": "The review sketches a concrete target shape for the census (for example sites as node indices, or derived counts) instead of only listing defects.",
+          "passed": true,
+          "evidence": "'Suggested path' step 2 gives the per-document signature 'CollectCalls :: (forest, text, node_start: int, node_end: int) -> CallSite[]', with callee via Text(...Field(...)) and location via row + 1 / column + 1, 'Base it on finalized callee identity, not callee text', and a site shape of '{node, callee}'. The target is concrete, though less fully developed than node indices or a histogram."
+        },
+        {
+          "text": "The review addresses comparing forest[index].kind against the string \"call_expression\", either as a finding or explicitly left alone with a stated reason about the forest's string-kind representation.",
+          "passed": false,
+          "evidence": "The only mention is the Minor bullet 'Use the package's helper for kind checks. Write Is(forest, index, \"call_expression\") rather than forest[index].kind == ...'. That is a consistency nit that keeps the same string compare. It doesn't treat the string comparison or the string-kind representation as an issue, and doesn't leave it alone with a reason about that representation. A literal reading could pass it, so I graded strictly."
+        },
+        {
+          "text": "Architecture and performance findings come before correctness or bug findings in the review's ordering, or bugs are kept in a clearly separate secondary section.",
+          "passed": false,
+          "evidence": "The review opens with '## Blocking' B1-B5, all correctness or build bugs (unlisted source, missing Concat, Slice end/count, global forest, assert side effect). Architecture (M2) and performance (M4 allocation, M5 LineOf/ColumnOf) come after. Bugs are the primary section, not a secondary one."
+        },
+        {
+          "text": "Every performance finding states the work removed or its scale (a count, an estimate or a measurement).",
+          "passed": true,
+          "evidence": "Every performance item states its scale or the work removed. M5: 'about 2\u00b7k\u00b7n native calls'. M4: 'allocates on the heap once per element' and 'Packed arrays don't need a loop ... yet the loop builds a pin_value for every element'. MarkDead: 'Cost is O(sites \u00d7 removed)'. All are symbolic, with no number tied to the real input. That still meets 'a count, an estimate', but only loosely."
+        },
+        {
+          "text": "The review does not recommend SIMD, threading or micro-optimizations (unrolling, branch hints) for this code.",
+          "passed": true,
+          "evidence": "No SIMD, threading, unrolling or branch-hint suggestions. The packed-array shortcut is algorithmic."
+        },
+        {
+          "text": "The review does not recommend splitting functions for length or adding defensive NULL checks.",
+          "passed": true,
+          "evidence": "No function-splitting advice: 'Split them' in Commit hygiene refers to splitting the commit. M4 says to remove the defensive NULL early return and use 'assert(array && type_name)', the fail-fast form the repo prescribes."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": "tokenizer-file-review",
+      "eval_name": "tokenizer-file-review",
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.625,
+        "passed": 5,
+        "failed": 3,
+        "total": 8,
+        "time_seconds": 1369.7,
+        "tokens": 265795,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "The review states the input scale (bytes or tokens of real Chibi source) and estimates the per-byte or per-token work, with numbers.",
+          "passed": true,
+          "evidence": "Method: '238 files, 3,221,141 bytes, 72,259 lines and 591,780 tokens'. Summary 4: 'about 5.2 million calls on the corpus, about 1.6 calls per source byte', broken into 1.7 M authored calls, 2.96 M appends and 0.55 M length natives; P2: '`}` costs about 30 comparisons and two calls'."
+        },
+        {
+          "text": "The review identifies at least one concrete source of per-byte or per-token waste in Tokenizer.chibi with a path:line and a count or estimate of its cost.",
+          "passed": true,
+          "evidence": "P1: 'Before calling Terminates (line 239) ... removes 116,024 Terminates calls ... roughly 464 k calls in all'. P2: 'Pair/Single chains ... (lines 754-911)' with 348,738 Single and 377,081 Pair calls. P5: 'lines 311-320 ... 295,951 loop iterations'."
+        },
+        {
+          "text": "The review sketches a concrete target shape for the hot scanning path (for example a data layout, a table or switch keyed by byte, or a loop structure).",
+          "passed": true,
+          "evidence": "P2: 'Build two more 256-entry tables with Classes: singles[c] ... a PairStart class ... The loop becomes: kind := singles[c], then call Pair only when classes[c] == PairStart.' P3 inlines the identifier loop and passes count; P7 proposes a packed Token[] record array or line_starts. Piecemeal rather than one sketch, but concrete and keyed by byte."
+        },
+        {
+          "text": "The review addresses the hand-numbered token-kind constants and the parallel KindNames table as a representation issue, taking into account that stage one lacks enums.",
+          "passed": true,
+          "evidence": "A2 'Make the kind table self-checking': '117 hand-numbered constants (lines 8-126), a hand-ordered KindNames (lines 171-185), and three hard-coded keyword-range sites', with drift history, interim fixes (Odin-style KeywordBegin/KeywordEnd sentinels, a count assert noting 'Stage one has the assert intrinsic', reordering the tail kinds) and 'The real fix is the language feature already proposed in docs/language-friction.md (\"No enumerations\")'."
+        },
+        {
+          "text": "The review checks how the tokenizer is called (its consumers or call sites) and says whether it is on a hot path.",
+          "passed": false,
+          "evidence": "Consumers are identified: 'Its consumers are source_parser, which nothing calls yet (docs/source-parser.md), and the differential test.' But the review never says whether the tokenizer is hot or cold, or whether its cost matters today. It goes straight into nine performance items (P1-P9) without reconciling them with 'nothing calls yet'; the only hot/cold remark is about Terminates' spacing loop ('It is cold now'). Borderline: 'nothing calls yet' implies it is off the production path, but the review never draws that conclusion."
+        },
+        {
+          "text": "The review does not recommend SIMD or threading before the identified waste is removed, and makes no micro-optimization suggestion without a measurement.",
+          "passed": false,
+          "evidence": "No SIMD or threading. But P4 suggests 'Hash in u32 ... so wrapping replaces the & 0xFFFFFFFF mask per byte (lines 574, 596)' with no count or cost. Section 4 suggests 'Terminates calls IsSpace(bytes[at]) per byte (line 432) instead of the classes table', while conceding 'It is cold now', also without a number. Most other perf items do carry corpus call counts."
+        },
+        {
+          "text": "Every finding includes concrete evidence (a count, estimate, measurement or named consumer).",
+          "passed": false,
+          "evidence": "Most findings are well evidenced (C1 trace, C2 grammar.js:62 and harness lines, P-items with call counts, A3 '43,238 of these records'). But two 'Smaller code notes' have no count, estimate, consumer or line citation: 'Scan takes text only to forward it to Illegal for text_slice. With P2, Illegal can be called directly' and 'KeywordTable and Keyword implement FNV-1a 32 separately ... assert at build time that both hash one name identically'. Same rule as for the other run: line citations proving a defect count as evidence, but an uncited claim does not."
+        },
+        {
+          "text": "The review does not recommend splitting functions for length or adding defensive checks.",
+          "passed": true,
+          "evidence": "No function splitting for length; P3 recommends inlining. The proposed assert(length(names) == KindCount) is fail-fast, as the project's CLAUDE.md asks, not a defensive check that masks defects. C6's stricter UTF-8 decoding is a correctness fix matching Odin's messages, not a defensive guard."
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 1026.6333,
+        "stddev": 391.9837,
+        "min": 601.7,
+        "max": 1374.1
+      },
+      "tokens": {
+        "mean": 210420.3333,
+        "stddev": 50992.3118,
+        "min": 151545,
+        "max": 240556
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 0.5683,
+        "stddev": 0.2157,
+        "min": 0.33,
+        "max": 0.75
+      },
+      "time_seconds": {
+        "mean": 876.4667,
+        "stddev": 458.6193,
+        "min": 462.9,
+        "max": 1369.7
+      },
+      "tokens": {
+        "mean": 189614.0,
+        "stddev": 69957.3808,
+        "min": 128256,
+        "max": 265795
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.43",
+      "time_seconds": "+150.2",
+      "tokens": "+20806"
+    }
+  },
+  "notes": [
+    "Iteration 2 assertions measure the new goal (architecture and performance first): estimates with numbers, sized waste, a target shape, and ordering. The two seeded/medium baselines are the unchanged iteration-1 runs re-graded against these assertions.",
+    "Discriminating assertions: the minimum-versus-actual estimate, ordering of architecture/performance before correctness, and quantified performance findings. Most defect-identification assertions pass for both configurations.",
+    "Correctness trade-off: in the tokenizer case the baseline found two real defects the skill run missed (the rejected '\\'' escape and the missing `view` keyword); in the seeded case only the baseline caught the CompilerSources.txt build break. The skill run reported 'no tokenizer bugs', which was false. After this run the skill was edited to compare duplicated kind tables directly and to keep recording bugs found while tracing.",
+    "Unique skill-run findings: the parser budget integer overflow, the three indistinguishable bracket contexts, the explicit hot/cold verdict and a full target shape for the tokenizer.",
+    "Cost: about 11% more tokens and 17% more time than the baseline on average; one run each, so variance is not established."
+  ]
+}

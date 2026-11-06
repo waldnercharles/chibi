@@ -1,0 +1,186 @@
+name: Build host sanitizer validation (opt-in)
+
+# A label is an explicit request for this head, not an opt-in to every push.
+# workflow_dispatch becomes available after this workflow reaches main.
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.label.name == 'ci-build-host-sanitizers' &&
+       github.event.pull_request.head.repo.full_name == github.repository)
+    concurrency:
+      group: build-host-sanitizers-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EXPECTED_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      CC: clang-18
+      CXX: clang++-18
+      # The ephemeral read-only repository token downloads checksum-pinned archives.
+      GH_TOKEN: ${{ github.token }}
+      XDG_RUNTIME_DIR: /tmp/chibi-runtime
+      SDL_AUDIODRIVER: dummy
+      ASAN_OPTIONS: detect_leaks=1
+      UBSAN_OPTIONS: halt_on_error=1
+      LSAN_OPTIONS: ''
+      CHIBI_TOOLS_BUILD_DIR: build-verify/test/tools
+      CHIBI_LANGUAGE_BUILD_DIR: build-verify/test/language
+      CHIBI_BUILD_HOST: build-verify/sdk/chibi-build-host
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify and record the exact source
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+          mkdir -m 700 -p "$XDG_RUNTIME_DIR" "$RUNNER_TEMP/build-host-validation"
+          printf '%s\n' "$EXPECTED_SHA" > "$RUNNER_TEMP/build-host-validation/source-sha.txt"
+      - name: Install the existing Linux build dependencies
+        run: |
+          python3 .github/install-ubuntu-dependencies.py ccache clang-18 clang-tools-18 libclang-18-dev libclang-rt-18-dev llvm-18 lld-18 \
+            libgl1-mesa-dev libvulkan1 mesa-vulkan-drivers libx11-dev libxcursor-dev \
+            libxext-dev libxi-dev libxrandr-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+          python3 -m venv "$RUNNER_TEMP/cmake"
+          "$RUNNER_TEMP/cmake/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo "$RUNNER_TEMP/cmake/bin" >> "$GITHUB_PATH"
+      - name: Configure compiler cache
+        id: ccache-config
+        run: python3 .github/native-ccache.py
+      - name: Restore compiler objects (read only)
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache-config.outputs.prefix }}-${{ env.EXPECTED_SHA }}
+          restore-keys: |
+            ${{ steps.ccache-config.outputs.prefix }}-
+            ${{ steps.ccache-config.outputs.compatibility-prefix }}-
+      - name: Build Release resource-generation helpers
+        run: |
+          set -o pipefail
+          make build-release BUILD_TARGET='chibi-build-host chibi-compiler-host' JOBS=4 LIBCLANG_ROOT=/usr/lib/llvm-18 \
+            2>&1 | tee "$RUNNER_TEMP/build-host-validation/generation-build.log"
+      - name: Build the full-catalog CMake Debug O0 sanitizer targets
+        id: build
+        run: |
+          set -o pipefail
+          sh tools/configure_native.sh build-verify -G Ninja \
+            -DCMAKE_C_COMPILER=clang-18 -DCMAKE_CXX_COMPILER=clang++-18 \
+            -DCMAKE_BUILD_TYPE=Debug -DCMAKE_C_FLAGS_DEBUG='-g -O0' -DCMAKE_CXX_FLAGS_DEBUG='-g -O0' \
+            -DCHIBI_ENABLE_SANITIZERS=ON -DCHIBI_SANITIZERS=address,undefined \
+            -DCHIBI_ENABLE_WARNINGS=ON -DCHIBI_ENABLE_CCACHE=ON \
+            -DCHIBI_ASSET_GENERATOR_HOSTS="$PWD/build-release/sdk" -DLIBCLANG_ROOT=/usr/lib/llvm-18 \
+            2>&1 | tee "$RUNNER_TEMP/build-host-validation/configure.log"
+          cmake --build build-verify --target chibi-build-host test_tools test_language policy_worker \
+            --parallel 4 --verbose 2>&1 | tee "$RUNNER_TEMP/build-host-validation/build.log"
+      - name: Verify actual instrumentation, assertions and native catalog
+        id: profile
+        run: |
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          spec = importlib.util.spec_from_file_location('profile', '.github/verify-native-profile.py')
+          profile = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(profile)
+          build = Path('build-verify')
+          evidence = Path(os.environ['RUNNER_TEMP']) / 'build-host-validation'
+          commands = profile.logged_commands(evidence / 'build.log')
+          database = json.loads((build / 'compile_commands.json').read_text())
+          receipt = {'sha': os.environ['EXPECTED_SHA'], 'compile': {}, 'links': {},
+                     'compiler': subprocess.check_output(['clang-18', '--version'], text=True),
+                     'cpus': os.cpu_count(), 'asan_options': os.environ['ASAN_OPTIONS'],
+                     'ubsan_options': os.environ['UBSAN_OPTIONS'], 'lsan_options': os.environ['LSAN_OPTIONS']}
+          sources = ('src/host/build_host.c', 'src/support/sha256.c',
+                     'src/execution/jit.c', 'src/execution/jit_registers.c',
+                     'test/tools/main.c', 'test/tools/build_process.c', 'test/tools/policy_worker.c',
+                     'test/language/main.c', 'test/language/execution.c')
+          for source in sources:
+              entries = [entry for entry in database if entry['file'].endswith('/' + source)]
+              assert entries, source
+              receipt['compile'][source] = []
+              for entry in entries:
+                  args = profile.argv(entry)
+                  assert [arg for arg in args if arg.startswith('-O')] == ['-O0'], args
+                  assert '-g' in args and '-g0' not in args and '-fno-omit-frame-pointer' in args, args
+                  assert '-fomit-frame-pointer' not in args, args
+                  assert not any(arg.startswith('-DNDEBUG') or arg == 'NDEBUG' for arg in args), args
+                  assert not source.startswith('test/') or '-UNDEBUG' in args, args
+                  assert source != 'test/tools/main.c' or '-DCHIBI_TEST_NATIVE_RUNTIME=1' in args, args
+                  profile.sanitizer_flags(args, True)
+                  assert profile.observed(args, commands), source
+                  receipt['compile'][source].append(args)
+          for name in ('chibi-build-host', 'test_tools', 'test_language', 'policy_worker'):
+              links = [args for args in commands if '-o' in args and '-c' not in args
+                       and Path(args[args.index('-o') + 1]).name == name]
+              assert len(links) == 1, (name, links)
+              args = links[0]
+              profile.sanitizer_flags(args, True)
+              binary = build / args[args.index('-o') + 1]
+              receipt['links'][name] = {'argv': args, 'symbols': profile.symbols(binary, True)}
+          cache = dict(line.split('=', 1) for line in (build / 'CMakeCache.txt').read_text().splitlines()
+                       if '=' in line and not line.startswith(('#', '//')))
+          assert cache['CMAKE_BUILD_TYPE:STRING'] == 'Debug'
+          assert cache['CHIBI_ENABLE_SANITIZERS:BOOL'] == 'ON'
+          assert cache['CHIBI_SANITIZERS:STRING'] == 'address,undefined'
+          (evidence / 'profile.json').write_text(json.dumps(receipt, indent=2) + '\n')
+          print('Verified exact-source CMake Debug O0, ASan+UBSan, assertions, native catalog and enabled LSan')
+          PY
+      # Keep selectors serial and retain every result after a test failure.
+      # Cancellation still stops the policy runner and its owned descendants.
+      - name: Build-process regressions (unchanged 10-second deadlines)
+        if: ${{ !cancelled() && steps.profile.outcome == 'success' }}
+        run: |
+          set -o pipefail
+          python3 tools/test_policy.py tool build-process 2>&1 | tee "$RUNNER_TEMP/build-host-validation/build-process.log"
+      - name: Execution regressions
+        if: ${{ !cancelled() && steps.profile.outcome == 'success' }}
+        run: |
+          set -o pipefail
+          python3 tools/test_policy.py tool language-execution 2>&1 | tee "$RUNNER_TEMP/build-host-validation/execution.log"
+      - name: Scoped execution regressions
+        if: ${{ !cancelled() && steps.profile.outcome == 'success' }}
+        run: |
+          set -o pipefail
+          python3 tools/test_policy.py tool execution-scope 2>&1 | tee "$RUNNER_TEMP/build-host-validation/execution-scope.log"
+      - name: Verify sources remain unchanged
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test -z "$(git status --porcelain --untracked-files=normal)"
+      - name: Normalize ephemeral paths in validation outputs
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP']) / 'build-host-validation'
+          for path in root.glob('*'):
+              if path.suffix not in ('.log', '.json', '.txt'):
+                  continue
+              text = path.read_text(errors='replace')
+              for name, replacement in (('GITHUB_WORKSPACE', '<workspace>'), ('RUNNER_TEMP', '<runner-temp>')):
+                  text = text.replace(os.environ[name], replacement)
+              path.write_text(text)
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-host-sanitizers-${{ env.EXPECTED_SHA }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/build-host-validation/
+          if-no-files-found: warn
+          retention-days: 7

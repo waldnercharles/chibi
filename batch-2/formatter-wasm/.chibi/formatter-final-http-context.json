@@ -1,0 +1,9 @@
+{
+  "url": "http://127.0.0.1:8768/chibi/formatter/",
+  "wasm_sha256": "d0781fa04e3be993dd8c99656fcf4ee69b1b2f4b6300ddd003e466b329172bcd",
+  "context_files": 2,
+  "first_edit_ok": true,
+  "second_edit_ok": true,
+  "reused_context": true,
+  "notes": "Type style changed 18 declaration(s); 29 protected/required/contextual or commented declaration(s) were preserved."
+}

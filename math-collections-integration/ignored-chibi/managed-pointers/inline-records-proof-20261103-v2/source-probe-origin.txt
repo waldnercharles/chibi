@@ -1,0 +1,2 @@
+Reused matching SourceProbe executable from /Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/managed-pointers/inline-records-proof-20261103/source-probe
+Built with /private/tmp/chibi-gc-schema-proof/stage3 and initial frozen compiler snapshot; the subsequent shared change only explicitly initializes ManagedRecords traceable flags.

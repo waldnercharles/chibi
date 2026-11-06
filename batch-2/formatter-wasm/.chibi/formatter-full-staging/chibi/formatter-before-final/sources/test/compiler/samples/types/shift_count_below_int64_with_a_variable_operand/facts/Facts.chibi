@@ -1,0 +1,4 @@
+package facts
+Shift :: (a: i8) -> i8 { return a << (0 - 9223372036854775807 - 2); }
+
+// error: 2:39: Constant value is outside the range of i64

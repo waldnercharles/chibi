@@ -1,0 +1,96 @@
+diff --git a/Source/Core/DataViewDefault.cpp b/Source/Core/DataViewDefault.cpp
+--- a/Source/Core/DataViewDefault.cpp
++++ b/Source/Core/DataViewDefault.cpp
+@@ -611,6 +611,47 @@
+ 	return nullptr;
+ }
+ 
++DataViewWhen::DataViewWhen(Element* element) : DataViewCommon(element) {}
++
++bool DataViewWhen::Initialize(DataModel& model, Element* element, const String& expression, const String& modifier)
++{
++	if (!DataViewCommon::Initialize(model, element, expression, modifier))
++		return false;
++
++	element->SetProperty(PropertyId::Display, Property(Style::Display::None));
++
++	// The copy takes the other attributes and builds its own views from them.
++	for (const auto& attribute : element->GetAttributes())
++	{
++		if (attribute.first != "data-when" && attribute.first != "rmlui-inner-rml")
++			attributes.emplace(attribute.first, attribute.second);
++	}
++	return true;
++}
++
++bool DataViewWhen::Update(DataModel& model)
++{
++	Element* element = GetElement();
++	Variant variant;
++	DataExpressionInterface expr_interface(&model, element);
++	if (!element || !GetExpression().Run(expr_interface, variant) || variant.Get<bool>() == (instance != nullptr))
++		return false;
++
++	if (instance)
++	{
++		instance->GetParentNode()->RemoveChild(instance).reset();
++		instance = nullptr;
++		return true;
++	}
++
++	ElementPtr copy = Factory::InstanceElement(nullptr, element->GetTagName(), element->GetTagName(), attributes);
++	instance = element->GetParentNode()->InsertBefore(std::move(copy), element);
++	// The inner RML arrives after the view is made, and an empty element has none.
++	const Variant* rml = element->GetAttribute("rmlui-inner-rml");
++	instance->SetInnerRML(rml ? rml->Get<String>() : String());
++	return true;
++}
++
+ DataViewAlias::DataViewAlias(Element* element) : DataView(element, 0) {}
+ 
+ StringList DataViewAlias::GetVariableNameList() const
+diff --git a/Source/Core/DataViewDefault.h b/Source/Core/DataViewDefault.h
+--- a/Source/Core/DataViewDefault.h
++++ b/Source/Core/DataViewDefault.h
+@@ -155,6 +155,22 @@
+ 	ElementList elements;
+ };
+ 
++// The structural 'data-when', as Vue's v-if: while its expression is true, a copy of the element is built before it,
++// as data-for builds an item, and while false the copy and its views are gone. The element stays as the hidden
++// template. 'data-if' only hides an element and keeps its views, as Vue's v-show.
++class DataViewWhen final : public DataViewCommon {
++public:
++	DataViewWhen(Element* element);
++
++	bool Initialize(DataModel& model, Element* element, const String& expression, const String& modifier) override;
++
++	bool Update(DataModel& model) override;
++
++private:
++	ElementAttributes attributes;
++	Element* instance = nullptr;
++};
++
+ class DataViewAlias final : public DataView {
+ public:
+ 	DataViewAlias(Element* element);
+diff --git a/Source/Core/Factory.cpp b/Source/Core/Factory.cpp
+--- a/Source/Core/Factory.cpp
++++ b/Source/Core/Factory.cpp
+@@ -121,6 +121,7 @@
+ 	DataViewInstancerDefault<DataViewAlias> data_view_alias;
+ 
+ 	DataViewInstancerDefault<DataViewFor> structural_data_view_for;
++	DataViewInstancerDefault<DataViewWhen> structural_data_view_when;
+ 
+ 	// Data binding controllers
+ 	DataControllerInstancerDefault<DataControllerEvent> data_controller_event;
+@@ -245,6 +246,7 @@
+ 	RegisterDataViewInstancer(&default_instancers.data_view_checked,        "checked", false);
+ 	RegisterDataViewInstancer(&default_instancers.data_view_alias,          "alias",   false);
+ 	RegisterDataViewInstancer(&default_instancers.structural_data_view_for, "for",     true );
++	RegisterDataViewInstancer(&default_instancers.structural_data_view_when, "when",   true );
+ 	// clang-format on
+ 
+ 	// Data binding controllers

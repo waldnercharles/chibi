@@ -1,0 +1,369 @@
+Analysis of sampling formatter-driver (pid 4599) every 1 millisecond
+Process:         formatter-driver [4599]
+Path:            /Users/USER/*/formatter-driver
+Load Address:    0x100ad0000
+Identifier:      formatter-driver
+Version:         ???
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  codex [39172]
+Target Type:     live task
+
+Date/Time:       2026-11-02 16:08:19.969 -0700
+Launch Time:     2026-11-02 15:57:32.579 -0700
+OS Version:      macOS 26.7.1 (25G241)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         3.0G
+Physical footprint (peak):  3.0G
+Idle exit:                  untracked
+----
+
+Call graph:
+    1666 Thread_10313565   DispatchQueue_1: com.apple.main-thread  (serial)
+      1666 chibi_scalar  (in formatter-driver) + 1528  [0x100ad0d70]
+        1666 chibi_scalar.1  (in formatter-driver) + 29376  [0x100ad80bc]
+          1666 chibi_scalar.6  (in formatter-driver) + 18208  [0x100adde84]
+            1666 chibi_scalar.1944  (in formatter-driver) + 5652  [0x102fd23dc]
+              1666 chibi_scalar.1536  (in formatter-driver) + 3384  [0x101f030ac]
+                1666 chibi_scalar.1538  (in formatter-driver) + 4688  [0x101f05124]
+                  1666 chibi_scalar.1539  (in formatter-driver) + 353632  [0x101f5b72c]
+                    1137 chibi_scalar.1516  (in formatter-driver) + 78852  [0x101ed9bd8]
+                    + 488 chibi_array.1210.clone  (in formatter-driver) + 72  [0x101e8bcf8]
+                    + ! 488 chibi_scalar.copy  (in formatter-driver) + 36,32,...  [0x101e8c320,0x101e8c31c,...]
+                    + 417 chibi_array.1210.clone  (in formatter-driver) + 72  [0x101e16f48]
+                    + ! 417 chibi_scalar.copy  (in formatter-driver) + 36,32,...  [0x101e1732c,0x101e17328,...]
+                    + 121 chibi_array.1210.clone  (in formatter-driver) + 72  [0x101fea250]
+                    + ! 121 chibi_scalar.copy  (in formatter-driver) + 36,28,...  [0x101feac38,0x101feac30,...]
+                    + 37 chibi_scalar.1496  (in formatter-driver) + 227520  [0x101e51d24]
+                    + ! 37 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   16 chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+                    + !   : 8 chibi_scalar.1483  (in formatter-driver) + 3680  [0x101dd3f64]
+                    + !   : | 8 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   5 chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+                    + !   : |   + 3 chibi_scalar.1483  (in formatter-driver) + 8820  [0x101dd5378]
+                    + !   : |   + ! 3 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   + !   1 chibi_array.1112.clone  (in formatter-driver) + 72  [0x101d9b51c]
+                    + !   : |   + !   : 1 chibi_scalar.copy  (in formatter-driver) + 36  [0x101d9c274]
+                    + !   : |   + !   1 chibi_scalar.1458  (in formatter-driver) + 118292  [0x101d7f0a8]
+                    + !   : |   + !   : 1 chibi_scalar.1484  (in formatter-driver) + 4600  [0x101dd7df4]
+                    + !   : |   + !   :   1 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   + !   :     1 chibi_scalar.1458  (in formatter-driver) + 102352  [0x101d7b264]
+                    + !   : |   + !   :       1 chibi_scalar.1431  (in formatter-driver) + 1656  [0x101d3ef58]
+                    + !   : |   + !   1 chibi_scalar.1458  (in formatter-driver) + 197032  [0x101d9243c]
+                    + !   : |   + !     1 chibi_scalar.1431  (in formatter-driver) + 1648  [0x101d3ef50]
+                    + !   : |   + 2 chibi_scalar.1483  (in formatter-driver) + 3680  [0x101dd3f64]
+                    + !   : |   +   2 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   +     1 chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+                    + !   : |   +     : 1 chibi_scalar.1483  (in formatter-driver) + 3680  [0x101dd3f64]
+                    + !   : |   +     :   1 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   +     :     1 chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+                    + !   : |   +     :       1 chibi_scalar.1483  (in formatter-driver) + 3680  [0x101dd3f64]
+                    + !   : |   +     :         1 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   +     :           1 chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+                    + !   : |   +     :             1 chibi_scalar.1483  (in formatter-driver) + 3680  [0x101dd3f64]
+                    + !   : |   +     :               1 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   +     :                 1 chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+                    + !   : |   +     :                   1 chibi_scalar.1483  (in formatter-driver) + 3680  [0x101dd3f64]
+                    + !   : |   +     :                     1 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   +     :                       1 chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+                    + !   : |   +     :                         1 chibi_scalar.1483  (in formatter-driver) + 3680  [0x101dd3f64]
+                    + !   : |   +     :                           1 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   +     :                             1 chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+                    + !   : |   +     :                               1 chibi_scalar.1483  (in formatter-driver) + 3680  [0x101dd3f64]
+                    + !   : |   +     :                                 1 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   +     :                                   1 chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+                    + !   : |   +     :                                     1 chibi_scalar.1483  (in formatter-driver) + 3680  [0x101dd3f64]
+                    + !   : |   +     :                                       1 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   +     :                                         1 chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+                    + !   : |   +     :                                           1 chibi_scalar.1483  (in formatter-driver) + 8820  [0x101dd5378]
+                    + !   : |   +     :                                             1 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   +     :                                               1 chibi_scalar.945  (in formatter-driver) + 420  [0x10138d864]
+                    + !   : |   +     1 chibi_scalar.1458  (in formatter-driver) + 125404  [0x101d80c70]
+                    + !   : |   +       1 chibi_scalar.1484  (in formatter-driver) + 4600  [0x101dd7df4]
+                    + !   : |   +         1 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |   +           1 chibi_scalar.1458  (in formatter-driver) + 197032  [0x101d9243c]
+                    + !   : |   +             1 chibi_scalar.1431  (in formatter-driver) + 1676  [0x101d3ef6c]
+                    + !   : |   3 chibi_scalar.1458  (in formatter-driver) + 118292  [0x101d7f0a8]
+                    + !   : |     3 chibi_scalar.1484  (in formatter-driver) + 4600  [0x101dd7df4]
+                    + !   : |       3 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |         3 chibi_scalar.1458  (in formatter-driver) + 102352  [0x101d7b264]
+                    + !   : |           2 chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+                    + !   : |           ! 2 chibi_scalar.1458  (in formatter-driver) + 38396  [0x101d6b890]
+                    + !   : |           !   2 chibi_scalar.1561  (in formatter-driver) + 7620  [0x101f84f2c]
+                    + !   : |           !     2 chibi_scalar.1560  (in formatter-driver) + 3372  [0x101f81c3c]
+                    + !   : |           !       2 chibi_scalar.1431  (in formatter-driver) + 1364,1456  [0x101d3ee34,0x101d3ee90]
+                    + !   : |           1 chibi_scalar.1431  (in formatter-driver) + 1872  [0x101d3f030]
+                    + !   : 8 chibi_scalar.1483  (in formatter-driver) + 8820  [0x101dd5378]
+                    + !   :   8 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   :     4 chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+                    + !   :     + 4 chibi_scalar.1483  (in formatter-driver) + 8820  [0x101dd5378]
+                    + !   :     +   4 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   :     +     3 chibi_scalar.1458  (in formatter-driver) + 125404  [0x101d80c70]
+                    + !   :     +     ! 3 chibi_scalar.1484  (in formatter-driver) + 4600  [0x101dd7df4]
+                    + !   :     +     !   3 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   :     +     !     2 chibi_scalar.1458  (in formatter-driver) + 197032  [0x101d9243c]
+                    + !   :     +     !     : 2 chibi_scalar.1431  (in formatter-driver) + 1868,2172  [0x101d3f02c,0x101d3f15c]
+                    + !   :     +     !     1 chibi_scalar.873  (in formatter-driver) + 1020  [0x100fa6904]
+                    + !   :     +     1 chibi_scalar.1458  (in formatter-driver) + 118292  [0x101d7f0a8]
+                    + !   :     +       1 chibi_scalar.1484  (in formatter-driver) + 4600  [0x101dd7df4]
+                    + !   :     +         1 chibi_scalar.945  (in formatter-driver) + 708  [0x10138d984]
+                    + !   :     3 chibi_scalar.1458  (in formatter-driver) + 118292  [0x101d7f0a8]
+                    + !   :     + 3 chibi_scalar.1484  (in formatter-driver) + 4600  [0x101dd7df4]
+                    + !   :     +   3 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   :     +     3 chibi_scalar.1458  (in formatter-driver) + 102352  [0x101d7b264]
+                    + !   :     +       2 chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+                    + !   :     +       ! 2 chibi_scalar.1458  (in formatter-driver) + 38396  [0x101d6b890]
+                    + !   :     +       !   1 chibi_scalar.1431  (in formatter-driver) + 1780  [0x101d3efd4]
+                    + !   :     +       !   : 1 chibi_scalar.retain  (in formatter-driver) + 0  [0x101d9c308]
+                    + !   :     +       !   1 chibi_scalar.1561  (in formatter-driver) + 7620  [0x101f84f2c]
+                    + !   :     +       !     1 chibi_scalar.1560  (in formatter-driver) + 3372  [0x101f81c3c]
+                    + !   :     +       !       1 chibi_scalar.1431  (in formatter-driver) + 1344  [0x101d3ee20]
+                    + !   :     +       1 chibi_scalar.1431  (in formatter-driver) + 2172  [0x101d3f15c]
+                    + !   :     1 chibi_scalar.1458  (in formatter-driver) + 125404  [0x101d80c70]
+                    + !   :       1 chibi_scalar.1484  (in formatter-driver) + 4600  [0x101dd7df4]
+                    + !   :         1 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   :           1 chibi_scalar.1458  (in formatter-driver) + 206140  [0x101d947d0]
+                    + !   :             1 chibi_scalar.1458  (in formatter-driver) + 102352  [0x101d7b264]
+                    + !   :               1 chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+                    + !   :                 1 chibi_scalar.1458  (in formatter-driver) + 38396  [0x101d6b890]
+                    + !   :                   1 chibi_scalar.1561  (in formatter-driver) + 7620  [0x101f84f2c]
+                    + !   :                     1 chibi_scalar.1560  (in formatter-driver) + 3372  [0x101f81c3c]
+                    + !   :                       1 chibi_scalar.1431  (in formatter-driver) + 1652  [0x101d3ef54]
+                    + !   6 chibi_scalar.1458  (in formatter-driver) + 197032  [0x101d9243c]
+                    + !   : 4 chibi_scalar.1431  (in formatter-driver) + 1696,1732,...  [0x101d3ef80,0x101d3efa4,...]
+                    + !   : 1 chibi_scalar.1431  (in formatter-driver) + 1836  [0x101d3f00c]
+                    + !   : | 1 chibi_scalar.free  (in formatter-driver) + 12  [0x101d9c374]
+                    + !   : 1 chibi_scalar.1431  (in formatter-driver) + 1880  [0x101d3f038]
+                    + !   :   1 chibi_scalar.free  (in formatter-driver) + 12  [0x101d9c374]
+                    + !   5 chibi_scalar.1458  (in formatter-driver) + 206140  [0x101d947d0]
+                    + !   : 3 chibi_scalar.1458  (in formatter-driver) + 38396  [0x101d6b890]
+                    + !   : | 3 chibi_scalar.1561  (in formatter-driver) + 11796  [0x101f85f7c]
+                    + !   : |   3 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   : |     3 chibi_scalar.1458  (in formatter-driver) + 102352  [0x101d7b264]
+                    + !   : |       2 chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+                    + !   : |       + 2 chibi_scalar.1458  (in formatter-driver) + 38396  [0x101d6b890]
+                    + !   : |       +   1 chibi_scalar.1431  (in formatter-driver) + 2296  [0x101d3f1d8]
+                    + !   : |       +   1 chibi_scalar.1561  (in formatter-driver) + 7620  [0x101f84f2c]
+                    + !   : |       +     1 chibi_scalar.1560  (in formatter-driver) + 3372  [0x101f81c3c]
+                    + !   : |       +       1 chibi_scalar.1431  (in formatter-driver) + 2092  [0x101d3f10c]
+                    + !   : |       1 chibi_scalar.1431  (in formatter-driver) + 2152  [0x101d3f148]
+                    + !   : 1 chibi_scalar.1458  (in formatter-driver) + 197032  [0x101d9243c]
+                    + !   : | 1 chibi_scalar.1431  (in formatter-driver) + 1376  [0x101d3ee40]
+                    + !   : 1 chibi_scalar.873  (in formatter-driver) + 548  [0x100fa672c]
+                    + !   2 chibi_scalar.1458  (in formatter-driver) + 102352  [0x101d7b264]
+                    + !   : 1 chibi_scalar.1431  (in formatter-driver) + 1912  [0x101d3f058]
+                    + !   : 1 chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+                    + !   :   1 chibi_scalar.1458  (in formatter-driver) + 38396  [0x101d6b890]
+                    + !   :     1 chibi_scalar.1431  (in formatter-driver) + 3032  [0x101d3f4b8]
+                    + !   2 chibi_scalar.1458  (in formatter-driver) + 125404  [0x101d80c70]
+                    + !   : 2 chibi_scalar.1484  (in formatter-driver) + 4600  [0x101dd7df4]
+                    + !   :   2 chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+                    + !   :     1 chibi_scalar.1458  (in formatter-driver) + 197032  [0x101d9243c]
+                    + !   :     | 1 chibi_scalar.1431  (in formatter-driver) + 1652  [0x101d3ef54]
+                    + !   :     1 chibi_scalar.873  (in formatter-driver) + 928  [0x100fa68a8]
+                    + !   2 chibi_scalar.873  (in formatter-driver) + 632,1652  [0x100fa6780,0x100fa6b7c]
+                    + !   1 chibi_scalar.1458  (in formatter-driver) + 118292  [0x101d7f0a8]
+                    + !   : 1 chibi_scalar.1484  (in formatter-driver) + 4600  [0x101dd7df4]
+                    + !   :   1 chibi_scalar.1781  (in formatter-driver) + 864  [0x102f162c8]
+                    + !   1 chibi_scalar.1458  (in formatter-driver) + 79964  [0x101d75af0]
+                    + !   1 chibi_scalar.1467  (in formatter-driver) + 2820  [0x101dac610]
+                    + !   : 1 chibi_scalar.1447  (in formatter-driver) + 0  [0x101d55e70]
+                    + !   1 chibi_scalar.873  (in formatter-driver) + 1264  [0x100fa69f8]
+                    + !     1 chibi_scalar.retain  (in formatter-driver) + 4  [0x100fd5d80]
+                    + 13 chibi_scalar.1496  (in formatter-driver) + 288072  [0x101e609ac]
+                    + ! 10 chibi_scalar.1566  (in formatter-driver) + 9604  [0x101fa36b0]
+                    + ! : 7 chibi_scalar.1567  (in formatter-driver) + 5576  [0x101fa6838]
+                    + ! : | 7 chibi_scalar.1558  (in formatter-driver) + 7300  [0x101f7c958]
+                    + ! : |   7 chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+                    + ! : |     5 chibi_scalar.1458  (in formatter-driver) + 204080  [0x101d93fc4]
+                    + ! : |     + 3 chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+                    + ! : |     + ! 3 chibi_scalar.1458  (in formatter-driver) + 38396  [0x101d6b890]
+                    + ! : |     + !   1 chibi_scalar.1431  (in formatter-driver) + 1780  [0x101d3efd4]
+                    + ! : |     + !   : 1 chibi_scalar.retain  (in formatter-driver) + 4  [0x101d9c30c]
+                    + ! : |     + !   1 chibi_scalar.1431  (in formatter-driver) + 1572  [0x101d3ef04]
+                    + ! : |     + !   1 chibi_scalar.1561  (in formatter-driver) + 7620  [0x101f84f2c]
+                    + ! : |     + !     1 chibi_scalar.1560  (in formatter-driver) + 3372  [0x101f81c3c]
+                    + ! : |     + !       1 chibi_scalar.1431  (in formatter-driver) + 1880  [0x101d3f038]
+                    + ! : |     + !         1 chibi_scalar.free  (in formatter-driver) + 12  [0x101d9c374]
+                    + ! : |     + 2 chibi_scalar.1431  (in formatter-driver) + 1872,1968  [0x101d3f030,0x101d3f090]
+                    + ! : |     1 chibi_scalar.1431  (in formatter-driver) + 1576  [0x101d3ef08]
+                    + ! : |     1 chibi_scalar.1458  (in formatter-driver) + 206140  [0x101d947d0]
+                    + ! : |       1 chibi_scalar.1458  (in formatter-driver) + 102352  [0x101d7b264]
+                    + ! : |         1 chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+                    + ! : |           1 chibi_scalar.1458  (in formatter-driver) + 38396  [0x101d6b890]
+                    + ! : |             1 chibi_scalar.1561  (in formatter-driver) + 7620  [0x101f84f2c]
+                    + ! : |               1 chibi_scalar.1560  (in formatter-driver) + 3372  [0x101f81c3c]
+                    + ! : |                 1 chibi_scalar.1431  (in formatter-driver) + 1456  [0x101d3ee90]
+                    + ! : 3 chibi_scalar.1567  (in formatter-driver) + 3388  [0x101fa5fac]
+                    + ! :   3 chibi_scalar.1559  (in formatter-driver) + 7220  [0x101f7eef0]
+                    + ! :     2 chibi_scalar.1458  (in formatter-driver) + 197032  [0x101d9243c]
+                    + ! :     + 2 chibi_scalar.1431  (in formatter-driver) + 1696,1732  [0x101d3ef80,0x101d3efa4]
+                    + ! :     1 chibi_scalar.873  (in formatter-driver) + 792  [0x100fa6820]
+                    + ! :       1 chibi_scalar.retain  (in formatter-driver) + 4  [0x100fd5d80]
+                    + ! 2 chibi_scalar.1431  (in formatter-driver) + 1600,1656  [0x101d3ef20,0x101d3ef58]
+                    + ! 1 chibi_scalar.1431  (in formatter-driver) + 1780  [0x101d3efd4]
+                    + !   1 chibi_scalar.retain  (in formatter-driver) + 8  [0x101d9c310]
+                    + 7 chibi_scalar.1431  (in formatter-driver) + 1372,1456,...  [0x101d3ee3c,0x101d3ee90,...]
+                    + 6 chibi_value.186.keep_at  (in formatter-driver) + 20  [0x101e176b8]
+                    + ! 6 chibi_scalar.retain  (in formatter-driver) + 88,0,...  [0x101e173c4,0x101e1736c,...]
+                    + 5 chibi_scalar.1496  (in formatter-driver) + 270268  [0x101e5c420]
+                    + ! 5 chibi_scalar.1560  (in formatter-driver) + 3372  [0x101f81c3c]
+                    + !   2 chibi_scalar.1431  (in formatter-driver) + 1372,1684  [0x101d3ee3c,0x101d3ef74]
+                    + !   2 chibi_scalar.1559  (in formatter-driver) + 10788  [0x101f7fce0]
+                    + !   : 2 chibi_scalar.1558  (in formatter-driver) + 7300  [0x101f7c958]
+                    + !   :   2 chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+                    + !   :     2 chibi_scalar.1458  (in formatter-driver) + 204080  [0x101d93fc4]
+                    + !   :       1 chibi_scalar.1431  (in formatter-driver) + 1644  [0x101d3ef4c]
+                    + !   :       1 chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+                    + !   :         1 chibi_scalar.1458  (in formatter-driver) + 38396  [0x101d6b890]
+                    + !   :           1 chibi_scalar.1561  (in formatter-driver) + 7620  [0x101f84f2c]
+                    + !   :             1 chibi_scalar.1560  (in formatter-driver) + 3372  [0x101f81c3c]
+                    + !   :               1 chibi_scalar.1431  (in formatter-driver) + 1696  [0x101d3ef80]
+                    + !   1 chibi_scalar.1559  (in formatter-driver) + 7220  [0x101f7eef0]
+                    + !     1 chibi_scalar.1458  (in formatter-driver) + 197032  [0x101d9243c]
+                    + !       1 chibi_scalar.1431  (in formatter-driver) + 1968  [0x101d3f090]
+                    + 4 chibi_allocate  (in formatter-driver) + 16  [0x103030ce4]
+                    + ! 3 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 168  [0x18f27ec80]
+                    + ! : 3 medium_malloc_should_clear  (in libsystem_malloc.dylib) + 232  [0x18f284704]
+                    + ! :   3 __bzero  (in libsystem_platform.dylib) + 64  [0x18f495070]
+                    + ! 1 _malloc_zone_calloc  (in libsystem_malloc.dylib) + 76  [0x18f2b7338]
+                    + 4 chibi_scalar.free  (in formatter-driver) + 132,56  [0x101feadb0,0x101fead64]
+                    + 4 chibi_value.186.keep_at  (in formatter-driver) + 20  [0x101e8c84c]
+                    + ! 4 chibi_scalar.retain  (in formatter-driver) + 88,92  [0x101e8c3b8,0x101e8c3bc]
+                    + 3 chibi_scalar.1496  (in formatter-driver) + 218144  [0x101e4f884]
+                    + ! 2 chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+                    + ! : 1 chibi_scalar.1431  (in formatter-driver) + 1740  [0x101d3efac]
+                    + ! : | 1 chibi_scalar.retain  (in formatter-driver) + 4  [0x101d9c30c]
+                    + ! : 1 chibi_scalar.1458  (in formatter-driver) + 206140  [0x101d947d0]
+                    + ! :   1 chibi_scalar.1458  (in formatter-driver) + 204080  [0x101d93fc4]
+                    + ! :     1 chibi_scalar.1431  (in formatter-driver) + 1836  [0x101d3f00c]
+                    + ! :       1 chibi_scalar.free  (in formatter-driver) + 12  [0x101d9c374]
+                    + ! 1 chibi_scalar.1431  (in formatter-driver) + 1344  [0x101d3ee20]
+                    + 3 chibi_value.186.drop_at  (in formatter-driver) + 24  [0x101feb280]
+                    + ! 3 chibi_scalar.free  (in formatter-driver) + 12  [0x101fead38]
+                    + 3 chibi_value.186.drop_at  (in formatter-driver) + 40  [0x101feb290]
+                    + ! 3 chibi_scalar.free  (in formatter-driver) + 12  [0x101fead38]
+                    + 2 chibi_scalar.1431  (in formatter-driver) + 1836  [0x101d3f00c]
+                    + ! 2 chibi_scalar.free  (in formatter-driver) + 12,16  [0x101d9c374,0x101d9c378]
+                    + 2 chibi_scalar.873  (in formatter-driver) + 396,752  [0x100fa6694,0x100fa67f8]
+                    + 2 chibi_value.186.copy_range  (in formatter-driver) + 40  [0x101e1772c]
+                    + 1 chibi_scalar.1431  (in formatter-driver) + 1740  [0x101d3efac]
+                    + ! 1 chibi_scalar.retain  (in formatter-driver) + 4  [0x101d9c30c]
+                    + 1 chibi_scalar.1431  (in formatter-driver) + 1780  [0x101d3efd4]
+                    + ! 1 chibi_scalar.retain  (in formatter-driver) + 4  [0x101d9c30c]
+                    + 1 chibi_scalar.1431  (in formatter-driver) + 1880  [0x101d3f038]
+                    + ! 1 chibi_scalar.free  (in formatter-driver) + 12  [0x101d9c374]
+                    + 1 chibi_scalar.1493  (in formatter-driver) + 196812  [0x101e1447c]
+                    + 1 chibi_scalar.1496  (in formatter-driver) + 293772  [0x101e61ff0]
+                    + ! 1 chibi_scalar.1560  (in formatter-driver) + 3372  [0x101f81c3c]
+                    + !   1 chibi_scalar.1559  (in formatter-driver) + 7220  [0x101f7eef0]
+                    + !     1 chibi_scalar.873  (in formatter-driver) + 1020  [0x100fa6904]
+                    + 1 chibi_scalar.1496  (in formatter-driver) + 247724  [0x101e56c10]
+                    + 1 chibi_scalar.944  (in formatter-driver) + 392  [0x10138c3ec]
+                    + 1 chibi_scalar.949  (in formatter-driver) + 6616  [0x1013942ac]
+                    + ! 1 chibi_scalar.1111  (in formatter-driver) + 0  [0x10155f140]
+                    + 1 chibi_scalar.free  (in formatter-driver) + 132  [0x101392210]
+                    + 1 chibi_value.186.drop_at  (in formatter-driver) + 24  [0x101e176e8]
+                    + ! 1 chibi_scalar.free  (in formatter-driver) + 12  [0x101e173d8]
+                    + 1 chibi_value.186.drop_at  (in formatter-driver) + 40  [0x101feb290]
+                    + 1 chibi_value.186.drop_range  (in formatter-driver) + 80  [0x101feb358]
+                    + ! 1 chibi_value.186.drop_at  (in formatter-driver) + 16  [0x101feb278]
+                    + 1 chibi_value.186.keep_at  (in formatter-driver) + 32  [0x101e176c4]
+                    + ! 1 chibi_value.186.keep_at  (in formatter-driver) + 32  [0x101e176c4]
+                    + 1 chibi_value.186.keep_at  (in formatter-driver) + 32  [0x101e8c858]
+                    + ! 1 chibi_scalar.retain  (in formatter-driver) + 4  [0x101e8c364]
+                    + 1 chibi_value.186.keep_at  (in formatter-driver) + 20  [0x101feb250]
+                    + ! 1 chibi_scalar.retain  (in formatter-driver) + 88  [0x101fead24]
+                    + 1 chibi_value.186.keep_at  (in formatter-driver) + 32  [0x101feb25c]
+                    +   1 chibi_scalar.retain  (in formatter-driver) + 88  [0x101fead24]
+                    514 chibi_array.1149.clone  (in formatter-driver) + 68  [0x101efd80c]
+                    + 514 chibi_scalar.copy  (in formatter-driver) + 36,32,...  [0x101effbe8,0x101effbe4,...]
+                    9 chibi_allocate  (in formatter-driver) + 16  [0x103030ce4]
+                    + 9 szone_malloc_should_clear  (in libsystem_malloc.dylib) + 268  [0x18f27ece4]
+                    +   9 large_malloc  (in libsystem_malloc.dylib) + 856  [0x18f288184]
+                    +     9 __bzero  (in libsystem_platform.dylib) + 64,68  [0x18f495070,0x18f495074]
+                    4 chibi_release  (in formatter-driver) + 12  [0x103030cf8]
+                    + 3 _szone_free  (in libsystem_malloc.dylib) + 700  [0x18f296874]
+                    + ! 3 free_large  (in libsystem_malloc.dylib) + 772  [0x18f288578]
+                    + !   3 madvise  (in libsystem_kernel.dylib) + 8  [0x18f44a9b0]
+                    + 1 free_medium  (in libsystem_malloc.dylib) + 2272  [0x18f285990]
+                    +   1 mvm_madvise_free_plat  (in libsystem_malloc.dylib) + 108  [0x18f29ac50]
+                    +     1 <deduplicated_symbol>  (in libsystem_malloc.dylib) + 16  [0x18f29abc8]
+                    +       1 madvise  (in libsystem_kernel.dylib) + 8  [0x18f44a9b0]
+                    2 chibi_array.1215.clone  (in formatter-driver) + 72  [0x101eff6a0]
+                      2 chibi_scalar.copy  (in formatter-driver) + 28,44  [0x101effbe0,0x101effbf0]
+
+Total number in stack (recursive counted multiple, when >=5):
+        29       chibi_scalar.1431  (in formatter-driver) + 0  [0x101d3e8e0]
+        22       chibi_scalar.1476  (in formatter-driver) + 3228  [0x101dc4c58]
+        11       chibi_scalar.1458  (in formatter-driver) + 121296  [0x101d7fc64]
+        11       chibi_scalar.1475  (in formatter-driver) + 23728  [0x101dbfaec]
+        9       chibi_scalar.1458  (in formatter-driver) + 38396  [0x101d6b890]
+        9       chibi_scalar.1483  (in formatter-driver) + 3680  [0x101dd3f64]
+        9       chibi_scalar.1484  (in formatter-driver) + 4600  [0x101dd7df4]
+        9       chibi_scalar.1560  (in formatter-driver) + 3372  [0x101f81c3c]
+        8       chibi_scalar.1458  (in formatter-driver) + 197032  [0x101d9243c]
+        7       chibi_scalar.1458  (in formatter-driver) + 102352  [0x101d7b264]
+        7       chibi_scalar.1561  (in formatter-driver) + 7620  [0x101f84f2c]
+        6       chibi_scalar.873  (in formatter-driver) + 0  [0x100fa6508]
+        6       chibi_scalar.free  (in formatter-driver) + 0  [0x101d9c368]
+        6       chibi_scalar.retain  (in formatter-driver) + 0  [0x101d9c308]
+        5       chibi_scalar.1458  (in formatter-driver) + 118292  [0x101d7f0a8]
+
+Sort by top of stack, same collapsed (when >= 5):
+        chibi_scalar.copy  (in formatter-driver)        1543
+        chibi_scalar.1431  (in formatter-driver)        44
+        chibi_scalar.retain  (in formatter-driver)        21
+        chibi_scalar.free  (in formatter-driver)        19
+        __bzero  (in libsystem_platform.dylib)        12
+        chibi_scalar.873  (in formatter-driver)        8
+
+Binary Images:
+       0x100ad0000 -        0x103091607 +formatter-driver (???) <4C4C441D-5555-3144-A15E-9EAC6B7A6F48> /Users/*/formatter-driver
+       0x18f018000 -        0x18f06ab4b  libobjc.A.dylib (951.7) <1D62B376-2303-376A-B993-9432A2004EB6> /usr/lib/libobjc.A.dylib
+       0x18f06b000 -        0x18f09fd58  libdyld.dylib (1387) <70073E6E-4CDD-314F-BBDF-EC7FF6CE2DFC> /usr/lib/system/libdyld.dylib
+       0x18f0a0000 -        0x18f1534ff  dyld (1.0.0 - 1387) <0263B88E-0B22-3B33-BBC0-483BE879B513> /usr/lib/dyld
+       0x18f154000 -        0x18f157228  libsystem_blocks.dylib (96) <B33F1440-9364-38E4-AF85-8A21BFF24324> /usr/lib/system/libsystem_blocks.dylib
+       0x18f158000 -        0x18f1ac55f  libxpc.dylib (3102.160.5) <E26A36A6-4B8F-321C-AE17-54353F9EEE84> /usr/lib/system/libxpc.dylib
+       0x18f1ad000 -        0x18f1cd9ff  libsystem_trace.dylib (1861.160.4) <314A8A89-4715-32B9-ABC2-B3087149C8B7> /usr/lib/system/libsystem_trace.dylib
+       0x18f1ce000 -        0x18f27c5f7  libcorecrypto.dylib (1922.160.10) <057A41E9-2A2E-39CD-B198-387734EED870> /usr/lib/system/libcorecrypto.dylib
+       0x18f27d000 -        0x18f2cd257  libsystem_malloc.dylib (812.160.5) <B7ED74D2-5A24-3F39-9296-EE5688FF4B63> /usr/lib/system/libsystem_malloc.dylib
+       0x18f2ce000 -        0x18f31523f  libdispatch.dylib (1542.160.2) <80E75F3F-333F-38A8-A3DD-6279FCDB771B> /usr/lib/system/libdispatch.dylib
+       0x18f316000 -        0x18f318ffb  libsystem_featureflags.dylib (103) <5725BCFE-07F3-3629-9B44-551A435E2DE2> /usr/lib/system/libsystem_featureflags.dylib
+       0x18f319000 -        0x18f39a1e7  libsystem_c.dylib (1752.160.4) <3498CA79-EF40-3587-AD44-75187CEE7D95> /usr/lib/system/libsystem_c.dylib
+       0x18f39b000 -        0x18f42bae7  libc++.1.dylib (2100.43) <32327062-C3A2-389E-ABFE-68A9942422E3> /usr/lib/libc++.1.dylib
+       0x18f42c000 -        0x18f44675f  libc++abi.dylib (2100.43) <CCDE1614-20B7-354C-B201-99C5C4CC589D> /usr/lib/libc++abi.dylib
+       0x18f447000 -        0x18f4842f7  libsystem_kernel.dylib (12377.161.15.700.19) <EE805B14-29F2-360D-9A2C-3221A1211833> /usr/lib/system/libsystem_kernel.dylib
+       0x18f485000 -        0x18f491b3b  libsystem_pthread.dylib (539.100.4) <A58BEABD-7AC0-35F8-BCFF-E4FFBD79E938> /usr/lib/system/libsystem_pthread.dylib
+       0x18f492000 -        0x18f49a963  libsystem_platform.dylib (375.120.2) <3AF14164-15FE-3623-9EE3-46DE29FD5B5A> /usr/lib/system/libsystem_platform.dylib
+       0x18f49b000 -        0x18f4ca6eb  libsystem_info.dylib (600) <0037F576-2C50-36F0-9F36-6CB7A049D5B1> /usr/lib/system/libsystem_info.dylib
+       0x19346b000 -        0x193474e5f  libsystem_darwin.dylib (1752.160.4) <B808D04B-2798-36C9-96F6-35534BDFCF11> /usr/lib/system/libsystem_darwin.dylib
+       0x1938d6000 -        0x1938e81b6  libsystem_notify.dylib (348.160.3) <922BDCF4-CD33-3EEB-BC56-9DCAE54F8F65> /usr/lib/system/libsystem_notify.dylib
+       0x195ba7000 -        0x195bc1f7b  libsystem_networkextension.dylib (2226.161.1.700.2) <83F224A4-40C4-3106-A97B-788D1D961DCB> /usr/lib/system/libsystem_networkextension.dylib
+       0x195c44000 -        0x195c5bfdf  libsystem_asl.dylib (406) <FF6BE113-1093-3D23-8A55-E0A5B327CA8E> /usr/lib/system/libsystem_asl.dylib
+       0x1977fd000 -        0x197805387  libsystem_symptoms.dylib (2169.160.3.701.1) <7F0D4E31-268A-3EBB-8A2C-30CCC771A5A5> /usr/lib/system/libsystem_symptoms.dylib
+       0x19baa2000 -        0x19bada373  libsystem_containermanager.dylib (725.160.3.701.2) <118BC21E-B17D-32A2-9B65-16256131974F> /usr/lib/system/libsystem_containermanager.dylib
+       0x19ceb4000 -        0x19ceb85d7  libsystem_configuration.dylib (1405.160.3.701.3) <7725D903-1D37-33E7-82AF-2260661C81A8> /usr/lib/system/libsystem_configuration.dylib
+       0x19ceb9000 -        0x19cebf99f  libsystem_sandbox.dylib (2680.160.6.700.3) <7B54AAA3-EB32-3853-8F0E-EB956EC957A1> /usr/lib/system/libsystem_sandbox.dylib
+       0x19e514000 -        0x19e5171fb  libquarantine.dylib (196.160.2.700.3) <45146171-F0C1-3104-AE01-6AAD841A70B5> /usr/lib/system/libquarantine.dylib
+       0x19ecb3000 -        0x19ecb9d03  libsystem_coreservices.dylib (191.5.1) <BF51842C-BC69-3725-9EB2-7A52804963F8> /usr/lib/system/libsystem_coreservices.dylib
+       0x19f242000 -        0x19f27fa77  libsystem_m.dylib (3312.100.1) <A2858495-5B01-3D11-955D-FF6F25E88A6E> /usr/lib/system/libsystem_m.dylib
+       0x19f281000 -        0x19f284527  libmacho.dylib (1387) <95DEC6C1-4480-3303-8A52-9AFC3D8C9219> /usr/lib/system/libmacho.dylib
+       0x19f29e000 -        0x19f2ab3a7  libcommonCrypto.dylib (600035) <EBA6E4D0-4DD2-33BB-BF95-48A58591AAAD> /usr/lib/system/libcommonCrypto.dylib
+       0x19f2ac000 -        0x19f2b5ca3  libunwind.dylib (2100.2) <201827AE-90B0-38B1-9729-50455B607293> /usr/lib/system/libunwind.dylib
+       0x19f2be000 -        0x19f2c8c1f  libcopyfile.dylib (240.160.2.702.1) <BA7266A8-BF4B-32BF-A323-F4B2EBCDC0B0> /usr/lib/system/libcopyfile.dylib
+       0x19f2c9000 -        0x19f2cc987  libcompiler_rt.dylib (103.3) <9EE26D98-97BF-3BE0-B6BE-425284AB2D24> /usr/lib/system/libcompiler_rt.dylib
+       0x19f2cd000 -        0x19f2d178b  libsystem_collections.dylib (1752.160.4) <34CEFA68-1E15-32F2-A5B1-97C0170A77C5> /usr/lib/system/libsystem_collections.dylib
+       0x19f2d2000 -        0x19f2d54cf  libsystem_secinit.dylib (168.100.7) <B6B286B6-6E08-3578-8AFC-E4C55697C760> /usr/lib/system/libsystem_secinit.dylib
+       0x19f2d6000 -        0x19f2d8bf7  libremovefile.dylib (85.100.6) <33530415-3DB6-3556-A59A-24C22681D632> /usr/lib/system/libremovefile.dylib
+       0x19f2d9000 -        0x19f2d9f27  libkeymgr.dylib (31) <AD45B9EE-CE2B-3E1F-B96B-15F7F9FA3712> /usr/lib/system/libkeymgr.dylib
+       0x19f2da000 -        0x19f2e2e3f  libsystem_dnssd.dylib (2881.160.4.700.1) <71833E65-58B3-3C06-A4F3-D69D476CCC3C> /usr/lib/system/libsystem_dnssd.dylib
+       0x19f2e3000 -        0x19f2e809b  libcache.dylib (95) <A13AF0DC-5928-38BE-97FF-E04C29EF96AF> /usr/lib/system/libcache.dylib
+       0x19f2e9000 -        0x19f2eace3  libSystem.B.dylib (1356) <E9E4C9A6-16BB-392C-96AA-07797764E2A1> /usr/lib/libSystem.B.dylib
+       0x292fc1000 -        0x292fc8349  libRosetta.dylib (367.9) <3DBB2990-262D-3776-8FAC-B88C0373DCF0> /usr/lib/libRosetta.dylib
+       0x294bd4000 -        0x294bd7a4b  libsystem_darwindirectory.dylib (122) <6246210A-5279-391D-8F58-E62A87CAB309> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x294bd8000 -        0x294be239b  libsystem_eligibility.dylib (319.160.17) <85C0486B-60BE-3E10-ABBF-DD74341B7376> /usr/lib/system/libsystem_eligibility.dylib
+       0x294be3000 -        0x294bea88b  libsystem_sanitizers.dylib (26.1) <A8C4F7FC-3443-35F7-B306-068D06237ED0> /usr/lib/system/libsystem_sanitizers.dylib
+       0x294beb000 -        0x294bebbbf  libsystem_trial.dylib (474.2.18.2.1) <83FF8DEB-1153-35BA-99C3-2AEF9B7559CD> /usr/lib/system/libsystem_trial.dylib

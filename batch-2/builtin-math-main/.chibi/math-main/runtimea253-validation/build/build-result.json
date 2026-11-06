@@ -1,0 +1,14 @@
+{
+  "command": [
+    "cmake",
+    "--build",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build",
+    "--target",
+    "test_language",
+    "--parallel",
+    "4"
+  ],
+  "exit_code": 0,
+  "seconds": 23.55669291689992,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/build.log"
+}

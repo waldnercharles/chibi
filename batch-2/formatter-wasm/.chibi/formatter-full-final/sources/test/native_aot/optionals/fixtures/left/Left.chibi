@@ -1,0 +1,2 @@
+package left
+pub Read :: () -> (value: int, flag: bool) { return (3, false); }

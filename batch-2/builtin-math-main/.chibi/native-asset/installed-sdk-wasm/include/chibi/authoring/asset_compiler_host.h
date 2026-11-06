@@ -1,0 +1,69 @@
+#ifndef CHIBI_ASSET_COMPILER_HOST_H
+#define CHIBI_ASSET_COMPILER_HOST_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#define ASSET_COMPILER_MAX_REQUEST_BYTES (64u * 1024u * 1024u)
+#define ASSET_COMPILER_MAX_OUTPUT_BYTES (16u * 1024u * 1024u)
+
+/* Package compilation runs the authored native service on desktop and the
+ * LLVM-compiled embedded compiler in a browser SDK. */
+typedef struct
+{
+#ifndef __EMSCRIPTEN__
+    /* NULL selects CHIBI_ASSET_COMPILER, then the service beside the running
+     * executable, in its sdk folder or in ../libexec/chibi. The caller retains
+     * an explicit path; no shell or PATH lookup is used. */
+    const char *program;
+#endif
+    /* NULL selects CHIBI_ASSET_CACHE_DIR or the platform user cache. Empty
+     * disables persistent storage. The caller retains explicit paths. */
+    const char *cache_directory;
+    /* Zero selects 4 billion shared native CHECK boundaries at function
+     * entries and loop backedges. */
+    uint64_t compile_budget;
+    bool (*cancelled)(void *user);
+    void *user;
+} asset_compiler_options;
+
+typedef struct
+{
+    int document, start, end, line, column;
+    char message[256];
+    char source[512]; /* Source identity; at most 511 bytes copied. */
+    bool source_truncated;
+} asset_compiler_diagnostic;
+
+/* Compiles the package of the first file of a request, which
+ * compiler_package_request_json builds, and the packages it imports, on the
+ * native service. Returns the closure as a caller-freed artifact, readable
+ * by compiler_artifact_read, or NULL with a copied diagnostic whose document is
+ * the index of the request's file. NULL options use the packaged service
+ * discovery and default limits. */
+unsigned char *asset_compiler_compile_closure(
+    const char *request,
+    size_t request_length,
+    size_t *length,
+    const asset_compiler_options *,
+    asset_compiler_diagnostic *
+);
+
+/* asset_compiler_compile_closure with the closure kept on disk beside the asset
+ * cache, so a launcher that compiles the same application on every start (about
+ * 5 s on the VM-hosted compiler) starts from a hit. The key is the compiler
+ * identity, the request and `salt`, which must name whatever else the compile
+ * reads, such as the files of the collections the request only names by root.
+ * A NULL salt, an unavailable cache or a cancelled call compiles without it.
+ * At most 16 closures stay; only successes are kept. */
+unsigned char *asset_compiler_compile_closure_cached(
+    const char *request,
+    size_t request_length,
+    const char *salt,
+    size_t *length,
+    const asset_compiler_options *,
+    asset_compiler_diagnostic *
+);
+
+#endif

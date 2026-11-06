@@ -1,0 +1,23 @@
+{
+  "name": "package-math-benchmark",
+  "command": [
+    "python3",
+    "tools/test_policy.py",
+    "native",
+    "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot/.chibi/integration/native-math-308-language/test_language",
+    "--package-math-benchmark"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-snapshot",
+  "head": "b87afaea2106dd8f56ff0ededc6d4604151096e5",
+  "snapshot_revision": "b87afaea2-dirty",
+  "started_unix": 1793212054.091315,
+  "environment": {},
+  "wall_seconds": 0.4702176251448691,
+  "exit_code": 0,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-308-evidence/package-math-benchmark.log",
+  "log_sha256": "6c5fdca7296d01c5b6cc5bb333c94620dfeb06c1c41388e53c910d0e810307d0",
+  "summaries": [
+    "Summary: Passed: 1 Failed: 0 Total: 1 Suites: 0 Asserts: 2021",
+    "Test command wall time: 0.408s; includes in-test fixture setup; external configuration/build excluded."
+  ]
+}

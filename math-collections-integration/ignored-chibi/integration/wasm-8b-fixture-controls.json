@@ -1,0 +1,64 @@
+{
+  "head": "8b14194143d47ac0ec089e2bb3f034e541d1955e",
+  "tree": "0d37a14441cb01d97aef3157c9daaaded75f25b7",
+  "tracked_clean_before": true,
+  "commands": [
+    {
+      "name": "build",
+      "command": [
+        "make",
+        "wasm-language-build",
+        "WASM_BUILD_DIR=.chibi/integration/wasm",
+        "JOBS=4"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 13.158528292085975,
+      "log": ".chibi/integration/wasm-8b-fixture-controls-build.log",
+      "log_sha256": "f80b27a6089cd569cf1a6d3f6d95870b33f75e3b6cc44fbca2e24a056f0e14a2",
+      "summaries": []
+    },
+    {
+      "name": "package-snapshot-chibi",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-snapshot-chibi"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.9604870001785457,
+      "log": ".chibi/integration/wasm-8b-fixture-controls-package-snapshot-chibi.log",
+      "log_sha256": "fb0820740752099d92c9fafc348917eb2ddaec0fd6fa7db1be773b28aca932dd",
+      "summaries": [
+        "Summary: Passed: 16 Failed: 0 Total: 16 Suites: 0 Asserts: 286093",
+        "Test command wall time: 0.818s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    },
+    {
+      "name": "package-math",
+      "command": [
+        "python3",
+        "tools/test_policy.py",
+        "native",
+        "node",
+        "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/wasm/test_language.js",
+        "--package-math"
+      ],
+      "exit_code": 0,
+      "wall_seconds": 0.7145612922031432,
+      "log": ".chibi/integration/wasm-8b-fixture-controls-package-math.log",
+      "log_sha256": "78918bd37d45743421886375101a18c5f2c5d8457e48011048a12c8a3366e711",
+      "summaries": [
+        "Running: package_math_runs_shipped_authored_tests MATH_TESTS backend=BYTECODE tests=29 prepare_ms=92.460",
+        "MATH_TESTS backend=WASM tests=29 prepare_ms=35.366",
+        "Summary: Passed: 6 Failed: 0 Total: 6 Suites: 0 Asserts: 4132",
+        "Test command wall time: 0.653s; includes in-test fixture setup; external configuration/build excluded."
+      ]
+    }
+  ],
+  "tracked_clean_after": true,
+  "wasm_sha256": "769cbecd37804e216e424a7d859f729f1b20b1bf7154866a015f44dd1dbac41c",
+  "all_requested_checks_passed": true
+}

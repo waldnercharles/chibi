@@ -1,0 +1,50 @@
+{
+  "studio_head": "be7709fd737cb82bae10fdd553772daba0bc749e",
+  "studio_cmake_sha256": "653990fc6856fc4be15363313fc5890ac43cc63bec50da927ddba474f14e6d4c",
+  "copied_resource_files": 155,
+  "engine_metadata_equal": true,
+  "cli_output": "Hello, Studio!\n",
+  "steps": [
+    {
+      "step": "configure",
+      "returncode": 0,
+      "wall_seconds": 0.461,
+      "command": [
+        "cmake",
+        "-S",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk",
+        "-B",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk/build"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk/configure.log"
+    },
+    {
+      "step": "install",
+      "returncode": 0,
+      "wall_seconds": 0.057,
+      "command": [
+        "cmake",
+        "--install",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk/build",
+        "--prefix",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk/installed"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk/install.log"
+    },
+    {
+      "step": "copied-cli",
+      "returncode": 0,
+      "wall_seconds": 0.325,
+      "command": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk/build/bin/chibi",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk/Hello.chibi"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk/copied-cli.log"
+    }
+  ],
+  "scope": "current Studio resource/tool copy and install block against actual SDK; no Studio compile or UI launch",
+  "committed_source_binding": {
+    "head": "30d76509a8502ef54be8ac33b30a0e3b150d016d",
+    "cmake_matches_validated_bytes": true
+  }
+}

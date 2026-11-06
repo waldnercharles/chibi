@@ -1,0 +1,188 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// The record graph is closed after type validation. Reverse edges propagate
+// ownership and unsupported leaves once, including recursion through arrays.
+pub ValueLayout :: struct { valid: bool[]; owned: bool[]; backed: bool[]; }
+pub ValueLayouts :: (records: Record[], fields: int[]) -> ValueLayout {
+    found: ValueLayout = {valid: resize([true], length(records)), owned: resize([false], length(records)),
+                           backed: resize([false], length(records))};
+    heads := resize([int(0)], length(records));
+    for (index in 0..<length(records)) { heads[index] = -1; found.valid[index] = true; }
+    parents: int[] = [];
+    next: int[] = [];
+    invalid: int[] = [];
+    owned: int[] = [];
+    backed: int[] = [];
+    for (parent in 0..<length(records)) {
+        record := records[parent];
+        for (at in record.first..<record.first + record.count) {
+            type := fields[at];
+            child := type;
+            if (type >= ArrayType && type < MapType) {
+                child = ElementType(records, type);
+                if (!found.owned[parent]) { found.owned[parent] = true; owned.append(parent); }
+                if (!found.backed[parent]) { found.backed[parent] = true; backed.append(parent); }
+            } else if (type == abi.TextStorage && !found.owned[parent]) {
+                found.owned[parent] = true;
+                owned.append(parent);
+            }
+            if (child >= RecordType && child < ArrayType) {
+                index := child - RecordType;
+                parents.append(parent);
+                next.append(heads[index]);
+                heads[index] = length(parents) - 1;
+            } else if (child != abi.TextStorage && abi.ScalarType(child) == "" && found.valid[parent]) {
+                found.valid[parent] = false;
+                invalid.append(parent);
+            }
+        }
+    }
+    for (pass in 0..<3) {
+        pending := invalid;
+        if (pass == 1) { pending = owned; }
+        if (pass == 2) { pending = backed; }
+        at := 0;
+        while (at < length(pending)) {
+            edge := heads[pending[at]];
+            while (edge >= 0) {
+                parent := parents[edge];
+                changed := false;
+                if (pass == 0 && found.valid[parent]) { found.valid[parent] = false; changed = true; }
+                if (pass == 1 && !found.owned[parent]) { found.owned[parent] = true; changed = true; }
+                if (pass == 2 && !found.backed[parent]) { found.backed[parent] = true; changed = true; }
+                if (changed) { pending.append(parent); }
+                edge = next[edge];
+            }
+            at += 1;
+        }
+    }
+    for (index in 0..<length(records)) {
+        found.owned[index] = found.owned[index] && found.valid[index];
+        found.backed[index] = found.backed[index] && found.valid[index];
+    }
+    return found;
+}
+ValueValid :: (layout: ValueLayout, type: int) -> bool {
+    if (type < RecordType) { return type == abi.TextStorage || abi.ScalarType(type) != ""; }
+    return type < ArrayType && layout.valid[type - RecordType];
+}
+
+ValueOwned :: (type: int, owners: bool[]) -> bool {
+    if (type == abi.TextStorage || (type >= ArrayType && type < MapType)) { return true; }
+    return type >= RecordType && type < ArrayType && owners[type - RecordType];
+}
+// Count fields in their destination storage. Array ranges and native value
+// slots already hold the copied bytes, so neither needs another record copy.
+ValueRecordAt :: (type: int, records: Record[], fields: int[], layout: ValueLayout, keep: bool) -> string {
+    operation := "drop";
+    if (keep) { operation = "keep"; }
+    queued := !keep && layout.backed[type - RecordType];
+    suffix := "_at";
+    parameter := "";
+    if (queued) { suffix = "_into"; parameter = ", ptr %pending"; }
+    out := [format_text("define internal void @chibi_value.{}.{}{}(ptr %ctx, ptr %value{}) {{\nentry:\n", type, operation, suffix, parameter)];
+    record := records[type - RecordType];
+    for (index in 0..<record.count) {
+        member := fields[record.first + index];
+        if (!ValueOwned(member, layout.owned)) { continue; }
+        out.append(format_text("  %field{} = getelementptr inbounds {}, ptr %value, i32 0, i32 {}\n", index, TypeName(type), index));
+        if (member == abi.TextStorage) {
+            out.append(format_text("  %owner.at{} = getelementptr inbounds {}, ptr %field{}, i32 0, i32 2\n  %owner{} = load ptr, ptr %owner.at{}\n", index, abi.TextType(), index, index, index));
+            if (keep) { out.append(format_text("  call void @chibi_scalar.retain(ptr %owner{})\n", index)); }
+            else { out.append(format_text("  call void @chibi_scalar.free(ptr %ctx, ptr %owner{})\n", index)); }
+        } else if (member >= ArrayType && member < MapType) {
+            out.append(format_text("  %array{} = load {}, ptr %field{}\n", index, abi.ArrayType(), index));
+            if (keep) {
+                out.append(format_text("  %owned{} = call {} @chibi_array.{}.copy(ptr %ctx, {} %array{})\n", index, abi.ArrayType(), member, abi.ArrayType(), index));
+                out.append(format_text("  store {} %owned{}, ptr %field{}\n", abi.ArrayType(), index, index));
+            } else {
+                if (queued && ArrayBacked(member, layout.backed)) {
+                    out.append(format_text("  call void @chibi_array.{}.drop_into(ptr %ctx, {} %array{}, ptr %pending)\n", member, abi.ArrayType(), index));
+                } else {
+                    out.append(format_text("  call void @chibi_array.{}.drop(ptr %ctx, {} %array{})\n", member, abi.ArrayType(), index));
+                }
+            }
+        } else {
+            if (queued && layout.backed[member - RecordType]) {
+                out.append(format_text("  call void @chibi_value.{}.drop_into(ptr %ctx, ptr %field{}, ptr %pending)\n", member, index));
+            } else {
+                out.append(format_text("  call void @chibi_value.{}.{}_at(ptr %ctx, ptr %field{})\n", member, operation, index));
+            }
+        }
+    }
+    out.append("  ret void\n}\n");
+    if (queued) {
+        out.append(format_text("define internal void @chibi_value.{}.drop_at(ptr %ctx, ptr %value) {{\nentry:\n", type));
+        out.append(ValuePending());
+        out.append(format_text("  call void @chibi_value.{}.drop_into(ptr %ctx, ptr %value, ptr %pending)\n", type));
+        out.append("  call void @chibi_value.drain(ptr %pending)\n  ret void\n}\n");
+    }
+    return strings.Join(out, "");
+}
+// By-value users such as map payload calls share the same field operations.
+ValueRecordCopy :: (type: int) -> string {
+    name := TypeName(type);
+    return strings.Concatenate([
+        format_text("define internal {} @chibi_value.{}.copy(ptr %ctx, {} %value) {{\nentry:\n", name, type, name),
+        format_text("  %result = alloca {}\n  store {} %value, ptr %result\n", name, name),
+        format_text("  call void @chibi_value.{}.keep_at(ptr %ctx, ptr %result)\n", type),
+        format_text("  %copied = load {}, ptr %result\n  ret {} %copied\n}\n", name, name)
+    ]);
+}
+ValueRecordDrop :: (type: int) -> string {
+    name := TypeName(type);
+    return strings.Concatenate([
+        format_text("define internal void @chibi_value.{}.drop(ptr %ctx, {} %value) {{\nentry:\n", type, name),
+        format_text("  %held = alloca {}\n  store {} %value, ptr %held\n", name, name),
+        format_text("  call void @chibi_value.{}.drop_at(ptr %ctx, ptr %held)\n  ret void\n}\n", type)
+    ]);
+}
+ValueRecordRange :: (type: int, copy: bool, backed: bool) -> string {
+    operation := "drop";
+    field_operation := "drop";
+    if (copy) { operation = "copy"; field_operation = "keep"; }
+    queued := !copy && backed;
+    suffix := "";
+    parameter := "";
+    if (queued) { suffix = "_into"; parameter = ", ptr %pending"; }
+    out := [format_text("define internal void @chibi_value.{}.{}_range{}(ptr %ctx, ptr %data, i32 %count{}) {{\nentry:\n  br label %head\n", type, operation, suffix, parameter)];
+    out.append("head:\n  %index = phi i32 [ 0, %entry ], [ %next, %body ]\n  %done = icmp eq i32 %index, %count\n  br i1 %done, label %exit, label %body\nbody:\n  %offset = zext i32 %index to i64\n");
+    out.append(format_text("  %at = getelementptr inbounds {}, ptr %data, i64 %offset\n", TypeName(type)));
+    if (queued) { out.append(format_text("  call void @chibi_value.{}.drop_into(ptr %ctx, ptr %at, ptr %pending)\n", type)); }
+    else { out.append(format_text("  call void @chibi_value.{}.{}_at(ptr %ctx, ptr %at)\n", type, field_operation)); }
+    out.append("  %next = add i32 %index, 1\n  br label %head\nexit:\n  ret void\n}\n");
+    if (queued) {
+        out.append(format_text("define internal void @chibi_value.{}.drop_range(ptr %ctx, ptr %data, i32 %count) {{\nentry:\n", type));
+        out.append(ValuePending());
+        out.append(format_text("  call void @chibi_value.{}.drop_range_into(ptr %ctx, ptr %data, i32 %count, ptr %pending)\n", type));
+        out.append("  call void @chibi_value.drain(ptr %pending)\n  ret void\n}\n");
+    }
+    return strings.Join(out, "");
+}
+
+// A last release reuses its dead backing header as a pending node. The queue
+// belongs to one synchronous top-level drop, not to a thread or generation.
+// Its callback and context cannot survive that drop or the executing DLL.
+ValueDrain :: () -> string {
+    return strings.Concatenate([
+        "define internal void @chibi_value.drain(ptr %pending) {\nentry:\n  br label %head\nhead:\n",
+        "  %owner = load ptr, ptr %pending\n  %empty = icmp eq ptr %owner, null\n  br i1 %empty, label %done, label %take\ntake:\n",
+        "  %next = load ptr, ptr %owner\n  store ptr %next, ptr %pending\n",
+        "  %ctx.at = getelementptr inbounds i8, ptr %owner, i64 8\n  %ctx = load ptr, ptr %ctx.at\n",
+        "  %release.at = getelementptr inbounds i8, ptr %owner, i64 16\n  %release = load ptr, ptr %release.at\n",
+        "  %length.at = getelementptr inbounds i8, ptr %owner, i64 24\n  %length = load i32, ptr %length.at\n",
+        "  call void %release(ptr %ctx, ptr %owner, i32 %length, ptr %pending)\n  br label %head\ndone:\n  ret void\n}\n"
+    ]);
+}
+ValuePending :: () -> string {
+    return "  %pending = alloca ptr\n  store ptr null, ptr %pending\n";
+}
+// Only record elements with array fields need a queue node. Flat numeric,
+// string and string-record arrays retain their eight-byte backing prefix.
+ArrayBacked :: (type: int, backed: bool[]) -> bool {
+    element := type - ArrayType;
+    return element >= RecordType && element < ArrayType && backed[element - RecordType];
+}

@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { x := quat(1, 0, 0, 0); y := quat(0, 1, 0, 0); return x * y == quat(0, 0, 1, 0) && y * x == quat(0, 0, -1, 0) && x * x == quat(0, 0, 0, -1) && quat(0, 0, 0, 1) * y == y; }

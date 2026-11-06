@@ -1,0 +1,23 @@
+{
+  "head": "2c6d3ed5cd7a086901b1730638824dcf5aa9f914",
+  "untracked": [
+    "apps/chibi/Arguments.chibi",
+    "apps/chibi/Export.chibi",
+    "apps/chibi/Inspect.chibi",
+    "apps/chibi/Main.chibi",
+    "apps/chibi/Programs.chibi",
+    "apps/chibi/Projects.chibi",
+    "src/authoring/program.c",
+    "src/authoring/program.h",
+    "src/authoring/program_service.c",
+    "src/authoring/program_service.h",
+    "src/host/application.c",
+    "src/host/application.h",
+    "src/host/application_io.c",
+    "src/host/application_io.h",
+    "src/host/application_tools.c",
+    "src/host/application_tools.h",
+    "test/language/program_session.c",
+    "test/tools/program_consumer.c"
+  ]
+}

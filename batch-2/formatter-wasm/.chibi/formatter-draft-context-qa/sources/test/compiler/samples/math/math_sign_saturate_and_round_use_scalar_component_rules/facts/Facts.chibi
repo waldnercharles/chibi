@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { return sign(vec3(-2, 0, 3)) == vec3(-1, 0, 1) && saturate(vec3(-1, 0.5, 2)) == vec3(0, 0.5, 1) && round(vec3(0.5, 1.5, -2.5)) == vec3(1, 2, -3); }

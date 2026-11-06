@@ -1,0 +1,9 @@
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/installed/share/chibi/shaders/fixture.txt
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/installed/share/chibi/licenses/fixture.txt
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/installed/share/chibi/apps/chibi/Projects.chibi
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/installed/share/chibi/apps/chibi/Main.chibi
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/installed/share/chibi/apps/chibi/Programs.chibi
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/installed/share/chibi/apps/chibi/Inspect.chibi
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/installed/share/chibi/apps/chibi/Export.chibi
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/installed/share/chibi/apps/chibi/Arguments.chibi
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/installed/share/chibi/core/strings/Strings.chibi

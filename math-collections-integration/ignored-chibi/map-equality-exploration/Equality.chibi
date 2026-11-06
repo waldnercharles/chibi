@@ -1,0 +1,150 @@
+package map_equality
+
+Main :: () -> int {
+    EmptyAndDifferent();
+    Associations();
+    IndexedAndDeleted();
+    Texts();
+    Booleans();
+    Floating();
+    Temporaries();
+    return 0;
+}
+
+EmptyAndDifferent :: () {
+    empty: [int: int] = [:];
+    other_empty: [int: int] = [:];
+    one: [int: int] = [1: 10];
+    other_key: [int: int] = [2: 10];
+    other_value: [int: int] = [1: 11];
+    more: [int: int] = [1: 10, 2: 20];
+    assert(empty == other_empty && !(empty != other_empty));
+    assert(empty != one && one != empty);
+    assert(one != other_key && other_key != one);
+    assert(one != other_value && other_value != one);
+    assert(one != more && more != one);
+    // A missing key's default value must not be mistaken for a present key.
+    zero: [int: int] = [1: 0];
+    different_zero: [int: int] = [2: 0];
+    assert(zero != different_zero && !(zero == different_zero));
+}
+
+Associations :: () {
+    first: [int: int] = [1: 10, 2: 20, 3: 30];
+    reverse: [int: int] = [3: 30, 2: 20, 1: 10];
+    assert(first == reverse && reverse == first);
+    delete first[2];
+    first[2] = 20;
+    assert(first == reverse);
+    copied := first;
+    first[2] = 200;
+    assert(first != copied && copied == reverse);
+    first[2] = 20;
+    assert(first == copied);
+}
+
+IndexedAndDeleted :: () {
+    first: [int: int] = [:];
+    reverse: [int: int] = [:];
+    for (index in 0..<64) {
+        first[index] = index * 2;
+        key := 63 - index;
+        reverse[key] = key * 2;
+    }
+    assert(first == reverse && reverse == first);
+    delete first[17];
+    assert(first != reverse);
+    delete reverse[17];
+    assert(first == reverse);
+    first[17] = 34;
+    reverse[17] = 34;
+    assert(first == reverse);
+    for (index in 0..<32) {
+        delete first[index];
+        delete reverse[index];
+    }
+    assert(first == reverse && reverse == first);
+    copied := first;
+    first[42] = 2001;
+    assert(first != copied && copied == reverse);
+    first[42] = 84;
+    assert(first == copied);
+}
+
+Key :: (last: u8) -> string {
+    return text_from_bytes([u8(97), 0, last]);
+}
+Value :: (last: u8) -> string {
+    return text_from_bytes([u8(118), 0, last]);
+}
+Texts :: () {
+    first: [string: string] = [Key(98): Value(120), Key(99): Value(121)];
+    reverse: [string: string] = [Key(99): Value(121), Key(98): Value(120)];
+    assert(first == reverse && reverse == first);
+    reverse[Key(99)] = Value(122);
+    assert(first != reverse);
+    reverse[Key(99)] = Value(121);
+    assert(first == reverse);
+    delete reverse[Key(98)];
+    reverse[Key(98)] = Value(120);
+    assert(first == reverse);
+    empty_value: [string: string] = ["present": ""];
+    other_empty_value: [string: string] = ["other": ""];
+    assert(empty_value != other_empty_value);
+    assert(TextMap() == TextMap());
+}
+TextMap :: () -> [string: string] {
+    values: [string: string] = [Key(98): Value(120), Key(99): Value(121)];
+    return values;
+}
+
+Booleans :: () {
+    first: [bool: bool] = [true: false, false: true];
+    reverse: [bool: bool] = [false: true, true: false];
+    assert(first == reverse);
+    reverse[false] = false;
+    assert(first != reverse);
+    present: [bool: bool] = [true: false];
+    absent: [bool: bool] = [false: false];
+    assert(present != absent && !(present == absent));
+}
+
+Nan :: (zero: number) -> number { return zero / zero; }
+Floating :: () {
+    positive: [int: number] = [1: 0.0, 2: 1.5];
+    negative: [int: number] = [2: 1.5, 1: -0.0];
+    assert(positive == negative && negative == positive);
+    nan := Nan(0.0);
+    assert(nan != nan);
+    unordered: [int: number] = [1: nan];
+    copied := unordered;
+    // Identity and shared ancestry do not bypass IEEE value comparisons.
+    assert(!(unordered == unordered) && unordered != unordered);
+    assert(!(unordered == copied) && unordered != copied);
+    assert(unordered != positive);
+}
+
+Make :: (calls: ^int) -> [int: int] {
+    calls^ += 1;
+    values: [int: int] = [1: 10];
+    return values;
+}
+Different :: (calls: ^int) -> [int: int] {
+    calls^ += 1;
+    values: [int: int] = [1: 11];
+    return values;
+}
+Temporaries :: () {
+    calls: int = 0;
+    assert(true || Make(&calls) == Different(&calls));
+    assert(!(false && Make(&calls) == Different(&calls)));
+    assert(calls == 0);
+    assert(Make(&calls) == Make(&calls));
+    assert(calls == 2);
+    assert(Make(&calls) != Different(&calls));
+    assert(calls == 4);
+    assert(false || Make(&calls) == Make(&calls));
+    assert(calls == 6);
+    assert(true && Make(&calls) == Make(&calls));
+    assert(calls == 8);
+}

@@ -1,0 +1,160 @@
+[
+  {
+    "phase": "clean-fee955dc",
+    "head": "fee955dc26861bbe836ca28d15685838b3a56322",
+    "step": "configure",
+    "command": [
+      "cmake",
+      "-S",
+      "sdk",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build"
+    ],
+    "returncode": 0,
+    "wall_seconds": 1.094,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-configure-fee955dc.log"
+  },
+  {
+    "phase": "clean-fee955dc",
+    "head": "fee955dc26861bbe836ca28d15685838b3a56322",
+    "step": "build-all",
+    "command": [
+      "cmake",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build",
+      "--parallel",
+      "8"
+    ],
+    "returncode": 0,
+    "wall_seconds": 111.017,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build-all-fee955dc.log"
+  },
+  {
+    "phase": "clean-fee955dc",
+    "head": "fee955dc26861bbe836ca28d15685838b3a56322",
+    "step": "package",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "tools/package_sdk.py",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build",
+      "--output",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk",
+      "--kind",
+      "sdk"
+    ],
+    "returncode": 0,
+    "wall_seconds": 20.606,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-package-fee955dc.log"
+  },
+  {
+    "phase": "protocol14-repairs",
+    "step": "raw-build-all",
+    "returncode": 0,
+    "wall_seconds": 86.437,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-raw-all-protocol14.log",
+    "command": [
+      "cmake",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build",
+      "--parallel",
+      "8"
+    ]
+  },
+  {
+    "phase": "clean-1dd12f7c",
+    "head": "1dd12f7c1bc569bfac085fef14f322d2fc54d901",
+    "step": "configure",
+    "command": [
+      "cmake",
+      "-S",
+      "sdk",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build"
+    ],
+    "returncode": 0,
+    "wall_seconds": 1.172,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-configure-1dd12f7c.log"
+  },
+  {
+    "phase": "clean-1dd12f7c",
+    "head": "1dd12f7c1bc569bfac085fef14f322d2fc54d901",
+    "step": "build-all",
+    "command": [
+      "cmake",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build",
+      "--parallel",
+      "8"
+    ],
+    "returncode": 0,
+    "wall_seconds": 1.257,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build-all-1dd12f7c.log"
+  },
+  {
+    "phase": "clean-1dd12f7c",
+    "head": "1dd12f7c1bc569bfac085fef14f322d2fc54d901",
+    "step": "package",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "tools/package_sdk.py",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build",
+      "--output",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk",
+      "--kind",
+      "sdk"
+    ],
+    "returncode": 0,
+    "wall_seconds": 23.067,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-package-1dd12f7c.log"
+  },
+  {
+    "phase": "clean-7134851e",
+    "head": "7134851ef4c7771810a0fff6f4f32435a921cca8",
+    "step": "configure",
+    "command": [
+      "cmake",
+      "-S",
+      "sdk",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build"
+    ],
+    "returncode": 0,
+    "wall_seconds": 1.043,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-configure-7134851e.log"
+  },
+  {
+    "phase": "clean-7134851e",
+    "head": "7134851ef4c7771810a0fff6f4f32435a921cca8",
+    "step": "build-all",
+    "command": [
+      "cmake",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build",
+      "--parallel",
+      "8"
+    ],
+    "returncode": 0,
+    "wall_seconds": 2.798,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build-all-7134851e.log"
+  },
+  {
+    "phase": "clean-7134851e",
+    "head": "7134851ef4c7771810a0fff6f4f32435a921cca8",
+    "step": "package",
+    "command": [
+      "/opt/homebrew/opt/python@3.13/bin/python3.13",
+      "tools/package_sdk.py",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-build",
+      "--output",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk",
+      "--kind",
+      "sdk"
+    ],
+    "returncode": 0,
+    "wall_seconds": 24.674,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-package-7134851e.log"
+  }
+]

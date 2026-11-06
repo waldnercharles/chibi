@@ -1,0 +1,16 @@
+{
+  "kind": "related branch CI evidence; not a local execution or attribution result",
+  "owner_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/prepared-record-write-cache/chibi/.chibi/prepared-cache/ci-status-38e.json",
+  "owner_receipt_sha256": "13d1af5bff1525f9271191a72a08d67d180f9b42568a081a87c215040f8b7913",
+  "head": "38e169fa4ebe66ba4e71f251b81b9bfe6c5b3e2f",
+  "base": "3d96849833b88dfabd75f0e4827e35004d4bc779",
+  "source_scope": [
+    "src/execution/prepared_record.c",
+    "test/language/record_prepared_runtime.c"
+  ],
+  "run_id": 40732646144,
+  "job_id": 122972757508,
+  "failure": "same CompilerTools120-second operation at build_sdk.c782;7/8cases161assertions307.064s wrapper;hosts and7negativecontrols passed",
+  "qualification": "No attribution or inheritance established. This branch does not contain the portable public libraries. Cache change, host load, and shared source state still need controlled evidence.",
+  "next_action": "Only the next already-required accepted-combination SDK run: CHIBI_BUILD_TIMINGS enabled, existing120-second operation and all normal flags/limits retained. No blind rerun or held source overlay."
+}

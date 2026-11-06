@@ -1,0 +1,4 @@
+name "Debris"
+components {
+    Transform x=-8.0
+}

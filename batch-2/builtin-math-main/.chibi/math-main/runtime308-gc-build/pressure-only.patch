@@ -1,0 +1,301 @@
+diff --git a/test/language/package_compiler_chibi.c b/test/language/package_compiler_chibi.c
+index f6fa7318d..7356ba201 100644
+--- a/test/language/package_compiler_chibi.c
++++ b/test/language/package_compiler_chibi.c
+@@ -8970,28 +8970,36 @@ typedef struct
+     package_module *modules;
+     int module_count;
+ } native_math_fixture;
+-static bool native_math_play(execution_module *module, int backend)
++static bool native_math_play(execution_module *module, int backend, bool pressure)
+ {
+-    REQUIRE(execution_module_function_count(module) == 1);
++    REQUIRE(execution_module_function_count(module) == (pressure ? 2 : 1));
+     const behavior_function *body = execution_module_function_at(module, 0).body;
++    REQUIRE(!pressure || acount(body->calls) > 0);
+     arena storage = { 0 };
+     behavior_function_activation activation = { 0 };
+     behavior_function_activation_init(body, &activation);
+     behavior_managed_heap heap;
+     behavior_managed_heap_init(&heap);
++    if (pressure) {
++        /* The first outlined call must collect real discarded storage. */
++        heap.call_collection_bytes = 1;
++        (void)arena_alloc(&heap.storage, 4096);
++    }
+     pin_value output = { .type = PIN_I32 };
+     behavior_function_prepare_results(body, &output, &storage);
+     behavior_function_context context = { .activation = &activation,
+                                           .managed_heap = &heap,
+                                           .results = &output,
+                                           .budget = TARGET_BUDGET };
+-    behavior_function_bind_storage(&context, &storage);
++    behavior_function_bind_storage(&context, pressure ? &heap.storage : &storage);
+     native_math_calls = 0;
+     bool bound = behavior_function_bind(body, &context, NULL, 0);
+     behavior_run_scope runs = { 0 };
+     behavior_run_scope_begin(&runs);
++    uint64_t marks = arena_collect_marks();
+     int status = bound ? behavior_function_run(body, &context, backend != 0)
+                        : FLOW_ERR_ARGUMENT;
++    uint64_t marked = arena_collect_marks() - marks;
+     behavior_run_scope_end(&runs);
+     bool valid = status == FLOW_OK && context.returned && output.i == 63 &&
+                  native_math_calls == 3;
+@@ -9004,6 +9012,17 @@ static bool native_math_play(execution_module *module, int backend)
+             native_math_calls
+         );
+     }
++    if (pressure) {
++        fprintf(
++            pu_output(),
++            "native math pressure %s: %" PRIu64
++            " collection marks, mask0x%x, calls%d\n",
++            behavior_backend_name(execution_module_backend(module)),
++            marked,
++            (unsigned)output.i,
++            native_math_calls
++        );
++    }
+     behavior_function_release_host(&context);
+     behavior_function_activation_free(&activation);
+     behavior_managed_heap_free(&heap);
+@@ -9016,6 +9035,7 @@ static bool native_math_play(execution_module *module, int backend)
+     if (backend && TEST_COMPILED_BACKEND == BEHAVIOR_WASM) {
+         REQUIRE(runs.counts.wasm_entries > 0 && !runs.counts.bytecode_entries);
+     }
++    REQUIRE(!pressure || marked > 0);
+     REQUIRE(valid);
+     return true;
+ }
+@@ -9111,100 +9131,152 @@ static bool native_math_results(native_math_fixture *test)
+                          "        return mask;\n"
+                          "    }\n"
+                          "}\n";
+-    test->syntax = script_parse(source);
+-    test->analysis = script_analyze(test->syntax, native);
+-    for (int i = 0; i < test->analysis->diagnostic_count; i++) {
+-        const script_diagnostic *diagnostic = &test->analysis->diagnostics[i];
+-        fprintf(
+-            stderr,
+-            "native math C analysis %d:%d: %s\n",
+-            diagnostic->range.line,
+-            diagnostic->range.column,
+-            diagnostic->message
+-        );
+-    }
+-    REQUIRE(test->analysis->valid);
+-    script_lower_bindings bindings = authoring_native_bindings(test->native);
+-    for (int backend = 0; backend < 2; backend++) {
+-        test->plan = script_lower(test->analysis, native, &bindings);
+-        for (int i = 0; test->plan && i < test->plan->diagnostic_count; i++) {
+-            const execution_module_diagnostic *diagnostic = &test->plan->diagnostics[i];
++    /* The swizzle location and old components stay live across the outlined
++     * RHS call, which overwrites both selected and untouched components. */
++    const char *pressure_source =
++        "NativeMath :: library {\n"
++        "    Check :: () -> int {\n"
++        "        direct := length(GetVec3());\n"
++        "        selected := length(GetVec3().yx);\n"
++        "        wave := sin(GetVec3());\n"
++        "        mask: int = 0;\n"
++        "        if direct > 2.221440 && direct < 2.221443 { mask |= 1; }\n"
++        "        if selected > 1.570795 && selected < 1.570798 { mask |= 2; }\n"
++        "        if wave.x == 0.0 { mask |= 4; }\n"
++        "        if wave.y > 0.999999 && wave.y < 1.000001 { mask |= 8; }\n"
++        "        if wave.z > -1.000001 && wave.z < -0.999999 { mask |= 16; }\n"
++        "        p := &wave; p.xy += PressureRight(p);\n"
++        "        if wave.x == 5.0 && wave.y == 7.0 && wave.z == 9.0 { mask |= "
++        "32; }\n"
++        "        return mask;\n"
++        "    }\n"
++        "    PressureRight :: (p: ^vec3) -> vec2 {\n"
++        "        p^ = vec3(100, 200, 9); return vec2(5, 6);\n"
++        "    }\n"
++        "}\n";
++    const char *variants[] = { source, pressure_source };
++    for (int pressure = 0; pressure < 2; pressure++) {
++        source = variants[pressure];
++        test->syntax = script_parse(source);
++        test->analysis = script_analyze(test->syntax, native);
++        for (int i = 0; i < test->analysis->diagnostic_count; i++) {
++            const script_diagnostic *diagnostic = &test->analysis->diagnostics[i];
+             fprintf(
+                 stderr,
+-                "native math C lowering %d:%d: %s\n",
++                "native math C analysis %d:%d: %s\n",
+                 diagnostic->range.line,
+                 diagnostic->range.column,
+                 diagnostic->message
+             );
+         }
+-        REQUIRE(test->plan && !test->plan->diagnostic_count);
+-        test->expected[backend] = execution_module_finish(
+-            &test->plan,
+-            backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+-            error,
+-            sizeof error
+-        );
+-        REQUIRE(test->expected[backend] && native_math_play(test->expected[backend], backend));
+-    }
+-    REQUIRE(prepare());
+-    native_prepared_context context = { .native = test->native };
+-    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+-    for (int b = 0; b < 2; b++) {
+-        pin_value out;
+-        REQUIRE(
+-            catalog_compile_sources_native(b, native, test->native, &identity, &source, 1, "CompileBehaviorsWithCatalog", &out)
+-        );
+-        const pin_array *array = out.ptr;
+-        bool compiled = array && array->count;
+-        if (!compiled) {
+-            arena_free(&detached);
+-            REQUIRE(
+-                catalog_compile_sources_native(b, native, test->native, &identity, &source, 1, "BehaviorRejectionWithCatalog", &out)
++        REQUIRE(test->analysis->valid);
++        script_lower_bindings bindings = authoring_native_bindings(test->native);
++        for (int backend = 0; backend < 2; backend++) {
++            test->plan = script_lower(test->analysis, native, &bindings);
++            for (int i = 0; test->plan && i < test->plan->diagnostic_count; i++) {
++                const execution_module_diagnostic *diagnostic = &test->plan->diagnostics[i];
++                fprintf(
++                    stderr,
++                    "native math C lowering %d:%d: %s\n",
++                    diagnostic->range.line,
++                    diagnostic->range.column,
++                    diagnostic->message
++                );
++            }
++            REQUIRE(test->plan && !test->plan->diagnostic_count);
++            test->expected[backend] = execution_module_finish(
++                &test->plan,
++                backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
++                error,
++                sizeof error
+             );
+-            fprintf(
+-                stderr,
+-                "native math compiler%d rejected: %s\n",
+-                b,
+-                pin_text(out).bytes
++            REQUIRE(
++                test->expected[backend] &&
++                native_math_play(test->expected[backend], backend, pressure != 0)
+             );
+         }
+-        REQUIRE(compiled);
+-        size_t length = (size_t)array->count;
+-        test->bytes = xmalloc(length);
+-        for (size_t i = 0; i < length; i++) {
+-            test->bytes[i] = array->items[i].u8;
+-        }
+-        arena_free(&detached);
+-        uint64_t root;
+-        test->modules = compiler_artifact_rows(test->bytes, length, &test->module_count, &root, error, sizeof error);
+-        REQUIRE(
+-            test->modules && test->module_count == 1 &&
+-            root == execution_module_id(test->expected[0])
+-        );
+-        for (int backend = 0; backend < 2; backend++) {
+-            test->actual = execution_prepared_read(
+-                test->modules[0].data,
+-                test->modules[0].length,
+-                &linker,
+-                backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
++        REQUIRE(prepare());
++        native_prepared_context context = { .native = test->native };
++        execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
++        for (int b = 0; b < 2; b++) {
++            pin_value out;
++            REQUIRE(
++                catalog_compile_sources_native(b, native, test->native, &identity, &source, 1, "CompileBehaviorsWithCatalog", &out)
++            );
++            const pin_array *array = out.ptr;
++            bool compiled = array && array->count;
++            if (!compiled) {
++                arena_free(&detached);
++                REQUIRE(catalog_compile_sources_native(
++                    b,
++                    native,
++                    test->native,
++                    &identity,
++                    &source,
++                    1,
++                    "BehaviorRejectionWithCatalog",
++                    &out
++                ));
++                fprintf(
++                    stderr,
++                    "native math compiler%d rejected: %s\n",
++                    b,
++                    pin_text(out).bytes
++                );
++            }
++            REQUIRE(compiled);
++            size_t length = (size_t)array->count;
++            test->bytes = xmalloc(length);
++            for (size_t i = 0; i < length; i++) {
++                test->bytes[i] = array->items[i].u8;
++            }
++            arena_free(&detached);
++            uint64_t root;
++            test->modules = compiler_artifact_rows(
++                test->bytes,
++                length,
++                &test->module_count,
++                &root,
+                 error,
+                 sizeof error
+             );
+             REQUIRE(
+-                test->actual &&
+-                same_declarations(test->expected[backend], test->actual) &&
+-                same_points(test->expected[backend], test->actual) &&
+-                same_watches(test->expected[backend], test->actual)
++                test->modules && test->module_count == 1 &&
++                root == execution_module_id(test->expected[0])
+             );
+-            REQUIRE(native_math_play(test->actual, backend));
+-            execution_module_free(test->actual);
+-            test->actual = NULL;
++            for (int backend = 0; backend < 2; backend++) {
++                test->actual = execution_prepared_read(
++                    test->modules[0].data,
++                    test->modules[0].length,
++                    &linker,
++                    backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
++                    error,
++                    sizeof error
++                );
++                REQUIRE(
++                    test->actual &&
++                    same_declarations(test->expected[backend], test->actual) &&
++                    same_points(test->expected[backend], test->actual) &&
++                    same_watches(test->expected[backend], test->actual)
++                );
++                REQUIRE(native_math_play(test->actual, backend, pressure != 0));
++                execution_module_free(test->actual);
++                test->actual = NULL;
++            }
++            compiler_artifact_rows_free(test->modules, test->module_count);
++            test->modules = NULL;
++            test->module_count = 0;
++            free(test->bytes);
++            test->bytes = NULL;
++        }
++        for (int backend = 0; backend < 2; backend++) {
++            execution_module_free(test->expected[backend]);
++            test->expected[backend] = NULL;
+         }
+-        compiler_artifact_rows_free(test->modules, test->module_count);
+-        test->modules = NULL;
+-        test->module_count = 0;
+-        free(test->bytes);
+-        test->bytes = NULL;
++        script_analysis_free(test->analysis);
++        test->analysis = NULL;
++        script_syntax_free(test->syntax);
++        test->syntax = NULL;
+     }
+     return true;
+ }

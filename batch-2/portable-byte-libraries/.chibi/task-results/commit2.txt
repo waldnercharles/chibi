@@ -1,0 +1,11 @@
+Preserve running and success-type semantics for task values
+
+Lower task conditions through the existing non-suspending Running command.
+Accept task reassignment between waiting functions with the same semantic
+success type, without changing the normal assignment fast path. Keep different
+success types and void-versus-int assignments rejected.
+
+Extend the native result fixture with running/finished/cancelled conditions and
+cross-producer int/void assignments. These fix documented source semantics
+gaps independently of native observer ownership. The full final O0/O2 task,
+schema and allocation suite passed in 17.24s; Windows cross-link passed in 0.51s.

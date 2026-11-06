@@ -1,0 +1,24 @@
+package compiler_resources_test
+
+import c "graph:c"
+import engine "graph:engine"
+import os "core:os"
+
+// Exercise a host-only SDK resource build. A failed seed must stop its
+// compiler resource copy before any host compilation or invocation.
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 2) { return 2; }
+    tools: c.Tools = {launcher: "", compiler: "", cxx_compiler: "", archiver: "", ranlib: "", jobs: 1};
+    profile: engine.Profile = {
+        compiler: "", cxx_compiler: "", compiler_id: "", build_type: "Release",
+        debug_optimization: "", debug_frame_pointers: false, architecture: "", sysroot: "",
+        warnings: false, sanitizers: "", debug_compilation_dir: "", libclang_include: "",
+        opengl_library: "", opengl_include: "", glx_library: "", libclang_library: "",
+        clang_resource_include: "", third_party: "", reflect: ""
+    };
+    if (engine.Build(tools, profile, arguments[0], arguments[1], ["chibi-build-host"]) < 0) {
+        return 1;
+    }
+    return 0;
+}

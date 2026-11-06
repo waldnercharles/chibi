@@ -1,0 +1,56 @@
+[
+  {
+    "selector": "--compiler-fixture",
+    "exit_code": 0,
+    "seconds": 2.2362197500187904,
+    "command": [
+      "python3",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/tools/test_policy.py",
+      "--jobs",
+      "1",
+      "native",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/test_language",
+      "--compiler-fixture"
+    ],
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/compiler-fixture.log",
+    "passed_cases": 9,
+    "assertions": 414,
+    "test_command_wall_seconds": 2.154
+  },
+  {
+    "selector": "--package-imports",
+    "exit_code": 0,
+    "seconds": 0.16159124998375773,
+    "command": [
+      "python3",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/tools/test_policy.py",
+      "--jobs",
+      "1",
+      "native",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/test_language",
+      "--package-imports"
+    ],
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/package-imports.log",
+    "passed_cases": 18,
+    "assertions": 1530,
+    "test_command_wall_seconds": 0.112
+  },
+  {
+    "selector": "--package-tests",
+    "exit_code": 0,
+    "seconds": 0.3868348749820143,
+    "command": [
+      "python3",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/tools/test_policy.py",
+      "--jobs",
+      "1",
+      "native",
+      "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/test_language",
+      "--package-tests"
+    ],
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/package-tests.log",
+    "passed_cases": 6,
+    "assertions": 338,
+    "test_command_wall_seconds": 0.332
+  }
+]

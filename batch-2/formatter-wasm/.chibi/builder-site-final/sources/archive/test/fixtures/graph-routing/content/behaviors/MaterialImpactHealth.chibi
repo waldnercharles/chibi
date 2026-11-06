@@ -1,0 +1,8 @@
+MaterialImpactHealth :: behavior {
+    on Material_Impact :: (Energy: number) {
+        self.Health.Current = max(self.Health.Current - to_integer(ceiling(Energy)), 0)
+        if f64(self.Health.Current) <= 0 {
+            destroy_entity(self)
+        }
+    }
+}

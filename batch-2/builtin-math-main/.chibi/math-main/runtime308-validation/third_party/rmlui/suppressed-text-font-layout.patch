@@ -1,0 +1,16 @@
+diff --git a/Source/Core/ElementText.cpp b/Source/Core/ElementText.cpp
+--- a/Source/Core/ElementText.cpp
++++ b/Source/Core/ElementText.cpp
+@@ -420,9 +420,9 @@
+ 
+ 	if (font_face_changed)
+ 	{
+-		// We have to let our document know we need to be regenerated.
+-		if (dirty_layout_on_change)
+-			DirtyLayout();
++		// SuppressAutoLayout only suppresses content-driven layout. Font and
++		// spacing changes still need normal layout to establish glyph origins.
++		DirtyLayout();
+ 	}
+ 	else if (colour_changed)
+ 	{

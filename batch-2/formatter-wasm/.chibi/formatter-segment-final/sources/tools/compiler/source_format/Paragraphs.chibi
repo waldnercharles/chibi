@@ -1,0 +1,74 @@
+package source_format
+
+import diag "project:syntax_diagnostics"
+import directives "project:source_directives"
+
+// Statement facts and identifier words are indexed once. Dependency/action
+// sorting is O(N log N) in input references/words; the phase scans are linear.
+// No name truncation, paragraph-length cap, pairwise graph or density score.
+ParagraphBreaks :: (text: string, bytes: int[], rows: diag.Node[], fields: int[], root: int,
+                    tokens: Token[], mode: int) -> bool[] {
+    marks := resize([false], length(tokens));
+    if (mode == 0 || length(tokens) == 0) { return marks; }
+    facts := SegmentSummarize(bytes, rows, fields, tokens);
+    count := length(facts.units);
+    if (count == 0) { return marks; }
+    // Prefix counts avoid rescanning all tokens of every nested control.
+    protected := resize([int(0)], length(tokens) + 1);
+    verbatim := false;
+    for (index in 0..<length(tokens)) {
+        token := tokens[index]; next_verbatim := verbatim;
+        if (token.comment) {
+            next_verbatim = directives.Apply(text_slice(text, token.start, token.end - token.start), verbatim);
+        }
+        protected[index + 1] = protected[index];
+        if (verbatim || next_verbatim) { protected[index + 1] += 1; }
+        verbatim = next_verbatim;
+    }
+    allowed := resize([false], count); hard := resize([false], count);
+    packaged := ChildByField(rows, fields, root, diag.FieldPackage) >= 0;
+    for (statements in facts.sequences) {
+        begin := statements.first - 1; end := begin + statements.count;
+        for (index in begin + 1..<end) {
+            unit := facts.units[index]; previous := facts.units[index - 1];
+            current_protected := protected[unit.last + 1] > protected[unit.first];
+            previous_protected := protected[previous.last + 1] > protected[previous.first];
+            allowed[index] = !current_protected && !previous_protected && previous.additional != SegmentLabel;
+            hard[index] = !allowed[index];
+            leading_comment := false; gap := previous.last + 1;
+            while (gap <= unit.first) {
+                if (tokens[gap].comment && rows[tokens[gap].node].row > rows[tokens[previous.last].node].row) { leading_comment = true; }
+                if (Breaks(bytes, packaged, tokens[gap - 1].end, tokens[gap].start) > 1) {
+                    hard[index] = true;
+                    if (protected[gap] == protected[gap - 1] && protected[gap + 1] == protected[gap]) { marks[gap] = true; }
+                }
+                gap += 1;
+            }
+            if (leading_comment) { hard[index] = true; allowed[index] = false; }
+        }
+    }
+    if (mode == 1) {
+        // Syntax-only mode separates controls and local definitions.
+        for (statements in facts.sequences) {
+            begin := statements.first - 1; end := begin + statements.count;
+            for (index in begin + 1..<end) {
+                a := facts.units[index - 1].additional; b := facts.units[index].additional;
+                if (allowed[index] && (a == SegmentControl || b == SegmentControl || a == SegmentDefinition || b == SegmentDefinition)) {
+                    marks[facts.units[index].first] = true;
+                }
+            }
+        }
+        return marks;
+    }
+    names := SegmentIndexNames(bytes, rows);
+    features := SegmentFeatures(facts);
+    parts := SegmentActions(facts, names, features);
+    refined := SegmentRefine(facts, names, features, parts, hard, rows, fields);
+    for (part in refined) {
+        index := part.first; statements := facts.sequences[facts.units[index].sequence - 1];
+        // Short ancestors do not prevent analysis of eligible deeper bodies.
+        if (!statements.is_function && statements.count < 4) { continue; }
+        if (index > statements.first - 1 && allowed[index]) { marks[facts.units[index].first] = true; }
+    }
+    return marks;
+}

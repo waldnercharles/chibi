@@ -1,0 +1,11 @@
+# repository waldnercharles/chibi
+# target	variant	release	sha256
+linux-x64	address-undefined	third-party-2026-10-22.2	1fb63d728222d3d0c0dfc48947956a4c601062cad0e898a69601720fe42c7a29
+linux-x64	release	third-party-2026-10-22.2	1ef571b800ac45d9a0f7adce338ae6ed153f2f460883dbb2a595509a9c1648d7
+linux-x64	thread	third-party-2026-10-22.2	199e5e7436152027e13cccfc063d696e377ce4be6dec14240297ffe00e82fa63
+macos-arm64	address-undefined	third-party-2026-10-22.2	216c7cf5c4fdb5a5a43d18732a9ea78f0b45c416bdf4a5494af0997e69c1b6e6
+macos-arm64	release	third-party-2026-10-22.2	602d82c6d59563b5af00c5be2d69c0447654ff00728ddcd94acf179c27c1092b
+macos-arm64	thread	third-party-2026-10-22.2	88488dbe41e6c3736875bd98a7f8395007b86b1940fd8b1eaa4a893c13cd7da5
+web-player	release	third-party-2026-10-22.2	1bd7af0f63eb09e867f7cf8b2323ae986c6e8abcbb29550741d78f5e44d94fa0
+web	release	third-party-2026-10-22.2	170aae9260e6a9dd678a8ab4f12cad043e503ad01a4a4033dac5723bf112a7a5
+web-threads	release	third-party-2026-10-22.2	ab09d48a2e39c4c07b992441fdc49d9c6e4d772ed6a6e421b1b2f31a27dd8f80

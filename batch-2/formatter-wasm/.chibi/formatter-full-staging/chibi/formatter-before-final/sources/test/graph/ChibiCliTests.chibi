@@ -1,0 +1,713 @@
+package chibi_cli_tests
+
+import os "core:os"
+import strings "core:strings"
+
+// `chibi` as a process: version, doctor, run, run --watch and test. The cases
+// specify the CLI for its native replacement (docs/c-test-verdicts.md, "The
+// CLI"), as test/tools/chibi_cli.c does for the C apphost; each keeps that
+// case's exit codes and text. Run takes the launcher of a build tree.
+
+// How long a watched program may take to print after a start or an edit: a
+// first compile takes 8 to 10 s for a small program on a workstation, more on
+// a loaded CI runner. A passing case takes no longer, a failing one this long.
+FirstCompileMs: int : 120000;
+
+// The scratch folder and the launchers every case uses.
+Suite :: struct {
+    // A real path, so the launcher's absolute paths compare as text.
+    root: string;
+    // root/bin/chibi: a copy of the launcher with the build's apps and core in
+    // root/share/chibi and a stub chibi-compile beside it. The stub appends a
+    // line to root/compiles for each call, exits 37 while root/fail exists and
+    // otherwise runs the build's chibi-compile.
+    launcher: string;
+    // The launcher in place, beside its build's own companions.
+    built: string;
+}
+
+// A finished command: its exit status, and its output and error output
+// interleaved as written.
+Ran :: struct {
+    status: int;
+    log: string;
+}
+
+// A program started in the background. Its shell writes its process id to
+// `pid` before it becomes the program, and its output and error output go to
+// `log` as written.
+Started :: struct {
+    process: int;
+    pid: string;
+    log: string;
+}
+
+Path :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+// The file's text, "" when it does not exist.
+Read :: (path: string) -> string {
+    read := os.ReadText(path);
+    if (read.error) {
+        return "";
+    }
+    return read.text;
+}
+Write :: (path: string, text: string) {
+    assert(os.WriteText(path, text) == nil, "the file writes");
+}
+// The folder at `path`, which may already exist.
+Make :: (path: string) {
+    if (!os.IsDirectory(path)) {
+        assert(os.MakeDirectory(path) == nil, "the directory");
+    }
+}
+Exists :: (path: string) -> bool {
+    return os.Kind(path) != os.KindNone;
+}
+Clone :: (source: string, destination: string) {
+    copy := ["/bin/cp", "-R", "--reflink=auto", source, destination];
+    if (os.Platform() == "Darwin") {
+        copy = ["/bin/cp", "-cR", source, destination];
+    }
+    assert(os.Run(copy) == 0, "the copy");
+}
+
+// Runs `command` in `folder`.
+In :: (folder: string, command: string[]) -> Ran {
+    full := ["/bin/sh", "-c", "cd \"$0\" && exec \"$@\" 2>&1", folder];
+    full.extend(command);
+    ran := os.Capture(full);
+    return {status: ran.status, log: Path([ran.stdout, ran.stderr])};
+}
+// Runs `command` in the scratch folder.
+At :: (suite: Suite, command: string[]) -> Ran {
+    return In(suite.root, command);
+}
+Says :: (ran: Ran, text: string) -> bool {
+    return strings.Contains(ran.log, text);
+}
+
+// Starts `command` in `folder`, its output going to root/output.log.
+Start :: (suite: Suite, folder: string, command: string[]) -> Started {
+    started: Started = {process: 0, pid: Path([suite.root, "/started.pid"]), log: Path([suite.root, "/output.log"])};
+    Write(started.pid, "");
+    Write(started.log, "");
+    full := ["/bin/sh", "-c", "cd \"$0\" && echo $$ > \"$1\" && log=$2 && shift 2 && exec \"$@\" > \"$log\" 2>&1", folder, started.pid, started.log];
+    full.extend(command);
+    started.process = os.Start(full, os.Inherited);
+    return started;
+}
+// What the started program has written so far. The build host's ReadText
+// fails the whole program when the file grows while it reads, so cat reads it.
+Output :: (started: Started) -> string {
+    read := os.Capture(["/bin/cat", started.log]);
+    assert(read.status == 0, "the started program's output reads");
+    return read.stdout;
+}
+Written :: (started: Started) -> int {
+    return strings.ByteLength(Output(started));
+}
+// Waits for `expected` in what the program writes past byte `offset`. Returns
+// os.StillRunning once the text is there and the program still runs, else how
+// it ended; one that never writes it in FirstCompileMs is killed.
+Await :: (started: Started, offset: int, expected: string) -> int {
+    waited := 0;
+    while (waited < FirstCompileMs) {
+        text := Output(started);
+        size := strings.ByteLength(text);
+        if (size >= offset && strings.Contains(strings.Slice(text, offset, size - offset), expected)) {
+            return os.Wait(started.process, 0);
+        }
+        status := os.Wait(started.process, 10);
+        if (status != os.StillRunning) {
+            os.Print(format_text("chibi cli: the program ended with {} before it wrote {}", status, expected));
+            return status;
+        }
+        waited += 10;
+    }
+    os.Print(format_text("chibi cli: the program never wrote {}", expected));
+    return os.Kill(started.process);
+}
+// Sends a running program SIGINT or SIGTERM (`signal` "INT" or "TERM"), gives
+// it 5 s to end and kills it after that. Returns how it ended; `status` is
+// what Await last returned.
+Stop :: (started: Started, status: int, signal: string) -> int {
+    if (status != os.StillRunning) {
+        return status;
+    }
+    pid := strings.TrimSpace(Read(started.pid));
+    assert(pid != "", "the started program's process id");
+    assert(os.Run(["/bin/kill", Path(["-", signal]), pid]) == 0, "the signal");
+    status = os.Wait(started.process, 5000);
+    if (status == os.StillRunning) {
+        os.Print("chibi cli: the program outlived its signal by 5 s");
+        status = os.Kill(started.process);
+    }
+    return status;
+}
+// Whether a program exited as the C driver's 128 + `number` reports one that
+// a signal stopped: by that status, or by the signal itself.
+Signalled :: (status: int, number: int) -> bool {
+    return status == 128 + number || status == -number;
+}
+// `passed`, after printing the started program's output when it is false.
+Logged :: (started: Started, passed: bool) -> bool {
+    if (!passed) {
+        os.Print(Output(started));
+    }
+    return passed;
+}
+
+// The value of `#define NAME value` in a C header.
+Defined :: (path: string, name: string) -> string {
+    for (line in strings.SplitLines(Read(path))) {
+        prefix := Path(["#define ", name, " "]);
+        if (strings.HasPrefix(line, prefix)) {
+            return strings.TrimSpace(strings.TrimPrefix(line, prefix));
+        }
+    }
+    return "";
+}
+
+// The scratch folder's launcher copy, as chibi_cli.c's setup assembles it.
+NewSuite :: (folder: string, built: string) -> Suite {
+    suite: Suite = {root: folder, launcher: Path([folder, "/bin/chibi"]), built: built};
+    bin := strings.Slice(built, 0, strings.LastIndex(built, "/"));
+    for (child in ["/bin", "/share", "/share/chibi", "/game with spaces", "/game with spaces/content", "/game with spaces/content/scenes"]) {
+        Make(Path([folder, child]));
+    }
+    Clone(built, suite.launcher);
+    for (shared in ["apps", "core"]) {
+        Clone(Path([bin, "/../share/chibi/", shared]), Path([folder, "/share/chibi/", shared]));
+    }
+    project := Defined(Path([os.Root(), "/src/assets/project.h"]), "CHIBI_PROJECT_VERSION");
+    Write(Path([folder, "/game with spaces/project.kdl"]), Path(["version ", project, "\nname \"CLI proof\"\ncontent \"content\"\nstart_scene \"scenes/Start.kdl\"\n"]));
+    Write(Path([folder, "/game with spaces/content/scenes/Start.kdl"]), "version 1\nname \"Start\"\n(array)entities\n");
+    stub := Path([folder, "/bin/chibi-compile"]);
+    Write(stub, Path(["#!/bin/sh\nset -eu\nbase=$(dirname \"$0\")/..\necho compile >> \"$base/compiles\"\n[ ! -f \"$base/fail\" ] || exit 37\nexec \"", bin,
+                      "/chibi-compile\" \"$@\"\n"]));
+    assert(os.Run(["/bin/chmod", "700", stub]) == 0, "the stub compiler runs");
+    return suite;
+}
+
+// version prints the build identity document in share/chibi, with the
+// build ID packaging adds, and fails without a valid one.
+VersionReadsTheBuildIdentity :: (suite: Suite) {
+    version := [suite.launcher, "version"];
+    assert(At(suite, version).status == 1, "no identity document");
+    // Out of name order, as a build tree writes them; output sorts by name.
+    formats := "\"artifact_formats\": {\"player\": {\"version\": 3}, \"execution\": {\"version\": 15, \"source\": \"src/execution/prepared.c\"}}";
+    document := Path([suite.root, "/share/chibi/engine.json"]);
+    Write(document, Path(["{\"sdk_version\": \"9.8.7\", \"project_version\": 25, ", formats, "}\n"]));
+    ran := At(suite, version);
+    assert(ran.status == 0, "an unpackaged identity");
+    assert(ran.log == Path(["chibi 9.8.7\nbuild: unpackaged\ncompiler: ", suite.root, "/bin/chibi-compile\nproject format: 25\nartifact formats: execution 15, player 3\n"]), "the unpackaged identity");
+    Write(document, Path(["{\"manifest_format\": 1, \"build_id\": \"fixture-build\", \"sdk_version\": \"9.8.7\", \"project_version\": 25, ", formats, "}\n"]));
+    ran = At(suite, version);
+    assert(ran.status == 0, "a packaged identity");
+    assert(ran.log == Path(["chibi 9.8.7\nbuild: fixture-build\ncompiler: ", suite.root, "/bin/chibi-compile\nproject format: 25\nartifact formats: execution 15, player 3\n"]), "the packaged identity");
+    Write(document, "{\"sdk_version\": \"9.8.7\", \"project_version\": 25, \"artifact_formats\": {\"execution\": {}}}\n");
+    assert(At(suite, version).status == 1, "a format with no version");
+    assert(At(suite, [suite.launcher, "version", "--help"]).status == 0, "version --help");
+    assert(At(suite, [suite.launcher, "version", "more"]).status == 2, "an extra argument");
+}
+
+// The launcher in place reads the identity its build generated.
+VersionOfTheBuiltLauncher :: (suite: Suite) {
+    ran := At(suite, [suite.built, "version"]);
+    project := Defined(Path([os.Root(), "/src/assets/project.h"]), "CHIBI_PROJECT_VERSION");
+    assert(ran.status == 0 && strings.HasPrefix(ran.log, "chibi "), "the built identity");
+    assert(Says(ran, Path(["\nproject format: ", project, "\n"])) && Says(ran, "\nartifact formats: ") && Says(ran, " execution "), "its formats");
+}
+
+// An identity document for the platform `sysname` ("" for this host's),
+// which names no platform unless `platform`.
+Identity :: (suite: Suite, sysname: string, platform: bool) {
+    named := "";
+    if (platform) {
+        machine := os.Capture(["uname", "-m"]);
+        assert(machine.status == 0, "the host's processor");
+        name := sysname;
+        if (name == "") {
+            name = os.Platform();
+        }
+        named = Path(["\"system\": \"", name, "\",\"processors\": [\"", strings.TrimSpace(machine.stdout), "\"], "]);
+    }
+    Write(Path([suite.root, "/share/chibi/engine.json"]), Path(["{\"sdk_version\": \"9.8.7\", ", named,
+                                                                  "\"backends\": [\"bytecode\", \"sljit\"], \"project_version\": 25, \"artifact_formats\": {\"execution\": {\"version\": 15}}}\n"]));
+}
+// Runs `chibi doctor` with `extra` arguments and only /usr/bin and /bin on PATH.
+Doctor :: (suite: Suite, extra: string[]) -> Ran {
+    command := ["/usr/bin/env", "PATH=/usr/bin:/bin", suite.launcher, "doctor"];
+    command.extend(extra);
+    return At(suite, command);
+}
+
+// doctor reports each capability and fails only for a broken one it checks.
+// The execution backend line is the VM's and is not checked.
+DoctorReportsEachCapability :: (suite: Suite) {
+    fail := Path([suite.root, "/fail"]);
+    if (Exists(fail)) {
+        assert(os.Remove(fail) == nil, "no failure left");
+    }
+    none: string[] = [];
+    Identity(suite, "", true);
+    ran := Doctor(suite, none);
+    assert(ran.status == 0, "a supported SDK");
+    assert(Says(ran, "sdk: supported (chibi 9.8.7, build unpackaged)\n"), "the sdk line");
+    assert(Says(ran, Path(["compiler: supported (", suite.root, "/bin/chibi-compile)\n"])), "the compiler line");
+    assert(Says(ran, "platform: supported ("), "the platform line");
+
+    // A platform mismatch is reported; whether the SDK runs is the compiler's
+    // question.
+    Identity(suite, "Plan9", true);
+    ran = Doctor(suite, none);
+    assert(ran.status == 0 && Says(ran, "platform: unavailable (built for Plan9 "), "another platform");
+    Identity(suite, "", false);
+    ran = Doctor(suite, none);
+    assert(ran.status == 1 && Says(ran, "platform: broken (the build identity names no platform)\n"), "no platform");
+    Identity(suite, "", true);
+
+    Write(fail, "");
+    ran = Doctor(suite, none);
+    assert(ran.status == 1 && Says(ran, Path(["compiler: broken (", suite.root, "/bin/chibi-compile --help failed)\n"])), "a broken compiler");
+    assert(os.Remove(fail) == nil, "the failure removed");
+
+    assert(Doctor(suite, ["--help"]).status == 0, "doctor --help");
+    assert(Doctor(suite, ["--frames"]).status == 2, "an unknown option");
+}
+
+// The launcher in place finds its real compiler.
+DoctorOfTheBuiltLauncher :: (suite: Suite) {
+    ran := At(suite, [suite.built, "doctor"]);
+    assert(ran.status == 0, "the built doctor");
+    assert(Says(ran, "\ncompiler: supported (") && Says(ran, "\nplatform: supported ("), "its compiler and platform");
+}
+
+// `chibi --help` from the launcher in place.
+HelpOfTheBuiltLauncher :: (suite: Suite) {
+    ran := At(suite, [suite.built, "--help"]);
+    assert(ran.status == 0 && Says(ran, "Usage:"), "the usage");
+}
+
+// `chibi test` runs the tests of a package folder, named or the current one.
+// Tests run without a program service (#880): they print, and nothing else.
+TestRunsSharedPackageTests :: (suite: Suite) {
+    folder := Path([suite.root, "/package-tests"]);
+    Make(folder);
+    facts := Path([folder, "/Facts.chibi"]);
+    passing := "package facts\n@test\nPasses :: () {\n print_string(\"a test prints as it runs\")\n two: int = 2\n assert(two + two == 4, \"addition\")\n}\n@test\nPureOne :: () {\n two: int = 2\n assert(two + two == 4, \"addition\")\n}\n@test\nPureTwo :: () {\n three: int = 3\n assert(three * three == 9, \"multiplication\")\n}\n";
+    Write(facts, passing);
+    named := [suite.launcher, "test", "package-tests"];
+    ran := At(suite, named);
+    assert(ran.status == 0 && Says(ran, "PASS project.Passes\n") && Says(ran, "3 tests, 0 failed\n"), "a named folder");
+    ran = In(folder, [suite.launcher, "test"]);
+    assert(ran.status == 0 && Says(ran, "PASS project.Passes\n"), "the current folder");
+    for (workers in ["1", "2"]) {
+        ran = At(suite, ["/usr/bin/env", Path(["CHIBI_TEST_WORKERS=", workers]), suite.launcher, "test", "package-tests"]);
+        assert(ran.status == 0 && ran.log == "a test prints as it runs\nPASS project.Passes\nPASS project.PureOne\nPASS project.PureTwo\n3 tests, 0 failed\n", "the same report for each worker count");
+    }
+    ran = At(suite, ["/usr/bin/env", "CHIBI_TEST_WORKERS=0", suite.launcher, "test", "package-tests"]);
+    assert(ran.status == 1 && Says(ran, "CHIBI_TEST_WORKERS"), "an invalid worker count");
+    assert(At(suite, ["/usr/bin/env", "CHIBI_TEST_WORKERS=0", suite.launcher, "--help"]).status == 0, "help ignores the worker count");
+    Write(facts, "package facts\n@test\nFails :: () { assert(false, \"shared test failure\") }\n");
+    ran = At(suite, named);
+    assert(ran.status == 1 && Says(ran, "FAIL project.Fails\n") && Says(ran, "Facts.chibi:3:") && Says(ran, "shared test failure"), "a failed test");
+    Write(facts, "package facts\n@test\nFails :: () { missing() }\n");
+    ran = At(suite, named);
+    assert(ran.status == 1 && Says(ran, "Facts.chibi:3:") && Says(ran, "missing"), "a test that does not compile");
+    Write(facts, passing);
+    assert(At(suite, [suite.launcher, "test", "--help"]).status == 0, "test --help");
+    assert(At(suite, [suite.launcher, "test", "one", "two"]).status == 2, "two folders");
+    assert(!Exists(Path([folder, "/.chibi"])), "nothing written beside the sources");
+}
+
+// A package of one passing and one failing test of core:strings.
+Facts :: () -> string {
+    return "package facts\nimport strings \"core:strings\"\n\n@test\nPasses :: () {\n    assert(strings.ByteLength(\"abc\") == 3, \"three bytes\");\n}\n\n@test\nFails :: () {\n    assert(strings.ByteLength(\"abc\") == 4, \"four bytes\");\n}\n";
+}
+
+// `chibi test` runs each test of the packages below its folder with the
+// build's core collection, reports where a failure stopped, and fails for a
+// failed test, an invalid package or a missing folder. Serial and parallel
+// workers report the same lines in the same order; an invalid worker count
+// fails before any package is prepared.
+TestReportsEachTest :: (suite: Suite) {
+    tests := Path([suite.root, "/tests"]);
+    Make(tests);
+    Make(Path([tests, "/facts"]));
+    facts := Path([tests, "/facts/Facts.chibi"]);
+    Write(facts, Facts());
+    run := [suite.built, "test", tests];
+    expected := Path(["PASS facts.Passes\nFAIL facts.Fails\n  ", tests, "/facts/Facts.chibi:11:5: Assertion failed: four bytes\n2 tests, 1 failed\n"]);
+    ran := At(suite, run);
+    assert(ran.status == 1 && ran.log == expected, "each test reported");
+    for (workers in ["1", "2"]) {
+        command := ["/usr/bin/env", Path(["CHIBI_TEST_WORKERS=", workers])];
+        command.extend(run);
+        ran = At(suite, command);
+        assert(ran.status == 1 && ran.log == expected, "the same report for each worker count");
+    }
+    for (workers in ["", "0", "33", "-1", "+2", " 2", "2x", "9999999999999999999999999999"]) {
+        command := ["/usr/bin/env", Path(["CHIBI_TEST_WORKERS=", workers])];
+        command.extend(run);
+        ran = At(suite, command);
+        assert(ran.status == 1 && ran.log == "CHIBI_TEST_WORKERS must be an integer from 1 to 32\n", "an invalid worker count");
+    }
+    Write(facts, strings.Replace(Facts(), "== 4", "!= 4", 1));
+    ran = At(suite, run);
+    assert(ran.status == 0 && ran.log == "PASS facts.Passes\nPASS facts.Fails\n2 tests, 0 failed\n", "every test passes");
+
+    // A package is compiled when it declares a test.
+    broken := Path([suite.root, "/broken"]);
+    Make(broken);
+    Make(Path([broken, "/facts"]));
+    Write(Path([broken, "/facts/Facts.chibi"]), "package facts\n@test\nOk :: () {}\nBroken :: () -> int { return missing; }\n");
+    ran = At(suite, [suite.built, "test", broken]);
+    assert(ran.status == 1 && Says(ran, "/broken/facts/Facts.chibi:4:"), "an invalid package");
+    assert(At(suite, [suite.built, "test", Path([suite.root, "/missing"])]).status == 1, "a missing folder");
+}
+
+// The launcher, from the scratch folder, runs a package's tests below a
+// folder it names.
+TestRunsAPackageBelowAFolder :: (suite: Suite) {
+    tree := Path([suite.root, "/packages"]);
+    Make(tree);
+    Make(Path([tree, "/facts"]));
+    Write(Path([tree, "/facts/Facts.chibi"]), Facts());
+    ran := At(suite, [suite.built, "test", tree]);
+    assert(ran.status == 1 && Says(ran, "PASS facts.Passes\nFAIL facts.Fails\n"), "each test reported");
+    assert(Says(ran, "Assertion failed: four bytes\n2 tests, 1 failed\n"), "the failure and the count");
+}
+
+// The CLI runs a standalone source file or folder, named or the current one,
+// with or without `run` and `--watch`, without calling its compiler
+// companion, and refuses to watch a game project.
+RunDispatchesStandalonePrograms :: (suite: Suite) {
+    folder := Path([suite.root, "/standalone dispatch"]);
+    Make(folder);
+    source := Path([folder, "/Hello.chibi"]);
+    Write(source, "package hello\nMain :: () { print_string(\"dispatch-main\") }\n");
+    compiles := Path([suite.root, "/compiles"]);
+    before := Read(compiles);
+    launcher := suite.launcher;
+    commands := [[launcher, "run", "standalone dispatch/Hello.chibi"], [launcher, "standalone dispatch/Hello.chibi"],
+                 [launcher, "run", "standalone dispatch"], [launcher, "standalone dispatch"]];
+    for (command in commands) {
+        ran := At(suite, command);
+        assert(ran.status == 0 && ran.log == "dispatch-main\n", "a named source");
+        assert(!Exists(Path([folder, "/.chibi"])), "nothing written beside the source");
+    }
+    ran := In(folder, [launcher, "."]);
+    assert(ran.status == 0 && ran.log == "dispatch-main\n", "the current folder");
+    ran = In(folder, [launcher, "run"]);
+    assert(ran.status == 0 && ran.log == "dispatch-main\n", "run with no target");
+
+    watches := [[launcher, "--watch", source], [launcher, "run", "--watch", source], [launcher, source, "--watch"],
+                [launcher, "run", source, "--watch"], [launcher, "--watch", folder], [launcher, "run", "--watch", folder],
+                [launcher, folder, "--watch"], [launcher, "run", folder, "--watch"], [launcher, ".", "--watch"],
+                [launcher, "run", "--watch"]];
+    for (index in 0..<length(watches)) {
+        cwd := suite.root;
+        if (index >= 8) {
+            cwd = folder;
+        }
+        started := Start(suite, cwd, watches[index]);
+        status := Await(started, 0, "dispatch-main\n");
+        passed := status == os.StillRunning;
+        status = Stop(started, status, "TERM");
+        assert(Logged(started, passed && (status == 0 || Signalled(status, 15))), "a watched source");
+    }
+    for (command in [[launcher, "--watch", "game with spaces"], [launcher, "run", "--watch", "game with spaces"], [launcher, "game with spaces", "--watch"]]) {
+        assert(At(suite, command).status == 2, "a game project is not watched");
+    }
+    ran = At(suite, [launcher, "run", source, "--", "extra"]);
+    assert(ran.status == 0 && ran.log == "dispatch-main\n", "program arguments offset --");
+    ran = At(suite, [launcher, source, "extra"]);
+    assert(ran.status == 0 && ran.log == "dispatch-main\n", "program arguments offset the source");
+    fail := Path([suite.root, "/fail"]);
+    Write(fail, "");
+    ran = At(suite, commands[0]);
+    assert(ran.status == 0 && ran.log == "dispatch-main\n", "a failing compiler companion is not called");
+    assert(os.Remove(fail) == nil, "the failure removed");
+    assert(Read(compiles) == before, "no compiler companion call");
+    assert(!Exists(Path([folder, "/.chibi"])), "nothing written beside the source");
+}
+
+Hello :: () -> string {
+    return "package hello\nMain :: () {\n    print_string(\"Hello, world!\")\n}\n";
+}
+
+// Main runs from a source file or its folder, named or current, with or
+// without `run`; its int result is the exit status.
+ProgramMainRunsFromFilesAndDirectories :: (suite: Suite) {
+    folder := Path([suite.root, "/run-main"]);
+    Make(folder);
+    source := Path([folder, "/Hello.chibi"]);
+    Write(source, Hello());
+    for (command in [[suite.built, "run", "run-main/Hello.chibi"], [suite.built, "run-main/Hello.chibi"], [suite.built, "run", "run-main"], [suite.built, "run-main"]]) {
+        ran := At(suite, command);
+        assert(ran.status == 0 && ran.log == "Hello, world!\n", "a named program");
+    }
+    ran := In(folder, [suite.built, "."]);
+    assert(ran.status == 0 && ran.log == "Hello, world!\n", "the current folder");
+    ran = In(folder, [suite.built, "run"]);
+    assert(ran.status == 0 && ran.log == "Hello, world!\n", "run with no target");
+
+    returning := "package hello\nMain :: () -> int { return 23 }\n";
+    Write(source, returning);
+    ran = At(suite, [suite.built, "run", "run-main/Hello.chibi"]);
+    assert(ran.status == 23 && ran.log == "", "Main's result is the exit status");
+    assert(Read(source) == returning, "the source is unchanged");
+    assert(!Exists(Path([folder, "/.chibi"])), "nothing written beside the source");
+}
+
+// A source file runs alone; a folder links its sibling sources and the
+// packages below it, and only the root package's Main is the entry.
+ProgramSourcesLinkPackagesAndSelectTheRootEntry :: (suite: Suite) {
+    file := Path([suite.root, "/run-file"]);
+    Make(file);
+    Write(Path([file, "/Hello.chibi"]), "package hello\nimport strings \"core:strings\"\nMain :: () { print_string(strings.Join([\"Hello\", \"world!\"], \", \")) }\n");
+    // Selecting a source file must not parse a neighboring source.
+    Write(Path([file, "/Broken.chibi"]), "this is not valid Chibi\n");
+    ran := At(suite, [suite.built, "run", "run-file/Hello.chibi"]);
+    assert(ran.status == 0 && ran.log == "Hello, world!\n", "a file with a core import");
+    assert(!Exists(Path([file, "/.chibi"])), "nothing written beside the source");
+
+    packages := Path([suite.root, "/run-packages"]);
+    Make(packages);
+    Make(Path([packages, "/words"]));
+    Write(Path([packages, "/Hello.chibi"]), "package hello\nimport words \"project:words\"\nMain :: () { print_string(Greeting(words.Message())) }\n");
+    Write(Path([packages, "/Greeting.chibi"]), "package hello\nGreeting :: (message: string) -> string { return message }\n");
+    Write(Path([packages, "/words/Words.chibi"]), "package words\npub Message :: () -> string { return \"Local packages\" }\nMain :: () -> int { return 31 }\n");
+    ran = At(suite, [suite.built, "run", "run-packages"]);
+    assert(ran.status == 0 && ran.log == "Local packages\n", "a folder links its packages");
+    // The helper is available only when the directory is the target.
+    ran = At(suite, [suite.built, "run", "run-packages/Greeting.chibi"]);
+    assert(ran.status == 1 && Says(ran, "Main"), "a file without Main");
+    assert(!Exists(Path([packages, "/.chibi"])) && !Exists(Path([packages, "/words/.chibi"])), "nothing written beside the sources");
+}
+
+// An SDK copied elsewhere runs a program from an unrelated folder.
+RelocatedLauncherRunsAProgram :: (suite: Suite) {
+    sdk := Path([suite.root, "/program-sdk"]);
+    bin := strings.Slice(suite.built, 0, strings.LastIndex(suite.built, "/"));
+    for (child in ["", "/bin", "/share", "/share/chibi"]) {
+        Make(Path([sdk, child]));
+    }
+    cwd := Path([suite.root, "/unrelated-program-cwd"]);
+    Make(cwd);
+    Clone(suite.built, Path([sdk, "/bin/chibi"]));
+    Clone(Path([bin, "/chibi-compile"]), Path([sdk, "/bin/chibi-compile"]));
+    for (shared in ["apps", "core", "engine.json"]) {
+        Clone(Path([bin, "/../share/chibi/", shared]), Path([sdk, "/share/chibi/", shared]));
+    }
+    source := Path([suite.root, "/Hello.chibi"]);
+    Write(source, Hello());
+    ran := In(cwd, [Path([sdk, "/bin/chibi"]), source]);
+    assert(ran.status == 0 && ran.log == "Hello, world!\n", "the relocated launcher runs the program");
+    assert(!Exists(Path([sdk, "/.chibi"])) && !Exists(Path([cwd, "/.chibi"])), "nothing written in either folder");
+}
+
+// An unrunnable Main, a failed assert, a source error and an imported
+// package's Main fail with a diagnostic that names the entry or the source.
+ProgramFailuresReportEntryAndSourceErrors :: (suite: Suite) {
+    folder := Path([suite.root, "/run-errors"]);
+    Make(folder);
+    source := Path([folder, "/Hello.chibi"]);
+    run := [suite.built, "run", "run-errors/Hello.chibi"];
+    for (unrunnable in ["package hello\nHelper :: () {}\n", "package hello\nMain :: (value: int) {}\n", "package hello\nMain :: (value: $T) {}\n",
+                   "package hello\nMain :: () -> string { return \"wrong\" }\n", "package hello\nMain :: () -> int? { return 0 }\n",
+                   "package hello\nMain :: () -> (a: int, b: int) { return(1, 2) }\n", "package hello\nMain :: () -> int { return 256 }\n",
+                   "package hello\nMain :: () -> int { return -1 }\n"]) {
+        Write(source, unrunnable);
+        ran := At(suite, run);
+        if (ran.status != 1 || !Says(ran, "Main")) {
+            os.Print(unrunnable);
+            os.Print(ran.log);
+        }
+        assert(ran.status == 1 && Says(ran, "Main"), "an unrunnable Main");
+    }
+    Write(source, "package hello\nFail :: () {\n    assert(false, \"nested program failure\")\n}\nMain :: () { Fail() }\n");
+    ran := At(suite, run);
+    assert(ran.status == 1 && Says(ran, "/run-errors/Hello.chibi:3:5:") && Says(ran, "Assertion failed: nested program failure"), "a nested failed assert");
+    Write(source, "package hello\nMain :: () { missing() }\n");
+    ran = At(suite, run);
+    assert(ran.status == 1 && Says(ran, "/run-errors/Hello.chibi:2:"), "an unknown name");
+    Write(source, "package hello\nMain :: () { runner.snapshot() }\n");
+    ran = At(suite, run);
+    assert(ran.status == 1 && Says(ran, "Unknown function 'runner.snapshot'"), "an unknown function");
+    Write(source, "Main :: () {}\n");
+    ran = At(suite, run);
+    assert(ran.status == 1 && Says(ran, "/run-errors/Hello.chibi:1:1:"), "no package clause");
+
+    // An imported package's Main cannot replace the root's missing entry.
+    Make(Path([folder, "/words"]));
+    Write(source, "package hello\nimport words \"project:words\"\nValue :: words.Value\n");
+    Write(Path([folder, "/words/Words.chibi"]), "package words\npub Value :: 1\nMain :: () { print_string(\"wrong entry\") }\n");
+    ran = At(suite, [suite.built, "run", "run-errors"]);
+    assert(ran.status == 1 && Says(ran, "Main") && !Says(ran, "wrong entry"), "only the root package's Main");
+    assert(!Exists(Path([folder, "/.chibi"])), "nothing written beside the sources");
+}
+
+// SIGINT or SIGTERM stops a busy Main or test with 128 + the signal; under
+// --watch it ends the watch with 0.
+ProgramCancellationStopsBusyMainAndTests :: (suite: Suite) {
+    Make(Path([suite.root, "/cancel-main"]));
+    Make(Path([suite.root, "/cancel-tests"]));
+    Write(Path([suite.root, "/cancel-main/Busy.chibi"]), "package busy\nMain :: () { print_string(\"busy-main-ready\"); while true {} }\n");
+    Write(Path([suite.root, "/cancel-tests/Busy.chibi"]), "package busy_tests\n@test\nBusy :: () { print_string(\"busy-test-ready\"); while true {} }\n");
+    commands := [[suite.built, "cancel-main/Busy.chibi"], [suite.built, "cancel-main/Busy.chibi"], [suite.built, "--watch", "cancel-main/Busy.chibi"],
+                 [suite.built, "--watch", "cancel-main/Busy.chibi"], [suite.built, "test", "cancel-tests"], [suite.built, "test", "cancel-tests"]];
+    for (index in 0..<length(commands)) {
+        marker := "busy-main-ready\n";
+        if (index >= 4) {
+            marker = "busy-test-ready\n";
+        }
+        signal := "INT";
+        number := 2;
+        if (index % 2 == 1) {
+            signal = "TERM";
+            number = 15;
+        }
+        started := Start(suite, suite.root, commands[index]);
+        status := Await(started, 0, marker);
+        passed := status == os.StillRunning;
+        status = Stop(started, status, signal);
+        stopped := Signalled(status, number);
+        if (index == 2 || index == 3) {
+            stopped = status == 0;
+        }
+        assert(Logged(started, passed && stopped), "the signal stops the program");
+        if (index < 4) {
+            assert(Logged(started, Output(started) == marker), "only the program's own output");
+        }
+    }
+    assert(!Exists(Path([suite.root, "/cancel-main/.chibi"])) && !Exists(Path([suite.root, "/cancel-tests/.chibi"])), "nothing written beside the sources");
+}
+
+// Under --watch a file target ignores its siblings, reports a bad edit while
+// the last good Frame keeps running, drops a removed Frame's state and runs
+// Main once. The swap that keeps retained state is
+// test/native_aot/native_build/BuildTests.chibi's WatchesAndSwapsARunningLoop.
+WatchPatchesARunningFrameAndKeepsState :: (suite: Suite) {
+    folder := Path([suite.root, "/watch-file"]);
+    Make(folder);
+    source := Path([folder, "/Hello.chibi"]);
+    Write(source, "package watch_file\nMain :: () { print_string(\"watch-main\") }\nFrame :: () {\n    count: retain int = 0\n    count += 1\n    ordinary: int = 0\n    ordinary += 1\n    assert(ordinary == 1, \"ordinary Frame local\")\n    if count % 10 == 0 { print_string(format_text(\"watch-first {}\", count)) }\n}\n");
+    started := Start(suite, suite.root, [suite.built, "--watch", "watch-file/Hello.chibi"]);
+    status := Await(started, 0, "watch-first 10\n");
+    if (status == os.StillRunning) {
+        // A file target neither compiles nor watches its sibling sources.
+        Write(Path([folder, "/Broken.chibi"]), "not valid Chibi\n");
+        offset := Written(started);
+        Write(source, "package watch_file\nMain :: () { print_string(\"watch-main\") }\nFrame :: () {\n    count: retain int = 0\n    count += 1\n    assert(count >= 10, \"retained Frame count\")\n    if count % 10 == 0 { print_string(format_text(\"watch-second {}\", count)) }\n}\n");
+        status = Await(started, offset, "watch-second ");
+    }
+    invalid := ["package watch_file\nFrame :: ( {\n", "package watch_file\nHelper :: () {}\n", "package watch_file\nFrame :: (value: int) {}\n"];
+    errors := ["/watch-file/Hello.chibi:", "No runnable Frame", "No runnable Frame"];
+    for (index in 0..<length(invalid)) {
+        if (status == os.StillRunning) {
+            offset := Written(started);
+            Write(source, invalid[index]);
+            status = Await(started, offset, errors[index]);
+        }
+    }
+    if (status == os.StillRunning) {
+        // A removed Frame drops its state; restoring it resumes the frames.
+        offset := Written(started);
+        Write(source, "package watch_file\nFrame :: () {\n    count: retain int = 0\n    count += 1\n    if count == 3 { print_string(\"watch-fourth\") }\n}\n");
+        status = Await(started, offset, "watch-fourth");
+    }
+    passed := status == os.StillRunning;
+    status = Stop(started, status, "TERM");
+    assert(Logged(started, passed), "each edit reached the running program");
+    assert(Logged(started, status == 0 || Signalled(status, 15)), "the watch stops");
+    assert(strings.Count(Output(started), "watch-main") == 1, "Main runs once");
+    assert(!Exists(Path([folder, "/.chibi"])), "nothing written beside the source");
+}
+
+WatchSibling :: (marker: string) -> string {
+    return Path(["package watch_directory\nMarker :: () -> string { return \"", marker, "\" }\n"]);
+}
+WatchImport :: (marker: string) -> string {
+    return Path(["package words\npub Next :: () -> int {\n    count: retain int = 0\n    count += 1\n    return count\n}\npub Marker :: () -> string { return \"", marker, "\" }\n"]);
+}
+
+// Under --watch a folder target picks up edits to its siblings and to the
+// packages it imports, keeps an imported package's retained state, reports a
+// bad edit to one and runs Main once.
+WatchTracksSiblingsAndKeepsImportedState :: (suite: Suite) {
+    folder := Path([suite.root, "/watch-directory"]);
+    Make(folder);
+    Make(Path([folder, "/words"]));
+    sibling := Path([folder, "/Values.chibi"]);
+    imported := Path([folder, "/words/Words.chibi"]);
+    Write(Path([folder, "/Main.chibi"]), "package watch_directory\nimport words \"project:words\"\nMain :: () { print_string(\"watch-directory-main\") }\nFrame :: () {\n    last: retain int = 0\n    now := words.Next()\n    assert(now == last + 1, \"imported retained count\")\n    last = now\n    if now % 10 == 0 {\n        print_string(Marker())\n        print_string(words.Marker())\n    }\n}\n");
+    Write(sibling, WatchSibling("watch-directory-first"));
+    Write(imported, WatchImport("watch-import-first"));
+    started := Start(suite, folder, [suite.built, "run", "--watch", "."]);
+    status := Await(started, 0, "watch-import-first\n");
+    if (status == os.StillRunning) {
+        offset := Written(started);
+        Write(sibling, WatchSibling("watch-directory-second"));
+        status = Await(started, offset, "watch-directory-second\n");
+    }
+    if (status == os.StillRunning) {
+        offset := Written(started);
+        Write(imported, WatchImport("watch-import-third"));
+        status = Await(started, offset, "watch-import-third\n");
+    }
+    if (status == os.StillRunning) {
+        offset := Written(started);
+        Write(imported, "package words\npub Next :: ( {\n");
+        status = Await(started, offset, "/watch-directory/words/Words.chibi:");
+    }
+    if (status == os.StillRunning) {
+        offset := Written(started);
+        Write(imported, WatchImport("watch-import-fourth"));
+        status = Await(started, offset, "watch-import-fourth\n");
+    }
+    passed := status == os.StillRunning;
+    status = Stop(started, status, "TERM");
+    assert(Logged(started, passed), "each edit reached the running program");
+    assert(Logged(started, status == 0 || Signalled(status, 15)), "the watch stops");
+    assert(strings.Count(Output(started), "watch-directory-main") == 1, "Main runs once");
+    assert(!Exists(Path([folder, "/.chibi"])) && !Exists(Path([folder, "/words/.chibi"])), "nothing written beside the sources");
+}
+
+// A fresh scratch folder under the checkout's .chibi.
+Scratch :: (name: string) -> string {
+    folder := Path([os.Root(), "/.chibi/", name]);
+    assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the old scratch removed");
+    Make(Path([os.Root(), "/.chibi"]));
+    Make(folder);
+    return os.RealPath(folder);
+}
+
+// The build host runs this entry with the launcher of a build tree.
+pub Run :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 1, "the build tree's launcher");
+    folder := Scratch("chibi-cli");
+    suite := NewSuite(folder, os.RealPath(arguments[0]));
+    VersionReadsTheBuildIdentity(suite);
+    VersionOfTheBuiltLauncher(suite);
+    DoctorReportsEachCapability(suite);
+    DoctorOfTheBuiltLauncher(suite);
+    HelpOfTheBuiltLauncher(suite);
+    TestRunsSharedPackageTests(suite);
+    TestReportsEachTest(suite);
+    TestRunsAPackageBelowAFolder(suite);
+    RunDispatchesStandalonePrograms(suite);
+    ProgramMainRunsFromFilesAndDirectories(suite);
+    ProgramSourcesLinkPackagesAndSelectTheRootEntry(suite);
+    RelocatedLauncherRunsAProgram(suite);
+    ProgramFailuresReportEntryAndSourceErrors(suite);
+    WatchPatchesARunningFrameAndKeepsState(suite);
+    WatchTracksSiblingsAndKeepsImportedState(suite);
+    ProgramCancellationStopsBusyMainAndTests(suite);
+    assert(os.Run(["/bin/rm", "-rf", folder]) == 0, "the scratch cleanup");
+    return 0;
+}

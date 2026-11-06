@@ -1,0 +1,10 @@
+package facts
+Shadow :: (n: int) -> int {
+    m := n + 1;
+    total: int = m;
+    if (m > 0) { total: int = 100; total += 1; }
+    if (m > 1) { m: int = 5; total += m; }
+    return total + m;
+}
+U :: union { A(x: int) | B }
+Arm :: () -> int { u := U.A(7); switch u { case .A(n): n: int = 2; return n; case .B: return 0; } return -1; }

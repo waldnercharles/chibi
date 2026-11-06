@@ -1,0 +1,14 @@
+diff --git a/src/cute_graphics_gles.cpp b/src/cute_graphics_gles.cpp
+index 27c01dd..59dd449 100644
+--- a/src/cute_graphics_gles.cpp
++++ b/src/cute_graphics_gles.cpp
+@@ -2628,7 +2628,8 @@ void cf_gles_draw_elements_range(int first_element, int element_count, int insta
+ 
+ 	CF_POLL_OPENGL_ERROR();
+ 	++app->draw_call_count;
+-	g_ctx.target_state = s_default_state(g_ctx.canvas);
++	// Keep the viewport, scissor and other draw state for the next range: callers apply them
++	// once and then draw several sub-ranges, as SDL_GPU and WebGPU render passes allow.
+ }
+ 
+ void cf_gles_apply_viewport(int x, int y, int w, int h)

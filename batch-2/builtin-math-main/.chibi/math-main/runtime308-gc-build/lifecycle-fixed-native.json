@@ -1,0 +1,45 @@
+{
+  "selector": "--package-compiler-chibi-math-native",
+  "command": [
+    "python3",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-validation/tools/test_policy.py",
+    "native",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/test_language",
+    "--package-compiler-chibi-math-native"
+  ],
+  "status": 1,
+  "wall_seconds": 20.004505624994636,
+  "binary_sha256": "316142a7b1ac398f81eb374757cc70e64c29aa8635a288fe01f76900c71a5301",
+  "source_sha256": "70926648c833dc7236021c97a77bb0984f7194e342f11e9a5d86f060188f588c",
+  "log_sha256": "5e5d0685d79ecb8c3f38ba7175f6a3b76bd8b9c1cbf1ba9ebaadf8cca9a9d958",
+  "pressure_records": [
+    {
+      "backend": "BYTECODE",
+      "collection_marks": 850,
+      "mask": 63,
+      "calls": 3
+    },
+    {
+      "backend": "SLJIT",
+      "collection_marks": 850,
+      "mask": 63,
+      "calls": 3
+    }
+  ],
+  "summary": {
+    "passed": 0,
+    "failed": 1,
+    "total": 1,
+    "suites": 0,
+    "assertions": 529
+  },
+  "policy_wall_seconds": 19.899,
+  "pressure_log_requirements_passed": false,
+  "lifecycle_fixed_sources_unchanged": true,
+  "new_binary_unchanged": true,
+  "initial_failure_archive_unchanged": true,
+  "original_top_evidence_unchanged": true,
+  "runtime308_source_snapshot_unchanged": true,
+  "runtime308_evidence_unchanged": true,
+  "runtime308_binaries_unchanged": true
+}

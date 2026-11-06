@@ -1,0 +1,20 @@
+package facts
+
+// Floating-to-integer conversions truncate toward zero, clamp at the
+// destination's bounds and map NaN to zero, for values only known at run time.
+@test
+Calls :: () {
+    nan := Divide(0.0, 0.0);
+    infinity := Divide(1.0, 0.0);
+    assert(ToI32(2.9) == 2 && ToI32(-2.9) == -2, "truncates toward zero");
+    assert(ToI32(Negate(0.0)) == 0, "negative zero");
+    assert(ToI32(3000000000.0) == 2147483647 && ToI32(-3000000000.0) == -2147483647 - 1, "clamps at i32's bounds");
+    assert(ToI32(infinity) == 2147483647 && ToI32(Negate(infinity)) == -2147483647 - 1, "infinities clamp");
+    assert(ToI32(nan) == 0, "NaN is zero");
+    assert(ToU8(-1.5) == 0 && ToU8(255.9) == 255 && ToU8(300.0) == 255 && ToU8(nan) == 0, "u8");
+    assert(ToI64(10000000000000000000.0) == 9223372036854775807, "clamps at i64's maximum");
+    assert(ToI64(-10000000000000000000.0) == -9223372036854775807 - 1, "clamps at i64's minimum");
+    assert(ToI64(nan) == 0, "i64 NaN");
+    assert(ToU64(-1.0) == 0 && ToU64(20000000000000000000.0) == 18446744073709551615 && ToU64(nan) == 0, "u64");
+    assert(NumberToI32(2.5) == 2 && NumberToI32(-2.5) == -2, "number truncates");
+}

@@ -1,0 +1,11 @@
+package procedure_character
+import os "core:os"
+foreign import libc "system:c"
+foreign libc { dlsym :: (handle: rawptr, name: cstring) -> rawptr }
+@test
+ProcedureCharacterName :: () {
+    handle: u64 = 0;
+    if (os.Platform() == "Darwin") { handle = 18446744073709551614; }
+    char: fn(value: i32) -> i32 = dlsym(handle, "abs");
+    assert(char(-7) == 7);
+}

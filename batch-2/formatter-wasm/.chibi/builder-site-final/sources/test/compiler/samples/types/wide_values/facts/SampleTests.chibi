@@ -1,0 +1,26 @@
+package facts
+
+// wide values
+@test
+Calls :: () {
+    a1_0: int = 1;
+    r1: u64 = Shifts(a1_0);
+    e1: u64 = 16;
+    assert(r1 == e1, "Shifts call 1");
+    a2_0: int = 3;
+    a2_1: int = 3;
+    r2: bool = Equal(a2_0, a2_1);
+    e2: bool = true;
+    assert(r2 == e2, "Equal call 2");
+    r3: i64 = Twice();
+    e3: i64 = -10000000000;
+    assert(r3 == e3, "Twice call 3");
+    a4_0: i64 = -1;
+    r4: bool = Negative(a4_0);
+    e4: bool = true;
+    assert(r4 == e4, "Negative call 4");
+    a5_0: int = 5;
+    r5: u64 = Pick(a5_0);
+    e5: u64 = 5000000035;
+    assert(r5 == e5, "Pick call 5");
+}

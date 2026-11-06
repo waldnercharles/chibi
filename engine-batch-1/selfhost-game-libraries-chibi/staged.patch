@@ -1,0 +1,1846 @@
+diff --git a/src/authoring/native_graph_prepare.c b/src/authoring/native_graph_prepare.c
+index 8760df3ab..7786dec97 100644
+--- a/src/authoring/native_graph_prepare.c
++++ b/src/authoring/native_graph_prepare.c
+@@ -2,7 +2,6 @@
+ 
+ #include "authoring/graph_sources.h"
+ #include "authoring/shader_prepare.h"
+-#include "authoring/source_graph_library.h"
+ #include "graph/compiler/material_field.h"
+ #include "graph/compiler/validation.h"
+ #include "graph/document/library.h"
+@@ -21,7 +20,8 @@ static bool failed(char *error, size_t size, const char *path, const char *messa
+ }
+ bool authoring_native_graphs_prepare(
+     const char *content,
+-    const authoring_sources *code,
++    const behavior_asset *const *libraries,
++    int library_count,
+     material_fields *fields,
+     char *error,
+     size_t size
+@@ -31,7 +31,6 @@ bool authoring_native_graphs_prepare(
+     if (!authoring_graph_sources_load(content, &sources)) {
+         return failed(error, size, content, "Cannot load native graph documents");
+     }
+-    behavior_asset **libraries = code ? authoring_source_graph_libraries(code) : NULL;
+     const behavior_asset **catalog = NULL, **models = NULL;
+     behavior_asset **linked = NULL;
+     bool valid = false;
+@@ -42,7 +41,7 @@ bool authoring_native_graphs_prepare(
+                 goto done;
+             }
+         }
+-        for (int j = 0; j < acount(libraries); j++) {
++        for (int j = 0; j < library_count; j++) {
+             if (!strcmp(sources[i].asset->name, libraries[j]->name)) {
+                 failed(error, size, sources[i].path, "Native graph declaration shares a source library's name");
+                 goto done;
+@@ -50,7 +49,7 @@ bool authoring_native_graphs_prepare(
+         }
+         apush(catalog, sources[i].asset);
+     }
+-    for (int i = 0; i < acount(libraries); i++) {
++    for (int i = 0; i < library_count; i++) {
+         apush(catalog, libraries[i]);
+     }
+     /* Library linking is the same graph-owned transformation used by preview;
+@@ -119,7 +118,6 @@ done:
+     afree(linked);
+     afree(models);
+     afree(catalog);
+-    authoring_source_graph_libraries_free(libraries);
+     authoring_graph_sources_free(sources);
+     return valid;
+ }
+diff --git a/src/authoring/native_graph_prepare.h b/src/authoring/native_graph_prepare.h
+index a2fd88da1..d0cab1233 100644
+--- a/src/authoring/native_graph_prepare.h
++++ b/src/authoring/native_graph_prepare.h
+@@ -1,12 +1,13 @@
+ #pragma once
+-#include "authoring/source_collection.h"
++#include "graph/model/behavior_asset.h"
+ #include "runtime/material_field.h"
+ /* Compiles a bounded native graph source collection into supplied field and
+- * shader/model catalogs. Graphs link the source libraries in `sources`, or
+- * none when it is NULL. No preview world, entities or executable callbacks. */
++ * shader/model catalogs. Borrows the source libraries' native graph
++ * projections. No preview world, entities or executable callbacks. */
+ bool authoring_native_graphs_prepare(
+     const char *content,
+-    const authoring_sources *sources,
++    const behavior_asset *const *libraries,
++    int library_count,
+     material_fields *,
+     char *error,
+     size_t size
+diff --git a/src/authoring/project_prepare.c b/src/authoring/project_prepare.c
+index 0215e742f..2ed53ae54 100644
+--- a/src/authoring/project_prepare.c
++++ b/src/authoring/project_prepare.c
+@@ -14,6 +14,7 @@
+ #include "authoring/sound_prepare.h"
+ #include "authoring/source_asset.h"
+ #include "authoring/source_collection.h"
++#include "authoring/source_graph_library.h"
+ #include "authoring/ui_prepare.h"
+ #include "authoring/visual_prepare.h"
+ #include "render/scene3d_parts.h"
+@@ -601,7 +602,22 @@ static bool prepare(
+         }
+         catalog = authoring_sources_source_catalog(sources);
+     }
+-    if (!authoring_native_graphs_prepare(project.content, sources, fields, error, size)) {
++    behavior_asset **libraries = NULL;
++    if (sources) {
++        libraries = authoring_source_graph_libraries(sources);
++    } else if (!authoring_source_graph_libraries_catalog(catalog, &libraries, error, size)) {
++        goto done;
++    }
++    bool graphs_prepared = authoring_native_graphs_prepare(
++        project.content,
++        (const behavior_asset *const *)libraries,
++        acount(libraries),
++        fields,
++        error,
++        size
++    );
++    authoring_source_graph_libraries_free(libraries);
++    if (!graphs_prepared) {
+         goto done;
+     }
+     native_prepared_context event_context = { .native = options->native };
+diff --git a/src/authoring/project_prepare.h b/src/authoring/project_prepare.h
+index f7a7c557c..ef17348ef 100644
+--- a/src/authoring/project_prepare.h
++++ b/src/authoring/project_prepare.h
+@@ -36,8 +36,9 @@ bool authoring_project_prepare(
+  * prepared module per executable content source, identified as stage zero
+  * identifies its own, script_catalog_id("module", the source's content
+  * path). Assembly reads the declarations, scenes, prototypes and resources
+- * itself and links the modules from their bytes. Source graph libraries are
+- * not linked, since no analysis is available. Borrows `modules`. */
++ * itself and links the modules from their bytes. The native field/shader
++ * backend independently analyzes library sources for their graph projection;
++ * this never compiles replacement executable modules. Borrows `modules`. */
+ bool authoring_project_assemble(
+     const authoring_project_options *,
+     const package_module *modules,
+diff --git a/src/authoring/source_graph_library.c b/src/authoring/source_graph_library.c
+index a7cac2fc6..476273b3e 100644
+--- a/src/authoring/source_graph_library.c
++++ b/src/authoring/source_graph_library.c
+@@ -8,6 +8,7 @@
+ #include "support/xalloc.h"
+ 
+ #include <assert.h>
++#include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ 
+@@ -278,16 +279,17 @@ static graph *lower_function(library *all, library *lib, int function)
+     return g;
+ }
+ 
+-behavior_asset **authoring_source_graph_libraries(const authoring_sources *sources)
++static behavior_asset **graph_libraries(
++    const script_catalog *catalog,
++    const script_analysis *const *analyses,
++    int count
++)
+ {
+     library *all = NULL;
+-    for (int i = 0; i < authoring_sources_count(sources); i++) {
+-        const authoring_source *source = authoring_sources_at(sources, i);
+-        const script_analysis *a = source->analysis;
+-        if (!source->valid || a->kind != SCRIPT_PROGRAM_LIBRARY) {
+-            continue;
+-        }
+-        library lib = { authoring_sources_catalog(sources),
++    for (int i = 0; i < count; i++) {
++        const script_analysis *a = analyses[i];
++        assert(a->valid && a->kind == SCRIPT_PROGRAM_LIBRARY);
++        library lib = { catalog,
+                         a,
+                         behavior_asset_new(a->name),
+                         xcalloc((size_t)a->function_count + 1, sizeof(graph *)),
+@@ -311,6 +313,83 @@ behavior_asset **authoring_source_graph_libraries(const authoring_sources *sourc
+     return libraries;
+ }
+ 
++behavior_asset **authoring_source_graph_libraries(const authoring_sources *sources)
++{
++    const script_analysis **analyses = NULL;
++    for (int i = 0; i < authoring_sources_count(sources); i++) {
++        const authoring_source *source = authoring_sources_at(sources, i);
++        if (source->valid && source->analysis->kind == SCRIPT_PROGRAM_LIBRARY) {
++            apush(analyses, source->analysis);
++        }
++    }
++    behavior_asset **libraries = graph_libraries(
++        authoring_sources_catalog(sources),
++        analyses,
++        acount(analyses)
++    );
++    afree(analyses);
++    return libraries;
++}
++
++bool authoring_source_graph_libraries_catalog(
++    const source_catalog *sources,
++    behavior_asset ***out,
++    char *error,
++    size_t size
++)
++{
++    assert(sources && out && !*out && !source_catalog_diagnostic_count(sources));
++    const script_catalog *catalog = source_catalog_view(sources);
++    int request_count = 0;
++    const script_specialization_request *requests = source_catalog_requests(sources, &request_count);
++    script_analysis **analyses = NULL;
++    bool valid = true;
++    for (int i = 0; i < source_catalog_source_count(sources); i++) {
++        const source_catalog_source *source = source_catalog_source_at(sources, i);
++        if (source->declarations->kind != SCRIPT_PROGRAM_LIBRARY) {
++            continue;
++        }
++        script_analysis *analysis = request_count ? script_analyze_document_requested(
++                                                        source->syntax,
++                                                        catalog,
++                                                        source->identity,
++                                                        requests,
++                                                        request_count
++                                                    )
++                                                  : script_analyze_document(
++                                                        source->syntax,
++                                                        catalog,
++                                                        source->identity
++                                                    );
++        apush(analyses, analysis);
++        if (!analysis->valid) {
++            const script_diagnostic *diagnostic = &analysis->diagnostics[0];
++            if (size) {
++                snprintf(
++                    error,
++                    size,
++                    "%s:%d:%d (byte %d): %s",
++                    source->path,
++                    diagnostic->range.line,
++                    diagnostic->range.column,
++                    diagnostic->range.start,
++                    diagnostic->message
++                );
++            }
++            valid = false;
++            break;
++        }
++    }
++    if (valid) {
++        *out = graph_libraries(catalog, (const script_analysis *const *)analyses, acount(analyses));
++    }
++    for (int i = 0; i < acount(analyses); i++) {
++        script_analysis_free(analyses[i]);
++    }
++    afree(analyses);
++    return valid;
++}
++
+ void authoring_source_graph_libraries_free(behavior_asset **libraries)
+ {
+     for (int i = 0; i < acount(libraries); i++) {
+diff --git a/src/authoring/source_graph_library.h b/src/authoring/source_graph_library.h
+index 6b0aad80a..f48b3a9ae 100644
+--- a/src/authoring/source_graph_library.h
++++ b/src/authoring/source_graph_library.h
+@@ -17,6 +17,17 @@
+  * An array.h vector of owned assets, freed with
+  * authoring_source_graph_libraries_free. */
+ behavior_asset **authoring_source_graph_libraries(const authoring_sources *);
++/* The same native field/shader graph projection from a checked declaration
++ * snapshot. Analyzes only library sources with that snapshot's identities,
++ * catalog and specialization requests; never lowers executable modules.
++ * Graphs own their names and defaults after the temporary analyses are freed.
++ * `out` starts empty and stays empty on failure. */
++bool authoring_source_graph_libraries_catalog(
++    const source_catalog *,
++    behavior_asset ***out,
++    char *error,
++    size_t size
++);
+ void authoring_source_graph_libraries_free(behavior_asset **);
+ 
+ #endif
+diff --git a/src/host/compile_main.c b/src/host/compile_main.c
+index 68c9fa169..79e9f5bc2 100644
+--- a/src/host/compile_main.c
++++ b/src/host/compile_main.c
+@@ -182,7 +182,7 @@ static bool write_text(const char *path, const char *text)
+     bool written = file && fputs(text, file) >= 0;
+     return file && !fclose(file) && written;
+ }
+-/* Writes stage one's CompileBehaviors input for the project: its executable
++/* Writes stage one's CompileBehaviorsWithCatalog input for the project: its executable
+  * sources, and what their modules link against in the catalog they compile
+  * against. Reports the executable source count on stdout only after the
+  * complete input has been written. */
+@@ -209,7 +209,7 @@ static int stage_one_input(const char *project, const char *output)
+             identities[i] = source_catalog_source_at(sources, i)->identity;
+             texts[i] = source_catalog_source_at(sources, i)->text;
+         }
+-        json = compiler_behavior_input_json(source_catalog_view(sources), identities, texts, count, &length);
++        json = compiler_behavior_catalog_input_json(source_catalog_view(sources), identities, texts, count, &length);
+         free(identities);
+         free(texts);
+     }
+diff --git a/src/toolchain/compiler_target.c b/src/toolchain/compiler_target.c
+index 4693b249f..9b999806a 100644
+--- a/src/toolchain/compiler_target.c
++++ b/src/toolchain/compiler_target.c
+@@ -11,6 +11,12 @@
+ #include <stddef.h>
+ #include <yyjson.h>
+ 
++/* Whether the input lists a type: every one that is not internal or a union.
++ * Stage zero requires each of them but the namespaces. */
++static bool exported(const script_catalog_type *t)
++{
++    return !t->internal && !(t->type.flags & SCRIPT_TYPE_UNION);
++}
+ /* A port's storage as Compile takes it: 0 for a generic port, whose call
+  * infers its type, -2 for a wildcard, which takes each argument's own type,
+  * and -1 for a type the compiler cannot pass. */
+@@ -26,6 +32,45 @@ static int port_storage(script_type type)
+     return type.flags || type.nominal || type.storage == PIN_FLOW ? -1
+                                                                   : (int)type.storage;
+ }
++/* A fixed native type, including every alias it follows, must have an
++ * exported native declaration of the same storage and target layout. */
++static bool native_port_type(const script_catalog *catalog, script_type type)
++{
++    const script_catalog_type *first = script_catalog_type_by_id(catalog, type.nominal);
++    const script_catalog_type *at = first;
++    for (int i = 0; i < catalog->type_count; i++) {
++        if (!at || !exported(at) || at->authored_record || at->type.flags ||
++            at->type.container != PIN_CONTAINER_SINGLE || at->type.collection ||
++            at->type.storage != type.storage || at->type.nominal != at->id ||
++            !at->size || at->size != first->size || at->layout != first->layout ||
++            (type.storage == PIN_STRUCT && !at->layout)) {
++            return false;
++        }
++        if (!at->underlying) {
++            return true;
++        }
++        at = script_catalog_type_by_id(catalog, at->underlying);
++    }
++    return false;
++}
++/* CatalogPort adds fixed native records and handles to the bootstrap ports.
++ * Nested collections, nominal arrays and other nominal types stay unsupported. */
++static int catalog_port_storage(const script_catalog *catalog, script_type type)
++{
++    if (type.collection || (type.container != PIN_CONTAINER_SINGLE &&
++                            type.container != PIN_CONTAINER_ARRAY)) {
++        return -1;
++    }
++    if (!type.nominal) {
++        return port_storage(type);
++    }
++    if (type.flags || type.container != PIN_CONTAINER_SINGLE ||
++        (type.storage != PIN_STRUCT && type.storage != PIN_HANDLE) ||
++        !native_port_type(catalog, type)) {
++        return -1;
++    }
++    return (int)type.storage;
++}
+ /* Whether a capability is a native the compiler calls: a data function with
+  * no flow, outcomes or suspension. */
+ static bool callable(const script_catalog_capability *c)
+@@ -51,7 +96,7 @@ static int native_index(const script_catalog *catalog, uint64_t id)
+     return -1;
+ }
+ /* The callable natives of catalog, with their ports and identities. */
+-static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const script_catalog *catalog)
++static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const script_catalog *catalog, bool catalog_ports)
+ {
+     yyjson_mut_val *natives = yyjson_mut_arr_add_arr(doc, target);
+     yyjson_mut_val *ports = yyjson_mut_arr_add_arr(doc, target);
+@@ -74,9 +119,15 @@ static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const scrip
+                                                          : &c->results[j - c->parameter_count];
+             yyjson_mut_val *port = yyjson_mut_arr_add_obj(doc, ports);
+             yyjson_mut_obj_add_str(doc, port, "name", declared->name ? declared->name : "");
+-            yyjson_mut_obj_add_int(doc, port, "storage", port_storage(declared->type));
++            int storage = catalog_ports
++                            ? catalog_port_storage(catalog, declared->type)
++                            : port_storage(declared->type);
++            yyjson_mut_obj_add_int(doc, port, "storage", storage);
+             yyjson_mut_obj_add_int(doc, port, "container", (int)declared->type.container);
+             yyjson_mut_obj_add_bool(doc, port, "c_string", declared->c_string);
++            if (catalog_ports) {
++                yyjson_mut_obj_add_uint(doc, port, "nominal", declared->type.nominal);
++            }
+         }
+         yyjson_mut_arr_add_uint(doc, identities, c->id);
+         yyjson_mut_arr_add_uint(doc, identities, script_catalog_capability_abi(catalog, c));
+@@ -84,7 +135,7 @@ static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const scrip
+ }
+ /* The value layout, prepared ABI, instruction names and natives, appended to
+  * `target`. */
+-static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const script_catalog *catalog)
++static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const script_catalog *catalog, bool catalog_ports)
+ {
+     const struct
+     {
+@@ -118,7 +169,7 @@ static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const script
+     for (int i = 0; i < execution_prepared_instruction_count(); i++) {
+         yyjson_mut_arr_add_str(doc, names, execution_prepared_instruction_name(i));
+     }
+-    add_natives(doc, target, catalog);
++    add_natives(doc, target, catalog, catalog_ports);
+ }
+ static char *written(yyjson_mut_doc *doc, size_t *length)
+ {
+@@ -132,21 +183,25 @@ char *compiler_target_json(const script_catalog *catalog, size_t *length)
+     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+     yyjson_mut_val *target = yyjson_mut_arr(doc);
+     yyjson_mut_doc_set_root(doc, target);
+-    add_target(doc, target, catalog);
++    add_target(doc, target, catalog, false);
+     return written(doc, length);
+ }
+ 
+-char *compiler_target_effects_json(const script_catalog *catalog, size_t *length)
++static void add_effects(yyjson_mut_doc *doc, yyjson_mut_val *effects, const script_catalog *catalog)
+ {
+-    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+-    yyjson_mut_val *root = yyjson_mut_arr(doc);
+-    yyjson_mut_doc_set_root(doc, root);
+     for (int i = 0; i < catalog->capability_count; i++) {
+         const script_catalog_capability *capability = &catalog->capabilities[i];
+         if (callable(capability)) {
+-            yyjson_mut_arr_add_uint(doc, root, capability->effects);
++            yyjson_mut_arr_add_uint(doc, effects, capability->effects);
+         }
+     }
++}
++char *compiler_target_effects_json(const script_catalog *catalog, size_t *length)
++{
++    yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
++    yyjson_mut_val *root = yyjson_mut_arr(doc);
++    yyjson_mut_doc_set_root(doc, root);
++    add_effects(doc, root, catalog);
+     return written(doc, length);
+ }
+ /* Each event, with a range of payload fields, then the fields. */
+@@ -178,12 +233,6 @@ static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_c
+         }
+     }
+ }
+-/* Whether the input lists a type: every one that is not internal or a union.
+- * Stage zero requires each of them but the namespaces. */
+-static bool exported(const script_catalog_type *t)
+-{
+-    return !t->internal && !(t->type.flags & SCRIPT_TYPE_UNION);
+-}
+ /* The index among the exported types of the type `id`; -1 for none. */
+ static int type_index(const script_catalog *catalog, uint64_t id)
+ {
+@@ -311,12 +360,13 @@ static void add_globals(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_
+         );
+     }
+ }
+-char *compiler_behavior_input_json(
++static char *behavior_input_json(
+     const script_catalog *catalog,
+     const char *const *identities,
+     const char *const *sources,
+     int count,
+-    size_t *length
++    size_t *length,
++    bool catalog_ports
+ )
+ {
+     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
+@@ -328,12 +378,35 @@ char *compiler_behavior_input_json(
+         yyjson_mut_arr_add_str(doc, named, identities[i]);
+         yyjson_mut_arr_add_str(doc, texts, sources[i]);
+     }
+-    add_target(doc, root, catalog);
++    add_target(doc, root, catalog, catalog_ports);
+     add_events(doc, root, catalog);
+     add_types(doc, root, catalog);
+     yyjson_mut_arr_add_uint(doc, root, catalog->entity_type);
+     add_operators(doc, root, catalog);
+     add_globals(doc, root, catalog);
+     add_makes(doc, root, catalog);
++    if (catalog_ports) {
++        add_effects(doc, yyjson_mut_arr_add_arr(doc, root), catalog);
++    }
+     return written(doc, length);
+ }
++char *compiler_behavior_input_json(
++    const script_catalog *catalog,
++    const char *const *identities,
++    const char *const *sources,
++    int count,
++    size_t *length
++)
++{
++    return behavior_input_json(catalog, identities, sources, count, length, false);
++}
++char *compiler_behavior_catalog_input_json(
++    const script_catalog *catalog,
++    const char *const *identities,
++    const char *const *sources,
++    int count,
++    size_t *length
++)
++{
++    return behavior_input_json(catalog, identities, sources, count, length, true);
++}
+diff --git a/src/toolchain/compiler_target.h b/src/toolchain/compiler_target.h
+index c0f07dc01..8275b9e45 100644
+--- a/src/toolchain/compiler_target.h
++++ b/src/toolchain/compiler_target.h
+@@ -43,5 +43,20 @@ char *compiler_behavior_input_json(
+     int count,
+     size_t *length
+ );
++/* The rich behavior compiler's arguments: the same seventeen as the behavior
++ * input, with CatalogPort rows adding each port's nominal type ID, then the
++ * callable natives' effect masks in matching order. Fixed nominal ports are
++ * supported only for single native records and handles whose exported type
++ * and alias chain have matching storage and target layout. Authored records,
++ * nominal arrays, sets, maps, nested collections and other flagged types retain
++ * unsupported storage (-1). The bootstrap target and behavior input stay
++ * unchanged. Malloc-owned; release with free(). */
++char *compiler_behavior_catalog_input_json(
++    const script_catalog *,
++    const char *const *identities,
++    const char *const *sources,
++    int count,
++    size_t *length
++);
+ 
+ #endif
+diff --git a/test/runtime/fields.c b/test/runtime/fields.c
+index c8d465cf2..db20ac3e6 100644
+--- a/test/runtime/fields.c
++++ b/test/runtime/fields.c
+@@ -1004,26 +1004,36 @@ TEST_CASE(field_source_library_keeps_parameter_defaults)
+                 "    }\n"
+                 "}\n";
+     test_source_fixture fixture = test_source_prepare("content/libraries/Discs.chibi", text);
+-    behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
+-    REQUIRE(acount(libraries) == 1);
+-    graph *disc = behavior_asset_find_graph_by_name(libraries[0], "Disc");
+-    REQUIRE(disc);
+-    behavior_asset *field = behavior_asset_new("DiscField");
+-    field->domain = BEHAVIOR_DOMAIN_FIELD;
+-    node *call = behavior_asset_add_function_call_node(field, disc);
+-    node *output = add(field, "Field Output");
+-    REQUIRE(call && output && !graph_connect_data(field->graph, call, 0, output, 0));
++    behavior_asset **projections[2] = { authoring_source_graph_libraries(fixture.sources),
++                                        NULL };
+     char error[256];
+-    const behavior_asset *catalog = libraries[0];
+-    behavior_asset *linked = behavior_asset_link_libraries(field, &catalog, 1, error, sizeof error);
+-    REQUIRE(linked);
+-    field_program *p = compile(linked);
+-    REQUIRE(p && sample(p, 0, 0) == -40);
+-    field_program_free(p);
+-    behavior_asset_free(linked);
+-    behavior_asset_free(field);
+-    authoring_source_graph_libraries_free(libraries);
++    REQUIRE(authoring_source_graph_libraries_catalog(
++        authoring_sources_source_catalog(fixture.sources),
++        &projections[1],
++        error,
++        sizeof error
++    ));
+     test_source_free(&fixture);
++    for (int projection = 0; projection < 2; projection++) {
++        behavior_asset **libraries = projections[projection];
++        REQUIRE(acount(libraries) == 1);
++        graph *disc = behavior_asset_find_graph_by_name(libraries[0], "Disc");
++        REQUIRE(disc);
++        behavior_asset *field = behavior_asset_new("DiscField");
++        field->domain = BEHAVIOR_DOMAIN_FIELD;
++        node *call = behavior_asset_add_function_call_node(field, disc);
++        node *output = add(field, "Field Output");
++        REQUIRE(call && output && !graph_connect_data(field->graph, call, 0, output, 0));
++        const behavior_asset *catalog = libraries[0];
++        behavior_asset *linked = behavior_asset_link_libraries(field, &catalog, 1, error, sizeof error);
++        REQUIRE(linked);
++        field_program *p = compile(linked);
++        REQUIRE(p && sample(p, 0, 0) == -40);
++        field_program_free(p);
++        behavior_asset_free(linked);
++        behavior_asset_free(field);
++        authoring_source_graph_libraries_free(libraries);
++    }
+     return true;
+ }
+ 
+@@ -1285,57 +1295,95 @@ TEST_CASE(field_source_library_functions_call_functions)
+                   "}\n" },
+     };
+     test_source_fixture fixture = test_sources_prepare(sources, 2);
+-    behavior_asset **libraries = authoring_source_graph_libraries(fixture.sources);
+-    REQUIRE(acount(libraries) == 2);
+-    const behavior_asset *catalog[2] = { NULL };
+-    for (int i = 0; i < 2; i++) {
+-        catalog[strcmp(libraries[i]->name, "Cave") != 0] = libraries[i];
++    behavior_asset **projections[2] = { authoring_source_graph_libraries(fixture.sources),
++                                        NULL };
++    char error[256];
++    REQUIRE(authoring_source_graph_libraries_catalog(
++        authoring_sources_source_catalog(fixture.sources),
++        &projections[1],
++        error,
++        sizeof error
++    ));
++    test_source_free(&fixture);
++    for (int projection = 0; projection < 2; projection++) {
++        behavior_asset **libraries = projections[projection];
++        REQUIRE(acount(libraries) == 2);
++        const behavior_asset *catalog[2] = { NULL };
++        for (int i = 0; i < 2; i++) {
++            catalog[strcmp(libraries[i]->name, "Cave") != 0] = libraries[i];
++        }
++        REQUIRE(catalog[0] && catalog[1]);
++        graph *rock = behavior_asset_find_graph_by_name(catalog[0], "Rock");
++        REQUIRE(rock);
++        REQUIRE(!behavior_asset_find_graph_by_name(catalog[0], "Bad"));
++        REQUIRE(
++            behavior_asset_find_graph_by_name(catalog[1], "Pair") &&
++            behavior_asset_find_graph_by_name(catalog[1], "Disc") &&
++            behavior_asset_find_graph_by_name(catalog[1], "Ring") &&
++            !behavior_asset_find_graph_by_name(catalog[1], "Loop") &&
++            !behavior_asset_find_graph_by_name(catalog[1], "Twice")
++        );
++        behavior_asset *cave = field("CaveField");
++        node *call = behavior_asset_add_function_call_node(cave, rock);
++        REQUIRE(call);
++        wire(cave, add(cave, "Field X"), call, 0);
++        wire(cave, add(cave, "Field Y"), call, 1);
++        wire(cave, call, add(cave, "Field Output"), 0);
++        REQUIRE(!behavior_asset_link_libraries(cave, catalog, 1, error, sizeof error));
++        REQUIRE(strstr(error, "missing function library"));
++        behavior_asset *linked = behavior_asset_link_libraries(cave, catalog, 2, error, sizeof error);
++        REQUIRE(linked);
++        field_program *lowered = compile(linked);
++        /* -min(circle(x - 3, y, 4), |circle(x, y, 2)|) */
++        field_ir code[] = {
++            { .op = FIELD_X },
++            { .op = FIELD_Y },
++            { .op = FIELD_CONSTANT, .value = 3 },
++            { .op = FIELD_SUBTRACT, .count = 2, .inputs = { 0, 2 } },
++            { .op = FIELD_CONSTANT, .value = 4 },
++            { .op = FIELD_CIRCLE, .count = 3, .inputs = { 3, 1, 4 } },
++            { .op = FIELD_CONSTANT, .value = 2 },
++            { .op = FIELD_CIRCLE, .count = 3, .inputs = { 0, 1, 6 } },
++            { .op = FIELD_ABS, .count = 1, .inputs = { 7 } },
++            { .op = FIELD_MIN, .count = 2, .inputs = { 5, 8 } },
++            { .op = FIELD_NEGATE, .count = 1, .inputs = { 9 } },
++        };
++        field_program *expected = field_program_new(code, 11, 10, NULL, 0, error, sizeof error);
++        REQUIRE(expected);
++        REQUIRE(field_program_instruction_count(lowered) == 11 && same_bakes(lowered, expected));
++        field_program_free(expected);
++        field_program_free(lowered);
++        behavior_asset_free(linked);
++        behavior_asset_free(cave);
++        authoring_source_graph_libraries_free(libraries);
+     }
+-    REQUIRE(catalog[0] && catalog[1]);
+-    graph *rock = behavior_asset_find_graph_by_name(catalog[0], "Rock");
+-    REQUIRE(rock);
+-    REQUIRE(!behavior_asset_find_graph_by_name(catalog[0], "Bad"));
+-    REQUIRE(
+-        behavior_asset_find_graph_by_name(catalog[1], "Pair") &&
+-        behavior_asset_find_graph_by_name(catalog[1], "Disc") &&
+-        behavior_asset_find_graph_by_name(catalog[1], "Ring") &&
+-        !behavior_asset_find_graph_by_name(catalog[1], "Loop") &&
+-        !behavior_asset_find_graph_by_name(catalog[1], "Twice")
++    return true;
++}
++
++TEST_CASE(field_source_catalog_reports_invalid_library_body)
++{
++    test_source_fixture fixture = test_source_prepare(
++        "content/libraries/Shape.chibi",
++        "Shape :: library { Read :: () -> float { return 0.0; } }"
+     );
+-    behavior_asset *cave = field("CaveField");
+-    node *call = behavior_asset_add_function_call_node(cave, rock);
+-    REQUIRE(call);
+-    wire(cave, add(cave, "Field X"), call, 0);
+-    wire(cave, add(cave, "Field Y"), call, 1);
+-    wire(cave, call, add(cave, "Field Output"), 0);
+-    char error[256];
+-    REQUIRE(!behavior_asset_link_libraries(cave, catalog, 1, error, sizeof error));
+-    REQUIRE(strstr(error, "missing function library"));
+-    behavior_asset *linked = behavior_asset_link_libraries(cave, catalog, 2, error, sizeof error);
+-    REQUIRE(linked);
+-    field_program *lowered = compile(linked);
+-    /* -min(circle(x - 3, y, 4), |circle(x, y, 2)|) */
+-    field_ir code[] = {
+-        { .op = FIELD_X },
+-        { .op = FIELD_Y },
+-        { .op = FIELD_CONSTANT, .value = 3 },
+-        { .op = FIELD_SUBTRACT, .count = 2, .inputs = { 0, 2 } },
+-        { .op = FIELD_CONSTANT, .value = 4 },
+-        { .op = FIELD_CIRCLE, .count = 3, .inputs = { 3, 1, 4 } },
+-        { .op = FIELD_CONSTANT, .value = 2 },
+-        { .op = FIELD_CIRCLE, .count = 3, .inputs = { 0, 1, 6 } },
+-        { .op = FIELD_ABS, .count = 1, .inputs = { 7 } },
+-        { .op = FIELD_MIN, .count = 2, .inputs = { 5, 8 } },
+-        { .op = FIELD_NEGATE, .count = 1, .inputs = { 9 } },
++    const source_catalog_edit edit = {
++        .path = "content/libraries/Shape.chibi",
++        .text = "Shape :: library { Read :: () -> float { return Missing(); } "
++                "}",
+     };
+-    field_program *expected = field_program_new(code, 11, 10, NULL, 0, error, sizeof error);
+-    REQUIRE(expected);
+-    REQUIRE(field_program_instruction_count(lowered) == 11 && same_bakes(lowered, expected));
+-    field_program_free(expected);
+-    field_program_free(lowered);
+-    behavior_asset_free(linked);
+-    behavior_asset_free(cave);
+-    authoring_source_graph_libraries_free(libraries);
++    source_catalog *catalog = source_catalog_replaced(
++        "content",
++        authoring_language_catalog_view(fixture.native),
++        &edit,
++        1
++    );
++    REQUIRE(!source_catalog_diagnostic_count(catalog));
++    behavior_asset **libraries = NULL;
++    char error[256];
++    REQUIRE(!authoring_source_graph_libraries_catalog(catalog, &libraries, error, sizeof error));
++    REQUIRE(!libraries);
++    REQUIRE(strstr(error, "content/libraries/Shape.chibi:1:") && strstr(error, "Missing"));
++    source_catalog_free(catalog);
+     test_source_free(&fixture);
+     return true;
+ }
+@@ -1500,6 +1548,7 @@ void test_fields()
+     RUN_TEST_CASE(field_source_library_calls_follow_names);
+     RUN_TEST_CASE(field_source_library_calls_every_field_node);
+     RUN_TEST_CASE(field_source_library_functions_call_functions);
++    RUN_TEST_CASE(field_source_catalog_reports_invalid_library_body);
+     RUN_TEST_CASE(field_source_library_hot_apply);
+     RUN_TEST_CASE(field_terrain_chunks_and_connectivity);
+     test_graph_packs_clear();
+diff --git a/test/tools/environment_authoring.c b/test/tools/environment_authoring.c
+index 10811d5b0..2e54e644f 100644
+--- a/test/tools/environment_authoring.c
++++ b/test/tools/environment_authoring.c
+@@ -6,6 +6,7 @@
+ #include "runtime/materials.h"
+ #include "runtime/native_prepared.h"
+ #include "runtime/scenes/physics.h"
++#include "support/arena.h"
+ #include "support/array.h"
+ #include "test/tools/fixture.h"
+ #include "third_party/pico_headers/pico_unit.h"
+@@ -23,6 +24,9 @@ static authoring_graph_catalog *palette;
+ static const registry_pack **previous_packs;
+ static bool palette_installed;
+ static authoring_project_artifact artifact;
++static authoring_project_artifact assembled;
++static arena module_names;
++static package_module *modules;
+ static player *runtime;
+ static const char *controller;
+ static char project[4096], scratch[64];
+@@ -42,6 +46,10 @@ static void cleanup()
+     }
+     runtime = NULL;
+     authoring_project_artifact_free(&artifact);
++    authoring_project_artifact_free(&assembled);
++    afree(modules);
++    modules = NULL;
++    arena_free(&module_names);
+     if (palette_installed) {
+         registry_set_packs(previous_packs, acount(previous_packs));
+     }
+@@ -119,6 +127,28 @@ static bool cpu_scene(void *, void *, const scene *, char *, size_t)
+ static void commit_cpu_resources(void *, void *, world *) {}
+ static void release_cpu_resources(void *, void *) {}
+ 
++static bool load_artifact(const authoring_project_artifact *prepared)
++{
++    char error[512] = { 0 };
++    native_prepared_context context = { .native = native };
++    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
++    player_host host = {
++        .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
++        .linker = &linker,
++        .resources = { .stage = stage_cpu_resources,
++                       .scene = cpu_scene,
++                       .commit = commit_cpu_resources,
++                       .discard = release_cpu_resources,
++                       .retire = release_cpu_resources },
++    };
++    runtime = player_prepared_read(prepared->data, prepared->size, &host, BEHAVIOR_BYTECODE, error, sizeof error);
++    if (!runtime) {
++        fprintf(stderr, "environment player: %s\n", error);
++    }
++    REQUIRE(runtime);
++    return true;
++}
++
+ static bool prepare_scene(const char *scene_path)
+ {
+     char error[512] = { 0 };
+@@ -159,22 +189,90 @@ static bool prepare_scene(const char *scene_path)
+         fprintf(stderr, "environment preparation: %s\n", error);
+     }
+     REQUIRE(prepared);
+-    native_prepared_context context = { .native = native };
+-    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+-    player_host host = {
++    return load_artifact(&artifact);
++}
++
++TEST_CASE(environment_supplied_modules_keep_source_library_fields)
++{
++    REQUIRE(prepare_scene(NULL));
++    REQUIRE(!materials_prepare(world_materials(player_world(runtime))));
++    specimen_state solid = specimen(player_world(runtime), true),
++                   cut = specimen(player_world(runtime), false);
++    REQUIRE(solid.cells > 0 && cut.cells > 0);
++    char error[512] = { 0 };
++    size_t first, end;
++    REQUIRE(
++        player_prepared_modules(artifact.data, artifact.size, &module_names, &modules, &first, &end, error, sizeof error)
++    );
++    REQUIRE(acount(modules) == 3);
++    player_free(runtime);
++    runtime = NULL;
++    authoring_project_options options = {
++        .project = project,
++        .native = native,
+         .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
+-        .linker = &linker,
+-        .resources = { .stage = stage_cpu_resources,
+-                       .scene = cpu_scene,
+-                       .commit = commit_cpu_resources,
+-                       .discard = release_cpu_resources,
+-                       .retire = release_cpu_resources },
++        .modules = WORLD_PHYSICS | WORLD_MATERIALS,
++        .read_only = true,
+     };
+-    runtime = player_prepared_read(artifact.data, artifact.size, &host, BEHAVIOR_BYTECODE, error, sizeof error);
+-    if (!runtime) {
+-        fprintf(stderr, "environment player: %s\n", error);
++    bool prepared = authoring_project_assemble(&options, modules, acount(modules), &assembled, error, sizeof error);
++    if (!prepared) {
++        fprintf(stderr, "environment supplied-module preparation: %s\n", error);
+     }
+-    REQUIRE(runtime);
++    REQUIRE(prepared);
++    REQUIRE(load_artifact(&assembled));
++    REQUIRE(!materials_prepare(world_materials(player_world(runtime))));
++    specimen_state actual_solid = specimen(player_world(runtime), true),
++                   actual_cut = specimen(player_world(runtime), false);
++    REQUIRE(actual_solid.cells == solid.cells && actual_solid.hash == solid.hash);
++    REQUIRE(actual_cut.cells == cut.cells && actual_cut.hash == cut.hash);
++    return true;
++}
++
++TEST_CASE(environment_supplied_modules_reject_unprojectable_library)
++{
++    REQUIRE(prepare_scene(NULL));
++    char error[512] = { 0 };
++    size_t first, end;
++    REQUIRE(
++        player_prepared_modules(artifact.data, artifact.size, &module_names, &modules, &first, &end, error, sizeof error)
++    );
++    player_free(runtime);
++    runtime = NULL;
++    snprintf(scratch, sizeof scratch, "/tmp/chibi-environment-XXXXXX");
++    REQUIRE(mkdtemp(scratch));
++    char copied[128], log[128], library[256];
++    snprintf(copied, sizeof copied, "%s/project", scratch);
++    snprintf(log, sizeof log, "%s/copy.log", scratch);
++#ifdef __APPLE__
++    const char *copy[] = { "cp", "-c", "-R", project, copied, NULL };
++#else
++    const char *copy[] = { "cp", "--reflink=auto", "-R", project, copied, NULL };
++#endif
++    REQUIRE(tool_run(copy, scratch, log) == 0);
++    snprintf(library, sizeof library, "%s/content/libraries/FieldShapes.chibi", copied);
++    /* Valid executable code can still be outside the native graph backend's
++     * scalar expression contract. Supplied modules cannot substitute a graph. */
++    tool_write(
++        library,
++        "FieldShapes :: library {\n"
++        " Islands :: (X: float = 0.0, Y: float = 0.0) -> (Value: float = 0.0) "
++        "{\n"
++        "  if X > 0.0 { return field_circle(X, Y, 1.0); }\n"
++        "  return field_circle(X, Y, 2.0);\n"
++        " }\n}\n"
++    );
++    authoring_project_options options = {
++        .project = copied,
++        .native = native,
++        .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
++        .modules = WORLD_PHYSICS | WORLD_MATERIALS,
++        .read_only = true,
++    };
++    REQUIRE(
++        !authoring_project_assemble(&options, modules, acount(modules), &assembled, error, sizeof error)
++    );
++    REQUIRE(!assembled.data && !assembled.size);
++    REQUIRE(strstr(error, "missing library function") && strstr(error, "FieldShapes"));
+     return true;
+ }
+ 
+@@ -326,6 +424,8 @@ void test_environment_authoring(const char *program)
+     int count = snprintf(project, sizeof project, "%s/test/fixtures/environment-authoring", tool_root());
+     assert(count > 0 && count < (int)sizeof project);
+     pu_setup(NULL, cleanup);
++    RUN_TEST_CASE(environment_supplied_modules_keep_source_library_fields);
++    RUN_TEST_CASE(environment_supplied_modules_reject_unprojectable_library);
+     RUN_TEST_CASE(environment_authored_samples_generate_and_only_cut_sample_changes);
+     RUN_TEST_CASE(environment_physics_opens_passage_across_chunk_seam);
+     RUN_TEST_CASE(environment_checked_in_project_validates);
+diff --git a/test/tools/game_equivalence.c b/test/tools/game_equivalence.c
+index 4f67fac96..837e2fbc1 100644
+--- a/test/tools/game_equivalence.c
++++ b/test/tools/game_equivalence.c
+@@ -517,7 +517,7 @@ static bool assembles_from_its_own_modules(const char *story)
+     REQUIRE(same && missing && extra && !refused.data);
+     return true;
+ }
+-/* Positions of CompileBehaviors' arguments in the exported input: the
++/* Positions of CompileBehaviorsWithCatalog' arguments in the exported input: the
+  * behaviors' identities and sources, the six target arguments, then the
+  * game's. */
+ enum
+@@ -525,6 +525,7 @@ enum
+     INPUT_IDENTITIES = 0,
+     INPUT_SOURCES,
+     INPUT_NATIVES = 5,
++    INPUT_PORTS,
+     INPUT_EVENTS = 8,
+     INPUT_EVENT_FIELDS,
+     INPUT_TYPES,
+@@ -534,6 +535,7 @@ enum
+     INPUT_GLOBALS,
+     INPUT_MAKES,
+     INPUT_MAKE_FIELDS,
++    INPUT_NATIVE_EFFECTS,
+     INPUT_ARGUMENTS
+ };
+ /* Whether the exported input holds the story's behavior and lists the type
+@@ -601,6 +603,12 @@ static bool target_matches(yyjson_val *root, const execution_module *module, con
+     }
+     REQUIRE(yyjson_get_uint(yyjson_arr_get(root, INPUT_ENTITY)) == plan->owner_type);
+     yyjson_val *natives = yyjson_arr_get(root, INPUT_NATIVES);
++    yyjson_val *effects = yyjson_arr_get(root, INPUT_NATIVE_EFFECTS);
++    REQUIRE(yyjson_arr_size(effects) == yyjson_arr_size(natives));
++    yyjson_val *ports = yyjson_arr_get(root, INPUT_PORTS);
++    for (size_t i = 0; i < yyjson_arr_size(ports); i++) {
++        REQUIRE(yyjson_is_uint(yyjson_obj_get(yyjson_arr_get(ports, i), "nominal")));
++    }
+     yyjson_val *operators = yyjson_arr_get(root, INPUT_OPERATORS);
+     bool add = false;
+     for (size_t i = 0; i < yyjson_arr_size(operators); i++) {
+diff --git a/tools/compiler/package_compiler/Behavior.chibi b/tools/compiler/package_compiler/Behavior.chibi
+index 8888db663..9a8863b52 100644
+--- a/tools/compiler/package_compiler/Behavior.chibi
++++ b/tools/compiler/package_compiler/Behavior.chibi
+@@ -458,8 +458,17 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
+                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                         entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                         make_fields: int[]) -> Result {
++    return CompileBehaviorResolved(identity, source, target, abi, names, natives, LegacyPorts(ports), native_ids,
++                                   game_events, event_fields, types, type_fields, entity, operators, globals,
++                                   makes, make_fields, resize([int(0)], length(natives)));
++}
++CompileBehaviorResolved :: (identity: string, source: string, target: Target, abi: uint64, names: string[],
++                        natives: Native[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
++                        event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
++                        entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
++                        make_fields: int[], native_effects: int[]) -> Result {
+     ops := ResolveOps(names, true);
+-    if (abi == 0 || !Complete(ops) || length(native_ids) != 2 * length(natives)) {
++    if (abi == 0 || !Complete(ops) || !NativeInputValid(natives, ports, native_ids, native_effects)) {
+         return InputFailure(-1, "unsupported compiler input or target");
+     }
+     forest: snapshot.SnapshotNode[] = [];
+@@ -565,7 +574,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
+     constants: ConstDecl[] = [];
+     switch Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
+                     callables, params, declared_types, members, constants, natives, ports, native_ids,
+-                    resize([int(0)], length(natives)), resize([int(0)], length(callables)), ops, target, abi,
++                    native_effects, resize([int(0)], length(callables)), ops, target, abi,
+                     Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
+                                   make_fields)) {
+         case .Rejected(diagnostic):
+@@ -583,6 +592,15 @@ pub CompileBehaviors :: (identities: string[], sources: string[], target: Target
+                          event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                          entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                          make_fields: int[]) -> byte[] {
++    return CompileBehaviorsResolved(identities, sources, target, abi, names, natives, LegacyPorts(ports), native_ids,
++                                     game_events, event_fields, types, type_fields, entity, operators, globals,
++                                     makes, make_fields, resize([int(0)], length(natives)));
++}
++CompileBehaviorsResolved :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
++                         natives: Native[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
++                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
++                         entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
++                         make_fields: int[], native_effects: int[]) -> byte[] {
+     if (length(identities) == 0 || length(identities) != length(sources)) {
+         return [];
+     }
+@@ -592,9 +610,9 @@ pub CompileBehaviors :: (identities: string[], sources: string[], target: Target
+     lengths: int[] = [];
+     index: int = 0;
+     while (index < length(identities)) {
+-        switch CompileBehavior(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
++        switch CompileBehaviorResolved(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
+                                game_events, event_fields, types, type_fields, entity, operators,
+-                               globals, makes, make_fields) {
++                               globals, makes, make_fields, native_effects) {
+             case .Rejected(diagnostic):
+                 return [];
+             case .Compiled(module, bytes):
+@@ -614,14 +632,23 @@ pub BehaviorRejection :: (identities: string[], sources: string[], target: Targe
+                           event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                           entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                           make_fields: int[]) -> string {
++    return BehaviorRejectionResolved(identities, sources, target, abi, names, natives, LegacyPorts(ports), native_ids,
++                                     game_events, event_fields, types, type_fields, entity, operators, globals,
++                                     makes, make_fields, resize([int(0)], length(natives)));
++}
++BehaviorRejectionResolved :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
++                          natives: Native[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
++                          event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
++                          entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
++                          make_fields: int[], native_effects: int[]) -> string {
+     if (length(identities) == 0 || length(identities) != length(sources)) {
+         return "the behaviors' identities and sources differ in number, or there are none";
+     }
+     index: int = 0;
+     while (index < length(identities)) {
+-        switch CompileBehavior(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
++        switch CompileBehaviorResolved(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
+                                game_events, event_fields, types, type_fields, entity, operators,
+-                               globals, makes, make_fields) {
++                               globals, makes, make_fields, native_effects) {
+             case .Rejected(diagnostic):
+                 return format_text("{}:{}:{}: {}", identities[index], diagnostic.line, diagnostic.column,
+                                    diagnostic.message);
+@@ -631,3 +658,114 @@ pub BehaviorRejection :: (identities: string[], sources: string[], target: Targe
+     }
+     return "";
+ }
++
++// Resolves only reflected native nominal ports. Unsupported ports remain in
++// place, so their native indices stay stable and only a use is rejected.
++CatalogRecordValid :: (types: TypeDecl[], record: int) -> bool {
++    if (record < 0 || record >= length(types)) {
++        return false;
++    }
++    first := types[record];
++    at := record;
++    depth: int = 0;
++    while (depth < length(types)) {
++        if (at < 0 || at >= length(types)) {
++            return false;
++        }
++        declared := types[at];
++        if (declared.kind != NativeDecl || declared.storage != first.storage || declared.size <= 0 ||
++            declared.size != first.size || declared.layout != first.layout ||
++            (declared.storage == StructStorage && declared.layout == 0)) {
++            return false;
++        }
++        if (declared.parent < 0) {
++            return true;
++        }
++        at = declared.parent;
++        depth += 1;
++    }
++    return false;
++}
++CatalogPorts :: (ports: CatalogPort[], types: TypeDecl[]) -> ResolvedPort[] {
++    resolved: ResolvedPort[] = [];
++    for (port in ports) {
++        record: int = -1;
++        storage := port.storage;
++        if (port.container < 0 || port.container > ArrayContainer ||
++            (storage < UnsupportedPort && storage != AnyPort) || storage > StructStorage) {
++            storage = UnsupportedPort;
++        }
++        if (port.nominal != 0) {
++            found := TypeWithId(types, port.nominal);
++            duplicate := false;
++            if (found >= 0) {
++                at := found + 1;
++                while (at < length(types)) {
++                    duplicate = duplicate || types[at].id == port.nominal;
++                    at += 1;
++                }
++            }
++            valid := found >= 0 && !duplicate && port.container == 0 &&
++                     (storage == StructStorage || storage == HandleStorage);
++            if (valid) {
++                declared := types[found];
++                valid = declared.storage == storage && CatalogRecordValid(types, found);
++                if (storage == StructStorage) {
++                    valid = valid && declared.size > 0 && declared.layout != 0;
++                }
++            }
++            if (valid) {
++                record = found;
++            } else {
++                storage = UnsupportedPort;
++            }
++        } else if (storage == StructStorage || storage == HandleStorage) {
++            storage = UnsupportedPort;
++        }
++        row: ResolvedPort = {name: port.name, storage: storage, container: port.container,
++                             c_string: port.c_string, record: record};
++        resolved.append(row);
++    }
++    return resolved;
++}
++// Legacy makers adapt ports the pure catalog cannot describe. Rich makers
++// require all their ports, so an unsupported maker fails at its selected call.
++CatalogMakes :: (makes: NativeMake[], natives: Native[], ports: ResolvedPort[]) -> NativeMake[] {
++    supported: NativeMake[] = [];
++    for (make in makes) {
++        if (make.native >= 0 && make.native < length(natives) && Supported(ports, natives[make.native])) {
++            supported.append(make);
++        }
++    }
++    return supported;
++}
++// Rich game entry points carry nominal ports and the real native effects;
++// the pure package/bootstrap entry points keep their original record layouts.
++pub CompileBehaviorsWithCatalog :: (identities: string[], sources: string[], target: Target, abi: uint64,
++                                    names: string[], natives: Native[], ports: CatalogPort[], native_ids: uint64[],
++                                    game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
++                                    type_fields: GameField[], entity: uint64, operators: NumericOperator[],
++                                    globals: GameGlobal[], makes: NativeMake[], make_fields: int[],
++                                    native_effects: int[]) -> byte[] {
++    resolved := CatalogPorts(ports, NativeTypes(types));
++    if (!NativeInputValid(natives, resolved, native_ids, native_effects)) {
++        return [];
++    }
++    return CompileBehaviorsResolved(identities, sources, target, abi, names, natives, resolved, native_ids,
++                                    game_events, event_fields, types, type_fields, entity, operators, globals,
++                                    CatalogMakes(makes, natives, resolved), make_fields, native_effects);
++}
++pub BehaviorRejectionWithCatalog :: (identities: string[], sources: string[], target: Target, abi: uint64,
++                                     names: string[], natives: Native[], ports: CatalogPort[], native_ids: uint64[],
++                                     game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
++                                     type_fields: GameField[], entity: uint64, operators: NumericOperator[],
++                                     globals: GameGlobal[], makes: NativeMake[], make_fields: int[],
++                                     native_effects: int[]) -> string {
++    resolved := CatalogPorts(ports, NativeTypes(types));
++    if (!NativeInputValid(natives, resolved, native_ids, native_effects)) {
++        return "unsupported compiler input or target";
++    }
++    return BehaviorRejectionResolved(identities, sources, target, abi, names, natives, resolved, native_ids,
++                                     game_events, event_fields, types, type_fields, entity, operators, globals,
++                                     CatalogMakes(makes, natives, resolved), make_fields, native_effects);
++}
+diff --git a/tools/compiler/package_compiler/Body.chibi b/tools/compiler/package_compiler/Body.chibi
+index cc038fa30..e77d9dd59 100644
+--- a/tools/compiler/package_compiler/Body.chibi
++++ b/tools/compiler/package_compiler/Body.chibi
+@@ -157,6 +157,20 @@ Value :: struct {
+     container: int;
+     record: int;
+ }
++// The resolved singleton result of a native call in this body. Its AST node
++// identifies the original selection even through local aliases.
++NativeCallFact :: struct {
++    node: int;
++    native: int;
++    storage: int;
++    container: int;
++    record: int;
++}
++// An initializer's call and the names visible when that call was declared.
++CallSource :: struct {
++    node: int;
++    visible: int;
++}
+ // A name in scope: a locals-bank value, a record or array held in a data
+ // cell, a record or array parameter read in place, or a behavior's state or
+ // owner. Pattern bindings are not writable.
+@@ -285,6 +299,8 @@ CombinePhase: int : 9;
+ // The phase of a named return: store one value, then evaluate the next.
+ ReturnsPhase: int : 10;
+ EffectsPhase: int : -1;
++// A private directive: publish the resolved native without emitting code.
++NativeCallPhase: int : -2;
+ 
+ // The FNV-1a mix of the eight bytes of `value`, low first, as the SDK mixes
+ // a word into an identity.
+@@ -573,6 +589,10 @@ Visit :: (node: int) -> Work {
+ RecordEffects :: (effects: int) -> Work {
+     return {node: -1, phase: EffectsPhase, a: effects, b: 0, c: 0, storage: 0, container: 0, record: -1};
+ }
++RecordNativeCall :: (node: int, native: int, result: Value) -> Work {
++    return {node: node, phase: NativeCallPhase, a: native, b: 0, c: 0,
++            storage: result.storage, container: result.container, record: result.record};
++}
+ Expect :: (node: int, storage: int, container: int, record: int) -> Work {
+     return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: storage, container: container, record: record};
+ }
+@@ -1412,7 +1432,7 @@ NextArm :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+ // The index of a native's result named `name`, matched as natives are: an
+ // exact name first, else the one name that matches loosely; -1 for none and
+ // -2 when several match.
+-FindResult :: (ports: Port[], native: Native, name: string) -> int {
++FindResult :: (ports: ResolvedPort[], native: Native, name: string) -> int {
+     found: int = -1;
+     index: int = 0;
+     while (index < native.results) {
+@@ -1443,7 +1463,7 @@ NativePort :: (native: Native, index: int) -> int {
+ // 0 for a push, 1 for an extension and -1 for any other statement. As in stage
+ // zero, the native is recognized by its capability identity.
+ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
+-                  ports: Port[], identities: uint64[], names: Name[], package: int, found: int, destination: int,
++                  ports: ResolvedPort[], identities: uint64[], names: Name[], package: int, found: int, destination: int,
+                   value: int) -> int {
+     updated := names[found];
+     if (updated.place != CellPlace || updated.container != ArrayContainer || !updated.writable ||
+@@ -1477,7 +1497,7 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
+ 
+ // The array function a method call on an array runs, with the array first.
+ // -1 for none.
+-ArrayMethod :: (natives: Native[], ports: Port[], name: string) -> int {
++ArrayMethod :: (natives: Native[], ports: ResolvedPort[], name: string) -> int {
+     index: int = 0;
+     for (native in natives) {
+         if (native.parameters > 0 && ports[native.first].container == ArrayContainer && NameMatches(native.name, name)) {
+@@ -1501,7 +1521,7 @@ ArrayChanger :: (natives: Native[], native: int) -> bool {
+ }
+ // The array an expression statement's method call changes, as `xs.append(x)`
+ // changes xs: the receiver, a name of an array, or -1.
+-ChangedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: Native[], ports: Port[],
++ChangedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: Native[], ports: ResolvedPort[],
+                  statement: int) -> int {
+     call := FirstMember(forest, statement);
+     function := Field(forest, call, "function");
+@@ -1652,7 +1672,7 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
+ }
+ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+-             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
++             constants: ConstDecl[], natives: Native[], ports: ResolvedPort[], identities: uint64[],
+              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
+              solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[],
+              mutated: string[], built: int[], ops: Ops, target: Target) -> Body {
+@@ -1686,6 +1706,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+             named = begun_named;
+     }
+     values: Value[] = [];
++    native_calls: NativeCallFact[] = [];
+     loops: Loop[] = [];
+     breaks: int[] = [];
+     continues: int[] = [];
+@@ -1707,6 +1728,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+             semantic_effects = semantic_effects | item.a;
+             continue;
+         }
++        if (item.phase == NativeCallPhase) {
++            fact: NativeCallFact = {node: item.node, native: item.a, storage: item.storage,
++                                    container: item.container, record: item.record};
++            native_calls.append(fact);
++            continue;
++        }
+         node := forest[item.node];
+         kind := node.kind;
+         // Items this one schedules, in the order they run.
+@@ -2297,7 +2324,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
+                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
+             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
+-                             names, callable.package, values, value_top, item, ops, target, at);
++                             native_calls, names, callable.package, values, value_top, item, ops, target, at);
+         } else if (kind == "struct_expression" || kind == "array_expression") {
+             step = LiteralStep(forest, text, document, types, members, values, value_top, built, item, ops, target, at);
+         } else if (kind == "map_expression") {
+@@ -2457,6 +2484,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+                     linked := natives[produced.record];
+                     storage = ports[linked.first + linked.parameters + at_result].storage;
+                     container = ports[linked.first + linked.parameters + at_result].container;
++                    record = ports[linked.first + linked.parameters + at_result].record;
+                 }
+                 address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+                 loaded: Slot = {storage: SlotStorage(storage, container, target), kind: SlotKind(storage, container)};
+diff --git a/tools/compiler/package_compiler/Compile.chibi b/tools/compiler/package_compiler/Compile.chibi
+index f4b312fbe..e00d9c019 100644
+--- a/tools/compiler/package_compiler/Compile.chibi
++++ b/tools/compiler/package_compiler/Compile.chibi
+@@ -152,6 +152,49 @@ pub Port :: struct {
+     container: int;
+     c_string: bool;
+ }
++// Rich game ports preserve the nominal identity erased by the pure bootstrap
++// catalog. The game wrapper resolves it before any body is emitted.
++pub CatalogPort :: struct {
++    name: string;
++    storage: int;
++    container: int;
++    c_string: bool;
++    nominal: uint64;
++}
++ResolvedPort :: struct {
++    name: string;
++    storage: int;
++    container: int;
++    c_string: bool;
++    record: int;
++}
++LegacyPorts :: (ports: Port[]) -> ResolvedPort[] {
++    resolved: ResolvedPort[] = [];
++    for (port in ports) {
++        row: ResolvedPort = {name: port.name, storage: port.storage, container: port.container,
++                             c_string: port.c_string, record: -1};
++        resolved.append(row);
++    }
++    return resolved;
++}
++NativeInputValid :: (natives: Native[], ports: ResolvedPort[], identities: uint64[], effects: int[]) -> bool {
++    if (length(identities) != 2 * length(natives) || length(effects) != length(natives)) {
++        return false;
++    }
++    for (effect in effects) {
++        if (effect < 0 || effect > NativeEffectsMask) {
++            return false;
++        }
++    }
++    for (native in natives) {
++        if (native.first < 0 || native.parameters < 0 || native.results < 0 || native.first > length(ports) ||
++            native.parameters > length(ports) - native.first ||
++            native.results > length(ports) - native.first - native.parameters) {
++            return false;
++        }
++    }
++    return true;
++}
+ AnyPort: int : -2;
+ UnsupportedPort: int : -1;
+ // A declared type. A record's fields and a variant's payload are
+@@ -1250,7 +1293,7 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
+ Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
+          files_of: int[], root: int, order: int[], edges: graph.Edge[], links: graph.Binding[],
+          callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+-         constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], native_effects: int[], ops: Ops,
++         constants: ConstDecl[], natives: Native[], ports: ResolvedPort[], identities: uint64[], native_effects: int[], ops: Ops,
+          target: Target, abi: uint64) -> Result {
+     // Each package's identity and module ID, and the fingerprint of its module.
+     package_names: string[] = [];
+@@ -1361,7 +1404,7 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
+ Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int, first_document: int,
+              package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
+              links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
+-             members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
++             members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: ResolvedPort[],
+              identities: uint64[], native_effects: int[], callable_effects: int[], ops: Ops, target: Target,
+              abi: uint64, game: Game) -> Assembly {
+     identity := package_names[package];
+@@ -1882,18 +1925,8 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
+                            sources: string[], debug: bool, target: Target, abi: uint64, names: string[], natives: Native[],
+                            ports: Port[], identities: uint64[], native_effects: int[]) -> Result {
+     ops := ResolveOps(names, debug);
+-    complete := length(identities) == 2 * length(natives) && length(native_effects) == length(natives);
+-    for (effect in native_effects) {
+-        if (effect < 0 || effect > NativeEffectsMask) {
+-            complete = false;
+-        }
+-    }
+-    for (native_row in natives) {
+-        if (native_row.first < 0 || native_row.parameters < 0 || native_row.results < 0 ||
+-            native_row.first + native_row.parameters + native_row.results > length(ports)) {
+-            complete = false;
+-        }
+-    }
++    resolved_ports := LegacyPorts(ports);
++    complete := NativeInputValid(natives, resolved_ports, identities, native_effects);
+     if (abi == 0 || !Complete(ops) || !complete || length(paths) == 0 || length(paths) != length(sources) ||
+         length(collection_names) != length(collection_paths)) {
+         return InputFailure(-1, "unsupported compiler input or target");
+@@ -1931,7 +1964,7 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
+                             return Result.Rejected(diagnostic);
+                         case .Collected(callables, params, types, members, constants):
+                             return Link(nodes, documents, packages, files_of, file_packages[0], order, edges, links,
+-                                        callables, params, types, members, constants, natives, ports, identities, native_effects, ops, target,
++                                        callables, params, types, members, constants, natives, resolved_ports, identities, native_effects, ops, target,
+                                         abi);
+                     }
+             }
+diff --git a/tools/compiler/package_compiler/Steps.chibi b/tools/compiler/package_compiler/Steps.chibi
+index f8fb64325..89cecddbd 100644
+--- a/tools/compiler/package_compiler/Steps.chibi
++++ b/tools/compiler/package_compiler/Steps.chibi
+@@ -239,7 +239,7 @@ InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: i
+ // returns, from scheduling to the value's store.
+ // A function's named results are locals from `named` on.
+ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
+-                  params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
++                  params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: ResolvedPort[],
+                   identities: uint64[], names: Name[], scope: int, package: int, values: Value[], top: int,
+                   function: int, named: int, referenced: string[], mutated: string[], built: int[], item: Work,
+                   ops: Ops, target: Target, at: Bases) -> Step {
+@@ -855,7 +855,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int,
+ // Literals, names, parentheses, field reads and element reads.
+ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
+               params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[],
+-              ports: Port[], names: Name[], package: int, values: Value[], top: int, item: Work, ops: Ops,
++              ports: ResolvedPort[], native_calls: NativeCallFact[], names: Name[], package: int,
++              values: Value[], top: int, item: Work, ops: Ops,
+               target: Target, at: Bases) -> Step {
+     node := forest[item.node];
+     kind := node.kind;
+@@ -1040,13 +1041,14 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
+         // A global's keyed field, such as a scene binding, a native reads by
+         // its key.
+         field := members[KeyedMember(forest, text, types, members, names, item.node)];
+-        key: Value = {slot: at.slot, storage: ports[natives[field.read].first].storage, container: 0, record: -1};
++        port := ports[natives[field.read].first];
++        key: Value = {slot: at.slot, storage: port.storage, container: port.container, record: port.record};
+         constant := ConstantCode(ops, key.storage, 0, at.slot, node);
+         constant.text = field.read_key;
+         constant.has_text = true;
+         shifted: Bases = {pc: at.pc + 1, slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host,
+                           call: at.call};
+-        switch NativeReadStep(key, field, ops, target, shifted, node) {
++        switch NativeReadStep(forest, document, item.node, types, natives, ports, key, field, ops, target, shifted) {
+             case .Failed(diagnostic):
+                 return Step.Failed(diagnostic);
+             case .Emitted(read_code, read_slots, read_locals, read_cells, read_hosts, read_roots, read_calls,
+@@ -1095,11 +1097,12 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
+         if (member == "") {
+             return Fail(forest, Field(forest, item.node, "member"), document, "Invalid string or embedded NUL");
+         }
+-        source := ResultSourceCallable(forest, text, callables, names, package, Field(forest, item.node, "object"));
+-        if (source >= 0 && NamedResult(params, callables[source], member) == 0) {
++        source := ResultSourceCall(forest, text, names, Field(forest, item.node, "object"));
++        called := ResultSourceCallable(forest, text, callables, names, package, source);
++        if (called >= 0 && NamedResult(params, callables[called], member) == 0) {
+             // A single named result is also an ordinary value. Its output
+             // name projects that value before looking for a record field.
+-            named := params[callables[source].first + callables[source].count];
++            named := params[callables[called].first + callables[called].count];
+             projected := Typed(object.slot, named.storage, named.container, named.record);
+             if (object.storage != named.storage) {
+                 slots = NumberSlots(object.storage, named.storage);
+@@ -1109,6 +1112,27 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
+             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, projected,
+                                 NoValue(), marks);
+         }
++        origin := FindNativeCall(native_calls, source.node);
++        if (origin >= 0 && FindResult(ports, natives[native_calls[origin].native], member) == 0) {
++            // Naming the sole output projects the call's ordinary value.
++            // A local can have widened it since the initializer was emitted.
++            fact := native_calls[origin];
++            projected := Typed(object.slot, fact.storage, fact.container, fact.record);
++            if (!NativeTakes(types, projected, object)) {
++                numeric := object.container == 0 && fact.container == 0 &&
++                           object.record < 0 && fact.record < 0 &&
++                           (Integer(object.storage) || Floating(object.storage)) &&
++                           (Integer(fact.storage) || Floating(fact.storage));
++                if (!numeric) {
++                    return Fail(forest, item.node, document, "named result differs from its declared type");
++                }
++                slots = NumberSlots(object.storage, fact.storage);
++                code = NumberCode(ops, object.storage, fact.storage, object.slot, at.slot, node);
++                projected.slot = at.slot + length(slots) - 1;
++            }
++            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, projected,
++                                NoValue(), marks);
++        }
+         if (Single(object, ResultsStorage)) {
+             // One of a native's results, read from its cell.
+             called := natives[object.record];
+@@ -1130,11 +1154,11 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
+             read.offset = target.payload_offset;
+             code.append(read);
+             if (Pointer(port.storage, port.container)) {
+-                root: Root = {slot: at.slot + 1, storage: port.storage, container: port.container, record: -1};
++                root: Root = {slot: at.slot + 1, storage: port.storage, container: port.container, record: port.record};
+                 roots.append(root);
+             }
+             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
+-                                Typed(at.slot + 1, port.storage, port.container, -1), NoValue(), marks);
++                                Typed(at.slot + 1, port.storage, port.container, port.record), NoValue(), marks);
+         }
+         if (Single(object, FunctionResultsStorage)) {
+             // One of a function's named results, read from its cell.
+@@ -1173,7 +1197,8 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
+         read_effects := MemberEffects(types, object.record);
+         if (field.read >= 0) {
+             // A native reads the field, such as an input action's `pressed`.
+-            return EffectsStep(NativeReadStep(object, field, ops, target, at, node), read_effects);
++            return EffectsStep(NativeReadStep(forest, document, item.node, types, natives, ports, object,
++                                              field, ops, target, at), read_effects);
+         }
+         if (field.c_string) {
+             return EffectsStep(NativeTextReadStep(object, field, ops, target, at, node), read_effects);
+@@ -1431,7 +1456,7 @@ CStringMessage :: (forest: snapshot.SnapshotNode[], text: string, node: int, bou
+ // cells and the result comes back in one. A native's inferred ports all take
+ // the one type its arguments give them.
+ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
+-             params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
++             params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: ResolvedPort[],
+              makes: NativeMake[], make_fields: int[], names: Name[], package: int, values: Value[], top: int,
+              built: int[], item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+     node := forest[item.node];
+@@ -1520,7 +1545,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+                 expected := Visit(argument);
+                 if (count < natives[method].parameters && ports[NativePort(natives[method], count)].storage > 0) {
+                     port := ports[NativePort(natives[method], count)];
+-                    expected = Expect(argument, port.storage, port.container, -1);
++                    expected = Expect(argument, port.storage, port.container, port.record);
+                 }
+                 next.append(expected);
+                 if (count == 0) {
+@@ -1692,7 +1717,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+             } else if (native >= 0 && (count < expected_count || natives[native].variadic) &&
+                        ports[NativePort(natives[native], count)].storage > 0) {
+                 port := ports[NativePort(natives[native], count)];
+-                expected = Expect(argument, port.storage, port.container, -1);
++                expected = Expect(argument, port.storage, port.container, port.record);
+             }
+             next.append(expected);
+             count += 1;
+@@ -1885,7 +1910,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+     if (item.c == 4) {
+         // An overloaded native: the one whose parameters take the arguments.
+         callee := Field(forest, item.node, "function");
+-        chosen = Overload(natives, ports, natives[item.a].name, values, first, count);
++        chosen = Overload(types, natives, ports, natives[item.a].name, values, first, count);
+         if (chosen < 0) {
+             return Fail(forest, callee, document, "no overload of this native takes these arguments, or several do");
+         }
+@@ -1946,7 +1971,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+                     return Fail(forest, argument_node, document, message);
+                 }
+             }
+-            expected = Typed(-1, port.storage, port.container, -1);
++            expected = NativePortType(port);
+             if (port.storage == AnyPort && argument.storage > 0) {
+                 expected = argument;
+             } else if (port.storage == 0) {
+@@ -1965,9 +1990,18 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+                 expected = Typed(-1, ReferenceStorage, 0, -1);
+             }
+         }
+-        if (!SameType(expected.storage, expected.container, expected.record, argument)) {
++        takes := SameType(expected.storage, expected.container, expected.record, argument);
++        if (linked) {
++            takes = NativeTakes(types, expected, argument);
++        }
++        if (!takes) {
+             return Fail(forest, item.node, document, "argument differs from its parameter type");
+         }
++        if (linked) {
++            // A fixed native port's declared header survives compatible aliases.
++            argument = Typed(argument.slot, expected.storage, expected.container, expected.record);
++            arguments[index] = argument;
++        }
+         cell: Cell = {storage: argument.storage, container: argument.container, record: argument.record, constant: 0, variant: -1,
+                       kind: ValueKind};
+         if (argument.storage == ReferenceStorage) {
+@@ -1988,7 +2022,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+             if (port.storage <= 0) {
+                 return Fail(forest, item.node, document, "native result type is not known");
+             }
+-            cell: Cell = {storage: port.storage, container: port.container, record: -1, constant: 0, variant: -1,
++            cell: Cell = {storage: port.storage, container: port.container, record: port.record, constant: 0, variant: -1,
+                           kind: ValueKind};
+             cells.append(cell);
+             at_result += 1;
+@@ -1997,7 +2031,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+         result = Typed(at.cell + total, ResultsStorage, 0, chosen);
+     } else if (linked && natives[chosen].results == 1) {
+         port := ports[first_port + natives[chosen].parameters];
+-        result = Typed(-1, port.storage, port.container, -1);
++        result = NativePortType(port);
+         if (port.storage == 0) {
+             if (inferred.storage == 0) {
+                 return Fail(forest, item.node, document, "native result type is not known");
+@@ -2083,6 +2117,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
+         }
+         result.slot = b + total + 1;
+     }
++    if (linked && result_count == 1) {
++        next.append(RecordNativeCall(item.node, chosen, result));
++    }
+     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count, result, NoValue(), marks);
+ }
+ 
+@@ -2871,18 +2908,22 @@ ComponentMakeStep :: (before: Code[], types: TypeDecl[], component: int, next: W
+ Canonical :: (types: TypeDecl[], record: int) -> int {
+     at := record;
+     steps: int = 0;
+-    while (types[at].kind == NativeDecl && types[at].parent >= 0 && steps < length(types)) {
++    while (at >= 0 && at < length(types) && steps < length(types)) {
++        if (types[at].kind != NativeDecl || types[at].parent < 0) {
++            return at;
++        }
+         at = types[at].parent;
+         steps += 1;
+     }
+-    return at;
++    return -1;
+ }
+ // The write of `self.C = v` and `self.C op= v`: the record, of a type that
+ // stands for the same one as the component's, types[item.b], through the
+ // reference at slot item.a.
+ ComponentAssignStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], value: Value, item: Work,
+                         ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
+-    if (!Single(value, StructStorage) || Canonical(types, value.record) != Canonical(types, item.b)) {
++    canonical := Canonical(types, value.record);
++    if (!Single(value, StructStorage) || canonical < 0 || canonical != Canonical(types, item.b)) {
+         return Fail(forest, item.node, document, "assigned value differs from its component");
+     }
+     locals: Slot[] = [];
+@@ -3022,38 +3063,53 @@ NamedResult :: (params: Param[], called: Callable, name: string) -> int {
+     }
+     return -1;
+ }
+-// A single named result's source follows declaration initializers, including
+-// aliases after assignment or ref mutation. Each alias narrows the visible
+-// prefix to its declaration, preserving lexical binding and preventing cycles.
+-// Ordinary members stop the search: a named projection consumes its source.
+-ResultSourceCallable :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
+-                         package: int, node: int) -> int {
++// Follow declaration initializers, narrowing the visible prefix at each
++// alias. A member consumes its source, so a projection is recognized once.
++ResultSourceCall :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> CallSource {
+     visible := names;
+     at := Unparenthesized(forest, node);
+     remaining := length(names) + 1;
+     while (at >= 0 && remaining > 0) {
+         remaining -= 1;
+         if (Is(forest, at, "call_expression")) {
+-            called := CalledFunction(forest, text, callables, visible, package, at);
+-            if (called >= 0 && callables[called].results == 1) {
+-                return called;
+-            }
+-            return -1;
++            return {node: at, visible: length(visible)};
+         }
+         if (!Is(forest, at, "identifier")) {
+-            return -1;
++            return {node: -1, visible: 0};
+         }
+         found := Lookup(visible, Text(forest, text, at));
+         if (found < 0 || visible[found].node < 0) {
+-            return -1;
++            return {node: -1, visible: 0};
+         }
+         declaration := forest[visible[found].node].parent;
+         if (!Is(forest, declaration, "local_declaration")) {
+-            return -1;
++            return {node: -1, visible: 0};
+         }
+         at = Unparenthesized(forest, Field(forest, declaration, "value"));
+         visible = slice(visible, 0, found);
+     }
++    return {node: -1, visible: 0};
++}
++// Resolve an authored call using the names visible at its initializer.
++ResultSourceCallable :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], names: Name[],
++                         package: int, source: CallSource) -> int {
++    if (source.node < 0) {
++        return -1;
++    }
++    called := CalledFunction(forest, text, callables, slice(names, 0, source.visible), package, source.node);
++    if (called >= 0 && callables[called].results == 1) {
++        return called;
++    }
++    return -1;
++}
++FindNativeCall :: (facts: NativeCallFact[], node: int) -> int {
++    index := length(facts) - 1;
++    while (index >= 0) {
++        if (facts[index].node == node) {
++            return index;
++        }
++        index -= 1;
++    }
+     return -1;
+ }
+ // Stage zero marks a component-typed value's field access as a read even
+@@ -3386,27 +3442,94 @@ NativeTextReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Targe
+                         Typed(at.slot + 11, TextStorage, 0, -1), NoValue(), []);
+ }
+ // `v.f`, where natives[f.read] reads the field: a call of it on `v`.
+-NativeReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, at: Bases,
+-                   node: snapshot.SnapshotNode) -> Step {
++NativeReadStep :: (forest: snapshot.SnapshotNode[], document: int, site: int, types: TypeDecl[], natives: Native[],
++                   ports: ResolvedPort[], object: Value, field: TypeMember, ops: Ops, target: Target, at: Bases) -> Step {
++    node := forest[site];
++    called := natives[field.read];
++    if (!Supported(ports, called) || called.parameters != 1 || called.results != 1) {
++        return Fail(forest, site, document, "field getter's native is not supported yet");
++    }
++    input := ports[called.first];
++    argument := NativePortType(input);
++    inferred := NoValue();
++    if (input.storage == AnyPort) {
++        argument = object;
++    } else if (input.storage == 0) {
++        if (object.storage <= 0 || object.container != input.container) {
++            return Fail(forest, site, document, "field getter's value differs from its parameter type");
++        }
++        inferred = Typed(-1, object.storage, 0, object.record);
++        argument = object;
++    }
++    if (!NativeTakes(types, argument, object)) {
++        return Fail(forest, site, document, "field getter's value differs from its parameter type");
++    }
++    argument.slot = object.slot;
++    output := ports[called.first + called.parameters];
++    result := NativePortType(output);
++    if (output.storage == 0) {
++        if (inferred.storage == 0) {
++            return Fail(forest, site, document, "field getter's result type is not known");
++        }
++        result = Typed(-1, inferred.storage, output.container, inferred.record);
++    }
++    field_type := Typed(-1, field.storage, 0, field.record);
++    if (!NativeTakes(types, result, field_type)) {
++        return Fail(forest, site, document, "field getter's result differs from its field type");
++    }
+     locals: Slot[] = [];
+     roots: Root[] = [];
+     calls: Invocation[] = [];
+     bound: Name[] = [];
+     next: Work[] = [];
+     marks: int[] = [];
+-    arguments: Value[] = [object];
+-    read: Cell = {storage: field.storage, container: 0, record: field.record, constant: 0, variant: -1,
++    arguments: Value[] = [argument];
++    read: Cell = {storage: result.storage, container: result.container, record: result.record, constant: 0, variant: -1,
+                   kind: ValueKind};
+     host: Host = {intrinsic: 0, linked: field.read, first: at.cell, result_first: at.cell + 1, result_count: 1,
+                   written: false};
+     value: Slot = {storage: SlotStorage(field.storage, 0, target), kind: SlotKind(field.storage, 0)};
+     code := CallCode(arguments, at.cell, at.host, value.storage, at.slot, ops, target, node);
++    if (Pointer(field.storage, 0)) {
++        root: Root = {slot: at.slot + 2, storage: field.storage, container: 0, record: field.record};
++        roots.append(root);
++    }
+     return Step.Emitted(code, CallSlots(1, value, target), locals, CallCells(arguments, read), [host], roots, calls,
+                         bound, next, 1, Typed(at.slot + 2, field.storage, 0, field.record), NoValue(), marks);
+ }
++// The type a fixed native port declares, including its catalog identity.
++NativePortType :: (port: ResolvedPort) -> Value {
++    return Typed(-1, port.storage, port.container, port.record);
++}
++// Native aliases pass the same underlying value. Distinct nominal types
++// sharing a storage code do not become compatible.
++NativeTakes :: (types: TypeDecl[], expected: Value, value: Value) -> bool {
++    if (expected.storage != value.storage || expected.container != value.container) {
++        return false;
++    }
++    if ((expected.record >= length(types)) || (value.record >= length(types))) {
++        return false;
++    }
++    if (expected.record >= 0 && types[expected.record].kind == NativeDecl &&
++        !CatalogRecordValid(types, expected.record)) {
++        return false;
++    }
++    if (value.record >= 0 && types[value.record].kind == NativeDecl &&
++        !CatalogRecordValid(types, value.record)) {
++        return false;
++    }
++    if (expected.record == value.record) {
++        return expected.record < 0 || Canonical(types, expected.record) >= 0;
++    }
++    if (expected.record < 0 || value.record < 0) {
++        return false;
++    }
++    canonical := Canonical(types, expected.record);
++    return canonical >= 0 && canonical == Canonical(types, value.record);
++}
+ // Whether the compiler passes each of a native's ports: a result takes a
+ // known or inferred type, never each value's own.
+-Supported :: (ports: Port[], called: Native) -> bool {
++Supported :: (ports: ResolvedPort[], called: Native) -> bool {
+     port := called.first;
+     while (port < called.first + called.parameters + called.results) {
+         if (ports[port].storage == UnsupportedPort ||
+@@ -3429,7 +3552,7 @@ Overloaded :: (natives: Native[], name: string) -> bool {
+ }
+ // The one native named `name` whose parameters each take the argument of
+ // `values[first, first + count)` in its position; -1 for none or several.
+-Overload :: (natives: Native[], ports: Port[], name: string, values: Value[], first: int, count: int) -> int {
++Overload :: (types: TypeDecl[], natives: Native[], ports: ResolvedPort[], name: string, values: Value[], first: int, count: int) -> int {
+     found: int = -1;
+     index: int = 0;
+     while (index < length(natives)) {
+@@ -3440,7 +3563,7 @@ Overload :: (natives: Native[], ports: Port[], name: string, values: Value[], fi
+             port := ports[candidate.first + at];
+             value := values[first + at];
+             takes = port.storage != UnsupportedPort &&
+-                    (port.storage <= 0 || (port.storage == value.storage && port.container == value.container));
++                    (port.storage <= 0 || NativeTakes(types, NativePortType(port), value));
+             at += 1;
+         }
+         if (takes && found >= 0) {
+@@ -3518,6 +3641,7 @@ MakeStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[],
+     slots.extend([address, address]);
+     made := at.slot + length(slots) - 1;
+     roots: Root[] = [{slot: made, storage: StructStorage, container: 0, record: record}];
++    next.append(RecordNativeCall(call, make.native, Typed(made, StructStorage, 0, record)));
+     return Step.Emitted(code, slots, locals, cells, [host], roots, calls, bound, next, count,
+                         Typed(made, StructStorage, 0, record), NoValue(), marks);
+ }
+@@ -3525,11 +3649,7 @@ MakeStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[],
+ CallCells :: (arguments: Value[], result: Cell) -> Cell[] {
+     cells: Cell[] = [];
+     for (argument in arguments) {
+-        record: int = -1;
+-        if (argument.storage == StructStorage) {
+-            record = argument.record;
+-        }
+-        cell: Cell = {storage: argument.storage, container: argument.container, record: record, constant: 0,
++        cell: Cell = {storage: argument.storage, container: argument.container, record: argument.record, constant: 0,
+                       variant: -1, kind: ValueKind};
+         cells.append(cell);
+     }
+diff --git a/tools/toolchain/StageOne.chibi b/tools/toolchain/StageOne.chibi
+index b46e06527..a6522c738 100644
+--- a/tools/toolchain/StageOne.chibi
++++ b/tools/toolchain/StageOne.chibi
+@@ -3,7 +3,7 @@ package toolchain
+ // Builds a project's artifact as chibi-compile does, with the stage-one
+ // compiler compiling its behavior assets. chibi-compile exports stage
+ // one's input, the project's sources and the game they link against; the
+-// compiler host runs stage one's CompileBehaviors on it; and chibi-compile
++// compiler host runs stage one's CompileBehaviorsWithCatalog on it; and chibi-compile
+ // assembles the artifact from the modules that writes. Stage one is the
+ // compiler the bootstrap artifact recovers from the compiler sources, kept
+ // under .chibi/stage-one for the latest digest of them and of the host.
+@@ -113,10 +113,10 @@ Compile :: () -> int {
+         if (closure == "") {
+             return 1
+         }
+-        // CompileBehaviors and BehaviorRejection: package-symbol
++        // CompileBehaviorsWithCatalog and BehaviorRejectionWithCatalog: package-symbol
+         // project:package_compiler:1:NAME:callable.
+-        if (Stage(host, closure, "d95f9895b7a7a764", input, modules) != 0) {
+-            Stage(host, closure, "2921ca5ea316f0b", input, "")
++        if (Stage(host, closure, "976ab7ba3a7fbb4d", input, modules) != 0) {
++            Stage(host, closure, "90cd0d9866e51fd8", input, "")
+             build.report(Join(["stage one cannot compile ", project, ": ", build.last_stdout()]))
+             return 1
+         }

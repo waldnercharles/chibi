@@ -1,0 +1,8 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/bootstrap-protocol14/cmake_install.cmake",
+		"/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/bootstrap-protocol14/language/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

@@ -1,0 +1,23 @@
+native-driver-cache 1
+target aarch64-apple-darwin
+entry Main
+mode 2
+lines false
+static false
+shared false
+cli-errors false
+compiler /tmp/chibi-deep-array-methods/chibi-checked
+compiler-sha256 416ac4cb93bbdcd8b36f6eea89276160d383f0872578b891fa21e515ac386b81
+opt /tmp/chibi-llvm22/opt
+opt-sha256 2bd5eaa23de1e47480d02ac50d9376df0e071130d995e34f1fd3f2b76d1bb3d6
+llc /tmp/chibi-llvm22/llc
+llc-sha256 71ae3605805a8667d8875d11e9945be073baf6449a2468561a16086c90b03136
+linker /tmp/chibi-llvm22/ld64.lld
+linker-sha256 b46796ecf50def5ccf45ffefafd29f83854fb2f7789c0d7f00ec1270b33eb1a8
+collection core=/Users/cwaldner/Personal/chibi/.worktrees/compiler-self-speed/chibi/packages/core
+source DeepMethods.chibi
+source-sha256 8b63502bceabba7b5d2294995c6846ad9f1f63c6920416b6a31f8a00c8ef3be2
+key 1bf40892f7204f339315688e27e46646f21564fe9903ae68fed3a81c6844fdf6
+output-kind executable
+linkage dynamic libSystem
+program-sha256 b00edaa14f631caa05ab1f27e2d97172c57ed55c63f0638883e9da5be745d6cd

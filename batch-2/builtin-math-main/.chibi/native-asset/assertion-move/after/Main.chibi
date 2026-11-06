@@ -1,0 +1,2 @@
+package moved
+Main :: () -> int { return 42; }

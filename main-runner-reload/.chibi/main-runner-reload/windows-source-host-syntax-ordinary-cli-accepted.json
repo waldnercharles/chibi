@@ -1,0 +1,16 @@
+{
+  "commands": [
+    {
+      "mode": "release-production",
+      "returncode": 0
+    },
+    {
+      "mode": "windows-fixture",
+      "returncode": 0
+    }
+  ],
+  "wall_seconds": 1.652,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/windows-source-host-syntax-ordinary-cli-accepted.log",
+  "windows_execution": "unrun; no Windows runtime",
+  "warning_exclusions": "GCC multichar canaries and Clang annotate attributes only"
+}

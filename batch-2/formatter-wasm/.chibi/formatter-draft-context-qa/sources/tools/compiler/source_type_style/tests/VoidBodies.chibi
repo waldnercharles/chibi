@@ -1,0 +1,64 @@
+package source_type_style_tests
+
+import style "project:source_type_style"
+import strings "core:strings"
+
+@test
+VoidCallHintsUsePreparedExpressionResultsRatherThanCallerResults :: () {
+    source := "package p\nforeign { native_void :: (); }\nDone :: () {}\nInvoke :: () { ((Done())); }\nRead :: () -> int { return 7; }\nIgnored :: () { Read(); }\nReadText :: () -> string { return \"held\"; }\nIgnoredText :: () { ReadText(); }\nNativeInvoke :: () { native_void(); }\n";
+    hints := style.VoidExpressionsFor(source, 0);
+    if (hints.notes != "") { print_string(hints.notes); }
+    assert(hints.notes == "" && length(hints.starts) == 2, "only actual authored and linked-native void calls are eligible");
+    assert(hints.starts[0] == strings.Index(source, "Done()));") &&
+           hints.starts[1] == strings.Index(source, "native_void();"),
+           "offsets are sorted original call bytes, excluding ignored int/text values and internal drop hosts");
+}
+
+@test
+VoidCallHintsUseProjectContextAndNeverGuessUnknownCalls :: () {
+    source := "package p\nimport lib \"project:lib\"\nInvoke :: () { lib.Done(); }\nIgnored :: () { lib.Read(); }\n";
+    dependency := "package lib\npub Done :: () {}\npub Read :: () -> int { return 7; }\n";
+    cached := ["package p\nMain :: () {}\n", dependency];
+    found := style.VoidExpressionsProjectFor(source, "/formatter", [], [],
+                ["/formatter/Main.chibi", "/formatter/lib/Lib.chibi"], cached, 0);
+    assert(found.notes == "" && length(found.starts) == 1 && found.starts[0] == strings.Index(source, "lib.Done()"),
+           "one project analysis distinguishes the imported expression results");
+    assert(cached[0] == "package p\nMain :: () {}\n", "stale cached document zero is substituted without mutation");
+    unknown := style.VoidExpressionsFor(source, 0);
+    assert(length(unknown.starts) == 0 && unknown.notes != "", "missing context cannot authorize expression bodies");
+}
+
+@test
+VoidExpressionBodiesKeepPreparedCallsAndCompletion :: () {
+    original := "package p\nDone :: () {}\nInvoke :: () { Done(); }\n";
+    proposed := "package p\nDone :: fn() {}\nInvoke :: fn() => Done();\n";
+    proof := style.Prove(original, proposed);
+    if (!proof.same) { print_string(proof.notes); }
+    assert(proof.same, "a redundant void return does not change prepared execution");
+}
+
+@test
+VoidTailProofKeepsShortCircuitBranchTargetsAndManagedArguments :: () {
+    original := "package p\nSink :: (value: bool) {}\nInvoke :: (left: bool, right: bool) { Sink(left && right); }\n";
+    proposed := "package p\nSink :: (value: bool) {}\nInvoke :: (left: bool, right: bool) => Sink(left && right);\n";
+    proof := style.Prove(original, proposed);
+    if (!proof.same) { print_string(proof.notes); }
+    assert(proof.same, "branches within arguments retain every preceding instruction index");
+    managed := style.Prove("package p\nSink :: (value: string) {}\nInvoke :: (value: string) { Sink(value); }\n",
+                           "package p\nSink :: (value: string) {}\nInvoke :: (value: string) => Sink(value);\n");
+    if (!managed.same) { print_string(managed.notes); }
+    assert(managed.same, "managed argument and lifetime tables remain identical");
+}
+
+@test
+VoidTailProofCannotDiscardEffectsEarlyReturnsOrValueResults :: () {
+    early := style.Prove("package p\nSink :: () {}\nInvoke :: (flag: bool) { if flag { return; } Sink(); }\n",
+                         "package p\nSink :: () {}\nInvoke :: (flag: bool) { if flag {} Sink(); }\n");
+    assert(!early.same, "removing an early return changes whether a call executes");
+    call := style.Prove("package p\nSink :: () {}\nOther :: () {}\nInvoke :: () { Sink(); }\n",
+                        "package p\nSink :: () {}\nOther :: () {}\nInvoke :: () => Other();\n");
+    assert(!call.same, "void completion cannot authorize a different callable");
+    value := style.Prove("package p\nRead :: () -> int { return 3; }\nInvoke :: () { Read(); }\n",
+                         "package p\nRead :: () -> int { return 3; }\nInvoke :: () => Read();\n");
+    assert(!value.same, "returning an ignored integer changes the function signature");
+}

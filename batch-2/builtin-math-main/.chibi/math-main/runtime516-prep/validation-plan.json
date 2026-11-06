@@ -1,0 +1,20 @@
+{
+  "base": "51650ccff2c8830c6c22eb2c17f0b67c07dcf346",
+  "source_tree": "c24579be3d39da4f72d224af331e1768caddb0a8",
+  "private_overlay": null,
+  "f1a_reuse": false,
+  "ordinary_source_fixture_checks_pending": [
+    "scoped scalar/record whole and compound writes; hidden-box pure controls",
+    "42 authored math source cases: nested/array/map swizzles and receiver/RHS snapshots",
+    "native math original+GC pressure on both compiler and target VMs, declarations/effects/points/watches/backend/no-fallback",
+    "prepared nominal/native/retained-schema/array roundtrips"
+  ],
+  "coordinator_producers_pending": [
+    "regenerate matching full compiler artifact and recovery",
+    "combined function-definition budgets and two-stage fixed point",
+    "math assets/source inventory",
+    "installed math SDK and backend acceptance"
+  ],
+  "producer_owner": "pure reachability790 next",
+  "main_cli_owner": "existing user chat; unchanged"
+}

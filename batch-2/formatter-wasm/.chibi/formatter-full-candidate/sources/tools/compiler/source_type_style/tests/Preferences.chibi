@@ -1,0 +1,142 @@
+package source_type_style_tests
+
+import style "project:source_type_style"
+import strings "core:strings"
+
+CheckPreferences :: (source: string, preferences: style.Preferences, expected: string, count: int, missed: int) {
+    switch style.RewriteWith(source, preferences) {
+        case .Rejected(message): print_string(message); assert(false, "valid preferences are accepted");
+        case .Rewritten(text, changed, skipped, notes):
+            if (text != expected || changed != count || skipped != missed) {
+                print_string(format_text("Expected:\n{}\nReceived:\n{}\nchanged={} skipped={} notes={}\n", expected, text, changed, skipped, notes));
+            }
+            assert(text == expected && changed == count && skipped == missed, "context policies preserve inferred semantics");
+            if (missed > 0) { assert(notes != "", "required annotations have an explanation"); }
+    }
+}
+
+@test
+DefaultParameterAnnotationsCanBeAddedAndRemoved :: () {
+    source := "package p\nChoose :: (value: int = 3, yes: bool = true, text: string = \"hello\") -> int { if yes { return value; } return 0; }\nMain :: () { result := Choose(); }\n";
+    inferred := "package p\nChoose :: (value = 3, yes = true, text = \"hello\") -> int { if yes { return value; } return 0; }\nMain :: () { result := Choose(); }\n";
+    preferences := style.Defaults(); preferences.parameters = style.OmitRedundant;
+    CheckPreferences(source, preferences, inferred, 3, 0);
+    preferences.parameters = style.Explicit;
+    CheckPreferences(inferred, preferences, source, 3, 0);
+}
+
+@test
+RequiredAndNarrowParameterTypesRemainWritten :: () {
+    source := "package p\nChoose :: (required: int, narrow: i8 = 3) -> int { return required; }\nMain :: () { Choose(1); }\n";
+    preferences := style.Defaults(); preferences.parameters = style.OmitRedundant;
+    CheckPreferences(source, preferences, source, 0, 2);
+}
+
+@test
+NamedReturnAnnotationsCanBeAddedAndRemoved :: () {
+    source := "package p\nCount :: () -> int { return 3; }\nMain :: () { Count(); }\n";
+    inferred := "package p\nCount :: () { return 3; }\nMain :: () { Count(); }\n";
+    preferences := style.Defaults(); preferences.results = style.OmitRedundant;
+    CheckPreferences(source, preferences, inferred, 1, 0);
+    preferences.results = style.Explicit;
+    CheckPreferences(inferred, preferences, source, 1, 0);
+}
+
+@test
+ContextualReturnAnnotationsRemainWritten :: () {
+    source := "package p\nNarrow :: () -> i8 { return 3; }\nMain :: () { Narrow(); }\n";
+    preferences := style.Defaults(); preferences.results = style.OmitRedundant;
+    CheckPreferences(source, preferences, source, 0, 1);
+}
+
+@test
+EvidentPolicyUsesWrittenConstructorsAndCasts :: () {
+    source := "package p\nCount :: () -> int { return 3; }\nMain :: () { converted: i8 = i8(3); yes: bool = true; count := Count(); }\n";
+    expected := "package p\nCount :: () -> int { return 3; }\nMain :: () { converted := i8(3); yes := true; count: int = Count(); }\n";
+    preferences := style.Defaults(); preferences.bindings = style.Evident;
+    CheckPreferences(source, preferences, expected, 3, 0);
+}
+
+@test
+PublicTypePreferenceOverridesPrivateContext :: () {
+    source := "package p\npub Limit: int : 4\nPrivate: int : 5\nMain :: () { value: int = 1; }\n";
+    expected := "package p\npub Limit: int : 4\nPrivate :: 5\nMain :: () { value := 1; }\n";
+    preferences := style.Defaults(); preferences.bindings = style.OmitRedundant; preferences.public_types = style.Explicit;
+    CheckPreferences(source, preferences, expected, 2, 0);
+}
+
+@test
+RecordMembersRequireTypesWithoutInferableDefaults :: () {
+    source := "package p\nPoint :: struct { x: int; }\nMain :: () {}\n";
+    preferences := style.Defaults(); preferences.members = style.OmitRedundant;
+    CheckPreferences(source, preferences, source, 0, 1);
+}
+
+@test
+ProofRejectsChangedForeignTargetAndPublicSurface :: () {
+    before := "package p\npub Count :: () -> int { return 3; }\nMain :: () { Count(); }\n";
+    private := "package p\nCount :: () -> int { return 3; }\nMain :: () { Count(); }\n";
+    proof := style.Prove(before, private);
+    assert(!proof.same && proof.notes != "", "exports are part of semantic proof");
+    changed := style.Prove("package p\nUnused :: (x: $T) -> T { return x; }\nMain :: () {}\n",
+                           "package p\nUnused :: (x: $T) -> T { return x + x; }\nMain :: () {}\n");
+    assert(!changed.same, "uninstantiated generic bodies are part of proof");
+    native := "package p\nforeign import probe \"liba.a\"\nforeign probe { Read :: () -> i32 }\nMain :: () { Read(); }\n";
+    native_layout := style.Prove(native, strings.Concatenate([native, "\n"]));
+    foreign_target := style.Prove(native, strings.ReplaceAll(native, "liba.a", "libb.a"));
+    assert(native_layout.same, "foreign declarations participate in valid source analysis");
+    assert(!foreign_target.same, "linked foreign identity remains exact");
+}
+
+@test
+ProofAcceptsEquivalentWhitespaceAndRejectsDifferentValue :: () {
+    before := "package p\nMain :: () { value := 1; }\n";
+    same := style.Prove(before, "package p\nMain :: ()\n{\n    value := 1\n}\n");
+    different := style.Prove(before, "package p\nMain :: () { value := 2; }\n");
+    assert(same.same && same.notes == "", "layout proof accepts equivalent typed programs");
+    assert(!different.same && strings.Contains(different.notes, "typed"), "literal values remain exact");
+}
+
+@test
+EvidentReturnPreferenceRecognizesExplicitCasts :: () {
+    source := "package p\nNarrow :: () -> i8 { return i8(3); }\nMain :: () { Narrow(); }\n";
+    expected := "package p\nNarrow :: () { return i8(3); }\nMain :: () { Narrow(); }\n";
+    preferences := style.Defaults(); preferences.results = style.Evident;
+    CheckPreferences(source, preferences, expected, 1, 0);
+}
+
+@test
+ImportedTypeNamesChooseTheShortestVisibleAlias :: () {
+    source := "package p\nimport lengthy \"project:lib\"\nimport l \"project:lib\"\nMain :: () { value: lengthy.Point = lengthy.Make(); }\n";
+    dependency := "package lib\npub Point :: struct { x: int; }\npub Make :: () -> Point { return {x: 1}; }\n";
+    preferences := style.Defaults(); preferences.spelling = style.Shortest;
+    switch style.RewriteProjectWith(source, preferences, "/formatter", [], [],
+                                     ["/formatter/Main.chibi", "/formatter/lib/Lib.chibi"], [source, dependency]) {
+        case .Rejected(message): print_string(message); assert(false, "valid alias preferences are accepted");
+        case .Rewritten(text, changed, skipped, notes):
+            if (changed != 1) { print_string(format_text("{}\n{}", text, notes)); }
+            assert(strings.Contains(text, "value: l.Point = lengthy.Make()") && changed == 1 && skipped == 0, "visible aliases resolve to the same nominal type");
+    }
+}
+
+@test
+RecursiveResultAnchorsDoNotBlockIndependentTypeEdits :: () {
+    source := "package p\nA :: (n: int) -> int { if n > 0 { return B(n - 1); } return 0; }\nB :: (n: int) -> int { return A(n); }\nMain :: () { value: int = A(2); }\n";
+    expected := "package p\nA :: (n: int) -> int { if n > 0 { return B(n - 1); } return 0; }\nB :: (n: int) -> int { return A(n); }\nMain :: () { value := A(2); }\n";
+    preferences := style.Defaults(); preferences.bindings = style.OmitRedundant; preferences.results = style.OmitRedundant;
+    CheckPreferences(source, preferences, expected, 1, 2);
+}
+
+@test
+TaskResultAnnotationsAndCommandIdentityRemainSafe :: () {
+    source := "package p\nCount :: () -> int { yield; return 3; }\nMain :: () { earlier: int = 1; task := Count(); cancel task; }\n";
+    expected := "package p\nCount :: () -> int { yield; return 3; }\nMain :: () { earlier := 1; task := Count(); cancel task; }\n";
+    preferences := style.Defaults(); preferences.bindings = style.OmitRedundant; preferences.results = style.OmitRedundant;
+    CheckPreferences(source, preferences, expected, 1, 1);
+    invalid := "package p\nCount :: () { yield; return 3; }\nMain :: () {}\n";
+    switch style.Rewrite(invalid, style.Explicit) {
+        case .Rejected(message): assert(false, "compiler diagnostic retains partial source");
+        case .Rewritten(text, changed, skipped, notes):
+            assert(text == invalid && changed == 0 && strings.Contains(notes, "explicit result type"), "suspending inferred result does not create a stale task ABI");
+    }
+}

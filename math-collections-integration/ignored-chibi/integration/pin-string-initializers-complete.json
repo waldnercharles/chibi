@@ -1,0 +1,1044 @@
+{
+  "base_head": "519c5f2eb25e9cc2b711627763e5df8b523ae1d7",
+  "created_utc": "2026-10-28T15:22:05.309677+00:00",
+  "inventory": "/Users/cwaldner/Personal/chibi/.worktrees/reachability-collections-integration/chibi/.chibi/integration/artifact-proof/remaining-positional-pin-string-c3fbf7f4.json",
+  "inventory_sha256": "5b522f747617d82a1d0e97c42873ff53042b6914a6e77f439ced34ce626c379c",
+  "inventory_count": 37,
+  "files": {
+    "test/language/borrow.c": {
+      "count": 2,
+      "before_sha256": "0cc34ad6a86cbaf9b89d12c5f8932227053cf0daace3fb7405629f277b66ee34",
+      "after_sha256": "46421277898d146dedc91baa55d6dbf0871169cf85f81482de0eb83bfa3fc91d"
+    },
+    "test/language/compiler_fixture.c": {
+      "count": 5,
+      "before_sha256": "73ff12a0289f355af14410daa815bbf1e0d192507255652e281924082d4773d8",
+      "after_sha256": "67685b1785a3fd0077edc6934b4a43d981e15c5215aa6594be590818a00d4d05"
+    },
+    "test/language/execution.c": {
+      "count": 11,
+      "before_sha256": "3527b94f4ee21596b3be1d9ec3c3ba6e354aea22f92ec1536c72b5ed203dff64",
+      "after_sha256": "28d7dc339e564507444d185ee0d43cd0505939c35127e062053418d9990e63c5"
+    },
+    "test/language/native_calls.c": {
+      "count": 2,
+      "before_sha256": "98f26bf49249be944b8486ca678961c3a9ec0043c293c28812463c1237bd9094",
+      "after_sha256": "b6974a81a8da35a9b7746d2baf97f7c11f82de80c8225e50abb45f9fd60fb690"
+    },
+    "test/language/package_compiler_chibi.c": {
+      "count": 15,
+      "before_sha256": "055ac0a947628e6808c9e0b720a123a3f85e52a238775b67ff4aec67d24b13bb",
+      "after_sha256": "c7bdd1f79cd5392685dc90c97c9b5819eef0b8268b84a47e6e8e1c4c9ba6f137"
+    },
+    "test/language/program.c": {
+      "count": 2,
+      "before_sha256": "a07a09a06463d3562784331ebc5afced413ff39d22a4ceb19281c3aca95cad76",
+      "after_sha256": "838dd98ab4846f210f833fd8fbea8cb53582768fd95275a5e8a3e8651483ecfd"
+    },
+    "test/language/record_services.c": {
+      "count": 1,
+      "before_sha256": "299929ed79f462f46bd3a0851ae1ab791d9ecd410f3fac483fb271c4d7a16fa0",
+      "after_sha256": "932245ce9e5a0ea9381d54c395ef55eeb0e5ed7d0f4c7a7af6d2604e5bec81f9"
+    },
+    "test/language/record_values.c": {
+      "count": 3,
+      "before_sha256": "ddc420a27a65bd534a6012229e2c73d34b1dc27deee09c8cd79d78e9d3e87823",
+      "after_sha256": "fc463d61527b879568ecb2c15f5012641c1808ba5513b3e707d1d91c9e0c2302"
+    },
+    "test/language/runtime_attribution.c": {
+      "count": 1,
+      "before_sha256": "b499dd84d03939f3744278a88218d0148b13f0fcc7639d417d83f330c8e34cba",
+      "after_sha256": "3d3776a5e7b9c86cf8e43f2007c6ad2cd4546f2eab229433d02268dd9591dbea"
+    },
+    "test/language/scalarize.c": {
+      "count": 1,
+      "before_sha256": "57eb7c6a44c465617819932fde890d51e1410b8b53ab5c11a84f147a805bf1b2",
+      "after_sha256": "bdc0b08069246602ecea6b111e09ec3804be3ec31c85595634907f1a478ac5da"
+    },
+    "test/language/union_members_chibi.c": {
+      "count": 2,
+      "before_sha256": "bc295dd10e02cff93aac69807b6f27dde933b83c7897c471286a7b7d15419df0",
+      "after_sha256": "887a054f891d62e43b09da1a42b6b7e148724268856a488cd9ad0b246832f17a"
+    }
+  },
+  "edits": [
+    {
+      "path": "test/language/borrow.c",
+      "line_before": 833,
+      "bytes_expression": "\"retained\"",
+      "length_expression": "sizeof(\"retained\") - 1",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/borrow.c",
+      "line_before": 1647,
+      "bytes_expression": "texts[i]",
+      "length_expression": "(uint32_t)strlen(texts[i])",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/compiler_fixture.c",
+      "line_before": 702,
+      "bytes_expression": "\"first\"",
+      "length_expression": "5",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/compiler_fixture.c",
+      "line_before": 703,
+      "bytes_expression": "\"later\"",
+      "length_expression": "5",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/compiler_fixture.c",
+      "line_before": 710,
+      "bytes_expression": "\"later\"",
+      "length_expression": "5",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/compiler_fixture.c",
+      "line_before": 711,
+      "bytes_expression": "\"first\"",
+      "length_expression": "5",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/compiler_fixture.c",
+      "line_before": 737,
+      "bytes_expression": "\"both\"",
+      "length_expression": "4",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/execution.c",
+      "line_before": 632,
+      "bytes_expression": "text",
+      "length_expression": "sizeof text - 1",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/execution.c",
+      "line_before": 1895,
+      "bytes_expression": "\"logged before return\"",
+      "length_expression": "sizeof(\"logged before return\") - 1",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/execution.c",
+      "line_before": 3862,
+      "bytes_expression": "binary",
+      "length_expression": "3",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/execution.c",
+      "line_before": 3873,
+      "bytes_expression": "\"after\"",
+      "length_expression": "5",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/execution.c",
+      "line_before": 3884,
+      "bytes_expression": "binary",
+      "length_expression": "3",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/native_calls.c",
+      "line_before": 841,
+      "bytes_expression": "FORMAT",
+      "length_expression": "sizeof FORMAT - 1",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/native_calls.c",
+      "line_before": 841,
+      "bytes_expression": "\"a\\0b\"",
+      "length_expression": "3",
+      "listed_in_inventory": false,
+      "reason": "second declarator in same pin_string declaration"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 419,
+      "bytes_expression": "\"text\"",
+      "length_expression": "4",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 9543,
+      "bytes_expression": "\"a\\0b\"",
+      "length_expression": "3",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 11684,
+      "bytes_expression": "\"a\\0b\"",
+      "length_expression": "3",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 11685,
+      "bytes_expression": "\"seed\"",
+      "length_expression": "4",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 11694,
+      "bytes_expression": "\"seed\"",
+      "length_expression": "4",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 11695,
+      "bytes_expression": "\"a\\0b\"",
+      "length_expression": "3",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 11873,
+      "bytes_expression": "expected",
+      "length_expression": "strlen(expected)",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 12776,
+      "bytes_expression": "message",
+      "length_expression": "strlen(message)",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 13538,
+      "bytes_expression": "message",
+      "length_expression": "strlen(message)",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 13662,
+      "bytes_expression": "rejected[i].message",
+      "length_expression": "strlen(rejected[i].message)",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 14338,
+      "bytes_expression": "DEEP_CASES[i]",
+      "length_expression": "strlen(DEEP_CASES[i])",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 16723,
+      "bytes_expression": "source",
+      "length_expression": "strlen(source)",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 17190,
+      "bytes_expression": "source",
+      "length_expression": "strlen(source)",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 18344,
+      "bytes_expression": "source",
+      "length_expression": "strlen(source)",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/program.c",
+      "line_before": 12435,
+      "bytes_expression": "\"A\\0B\"",
+      "length_expression": "3",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/program.c",
+      "line_before": 12537,
+      "bytes_expression": "\"A\\0C\"",
+      "length_expression": "3",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/record_services.c",
+      "line_before": 367,
+      "bytes_expression": "nul_name",
+      "length_expression": "sizeof nul_name - 1",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/record_values.c",
+      "line_before": 638,
+      "bytes_expression": "\"native\"",
+      "length_expression": "6",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/record_values.c",
+      "line_before": 639,
+      "bytes_expression": "\"abc\"",
+      "length_expression": "2",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/record_values.c",
+      "line_before": 677,
+      "bytes_expression": "cases[i].bytes",
+      "length_expression": "cases[i].length",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/runtime_attribution.c",
+      "line_before": 275,
+      "bytes_expression": "texts[i] ? texts[i] : \"\"",
+      "length_expression": "texts[i] ? (uint32_t)strlen(texts[i]) : 0",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/scalarize.c",
+      "line_before": 272,
+      "bytes_expression": "text",
+      "length_expression": "sizeof text - 1",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/union_members_chibi.c",
+      "line_before": 134,
+      "bytes_expression": "expected",
+      "length_expression": "(uint32_t)strlen(expected)",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/union_members_chibi.c",
+      "line_before": 583,
+      "bytes_expression": "\"\"",
+      "length_expression": "0",
+      "listed_in_inventory": true
+    },
+    {
+      "path": "test/language/execution.c",
+      "line_before": 3819,
+      "bytes_expression": "first",
+      "length_expression": "sizeof first - 1",
+      "listed_in_inventory": false,
+      "reason": "element of borrowed pin_string array"
+    },
+    {
+      "path": "test/language/execution.c",
+      "line_before": 3820,
+      "bytes_expression": "second",
+      "length_expression": "sizeof second - 1",
+      "listed_in_inventory": false,
+      "reason": "element of borrowed pin_string array"
+    },
+    {
+      "path": "test/language/execution.c",
+      "line_before": 3821,
+      "bytes_expression": "first",
+      "length_expression": "1",
+      "listed_in_inventory": false,
+      "reason": "element of borrowed pin_string array"
+    },
+    {
+      "path": "test/language/execution.c",
+      "line_before": 3822,
+      "bytes_expression": "first",
+      "length_expression": "sizeof first - 1",
+      "listed_in_inventory": false,
+      "reason": "element of borrowed pin_string array"
+    },
+    {
+      "path": "test/language/execution.c",
+      "line_before": 4030,
+      "bytes_expression": "\"first\"",
+      "length_expression": "5",
+      "listed_in_inventory": false,
+      "reason": "element of borrowed pin_string array"
+    },
+    {
+      "path": "test/language/execution.c",
+      "line_before": 4030,
+      "bytes_expression": "\"second\"",
+      "length_expression": "6",
+      "listed_in_inventory": false,
+      "reason": "element of borrowed pin_string array"
+    },
+    {
+      "path": "test/language/package_compiler_chibi.c",
+      "line_before": 13964,
+      "bytes_expression": "\"{ ptr, i32, ptr }\"",
+      "length_expression": "17",
+      "listed_in_inventory": false,
+      "reason": "string literal contains braces/commas; verified literal preserved"
+    }
+  ],
+  "format": {
+    "path": "/opt/homebrew/opt/llvm@22/bin/clang-format",
+    "version": "Homebrew clang-format version 22.1.8",
+    "style": "file"
+  },
+  "red_evidence": [
+    {
+      "path": ".chibi/integration/wasm-build.log",
+      "sha256": "6e58879b6b0a9e3f8cf072f14772beb9668ef7217d7d709997e1d3e436c9fa6c"
+    },
+    {
+      "path": ".chibi/integration/wasm-after-initializers-build.log",
+      "sha256": "508c006963123d68c57efdf19807b174d9e3df958034f1f3bc2faa9d5e41b869"
+    },
+    {
+      "path": ".chibi/integration/wasm-after-initializers.json",
+      "sha256": "3b3be024e1884f452b48df732fed8f571f0db1eb348361b062d73aa6f5adb267"
+    }
+  ],
+  "head_after_build": "519c5f2eb25e9cc2b711627763e5df8b523ae1d7",
+  "prior_build_attempts": [
+    {
+      "command": [
+        "cmake",
+        "--build",
+        ".chibi/integration/wasm",
+        "--target",
+        "CMakeFiles/test_language.dir/borrow.c.o",
+        "CMakeFiles/test_language.dir/compiler_fixture.c.o",
+        "CMakeFiles/test_language.dir/execution.c.o",
+        "CMakeFiles/test_language.dir/native_calls.c.o",
+        "CMakeFiles/test_language.dir/package_compiler_chibi.c.o",
+        "CMakeFiles/test_language.dir/program.c.o",
+        "CMakeFiles/test_language.dir/record_values.c.o",
+        "CMakeFiles/test_language.dir/runtime_attribution.c.o",
+        "CMakeFiles/test_language.dir/scalarize.c.o",
+        "CMakeFiles/test_language.dir/union_members_chibi.c.o",
+        "--parallel",
+        "4",
+        "--verbose"
+      ],
+      "started_utc": "2026-10-28T15:22:41.599970+00:00",
+      "ended_utc": "2026-10-28T15:22:47.664408+00:00",
+      "exit_code": 1,
+      "wall_seconds": 6.063861874863505,
+      "log": ".chibi/integration/pin-string-initializers-complete-green.log",
+      "log_sha256": "9fe7934b1f119f225b9361752beddd90019de7815dc6f6b22760fab5c95ad306",
+      "target_count": 10,
+      "unavailable_targets": [
+        {
+          "path": "test/language/record_services.c",
+          "target": "CMakeFiles/test_language.dir/record_services.c.o",
+          "reason": "Target is not configured in this Wasm profile; record_services.c requires entity_runtime and ui_runtime"
+        }
+      ],
+      "original_flags": {
+        "test/language/borrow.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/compiler_fixture.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/execution.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/native_calls.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/package_compiler_chibi.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/program.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/record_values.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/runtime_attribution.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/scalarize.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/union_members_chibi.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ]
+      },
+      "explicit_red_log": ".chibi/integration/pin-string-initializers-complete-attempt1-RED.log"
+    },
+    {
+      "command": [
+        "cmake",
+        "--build",
+        ".chibi/integration/wasm",
+        "--target",
+        "CMakeFiles/test_language.dir/borrow.c.o",
+        "CMakeFiles/test_language.dir/compiler_fixture.c.o",
+        "CMakeFiles/test_language.dir/execution.c.o",
+        "CMakeFiles/test_language.dir/native_calls.c.o",
+        "CMakeFiles/test_language.dir/package_compiler_chibi.c.o",
+        "CMakeFiles/test_language.dir/program.c.o",
+        "CMakeFiles/test_language.dir/record_values.c.o",
+        "CMakeFiles/test_language.dir/runtime_attribution.c.o",
+        "CMakeFiles/test_language.dir/scalarize.c.o",
+        "CMakeFiles/test_language.dir/union_members_chibi.c.o",
+        "--parallel",
+        "4",
+        "--verbose"
+      ],
+      "started_utc": "2026-10-28T15:23:45.725456+00:00",
+      "ended_utc": "2026-10-28T15:23:48.329552+00:00",
+      "exit_code": 1,
+      "wall_seconds": 2.603845958132297,
+      "log": ".chibi/integration/pin-string-initializers-complete-final-green.log",
+      "log_sha256": "501e8af8b174cdc7ff08b59b24c0b97424ad00d05d24c969e8b1e1dda1cf9da2",
+      "target_count": 10,
+      "unavailable_targets": [
+        {
+          "path": "test/language/record_services.c",
+          "target": "CMakeFiles/test_language.dir/record_services.c.o",
+          "reason": "Target is not configured in this Wasm profile; record_services.c requires entity_runtime and ui_runtime"
+        }
+      ],
+      "original_flags": {
+        "test/language/borrow.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/compiler_fixture.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/execution.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/native_calls.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/package_compiler_chibi.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/program.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/record_values.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/runtime_attribution.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/scalarize.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ],
+        "test/language/union_members_chibi.c": [
+          "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+        ]
+      },
+      "explicit_red_log": ".chibi/integration/pin-string-initializers-complete-attempt2-RED.log"
+    }
+  ],
+  "initializer_only_verification": {
+    "passed": true,
+    "method": "reconstruct every nonempty two-field borrowed scalar, subsequent declarator, and array initializer from HEAD using quote-aware delimiter scanning; clang-format22 result exactly equals working files",
+    "total_count": 45,
+    "counts_by_file": {
+      "test/language/borrow.c": 2,
+      "test/language/compiler_fixture.c": 5,
+      "test/language/execution.c": 11,
+      "test/language/native_calls.c": 2,
+      "test/language/package_compiler_chibi.c": 15,
+      "test/language/program.c": 2,
+      "test/language/record_services.c": 1,
+      "test/language/record_values.c": 3,
+      "test/language/runtime_attribution.c": 1,
+      "test/language/scalarize.c": 1,
+      "test/language/union_members_chibi.c": 2
+    }
+  },
+  "build": {
+    "command": [
+      "cmake",
+      "--build",
+      ".chibi/integration/wasm",
+      "--target",
+      "CMakeFiles/test_language.dir/borrow.c.o",
+      "CMakeFiles/test_language.dir/compiler_fixture.c.o",
+      "CMakeFiles/test_language.dir/execution.c.o",
+      "CMakeFiles/test_language.dir/native_calls.c.o",
+      "CMakeFiles/test_language.dir/package_compiler_chibi.c.o",
+      "CMakeFiles/test_language.dir/program.c.o",
+      "CMakeFiles/test_language.dir/record_values.c.o",
+      "CMakeFiles/test_language.dir/runtime_attribution.c.o",
+      "CMakeFiles/test_language.dir/scalarize.c.o",
+      "CMakeFiles/test_language.dir/union_members_chibi.c.o",
+      "--parallel",
+      "4",
+      "--verbose"
+    ],
+    "started_utc": "2026-10-28T15:25:16.418822+00:00",
+    "ended_utc": "2026-10-28T15:25:19.751253+00:00",
+    "exit_code": 0,
+    "wall_seconds": 3.3321778329554945,
+    "log": ".chibi/integration/pin-string-initializers-complete-attempt3-green.log",
+    "log_sha256": "f156d1b87895a2fb29ded338c3c7fd4278a5c732780fb539f87b32c4bc6bd415",
+    "target_count": 10,
+    "unavailable_targets": [
+      {
+        "path": "test/language/record_services.c",
+        "target": "CMakeFiles/test_language.dir/record_services.c.o",
+        "reason": "Target is not configured in this Wasm profile; record_services.c requires entity_runtime and ui_runtime"
+      }
+    ],
+    "original_flags": {
+      "test/language/borrow.c": [
+        "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+      ],
+      "test/language/compiler_fixture.c": [
+        "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+      ],
+      "test/language/execution.c": [
+        "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+      ],
+      "test/language/native_calls.c": [
+        "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+      ],
+      "test/language/package_compiler_chibi.c": [
+        "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+      ],
+      "test/language/program.c": [
+        "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+      ],
+      "test/language/record_values.c": [
+        "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+      ],
+      "test/language/runtime_attribution.c": [
+        "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+      ],
+      "test/language/scalarize.c": [
+        "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+      ],
+      "test/language/union_members_chibi.c": [
+        "-O3 -DNDEBUG -std=gnu23 -Wall -Wextra -Werror -UNDEBUG"
+      ]
+    }
+  },
+  "canonical_red_crosscheck": {
+    "head": "1dce69547515ebaa7f1741f3ba025c56103cb4fe",
+    "diagnostics_path": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/cow-portability/wasm-remaining-errors.json",
+    "diagnostics_sha256": "4e5f12dbd63578ae1e5996cebc37e987ea7b4478c722ca40d65a3c90e86ce64c",
+    "raw_log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-1dce-wasm-all-errors.log",
+    "raw_log_sha256": "e129a2490040ee55ead4a05dd1c7685fb0b7fc9966be0d809549c4ea6cd7af90",
+    "count": 40,
+    "all_covered": true,
+    "sites": [
+      {
+        "file": "test/language/record_values.c",
+        "line": 638,
+        "column": 70,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"native\"",
+        "length_expression": "6",
+        "covered": true
+      },
+      {
+        "file": "test/language/record_values.c",
+        "line": 639,
+        "column": 41,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"abc\"",
+        "length_expression": "2",
+        "covered": true
+      },
+      {
+        "file": "test/language/record_values.c",
+        "line": 677,
+        "column": 79,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "cases[i].bytes",
+        "length_expression": "cases[i].length",
+        "covered": true
+      },
+      {
+        "file": "test/language/runtime_attribution.c",
+        "line": 276,
+        "column": 85,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "texts[i] ? texts[i] : \"\"",
+        "length_expression": "texts[i] ? (uint32_t)strlen(texts[i]) : 0",
+        "covered": true
+      },
+      {
+        "file": "test/language/execution.c",
+        "line": 632,
+        "column": 53,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "text",
+        "length_expression": "sizeof text - 1",
+        "covered": true
+      },
+      {
+        "file": "test/language/execution.c",
+        "line": 1896,
+        "column": 74,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"logged before return\"",
+        "length_expression": "sizeof(\"logged before return\") - 1",
+        "covered": true
+      },
+      {
+        "file": "test/language/execution.c",
+        "line": 3819,
+        "column": 54,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "first",
+        "length_expression": "sizeof first - 1",
+        "covered": true
+      },
+      {
+        "file": "test/language/execution.c",
+        "line": 3820,
+        "column": 56,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "second",
+        "length_expression": "sizeof second - 1",
+        "covered": true
+      },
+      {
+        "file": "test/language/execution.c",
+        "line": 3821,
+        "column": 39,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "first",
+        "length_expression": "1",
+        "covered": true
+      },
+      {
+        "file": "test/language/execution.c",
+        "line": 3822,
+        "column": 54,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "first",
+        "length_expression": "sizeof first - 1",
+        "covered": true
+      },
+      {
+        "file": "test/language/execution.c",
+        "line": 3862,
+        "column": 41,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "binary",
+        "length_expression": "3",
+        "covered": true
+      },
+      {
+        "file": "test/language/execution.c",
+        "line": 3873,
+        "column": 43,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"after\"",
+        "length_expression": "5",
+        "covered": true
+      },
+      {
+        "file": "test/language/execution.c",
+        "line": 3884,
+        "column": 42,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "binary",
+        "length_expression": "3",
+        "covered": true
+      },
+      {
+        "file": "test/language/execution.c",
+        "line": 4030,
+        "column": 50,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"first\"",
+        "length_expression": "5",
+        "covered": true
+      },
+      {
+        "file": "test/language/execution.c",
+        "line": 4030,
+        "column": 67,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"second\"",
+        "length_expression": "6",
+        "covered": true
+      },
+      {
+        "file": "test/language/program.c",
+        "line": 12435,
+        "column": 44,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"A\\0B\"",
+        "length_expression": "3",
+        "covered": true
+      },
+      {
+        "file": "test/language/program.c",
+        "line": 12537,
+        "column": 44,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"A\\0C\"",
+        "length_expression": "3",
+        "covered": true
+      },
+      {
+        "file": "test/language/native_calls.c",
+        "line": 841,
+        "column": 53,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "FORMAT",
+        "length_expression": "sizeof FORMAT - 1",
+        "covered": true
+      },
+      {
+        "file": "test/language/native_calls.c",
+        "line": 841,
+        "column": 74,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"a\\0b\"",
+        "length_expression": "3",
+        "covered": true
+      },
+      {
+        "file": "test/language/scalarize.c",
+        "line": 272,
+        "column": 61,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "text",
+        "length_expression": "sizeof text - 1",
+        "covered": true
+      },
+      {
+        "file": "test/language/borrow.c",
+        "line": 833,
+        "column": 83,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"retained\"",
+        "length_expression": "sizeof(\"retained\") - 1",
+        "covered": true
+      },
+      {
+        "file": "test/language/borrow.c",
+        "line": 1647,
+        "column": 77,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "texts[i]",
+        "length_expression": "(uint32_t)strlen(texts[i])",
+        "covered": true
+      },
+      {
+        "file": "test/language/compiler_fixture.c",
+        "line": 702,
+        "column": 78,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"first\"",
+        "length_expression": "5",
+        "covered": true
+      },
+      {
+        "file": "test/language/compiler_fixture.c",
+        "line": 703,
+        "column": 78,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"later\"",
+        "length_expression": "5",
+        "covered": true
+      },
+      {
+        "file": "test/language/compiler_fixture.c",
+        "line": 710,
+        "column": 78,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"later\"",
+        "length_expression": "5",
+        "covered": true
+      },
+      {
+        "file": "test/language/compiler_fixture.c",
+        "line": 711,
+        "column": 78,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"first\"",
+        "length_expression": "5",
+        "covered": true
+      },
+      {
+        "file": "test/language/compiler_fixture.c",
+        "line": 737,
+        "column": 77,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"both\"",
+        "length_expression": "4",
+        "covered": true
+      },
+      {
+        "file": "test/language/package_compiler_chibi.c",
+        "line": 410,
+        "column": 73,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"text\"",
+        "length_expression": "4",
+        "covered": true
+      },
+      {
+        "file": "test/language/package_compiler_chibi.c",
+        "line": 9310,
+        "column": 80,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"a\\0b\"",
+        "length_expression": "3",
+        "covered": true
+      },
+      {
+        "file": "test/language/package_compiler_chibi.c",
+        "line": 11451,
+        "column": 76,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"a\\0b\"",
+        "length_expression": "3",
+        "covered": true
+      },
+      {
+        "file": "test/language/package_compiler_chibi.c",
+        "line": 11452,
+        "column": 77,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"seed\"",
+        "length_expression": "4",
+        "covered": true
+      },
+      {
+        "file": "test/language/package_compiler_chibi.c",
+        "line": 11461,
+        "column": 76,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"seed\"",
+        "length_expression": "4",
+        "covered": true
+      },
+      {
+        "file": "test/language/package_compiler_chibi.c",
+        "line": 11462,
+        "column": 77,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"a\\0b\"",
+        "length_expression": "3",
+        "covered": true
+      },
+      {
+        "file": "test/language/package_compiler_chibi.c",
+        "line": 11640,
+        "column": 86,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "expected",
+        "length_expression": "strlen(expected)",
+        "covered": true
+      },
+      {
+        "file": "test/language/package_compiler_chibi.c",
+        "line": 12543,
+        "column": 89,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "message",
+        "length_expression": "strlen(message)",
+        "covered": true
+      },
+      {
+        "file": "test/language/package_compiler_chibi.c",
+        "line": 13305,
+        "column": 73,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "message",
+        "length_expression": "strlen(message)",
+        "covered": true
+      },
+      {
+        "file": "test/language/package_compiler_chibi.c",
+        "line": 13429,
+        "column": 76,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "rejected[i].message",
+        "length_expression": "strlen(rejected[i].message)",
+        "covered": true
+      },
+      {
+        "file": "test/language/package_compiler_chibi.c",
+        "line": 13735,
+        "column": 82,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"{ ptr, i32, ptr }\"",
+        "length_expression": "17",
+        "covered": true
+      },
+      {
+        "file": "test/language/union_members_chibi.c",
+        "line": 134,
+        "column": 85,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "expected",
+        "length_expression": "(uint32_t)strlen(expected)",
+        "covered": true
+      },
+      {
+        "file": "test/language/union_members_chibi.c",
+        "line": 583,
+        "column": 97,
+        "diagnostic": "missing field 'owner' initializer [-Werror,-Wmissing-field-initializers]",
+        "bytes_expression": "\"\"",
+        "length_expression": "0",
+        "covered": true
+      }
+    ]
+  },
+  "patch": {
+    "path": ".chibi/integration/pin-string-initializers-complete.patch",
+    "sha256": "9ff31dc81aa0c257d9020cc8039351562ddffed81e38d10b5f724c5dbfa70aff"
+  },
+  "checks": {
+    "clang_format_command": [
+      "/opt/homebrew/opt/llvm@22/bin/clang-format",
+      "--dry-run",
+      "--Werror",
+      "--style=file",
+      "test/language/borrow.c",
+      "test/language/compiler_fixture.c",
+      "test/language/execution.c",
+      "test/language/native_calls.c",
+      "test/language/package_compiler_chibi.c",
+      "test/language/program.c",
+      "test/language/record_services.c",
+      "test/language/record_values.c",
+      "test/language/runtime_attribution.c",
+      "test/language/scalarize.c",
+      "test/language/union_members_chibi.c"
+    ],
+    "clang_format_exit_code": 0,
+    "git_diff_check_exit_code": 0,
+    "staged_paths": [],
+    "changed_paths": [
+      "test/language/borrow.c",
+      "test/language/compiler_fixture.c",
+      "test/language/execution.c",
+      "test/language/native_calls.c",
+      "test/language/package_compiler_chibi.c",
+      "test/language/program.c",
+      "test/language/record_services.c",
+      "test/language/record_values.c",
+      "test/language/runtime_attribution.c",
+      "test/language/scalarize.c",
+      "test/language/union_members_chibi.c"
+    ],
+    "head_unchanged": true
+  },
+  "finished_utc": "2026-10-28T15:26:48.198164+00:00"
+}

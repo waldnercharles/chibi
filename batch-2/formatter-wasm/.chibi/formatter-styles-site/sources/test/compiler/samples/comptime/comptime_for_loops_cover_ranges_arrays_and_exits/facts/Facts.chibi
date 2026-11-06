@@ -1,0 +1,54 @@
+package facts
+Inclusive :: (last: int) -> int {
+    total := 0;
+    for i in 1..last {
+        total += i;
+    }
+    return total;
+}
+Reversed :: (count: int) -> int {
+    result := 0;
+    for < i in 0..<count {
+        result = result * 10 + i;
+    }
+    return result;
+}
+Keyed :: (values: int[]) -> int {
+    total := 0;
+    for index, value in values {
+        if (index == 1) {
+            continue;
+        }
+        if (value > 40) {
+            break;
+        }
+        total += value * (index + 1);
+    }
+    return total;
+}
+Nested :: () -> int {
+    total := 0;
+    for row in 0..<3 {
+        for column in 0..<3 {
+            if (column > row) {
+                break;
+            }
+            total += 1;
+        }
+    }
+    return total;
+}
+First :: (values: int[]) -> int {
+    for value in values {
+        if (value > 3) {
+            return value;
+        }
+    }
+    return -1;
+}
+A :: Inclusive(10);
+B :: Reversed(4);
+C :: Keyed([5, 6, 7, 50, 9]);
+D :: Nested();
+E :: First([1, 2, 5, 9]);
+Main :: () -> int { return A + B + C + D + E; }

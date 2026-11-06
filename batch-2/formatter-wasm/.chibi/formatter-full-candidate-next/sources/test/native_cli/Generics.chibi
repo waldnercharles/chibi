@@ -1,0 +1,43 @@
+package native_generic_tests
+
+import os "core:os"
+import strings "core:strings"
+
+// The native test entry changes callable ordinals after specialization. Keep
+// the authored callable cases and probe integer constants and an exported
+// specialization reused by two documents.
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 4) { return 2; }
+    root := strings.Concatenate([arguments[2], "/test/compiler/samples/imports"]);
+    constants := strings.Concatenate([arguments[3], "/generic constants"]);
+    made := os.MakeDirectory(strings.Concatenate([constants, "/lib"]));
+    assert(made == nil, "make generic test fixture");
+    source := strings.Concatenate([
+        "package generic_constants\nimport lib \"project:lib\"\nFactor :: 3;\n",
+        "Forward :: ($N: int) -> int { return lib.Scale(2, N); }\n",
+        "@test Calls :: () { assert(Forward(Factor) == 6); assert(lib.Scale(3, 4) == 12); ",
+        "assert(lib.Identity(5) + Again() == 12); }\n"]);
+    written := os.WriteText(strings.Concatenate([constants, "/Tests.chibi"]), source);
+    assert(written == nil, "write generic tests");
+    written = os.WriteText(strings.Concatenate([constants, "/Again.chibi"]),
+        "package generic_constants\nimport lib \"project:lib\"\nAgain :: () -> int { return lib.Identity(7); }\n");
+    assert(written == nil, "write a second specialization caller");
+    written = os.WriteText(strings.Concatenate([constants, "/lib/Lib.chibi"]), strings.Concatenate([
+        "package lib\npub Scale :: (value: $T, $N: int) -> T { return value * N; }\n",
+        "pub Identity :: (value: $T) -> T { return value; }\n"]));
+    assert(written == nil, "write exported generic functions");
+    folders := [strings.Concatenate([root, "/callable_single_result_names_do_not_change_signature/facts"]),
+                strings.Concatenate([root, "/non_escaping_callable_algorithms/facts"]), constants];
+    roots := [root, root, constants];
+    for (mode in ["-O0", "-O2"]) {
+        for (folder, index in folders) {
+            report := os.Capture([arguments[0], "test", mode, "--llvm", arguments[1], "--root", roots[index], folder]);
+            if (report.status != 0) { os.Print(report.stdout); os.Print(report.stderr); }
+            assert(report.status == 0 && strings.Contains(report.stdout, "PASS project.Calls") &&
+                   strings.Contains(report.stdout, "1 tests, 0 failed"), "specialized calls retain owners after entry ordering");
+        }
+    }
+    os.Print("native generic tests: callable targets, owners and integer constants passed at O0/O2");
+    return 0;
+}

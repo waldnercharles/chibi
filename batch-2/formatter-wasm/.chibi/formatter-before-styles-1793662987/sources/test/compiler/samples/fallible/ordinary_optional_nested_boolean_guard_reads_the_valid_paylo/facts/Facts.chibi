@@ -1,0 +1,3 @@
+package facts
+Flag :: (value: bool, absent: bool) -> bool? { if absent { return nil; } return value; }
+Use :: (value: bool, absent: bool) -> int { error := Flag(value, absent); if error { if error { return 99; } return 17; } return 0; }

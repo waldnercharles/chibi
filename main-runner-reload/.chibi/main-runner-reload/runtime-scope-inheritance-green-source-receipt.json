@@ -1,0 +1,28 @@
+{
+  "head": "9acfa17d029dcb0fbeb744f9e60c0e3d6bcf6f76",
+  "merge_head": "79743c5675e5a18eeea14193d729cc6e45bdf926",
+  "recorded_utc": "2026-10-29T02:25:45.123178+00:00",
+  "driver": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+  "driver_sha256": "f8fb0424cbc7e260c857a110b41d8d1d1bbd16721ad36e2edab1c9e07aa88ab1",
+  "driver_modified_utc": "2026-10-29T02:08:32.038837+00:00",
+  "sources": {
+    "src/execution/function.h": "efbb430b11f43f87822c2d37b6ce1fcddd78079ebe11dc0b478c181ad9fa887b",
+    "src/execution/runner.c": "3861c1d4216d7083ecb294f0ba63dd0fdd3511c50cc8c17588dc253b8c985b88",
+    "src/authoring/program.c": "872bb7f4ed162a5f5105f76321d058417aa86e41f8ff68709fe93257a6a4c585",
+    "src/authoring/program.h": "ff437f176ab7bd673b11f8b0d26361e3a02550ed23b175ea0d08b05aba9c46cc",
+    "src/authoring/program_service.c": "8d50ed5a14f75bb74027a7bb9bd36628ce98cfec0e035a22c49608bf8b377915",
+    "src/authoring/asset_compiler_host.c": "3b8d530ec92ca4ccbeb94844b0dc46d5815f91fa644b21283719b7ce52f835e2",
+    "src/toolchain/compiler_host.c": "9524b7dedeca70c20dfe825bf976e8bbff7a25b2971ccf67962927ad4eb59965",
+    "src/authoring/package_tests.c": "9a0f5bfa94229238e8993526db8bb360d78dd8343490070c9803dca7e38fdea0",
+    "src/host/build_host.c": "c5584aaf4c6aa0cde7f9b9d854557836ead7f03dc035bcf1b75d4e5a1d89f307",
+    "src/host/build_host.h": "1ae61ae5a4a827e1d1c08e24f6dd08f363deef22cfb57a105bdebfad1414f7d2",
+    "test/language/program_session.c": "b6d2bc4eaa54d8ac82da39cab2d3ffccaa04142598048816ac3b3ea4091883ba",
+    "test/language/execution_scope.c": "fe25eca1c730da0c40374ac026eab14c7f28ed7048b0365bc182499265999f27",
+    "test/language/program.c": "8b20d92e126bf39a3ae1b2057eece7cff82ab18b0b156bb22916a8c341a5ceaf",
+    "test/language/publication.c": "73d2458733dac481c09e07400ff9f6a29a1edfc97d0eb063548a84395d3d137d",
+    "test/language/record_publication.c": "c74dd85958c97c0aa23fbc8e219e96be910b8146640796d391b4b91de3deb637",
+    "test/language/record_prepared_runtime.c": "41c9009a20b0ebb13a385dca0d95adb187ecae5442710af4669355b0ede68681",
+    "test/language/main.c": "b4555b36a428b57e700eebf504006514c3d53a1eb47948cb891cc7a527c90435"
+  },
+  "driver_newer_than_sources": true
+}

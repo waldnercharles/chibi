@@ -1,0 +1,39 @@
+{
+  "configure": [
+    "cmake",
+    "-S",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-validation/test/language",
+    "-B",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build",
+    "-G",
+    "Ninja",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+    "-DCMAKE_C_COMPILER_LAUNCHER=",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+    "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+    "-DCHIBI_LANGUAGE_TEST_ASSET_COMPILER_HOST=OFF",
+    "-DCHIBI_ENABLE_SANITIZERS=OFF"
+  ],
+  "build": [
+    "cmake",
+    "--build",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build",
+    "--target",
+    "test_language",
+    "--parallel",
+    "4"
+  ],
+  "policy": [
+    "python3",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-validation/tools/test_policy.py",
+    "native",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build/test_language",
+    "--package-compiler-chibi-math-native"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-validation",
+  "environment": {
+    "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build"
+  }
+}

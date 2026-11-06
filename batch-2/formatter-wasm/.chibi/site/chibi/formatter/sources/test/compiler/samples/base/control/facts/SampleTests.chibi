@@ -1,0 +1,10 @@
+package facts
+
+// control
+@test
+Calls :: () {
+    a1_0: int = 15;
+    r1: int = Count(a1_0);
+    e1: int = 8;
+    assert(r1 == e1, "Count call 1");
+}

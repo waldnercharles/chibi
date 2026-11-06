@@ -1,0 +1,117 @@
+package package_compiler
+
+import facts "project:scalar_facts"
+import snapshot "project:source_snapshot"
+
+ScalarTrigBind :: (forest: snapshot.SnapshotNode[], rows: ^(facts.Row[]), variables: ^int,
+                   type: int, expression: facts.Row[]) -> int {
+    result := variables^;
+    rows.append(ScalarAt(forest, 0, facts.LocalRow, type, result, length(expression), ""));
+    rows.extend(expression);
+    variables^ += 1;
+    return result;
+}
+
+ScalarTrigRead :: (forest: snapshot.SnapshotNode[], type: int, variable: int) -> facts.Row {
+    return ScalarAt(forest, 0, facts.ReadRow, type, variable, 0, "");
+}
+
+ScalarTrigConstant :: (forest: snapshot.SnapshotNode[], rows: ^(facts.Row[]), variables: ^int, bits: u64) -> int {
+    return ScalarTrigBind(forest, rows, variables, facts.FloatType, [ScalarLiteral(forest, 0, facts.FloatType, bits)]);
+}
+
+ScalarTrigBinary :: (forest: snapshot.SnapshotNode[], rows: ^(facts.Row[]), variables: ^int,
+                     operator: int, left: int, right: int) -> int {
+    return ScalarTrigBind(forest, rows, variables, facts.FloatType,
+        [ScalarTrigRead(forest, facts.FloatType, left), ScalarTrigRead(forest, facts.FloatType, right),
+         ScalarAt(forest, 0, facts.ArithmeticRow, facts.FloatType, operator, 2, "")]);
+}
+
+ScalarTrigCompare :: (forest: snapshot.SnapshotNode[], rows: ^(facts.Row[]), variables: ^int,
+                      operator: int, left: int, right: int) -> int {
+    return ScalarTrigBind(forest, rows, variables, facts.BoolType,
+        [ScalarTrigRead(forest, facts.FloatType, left), ScalarTrigRead(forest, facts.FloatType, right),
+         ScalarAt(forest, 0, facts.CompareRow, facts.BoolType, operator, 2, "")]);
+}
+
+ScalarTrigSelect :: (forest: snapshot.SnapshotNode[], rows: ^(facts.Row[]), variables: ^int,
+                     condition: int, yes: int, no: int) -> int {
+    return ScalarTrigBind(forest, rows, variables, facts.FloatType,
+        [ScalarTrigRead(forest, facts.BoolType, condition), ScalarTrigRead(forest, facts.FloatType, yes),
+         ScalarTrigRead(forest, facts.FloatType, no), ScalarAt(forest, 0, facts.SelectRow, facts.FloatType, 0, 3, "")]);
+}
+
+ScalarTrigNegate :: (forest: snapshot.SnapshotNode[], rows: ^(facts.Row[]), variables: ^int, value: int) -> int {
+    return ScalarTrigBind(forest, rows, variables, facts.FloatType,
+        [ScalarTrigRead(forest, facts.FloatType, value), ScalarAt(forest, 0, facts.UnaryRow, facts.FloatType, facts.Negate, 1, "")]);
+}
+
+// Box2D's rational sine/cosine approximation, MIT, Erin Catto, matching
+// src/support/cos_sin.h. Every intermediate remains f32 and no operation
+// contracts. The ordinary SIN/COS opcodes widen this f32 result to f64.
+ScalarBuiltinTrig :: (forest: snapshot.SnapshotNode[], rows: ^(facts.Row[]), variables: ^int,
+                      input: int, input_type: int, output_type: int, cosine: bool) -> int {
+    radians := input;
+    if (input_type != facts.FloatType) {
+        radians = ScalarTrigBind(forest, rows, variables, facts.FloatType,
+            [ScalarTrigRead(forest, input_type, input), ScalarAt(forest, 0, facts.ConvertRow, facts.FloatType, facts.Clamp, 1, "")]);
+    }
+    zero := ScalarTrigConstant(forest, rows, variables, 0);
+    one := ScalarTrigConstant(forest, rows, variables, 0x3f800000);
+    half := ScalarTrigConstant(forest, rows, variables, 0x3f000000);
+    two := ScalarTrigConstant(forest, rows, variables, 0x40000000);
+    four := ScalarTrigConstant(forest, rows, variables, 0x40800000);
+    five := ScalarTrigConstant(forest, rows, variables, 0x40a00000);
+    sixteen := ScalarTrigConstant(forest, rows, variables, 0x41800000);
+    pi := ScalarTrigConstant(forest, rows, variables, 0x40490fdb);
+    pi2 := ScalarTrigBinary(forest, rows, variables, facts.Multiply, pi, pi);
+    period := ScalarTrigBinary(forest, rows, variables, facts.Multiply, two, pi);
+    reduced := ScalarAt(forest, 0, facts.ForeignRow, facts.FloatType, 0, 2, "remainderf");
+    reduced.text = "system:m";
+    x := ScalarTrigBind(forest, rows, variables, facts.FloatType,
+        [ScalarTrigRead(forest, facts.FloatType, radians), ScalarTrigRead(forest, facts.FloatType, period), reduced]);
+    half_pi := ScalarTrigBinary(forest, rows, variables, facts.Multiply, half, pi);
+    negative_half := ScalarTrigNegate(forest, rows, variables, half_pi);
+    below := ScalarTrigCompare(forest, rows, variables, facts.Less, x, negative_half);
+    above := ScalarTrigCompare(forest, rows, variables, facts.Greater, x, half_pi);
+    plus_pi := ScalarTrigBinary(forest, rows, variables, facts.Add, x, pi);
+    minus_pi := ScalarTrigBinary(forest, rows, variables, facts.Subtract, x, pi);
+    above_y := ScalarTrigSelect(forest, rows, variables, above, minus_pi, x);
+    y := ScalarTrigSelect(forest, rows, variables, below, plus_pi, above_y);
+    y2 := ScalarTrigBinary(forest, rows, variables, facts.Multiply, y, y);
+    four_y2 := ScalarTrigBinary(forest, rows, variables, facts.Multiply, four, y2);
+    c_top := ScalarTrigBinary(forest, rows, variables, facts.Subtract, pi2, four_y2);
+    c_bottom := ScalarTrigBinary(forest, rows, variables, facts.Add, pi2, y2);
+    initial_c := ScalarTrigBinary(forest, rows, variables, facts.Divide, c_top, c_bottom);
+    negative_c := ScalarTrigNegate(forest, rows, variables, initial_c);
+    changed := ScalarTrigCompare(forest, rows, variables, facts.NotEqual, y, x);
+    c := ScalarTrigSelect(forest, rows, variables, changed, negative_c, initial_c);
+    negative := ScalarTrigCompare(forest, rows, variables, facts.Less, x, zero);
+    z := ScalarTrigSelect(forest, rows, variables, negative, plus_pi, x);
+    sixteen_z := ScalarTrigBinary(forest, rows, variables, facts.Multiply, sixteen, z);
+    pi_minus_z := ScalarTrigBinary(forest, rows, variables, facts.Subtract, pi, z);
+    s_top := ScalarTrigBinary(forest, rows, variables, facts.Multiply, sixteen_z, pi_minus_z);
+    five_pi2 := ScalarTrigBinary(forest, rows, variables, facts.Multiply, five, pi2);
+    four_z := ScalarTrigBinary(forest, rows, variables, facts.Multiply, four, z);
+    four_z_pi_z := ScalarTrigBinary(forest, rows, variables, facts.Multiply, four_z, pi_minus_z);
+    s_bottom := ScalarTrigBinary(forest, rows, variables, facts.Subtract, five_pi2, four_z_pi_z);
+    initial_s := ScalarTrigBinary(forest, rows, variables, facts.Divide, s_top, s_bottom);
+    negative_s := ScalarTrigNegate(forest, rows, variables, initial_s);
+    s := ScalarTrigSelect(forest, rows, variables, negative, negative_s, initial_s);
+    ss := ScalarTrigBinary(forest, rows, variables, facts.Multiply, s, s);
+    cc := ScalarTrigBinary(forest, rows, variables, facts.Multiply, c, c);
+    squared := ScalarTrigBinary(forest, rows, variables, facts.Add, ss, cc);
+    magnitude := ScalarTrigBind(forest, rows, variables, facts.FloatType,
+        [ScalarTrigRead(forest, facts.FloatType, squared), ScalarAt(forest, 0, facts.UnaryRow, facts.FloatType, facts.SquareRoot, 1, "")]);
+    positive := ScalarTrigCompare(forest, rows, variables, facts.Greater, magnitude, zero);
+    reciprocal := ScalarTrigBinary(forest, rows, variables, facts.Divide, one, magnitude);
+    inverse := ScalarTrigSelect(forest, rows, variables, positive, reciprocal, zero);
+    component := s;
+    if (cosine) { component = c; }
+    result := ScalarTrigBinary(forest, rows, variables, facts.Multiply, component, inverse);
+    if (output_type != facts.FloatType) {
+        result = ScalarTrigBind(forest, rows, variables, output_type,
+            [ScalarTrigRead(forest, facts.FloatType, result), ScalarAt(forest, 0, facts.ConvertRow, output_type, facts.Clamp, 1, "")]);
+    }
+    return result;
+}

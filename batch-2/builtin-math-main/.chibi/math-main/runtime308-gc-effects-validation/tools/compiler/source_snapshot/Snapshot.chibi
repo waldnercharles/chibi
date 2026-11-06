@@ -1,0 +1,403 @@
+package source_snapshot
+
+import routes "project:package_routes"
+import paths "project:package_paths"
+import extract "project:package_syntax"
+import graph "project:package_graph"
+import syntax "project:syntax_diagnostics"
+import raw "project:compiler_syntax"
+import strings "core:strings"
+
+pub Options :: struct {
+    project: string;
+    has_project: bool;
+    has_options: bool;
+    has_files: bool;
+    has_collections: bool;
+    file_count: int;
+    collection_count: int;
+}
+pub Input :: struct {
+    path: string;
+    text: string;
+    has_path: bool;
+    has_text: bool;
+}
+Range :: struct {
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
+pub SnapshotNode :: struct {
+    kind: string;
+    start: int;
+    end: int;
+    row: int;
+    column: int;
+    parent: int;
+    first_child: int;
+    next_sibling: int;
+    error: bool;
+    missing: bool;
+    has_error: bool;
+    field: string;
+    is_named: bool;
+    is_extra: bool;
+}
+pub Document :: struct {
+    original_path: string;
+    path: string;
+    directory: string;
+    key: string;
+    identity: string;
+    text: string;
+    root: int;
+    syntax_root: int;
+    header_start: int;
+    header_end: int;
+    header_line: int;
+    header_column: int;
+    header_document: int;
+    node_start: int;
+    node_count: int;
+    first_import: int;
+    import_count: int;
+    has_key: bool;
+    has_syntax: bool;
+    has_header: bool;
+}
+pub ResolvedImport :: struct {
+    file: int;
+    alias: string;
+    explicit_alias: bool;
+    range_start: int;
+    range_end: int;
+    range_line: int;
+    range_column: int;
+    range_document: int;
+    path_start: int;
+    path_end: int;
+    path_line: int;
+    path_column: int;
+    path_document: int;
+    alias_start: int;
+    alias_end: int;
+    alias_line: int;
+    alias_column: int;
+    alias_document: int;
+    directory: string;
+}
+pub Result :: union {
+    Accepted(roots: routes.Root[], documents: Document[], nodes: SnapshotNode[],
+             imports: ResolvedImport[], graph: graph.Graph)
+    | Rejected(diagnostic: syntax.Diagnostic, related: Range, graph_error: graph.Error,
+               cycle: int[], documents: Document[], nodes: SnapshotNode[], imports: ResolvedImport[])
+}
+
+FileRange :: (file: int) -> Range {
+    return {start: 0, end: 0, line: 1, column: 1, document: file};
+}
+HeaderRange :: (document: Document) -> Range {
+    return {start: document.header_start, end: document.header_end,
+            line: document.header_line, column: document.header_column,
+            document: document.header_document};
+}
+pub ImportRange :: (imported: ResolvedImport) -> Range {
+    return {start: imported.range_start, end: imported.range_end,
+            line: imported.range_line, column: imported.range_column,
+            document: imported.range_document};
+}
+PathRange :: (imported: ResolvedImport) -> Range {
+    return {start: imported.path_start, end: imported.path_end,
+            line: imported.path_line, column: imported.path_column, document: imported.file};
+}
+pub Diagnostic :: (range: Range, message: string) -> syntax.Diagnostic {
+    return {start: range.start, end: range.end, line: range.line,
+            column: range.column, document: range.document, message: message};
+}
+pub Stamp :: (diagnostic: syntax.Diagnostic, file: int) -> syntax.Diagnostic {
+    diagnostic.document = file;
+    return diagnostic;
+}
+Reject :: (diagnostic: syntax.Diagnostic, documents: Document[],
+           nodes: SnapshotNode[], imports: ResolvedImport[]) -> Result {
+    error: graph.Error = {code: 0, file: -1, import_index: -1,
+                          related_file: -1, related_import: -1, cycle_count: 0};
+    return Result.Rejected(diagnostic, FileRange(-1), error,
+                           resize([int(0)], 256), documents, nodes, imports);
+}
+
+// Byte input is retained as a bounded prefix by the external adapter. Its exact
+// declared size stays separate so NUL detection follows routing, as in stage zero.
+FileSize :: (size: u64) -> bool {
+    return (size & 0xfffffffffff80000) == 0 ||
+           size == 524288;
+}
+TotalSize :: (size: u64) -> bool {
+    return (size & 0xffffffffff800000) == 0 ||
+           size == 8388608;
+}
+ValidUTF8 :: (text: string) -> bool {
+    // Each ByteAt measures the text, so a whole text reads Bytes once.
+    bytes := strings.Bytes(text);
+    size := length(bytes);
+    index: int = 0;
+    while (index < size) {
+        lead := bytes[index];
+        index += 1;
+        if (lead < 128) {
+            continue;
+        }
+        count: int = -1;
+        if (lead >= 194 && lead <= 223) {
+            count = 1;
+        }
+        if (lead >= 224 && lead <= 239) {
+            count = 2;
+        }
+        if (lead >= 240 && lead <= 244) {
+            count = 3;
+        }
+        if (count < 0 || count > size - index) {
+            return false;
+        }
+        value := lead & (127 >> u8(count + 1));
+        minimum: int = 128;
+        if (count == 2) {
+            minimum = 2048;
+        }
+        if (count == 3) {
+            minimum = 65536;
+        }
+        part: int = 0;
+        while (part < count) {
+            next := bytes[index];
+            index += 1;
+            if ((next & 192) != 128) {
+                return false;
+            }
+            value = (value << 6) | (next & 63);
+            part += 1;
+        }
+        if (value < minimum || value > 1114111 || (value >= 55296 && value <= 57343)) {
+            return false;
+        }
+    }
+    return true;
+}
+Retained :: (input: Input) -> Document {
+    return {original_path: input.path, path: input.path, directory: "", key: "", identity: "",
+            text: input.text, root: 0, syntax_root: -1, header_start: 0, header_end: 0,
+            header_line: 0, header_column: 0, header_document: 0,
+            node_start: 0, node_count: 0, first_import: 0, import_count: 0,
+            has_key: false, has_syntax: false, has_header: false};
+}
+Rebase :: (link: int, offset: int) -> int {
+    if (link < 0) {
+        return link;
+    }
+    return link + offset;
+}
+pub Node :: (node: syntax.Node, field: string, is_named: bool, is_extra: bool, offset: int) -> SnapshotNode {
+    return {kind: node.kind, start: node.start, end: node.end, row: node.row, column: node.column,
+            parent: Rebase(node.parent, offset), first_child: Rebase(node.first_child, offset),
+            next_sibling: Rebase(node.next_sibling, offset), error: node.error,
+            missing: node.missing, has_error: node.has_error, field: field,
+            is_named: is_named, is_extra: is_extra};
+}
+Resolved :: (imported: extract.Import, directory: string) -> ResolvedImport {
+    return {file: imported.file, alias: imported.alias, explicit_alias: imported.explicit_alias,
+            range_start: imported.range_start, range_end: imported.range_end,
+            range_line: imported.range_line, range_column: imported.range_column,
+            range_document: imported.file,
+            path_start: imported.path_start, path_end: imported.path_end,
+            path_line: imported.path_line, path_column: imported.path_column,
+            path_document: imported.path_document,
+            alias_start: imported.alias_start, alias_end: imported.alias_end,
+            alias_line: imported.alias_line, alias_column: imported.alias_column,
+            alias_document: imported.alias_document, directory: directory};
+}
+GraphFailure :: (error: graph.Error, cycle: int[], documents: Document[],
+                 nodes: SnapshotNode[], imports: ResolvedImport[]) -> Result {
+    range := FileRange(-1);
+    if (error.import_index >= 0) {
+        range = ImportRange(imports[error.import_index]);
+    } else if (error.file >= 0) {
+        range = HeaderRange(documents[error.file]);
+    }
+    if (error.code == graph.Missing || error.code == graph.ImportName) {
+        range = PathRange(imports[error.import_index]);
+    }
+    related := FileRange(-1);
+    if (error.related_import >= 0) {
+        related = ImportRange(imports[error.related_import]);
+    } else if (error.related_file >= 0) {
+        related = HeaderRange(documents[error.related_file]);
+    }
+    message := "Invalid package graph";
+    if (error.code == graph.DuplicateFile) {
+        message = "Duplicate package file";
+    }
+    if (error.code == graph.HeaderMismatch) {
+        message = "Package sibling headers differ";
+    }
+    if (error.code == graph.DuplicateName) {
+        message = "Duplicate package name";
+    }
+    if (error.code == graph.Missing) {
+        message = "Imported package is missing from the snapshot";
+    }
+    if (error.code == graph.ImportName) {
+        message = "Invalid import binding name";
+    }
+    if (error.code == graph.DuplicateImport) {
+        message = "Duplicate file-local import binding";
+    }
+    if (error.code == graph.Cycle) {
+        message = "Package import cycle";
+    }
+    return Result.Rejected(Diagnostic(range, message), related, error, cycle, documents, nodes, imports);
+}
+
+// The parser supplies syntax facts only. All validation, phase ordering,
+// retention, routing and graph diagnostics below are ordinary authored policy.
+pub Build :: (options: Options, collections: routes.Collection[], inputs: Input[], sizes: u64[]) -> Result {
+    documents: Document[] = [];
+    nodes: SnapshotNode[] = [];
+    imports: ResolvedImport[] = [];
+    if (!options.has_options || options.file_count < 0 || options.file_count > 256 ||
+        (options.file_count != 0 && !options.has_files) ||
+        options.collection_count < 0 || options.collection_count >= 256 ||
+        (options.collection_count != 0 && !options.has_collections)) {
+        return Reject(Diagnostic(FileRange(-1), "Invalid package snapshot options"), documents, nodes, imports);
+    }
+    roots: routes.Root[] = [];
+    rootSet := routes.RootSet(options.project, options.has_project,
+                              slice(collections, 0, options.collection_count));
+    switch rootSet {
+        case .Rejected(diagnostic):
+            return Reject(diagnostic, documents, nodes, imports);
+        case .Accepted(items):
+            roots = items;
+    }
+    files: graph.File[] = [];
+    pending: extract.Import[] = [];
+    pendingStarts: int[] = [];
+    pendingCounts: int[] = [];
+    total: u64 = 0;
+    file: int = 0;
+    while (file < options.file_count) {
+        input := inputs[file];
+        if (!input.has_path || !paths.Bounded(input.path) || strings.ByteLength(input.path) == 0) {
+            return Reject(Diagnostic(FileRange(file), "Invalid package file path"), documents, nodes, imports);
+        }
+        size := sizes[file];
+        if (!input.has_text || !FileSize(size)) {
+            return Reject(Diagnostic(FileRange(file), "Package source byte limit exceeded"), documents, nodes, imports);
+        }
+        total += size;
+        if (!TotalSize(total)) {
+            return Reject(Diagnostic(FileRange(file), "Package source byte limit exceeded"), documents, nodes, imports);
+        }
+        document := Retained(input);
+        documents.append(document);
+        routed := routes.FileRoute(roots, input.path, input.has_path, file);
+        switch routed {
+            case .Rejected(diagnostic):
+                return Reject(diagnostic, documents, nodes, imports);
+            case .Accepted(item):
+                document.path = item.path;
+                document.directory = item.directory;
+                document.key = item.key;
+                document.identity = item.identity;
+                document.root = item.root;
+                document.has_key = true;
+        }
+        documents[file] = document;
+        if (u64(strings.ByteLength(input.text)) != size) {
+            return Reject(Diagnostic(FileRange(file), "Package source contains NUL bytes"), documents, nodes, imports);
+        }
+        if (!ValidUTF8(input.text)) {
+            return Reject(Diagnostic(FileRange(file), "Package source is not valid UTF-8"), documents, nodes, imports);
+        }
+        tree := raw.Parse(input.text);
+        switch tree {
+            case .Parsed(localNodes, fields, is_named, is_extra, root):
+                document.node_start = length(nodes);
+                document.node_count = length(localNodes);
+                document.syntax_root = Rebase(root, document.node_start);
+                document.has_syntax = true;
+                index: int = 0;
+                while (index < length(localNodes)) {
+                    nodes.append(Node(localNodes[index], fields[index], is_named[index], is_extra[index], document.node_start));
+                    index += 1;
+                }
+                documents[file] = document;
+                extracted := extract.Extract(localNodes, fields, input.text, root, file, document.path, document.directory);
+                switch extracted {
+                    case .Rejected(diagnostic):
+                        return Reject(Stamp(diagnostic, file), documents, nodes, imports);
+                    case .Accepted(descriptor, items):
+                        document.header_start = descriptor.header_start;
+                        document.header_end = descriptor.header_end;
+                        document.header_line = descriptor.header_line;
+                        document.header_column = descriptor.header_column;
+                        document.header_document = file;
+                        document.has_header = true;
+                        graphFile: graph.File = {path: descriptor.path, directory: descriptor.directory, name: descriptor.name};
+                        files.append(graphFile);
+                        pendingStarts.append(length(pending));
+                        pendingCounts.append(length(items));
+                        for (item in items) {
+                            pending.append(item);
+                        }
+                }
+        }
+        documents[file] = document;
+        file += 1;
+    }
+
+    graphImports: graph.Import[] = [];
+    file = 0;
+    while (file < length(documents)) {
+        document := documents[file];
+        document.first_import = length(imports);
+        documents[file] = document;
+        index: int = 0;
+        while (index < pendingCounts[file]) {
+            if (length(imports) >= 4096) {
+                return Reject(Diagnostic(FileRange(file), "Package import limit exceeded"), documents, nodes, imports);
+            }
+            imported := pending[pendingStarts[file] + index];
+            request: routes.ImportInput = {
+                directory: document.directory, root: document.root,
+                literal: strings.Slice(document.text, imported.path_start, imported.path_end - imported.path_start),
+                start: imported.path_start, end: imported.path_end,
+                line: imported.path_line, column: imported.path_column, document: file
+            };
+            routed := routes.ImportRoute(roots, request);
+            switch routed {
+                case .Rejected(diagnostic):
+                    return Reject(diagnostic, documents, nodes, imports);
+                case .Accepted(directory):
+                    imports.append(Resolved(imported, directory));
+                    graphImport: graph.Import = {file: imported.file, directory: directory,
+                                                 alias: imported.alias, explicit_alias: imported.explicit_alias};
+                    graphImports.append(graphImport);
+            }
+            document.import_count += 1;
+            documents[file] = document;
+            index += 1;
+        }
+        file += 1;
+    }
+    built := graph.Build(files, graphImports);
+    switch built {
+        case .Rejected(error, cycle):
+            return GraphFailure(error, cycle, documents, nodes, imports);
+        case .Accepted(packages, members, filePackages, order, edges, bindings):
+            return Result.Accepted(roots, documents, nodes, imports, built);
+    }
+}

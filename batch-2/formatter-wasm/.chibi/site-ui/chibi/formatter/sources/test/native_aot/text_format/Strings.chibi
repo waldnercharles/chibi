@@ -1,0 +1,26 @@
+package text_format_strings
+
+import strings "core:strings"
+
+// The format and its modifiers are dynamic while every value stays a string.
+Apply :: (template: string, first: string, second: string) -> string {
+    return format_text(template, first, second);
+}
+Main :: () -> int {
+    indexed := Apply("{1}|{}|{0}|{}", "first", "second");
+    assert(indexed == "second|first|first|second");
+    escaped := Apply("{{{0}}}|{x}|{0!}|{0:missing", "value", "");
+    assert(escaped == "{value}|{x}|{0!}|{0:missing");
+    padded := Apply("{0:<5.3s}|{1:>4s}", "alphabet", "xy");
+    assert(padded == "alp  |  xy");
+    invalid := Apply("{:d}|{:f}|{:c}|{:n}", "raw", "other");
+    assert(invalid == "raw|other||");
+    missing := Apply("a{9}b{}c{}d", "one", "two");
+    assert(missing == "abonectwod");
+    embedded := text_from_bytes([u8(97), u8(0), u8(98)]);
+    nul := Apply("{:>6.3s}", embedded, "");
+    assert(strings.ByteLength(nul) == 6 && strings.ByteAt(nul, 4) == 0);
+    repeated := Apply("{0}{0}{0}{0}{0}{0}{0}{0}{0}{0}{0}{0}{0}", "xy", "");
+    assert(repeated == strings.Repeat("xy", 12));
+    return 0;
+}

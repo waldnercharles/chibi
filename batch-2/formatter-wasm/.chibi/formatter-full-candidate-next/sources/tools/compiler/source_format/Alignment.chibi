@@ -1,0 +1,488 @@
+package source_format
+
+import strings "core:strings"
+import syntax "project:compiler_syntax"
+import diag "project:syntax_diagnostics"
+import tk "project:source_tokenizer"
+import directives "project:source_directives"
+
+AnchorUntypedConstant: int : 5;
+AnchorDeclarationType: int : 6;
+
+// CSV is configuration text only. Hot layout keeps two scalar bits per
+// column, so adding an override does not copy a managed string per gap.
+AlignmentColumnPolicy :: (text: string) -> (bits: u64, error: string) {
+    if (strings.TrimSpace(text) == "") { return (u64(0), ""); }
+    parts := strings.Split(text, ",");
+    if (length(parts) > 32) {
+        return (u64(0), "data_column_alignment accepts at most 32 columns");
+    }
+    bits: u64 = 0;
+    for (index in 0..<length(parts)) {
+        value := strings.TrimSpace(parts[index]);
+        mode: u64 = 0;
+        if (value == "left") { mode = 1; }
+        else if (value == "right") { mode = 2; }
+        else if (value != "auto") {
+            return (u64(0), "data_column_alignment uses auto, left or right separated by commas");
+        }
+        bits = bits | (mode << u64(index * 2));
+    }
+    return (bits, "");
+}
+
+ValidAlignmentColumns :: (bits: u64) -> bool {
+    remaining := bits;
+    for (index in 0..<32) {
+        if ((remaining & u64(3)) == u64(3)) { return false; }
+        remaining = remaining >> u64(2);
+    }
+    return true;
+}
+
+// Modes 0 inherits the original boolean; the resolved modes are off, preserve
+// manual columns and align consecutive rows. Anchor kinds are shared with Layout.
+AlignmentMode :: (kind: int, options: Options) -> int {
+    mode: int = 1;
+    legacy := false;
+    switch kind {
+        case AnchorField: mode = options.field_type_alignment; legacy = options.align_field_types;
+        case AnchorConstant: mode = options.constant_alignment; legacy = options.align_constants;
+        case AnchorValue: mode = options.record_value_alignment; legacy = options.align_struct_literal_values;
+        case AnchorAssign: mode = options.assignment_alignment; legacy = options.align_assignments;
+        case AnchorComment: mode = options.comment_alignment; legacy = options.align_trailing_comments;
+        case AnchorUntypedConstant: mode = options.constant_alignment;
+        case AnchorDeclarationType: mode = options.declaration_type_alignment;
+        case: assert(false, "known alignment anchor");
+    }
+    if (mode == 0) {
+        if (legacy) { return 3; }
+        return 1;
+    }
+    return mode;
+}
+
+AnyAlignment :: (options: Options) -> bool {
+    if (options.data_alignment >= 2) { return true; }
+    for (kind in [AnchorField, AnchorConstant, AnchorDeclarationType, AnchorUntypedConstant,
+                 AnchorValue, AnchorAssign, AnchorComment]) {
+        if (AlignmentMode(kind, options) > 1) { return true; }
+    }
+    return false;
+}
+
+// Layout supplies line classes, so an across-empty-lines preference cannot
+// accidentally cross an unrelated code statement. Prefix counts make each gap
+// query constant time even for a very large source with distant anchors.
+AlignmentGap :: (before: int, next_line: int, code: int[], comments: int[], blanks: int[],
+                 options: Options) -> bool {
+    if (next_line <= before) { return false; }
+    if (next_line == before + 1) { return true; }
+    first := before + 1;
+    if (code[next_line] != code[first]) { return false; }
+    if (!options.alignment_across_comments && comments[next_line] != comments[first]) { return false; }
+    if (!options.alignment_across_blank_lines && blanks[next_line] != blanks[first]) { return false; }
+    return true;
+}
+
+// A pass is linear in anchors and output lines. Padding is accumulated by
+// anchor index, then applied to subsequent columns once, avoiding a quadratic
+// update when many manually padded anchors share one physical line.
+AlignColumnKind :: (out: ^(string[]), kind: int, pieces: int[], lines: int[], columns: ^(int[]),
+                    kinds: int[], margins: int[], scopes: int[], original_columns: int[],
+                    original_spaces: int[], operator_widths: int[], code: int[], comments: int[],
+                    blanks: int[], line_count: int, budget: ^int, options: Options) {
+    mode := AlignmentMode(kind, options);
+    if (mode == 1) { return; }
+    selected: int[] = [];
+    for (index in 0..<length(pieces)) {
+        if (kinds[index] == kind) { selected.append(index); }
+    }
+    if (length(selected) == 0) { return; }
+    shifts := resize([int(0)], line_count);
+    deltas := resize([int(0)], length(pieces));
+    first: int = 0;
+    while (first < length(selected)) {
+        end := first + 1;
+        while (end < length(selected)) {
+            previous := selected[end - 1];
+            current := selected[end];
+            if (margins[previous] != margins[current] || scopes[previous] != scopes[current] ||
+                !AlignmentGap(lines[previous], lines[current], code, comments, blanks, options)) { break; }
+            end += 1;
+        }
+        target: int = 0;
+        manual := false;
+        index := first;
+        while (index < end) {
+            anchor := selected[index];
+            marker: int = 0;
+            if (kind == AnchorAssign && options.alignment_compound == 1 && operator_widths[anchor] > 0) {
+                marker = operator_widths[anchor] - 1;
+            }
+            value := columns^[anchor] + shifts[lines[anchor]] + marker;
+            if (mode == 2) {
+                value = original_columns[anchor] + marker;
+                manual = manual || original_spaces[anchor] > 1;
+            }
+            if (value > target) { target = value; }
+            index += 1;
+        }
+        permitted := (mode == 2 && manual) || (mode == 3 && end - first > 1);
+        if (options.alignment_max_column > 0 && target > options.alignment_max_column) { permitted = false; }
+        added: int = 0;
+        index = first;
+        while (index < end && permitted) {
+            anchor := selected[index];
+            marker: int = 0;
+            if (kind == AnchorAssign && options.alignment_compound == 1 && operator_widths[anchor] > 0) {
+                marker = operator_widths[anchor] - 1;
+            }
+            pad := target - columns^[anchor] - shifts[lines[anchor]] - marker;
+            if (pad < 0 || (options.alignment_max_padding > 0 && pad > options.alignment_max_padding) ||
+                pad > budget^ - added) {
+                permitted = false;
+            }
+            if (permitted) { added += pad; }
+            index += 1;
+        }
+        if (permitted) {
+            budget^ = budget^ - added;
+            index = first;
+            while (index < end) {
+                anchor := selected[index];
+                marker: int = 0;
+                if (kind == AnchorAssign && options.alignment_compound == 1 && operator_widths[anchor] > 0) {
+                    marker = operator_widths[anchor] - 1;
+                }
+                pad := target - columns^[anchor] - shifts[lines[anchor]] - marker;
+                if (pad > 0) {
+                    out^[pieces[anchor]] = strings.Concatenate([out^[pieces[anchor]], strings.Repeat(" ", pad)]);
+                    shifts[lines[anchor]] += pad;
+                    deltas[anchor] += pad;
+                }
+                index += 1;
+            }
+        }
+        first = end;
+    }
+    line: int = -1;
+    shift: int = 0;
+    for (index in 0..<length(pieces)) {
+        if (lines[index] != line) { line = lines[index]; shift = 0; }
+        shift += deltas[index];
+        columns^[index] += shift;
+    }
+}
+
+// One output-order anchor table serves all kinds. There are seven fixed passes;
+// each scans the table and line prefixes once, independent of identifier length.
+AlignColumns :: (out: ^(string[]), pieces: int[], lines: int[], columns: ^(int[]), kinds: int[],
+                 margins: int[], scopes: int[], original_columns: int[], original_spaces: int[],
+                 operator_widths: int[], line_kinds: int[], options: Options) {
+    if (length(pieces) == 0) { return; }
+    budget := MaxBytes;
+    for (piece in out^) {
+        size := text_byte_length(piece);
+        if (size > budget) { return; }
+        budget -= size;
+    }
+    code := resize([int(0)], length(line_kinds) + 1);
+    comments := resize([int(0)], length(line_kinds) + 1);
+    blanks := resize([int(0)], length(line_kinds) + 1);
+    for (index in 0..<length(line_kinds)) {
+        code[index + 1] = code[index];
+        comments[index + 1] = comments[index];
+        blanks[index + 1] = blanks[index];
+        if (line_kinds[index] == 2) { code[index + 1] += 1; }
+        else if (line_kinds[index] == 1) { comments[index + 1] += 1; }
+        else { blanks[index + 1] += 1; }
+    }
+    for (kind in [AnchorField, AnchorConstant, AnchorDeclarationType, AnchorUntypedConstant,
+                 AnchorValue, AnchorAssign, AnchorComment]) {
+        AlignColumnKind(out, kind, pieces, lines, columns, kinds, margins, scopes, original_columns,
+                        original_spaces, operator_widths, code, comments, blanks, length(line_kinds), &budget, options);
+    }
+}
+
+// A table row is one array/record expression directly contained in an array.
+// It is not a call's argument list or an arbitrary nested expression.
+DataRow :: (rows: diag.Node[], node: int) -> bool {
+    kind := KindOf(rows, node);
+    return (kind == diag.ArrayExpression || kind == diag.StructExpression) &&
+           ParentKind(rows, node) == diag.ArrayExpression;
+}
+
+DataTables :: (rows: diag.Node[]) -> bool[] {
+    tables := resize([false], length(rows));
+    for (node in 0..<length(rows)) {
+        if (KindOf(rows, node) != diag.ArrayExpression) { continue; }
+        count: int = 0;
+        kind: int = 0;
+        accepted := true;
+        child := rows[node].first_child;
+        while (child >= 0) {
+            child_kind := rows[child].kind;
+            if (child_kind >= diag.Comment && child_kind != diag.Comment) {
+                if (!DataRow(rows, child) || (kind != 0 && kind != child_kind)) { accepted = false; }
+                kind = child_kind;
+                count += 1;
+            }
+            child = rows[child].next_sibling;
+        }
+        tables[node] = accepted && count > 1;
+    }
+    return tables;
+}
+
+DataLayoutMarks :: (rows: diag.Node[], tokens: Token[]) -> (row_open: bool[], table_open: bool[]) {
+    tables := DataTables(rows);
+    row_open := resize([false], length(tokens));
+    table_open := resize([false], length(tokens));
+    for (index in 0..<length(tokens)) {
+        node := tokens[index].node;
+        parent := rows[node].parent;
+        kind := rows[node].kind;
+        if (parent < 0 || (kind != tk.OpenBracket && kind != tk.OpenBrace)) { continue; }
+        table_open[index] = tables[parent];
+        if (DataRow(rows, parent)) { row_open[index] = tables[rows[parent].parent]; }
+    }
+    return (row_open, table_open);
+}
+
+// Preserve authored horizontal gaps inside hand-arranged rows while letting
+// Layout own the indentation before the first token of each row.
+DataPreserveGaps :: (rows: diag.Node[], tokens: Token[]) -> bool[] {
+    result := resize([false], length(tokens));
+    tables := DataTables(rows);
+    owner := resize([int(0)], length(rows));
+    for (node in 0..<length(rows)) {
+        parent := rows[node].parent;
+        if (parent >= 0) { owner[node] = owner[parent]; }
+        if (DataRow(rows, node) && tables[rows[node].parent]) { owner[node] = node + 1; }
+    }
+    for (index in 1..<length(tokens)) {
+        current := tokens[index].node;
+        previous := tokens[index - 1].node;
+        result[index] = owner[current] != 0 && owner[current] == owner[previous] &&
+                        rows[current].row == rows[previous].row;
+    }
+    return result;
+}
+
+DataCell :: struct {
+    start: int;
+    value: int;
+    end: int;
+    numeric: bool;
+}
+
+DataNumeric :: (rows: diag.Node[], node: int) -> bool {
+    if (KindOf(rows, node) == diag.Number) { return true; }
+    if (KindOf(rows, node) != diag.UnaryExpression) { return false; }
+    child := rows[node].first_child;
+    number := false;
+    while (child >= 0) {
+        kind := rows[child].kind;
+        if (kind == diag.Number) { number = true; }
+        else if (kind != tk.Add && kind != tk.Sub) { return false; }
+        child = rows[child].next_sibling;
+    }
+    return number;
+}
+
+// Visual columns expand tabs once. Other units match Layout's UTF-8 byte
+// columns, so canonical and preserved padding use one consistent metric.
+DataColumns :: (bytes: int[], tab_width: int) -> int[] {
+    columns := resize([int(0)], length(bytes) + 1);
+    column: int = 0;
+    for (index in 0..<length(bytes)) {
+        columns[index] = column;
+        byte := bytes[index];
+        if (byte == 10 || byte == 13) { column = 0; }
+        else if (byte == 9) { column += tab_width - column % tab_width; }
+        else { column += 1; }
+    }
+    columns[length(bytes)] = column;
+    return columns;
+}
+
+// A row must stay on one physical line. Nested table groups are handled at
+// their innermost level, never independently padded twice using stale widths.
+DataRowCells :: (bytes: int[], rows: diag.Node[], fields: int[], node: int, forbidden: bool[],
+                 cells: ^(DataCell[])) -> bool {
+    if (forbidden[node]) { return false; }
+    start_row := rows[node].row;
+    child := rows[node].first_child;
+    while (child >= 0) {
+        kind := rows[child].kind;
+        if (rows[child].row != start_row) { return false; }
+        if (kind >= diag.Comment) {
+            if (kind == diag.Comment || forbidden[child]) { return false; }
+            value := child;
+            if (kind == diag.StructField) { value = ChildByField(rows, fields, child, diag.FieldValue); }
+            if (value < 0) { return false; }
+            for (offset in rows[child].start..<rows[child].end) {
+                if (bytes[offset] == 10 || bytes[offset] == 13) { return false; }
+            }
+            cells.append({start: rows[child].start, value: rows[value].start, end: rows[value].end,
+                          numeric: DataNumeric(rows, value)});
+        }
+        child = rows[child].next_sibling;
+    }
+    return true;
+}
+
+DataBytesEqual :: (bytes: int[], first: int, first_end: int, second: int, second_end: int) -> bool {
+    count := first_end - first;
+    if (count != second_end - second) { return false; }
+    for (offset in 0..<count) {
+        if (bytes[first + offset] != bytes[second + offset]) { return false; }
+    }
+    return true;
+}
+
+// Padding is planned before allocating strings. A single outlier cannot
+// expand the result beyond the formatter's own source bound, so the next
+// formatting pass remains admissible and memory grows with the accepted text.
+AlignDataTable :: (bytes: int[], rows: diag.Node[], fields: int[], table: int, forbidden: bool[],
+                   columns: int[], additions: ^(int[]), budget: ^int, options: Options) {
+    cells: DataCell[] = [];
+    first: int[] = [];
+    count: int = -1;
+    child := rows[table].first_child;
+    prefix_start: int = 0;
+    prefix_end: int = 0;
+    while (child >= 0) {
+        if (DataRow(rows, child)) {
+            beginning := length(cells);
+            if (!DataRowCells(bytes, rows, fields, child, forbidden, &cells)) { return; }
+            added := length(cells) - beginning;
+            if (added == 0 || (count >= 0 && count != added)) { return; }
+            if (length(first) == 0) { prefix_start = rows[child].start; prefix_end = cells[beginning].start; }
+            else if (!DataBytesEqual(bytes, prefix_start, prefix_end, rows[child].start, cells[beginning].start)) { return; }
+            count = added;
+            first.append(beginning);
+        }
+        child = rows[child].next_sibling;
+    }
+    if (length(first) < 2 || count <= 0) { return; }
+    // Record tables require corresponding field names. Their order is not
+    // changed to make dissimilar rows appear equivalent.
+    for (row in 1..<length(first)) {
+        for (column in 0..<count) {
+            a := cells[first[0] + column];
+            b := cells[first[row] + column];
+            if (!DataBytesEqual(bytes, a.start, a.value, b.start, b.value)) { return; }
+        }
+    }
+    row_shift := resize([int(0)], length(first));
+    before := resize([int(0)], length(cells));
+    values := resize([int(0)], length(cells));
+    total: int = 0;
+    for (column in 0..<count) {
+        target: int = 0;
+        column_mode: u64 = 0;
+        if (column < 32) { column_mode = (options.data_column_alignment >> u64(column * 2)) & u64(3); }
+        explicit_right := column_mode == u64(2);
+        numeric := column_mode == u64(0) && options.data_alignment == 3;
+        for (row in 0..<length(first)) {
+            cell := cells[first[row] + column];
+            own := columns[cell.start] + row_shift[row];
+            if (own > target) { target = own; }
+            numeric = numeric && cell.numeric;
+        }
+        if (options.alignment_max_column > 0 && target > options.alignment_max_column) { return; }
+        for (row in 0..<length(first)) {
+            index := first[row] + column;
+            cell := cells[index];
+            pad := target - columns[cell.start] - row_shift[row];
+            if ((options.alignment_max_padding > 0 && pad > options.alignment_max_padding) || pad > budget^ - total) { return; }
+            before[index] = pad;
+            row_shift[row] += pad;
+            total += pad;
+        }
+        if (explicit_right || numeric) {
+            target = 0;
+            for (row in 0..<length(first)) {
+                cell := cells[first[row] + column];
+                own := columns[cell.end] + row_shift[row];
+                if (own > target) { target = own; }
+            }
+            if (options.alignment_max_column > 0 && target > options.alignment_max_column) { return; }
+            for (row in 0..<length(first)) {
+                index := first[row] + column;
+                cell := cells[index];
+                pad := target - columns[cell.end] - row_shift[row];
+                if ((options.alignment_max_padding > 0 && pad > options.alignment_max_padding) || pad > budget^ - total) { return; }
+                if (cell.start == cell.value && options.alignment_max_padding > 0 &&
+                    before[index] + pad > options.alignment_max_padding) { return; }
+                values[index] = pad;
+                row_shift[row] += pad;
+                total += pad;
+            }
+        }
+    }
+    for (row in 0..<length(first)) {
+        for (column in 0..<count) {
+            index := first[row] + column;
+            cell := cells[index];
+            additions^[cell.start] += before[index];
+            additions^[cell.value] += values[index];
+        }
+    }
+    budget^ = budget^ - total;
+}
+
+AlignDataColumns :: (text: string, options: Options) -> string {
+    if (options.data_alignment < 2) { return text; }
+    switch syntax.Parse(text) {
+        case .Rejected(diagnostic): return text;
+        case .Parsed(rows, fields, named, extras, root):
+            tables := DataTables(rows);
+            protected := resize([false], length(rows));
+            nested := resize([false], length(rows));
+            verbatim := false;
+            for (node in 0..<length(rows)) {
+                if (rows[node].kind == diag.Comment) {
+                    next := directives.Apply(text_slice(text, rows[node].start, rows[node].end - rows[node].start), verbatim);
+                    protected[node] = verbatim || next;
+                    verbatim = next;
+                } else if (rows[node].first_child < 0) { protected[node] = verbatim; }
+            }
+            node := length(rows) - 1;
+            while (node >= 0) {
+                parent := rows[node].parent;
+                if (parent >= 0) {
+                    protected[parent] = protected[parent] || protected[node] || rows[node].kind == diag.Comment;
+                    nested[parent] = nested[parent] || nested[node] || tables[node];
+                }
+                node -= 1;
+            }
+            forbidden := resize([false], length(rows));
+            for (index in 0..<length(rows)) { forbidden[index] = protected[index] || nested[index] || tables[index]; }
+            width := options.tab_width;
+            if (width <= 0) { width = options.indent_width; }
+            bytes := text_bytes(text);
+            columns := DataColumns(bytes, width);
+            additions := resize([int(0)], length(bytes) + 1);
+            budget := MaxBytes - length(bytes);
+            for (index in 0..<length(rows)) {
+                if (tables[index] && !protected[index]) {
+                    AlignDataTable(bytes, rows, fields, index, forbidden, columns, &additions, &budget, options);
+                }
+            }
+            out: string[] = [];
+            copied: int = 0;
+            for (index in 0..<length(bytes)) {
+                if (additions[index] > 0) {
+                    out.append(text_slice(text, copied, index - copied));
+                    out.append(strings.Repeat(" ", additions[index]));
+                    copied = index;
+                }
+            }
+            if (copied == 0) { return text; }
+            out.append(text_slice(text, copied, length(bytes) - copied));
+            return strings.Join(out, "");
+    }
+}

@@ -1,0 +1,11 @@
+package array_oracle
+Make :: () -> [int: int[]] { return [1: [11, 12]]; }
+Reset :: (values: ^([int: int[]])) -> int { values^ = [1: [20]]; return 1; }
+Main :: () -> int {
+    escaped := Make()[1];
+    assert(escaped.length() == 2 && escaped[1] == 12);
+    values := Make();
+    captured := values[Reset(&values)];
+    assert(captured.length() == 2 && captured[0] == 11 && values[1][0] == 20);
+    return 0;
+}

@@ -1,0 +1,18 @@
+package facts
+Note :: struct { text: string; count: int; }
+Keep :: (value: string) -> (note: Note) {
+    note.text = value; note.count = 2; return;
+}
+Split :: (value: string) -> (note: Note, count: int) {
+    note = Keep(value); return (note, note.count);
+}
+Use :: () -> string {
+    first := Keep("a\u0000b");
+    second := Keep("changed");
+    second.text = "other";
+    return first.text;
+}
+Projected :: () -> string {
+    pair := Split("a\u0000b");
+    return pair.note.text;
+}

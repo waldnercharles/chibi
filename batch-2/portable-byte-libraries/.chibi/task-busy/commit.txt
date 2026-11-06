@@ -1,0 +1,17 @@
+Refuse task commands and spawning in native test scopes
+
+Preserve the C test policy at every named task command, including ready handle
+awaits, zero-duration Delay, running-state tests and cancellation. Refuse spawn
+before starting the callee body. Immediate-ready authored awaited helpers remain
+allowed; pending inline awaits refuse suspension. Budget-only programs emit no
+Busy calls.
+
+Use one validated foreign-call scan for budget/test scope selection and admit
+only the generated zero-argument int index/begin/end helpers in waiting entry
+functions. Other waiting foreign calls and malformed helper ABIs stay rejected.
+
+Add real O0/O2 runtime probes for 15 effect cases, before/after output, failure
+expectations, quota-only IR, generated-style waiting entry and foreign rejection
+boundaries. Register the script in native self-host CI. Combined compiler build
+passed in 59.67s; runtime and boundary suite passed in 4.13s. Independent compiler
+review passed; runtime helper dependency is 995866316.

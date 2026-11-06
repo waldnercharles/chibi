@@ -1,0 +1,732 @@
+package scalar_cases
+
+import facts "project:scalar_facts"
+import strings "core:strings"
+
+// Authored semantic fixtures and assertions. The temporary host adapter only
+// dispatches these sources and transports the producer's unmodified rows.
+// An accepted case names its functions in declaration order, its entry's
+// value and, unless empty, each function's operand excerpts in evaluation
+// order. A rejected case names its message and, unless empty, the excerpt its
+// diagnostic covers.
+Case :: struct {
+    name: string;
+    source: string;
+    accepted: bool;
+    value: int;
+    functions: string;
+    trace: string;
+    message: string;
+    excerpt: string;
+}
+Accepted :: (name: string, source: string, value: int, functions: string, trace: string) -> Case {
+    return {name: name, source: source, accepted: true, value: value, functions: functions, trace: trace,
+            message: "", excerpt: ""};
+}
+Rejected :: (name: string, source: string, message: string, excerpt: string) -> Case {
+    return {name: name, source: source, accepted: false, value: 0, functions: "", trace: "", message: message,
+            excerpt: excerpt};
+}
+// Main calls F1, which calls F2 and so on: `count` functions in all.
+Chain :: (count: int) -> string {
+    text := "package scalar\nMain :: () -> int { return F1(); }\n";
+    for (index in 1..<count - 1) {
+        text = format_text("{}F{} :: () -> int { return F{}(); }\n", text, index, index + 1);
+    }
+    return format_text("{}F{} :: () -> int { return {}; }\n", text, count - 1, count - 1);
+}
+ChainNames :: (count: int) -> string {
+    names := "Main";
+    for (index in 1..<count) {
+        names = format_text("{},F{}", names, index);
+    }
+    return names;
+}
+// 1 inside `depth` nested calls of Id: depth + 1 operands.
+Nested :: (depth: int) -> string {
+    text := "";
+    for (index in 0..<depth) {
+        text = format_text("{}Id(", text);
+    }
+    text = format_text("{}1", text);
+    for (index in 0..<depth) {
+        text = format_text("{})", text);
+    }
+    return text;
+}
+Nest :: (depth: int) -> string {
+    return format_text("package scalar\nMain :: () -> int { return {}; }\nId :: (x: int) -> int { return x; }\n",
+                       Nested(depth));
+}
+// Main returning 1, then a comment that pads the source to `size` bytes.
+Padded :: (size: int) -> string {
+    text := "package scalar\nMain :: () -> int { return 1; }\n//";
+    filler := "x";
+    while (strings.ByteLength(filler) < size) {
+        filler = format_text("{}{}", filler, filler);
+    }
+    return format_text("{}{}", text, strings.Slice(filler, 0, size - strings.ByteLength(text)));
+}
+// Main and a function for each int operator, then Mix, whose guard and
+// operands nest in parentheses.
+IntOperators :: () -> string {
+    text := "package scalar\nMain :: () -> int { return Mix(Id(1 + 2), 4, 5); }\nId :: (x: int) -> int { return x; }\n";
+    names := ["Add", "Sub", "Mul", "Div", "Mod", "BitAnd", "BitOr", "BitXor"];
+    operators := ["+", "-", "*", "/", "%", "&", "|", "^"];
+    for (index in 0..<length(names)) {
+        text = format_text("{}{} :: (a: int, b: int) -> int { return a {} b; }\n", text, names[index], operators[index]);
+    }
+    return format_text("{}Neg :: (a: int) -> int { return -a; }\nBitNot :: (a: int) -> int { return ~a; }\nMix :: (a: int, b: int, c: int) -> int {\n    if ((+a < b)) { return (a + b) * c - -c % 3; }\n    return +a;\n}\n",
+                       text);
+}
+Cases :: () -> Case[] {
+    return [
+        Accepted("forty_two", "package scalar\nMain :: () -> int { return 42; }", 42, "Main", "return 42"),
+        Accepted("zero", "package scalar\nMain :: () -> int { return 0; }", 0, "Main", "return 0"),
+        Accepted("int_max", "package scalar\nMain :: () -> int { return 2147483647; }", 2147483647, "Main", "return 2147483647"),
+        Accepted("hex", "package scalar\nMain :: () -> int { return 0x2a; }", 42, "Main", "return 0x2a"),
+        Accepted("comments", "// 雪\npackage scalar\n\npub Main :: () -> int {\n    // λ\n    return 42; // trailing\n}\n", 42, "Main", "return 42"),
+        Rejected("overflow", "package scalar\nMain :: () -> int { return 2147483648; }", "Numeric literal is outside the range of int", "2147483648"),
+        Rejected("u64_overflow", "package scalar\nMain :: () -> int { return 18446744073709551616; }", "only integer literals of 64 bits are supported", "18446744073709551616"),
+        Rejected("fraction", "package scalar\nMain :: () -> int { return 42.5; }", "Numeric literal has a fraction, which int cannot hold", "42.5"),
+        Accepted("exponent", "package scalar\nMain :: () -> int { return 1e2; }", 100, "Main", "return 1e2"),
+        Accepted("negative", "package scalar\nMain :: () -> int { return -1; }", -1, "Main", "return -1"),
+        Accepted("parentheses", "package scalar\nMain :: () -> int { return (42); }", 42, "Main", "return 42"),
+        // The constant folds exactly, as the ordinary compiler folds it, to one
+        // literal: wrapping rows would give its sum -2^31.
+        Accepted("arithmetic", "package scalar\nMain :: () -> int { return Half(2); }\nHalf :: (x: int) -> int { return x + (2147483647 + 1) / 2; }", 1073741826, "Main,Half", "return 2 ; Half(2) | return x ; (2147483647 + 1) / 2 ; x + (2147483647 + 1) / 2"),
+        Accepted("branch", "package scalar\nMain :: () -> int { if (true) { return 42; } return 0; }", 42, "Main", "if true return 42 end return 0"),
+        Accepted("local", "package scalar\nMain :: () -> int { x: int = 42; return x; }", 42, "Main", "x := 42 return x"),
+        Rejected("after_return", "package scalar\nMain :: () -> int { return 42; Main(); }", "Missing return", "{ return 42; Main(); }"),
+        Accepted("extra_return", "package scalar\nMain :: () -> int { return 42; return 0; }", 42, "Main", "return 42 return 0"),
+        Rejected("unknown_call", "package scalar\nMain :: () -> int { return unknown(); }", "Unknown function 'unknown'", "unknown"),
+        Rejected("parameter", "package scalar\nMain :: (x: int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: int)"),
+        Rejected("scoped pointer entry", "package scalar\nMain :: (x: ^int) -> int { return 42; }", "scalar proof requires its first function to take no parameters", "(x: ^int)"),
+        Accepted("scoped pointer read", "package scalar\nMain :: () -> int { v := 41; return Next(&v); }\nNext :: (x: ^int) -> int { return x^ + 1; }", 42, "Main,Next", ""),
+        Accepted("scoped pointer write", "package scalar\nMain :: () -> int { v := 41; return Bump(&v); }\nBump :: (x: ^int) -> int { x^ += 1; return x^; }", 42, "Main,Bump", ""),
+        Rejected("bool_result", "package scalar\nMain :: () -> bool { return true; }", "scalar proof requires its first function to return int or nothing", "bool"),
+        Rejected("i64_result", "package scalar\nMain :: () -> i64 { return 42; }", "scalar proof requires its first function to return int or nothing", "i64"),
+        
+        Rejected("nominal_result", "package scalar\nMain :: () -> Missing { return 42; }", "result type is not supported yet", "Missing"),
+        Accepted("named_result", "package scalar\nMain :: () -> (x: int) { return 42; }", 42, "Main", "x := x return 42"),
+        Rejected("struct", "package scalar\nValue :: struct { x: [int: int]; }\nMain :: () -> int { return 42; }", "record fields require a scalar, pointer, record, union or array of those types", "x: [int: int];"),
+        // A package constant is its folded value: alone, and in a folded
+        // expression.
+        Accepted("constant", "package scalar\nN: int : 40;\nHalf: number : 0.5;\nMain :: () -> int {\n    if (Half < 1.0) { return Add(N, N / 20); }\n    return 0;\n}\nAdd :: (a: int, b: int) -> int { return a + b; }\n", 42, "Main,Add", "if Half ; 1.0 ; Half < 1.0 return N ; N / 20 ; Add(N, N / 20) end return 0 | return a ; b ; a + b"),
+        Accepted("second_function", "package scalar\nMain :: () -> int { return 42; }\nOther :: () -> int { return 0; }", 42, "Main,Other", "return 42 | return 0"),
+        Rejected("import", "package scalar\nimport missing \"project:missing\"\nMain :: () -> int { return 42; }", "Imported package is missing from the snapshot", "\"project:missing\""),
+        Rejected("attribute_test", "package scalar\n@test Main :: () -> int { return 42; }", "A @test function takes no parameters and returns nothing", "@test Main :: () -> int { return 42; }"),
+        Rejected("attribute_pure", "package scalar\n@pure Main :: () -> int { return 42; }", "Unknown attribute '@pure'", "@pure"),
+        Rejected("empty", "package scalar\nMain :: () -> int {}", "Missing return", "{}"),
+        Rejected("bare_return", "package scalar\nMain :: () -> int { return; }", "return needs a value", "return;"),
+        Accepted("no_result", "package scalar\nMain :: () { return; }", 0, "Main", ""),
+        Rejected("no_function", "package scalar\n", "scalar proof requires at least one function", "package scalar\n"),
+        Rejected("malformed", "package scalar\nMain :: () -> int { return 42;", "Expected `}`, found the end of the file (to close the `{` at 2:19)", ""),
+        Rejected("nul", "package scalar\nMain :: () -> int { return 42; }\u0000", "Package source contains NUL bytes", "\u0000"),
+        Rejected("string_result", "package scalar\nMain :: () -> string { return \"42\"; }", "scalar proof requires its first function to return int or nothing", "string"),
+        Rejected("map_result", "package scalar\nMain :: () -> [int: int] { return [1: 42]; }", "scalar proof requires its first function to return int or nothing", "[int: int]"),
+        Accepted("assert_before", "package scalar\nMain :: () -> int {\n    x: int = 41;\n    assert(Message: \"x is 41\", Condition: x == 41);\n    assert(true);\n    return x + 1;\n}", 42, "Main", "x := 41 assert x ; 41 ; x == 41 assert true return x ; 1 ; x + 1"),
+        Rejected("return_outcome", "package scalar\nMain :: () -> int { return .Done 42; }", "scalar proof does not support return outcomes", "Done"),
+        Accepted("float_one", "package scalar\nMain :: () -> int { return 1.0; }", 1, "Main", "return 1.0"),
+        Accepted("exponent_one", "package scalar\nMain :: () -> int { return 1e0; }", 1, "Main", "return 1e0"),
+        Rejected("nul_comment", "// 雪\npackage scalar\n// before\u0000after\nMain :: () -> int { return 42; }", "Package source contains NUL bytes", "\u0000"),
+        Accepted("identity", "package scalar\nMain :: () -> int { return Id(7); }\nId :: (x: int) -> int { return x; }", 7, "Main,Id", "return 7 ; Id(7) | return x"),
+        Accepted("first_argument", "package scalar\nMain :: () -> int { return Pick(5, true, 9); }\nPick :: (a: int, flag: bool, c: int) -> int { return a; }", 5, "Main,Pick", "return 5 ; true ; 9 ; Pick(5, true, 9) | return a"),
+        Accepted("last_argument", "package scalar\nMain :: () -> int { return Pick(5, true, 9); }\nPick :: (a: int, flag: bool, c: int) -> int { return c; }", 9, "Main,Pick", "return 5 ; true ; 9 ; Pick(5, true, 9) | return c"),
+        Accepted("bool_passthrough", "package scalar\nMain :: () -> int { return Gate(Flip(false), 8); }\nFlip :: (b: bool) -> bool { return b; }\nGate :: (flag: bool, x: int) -> int { return x; }", 8, "Main,Flip,Gate", "return false ; Flip(false) ; 8 ; Gate(Flip(false), 8) | return b | return x"),
+        Accepted("bool_literals", "package scalar\nMain :: () -> int { return Keep(Yes(), No(), 3); }\nYes :: () -> bool { return true; }\nNo :: () -> bool { return false; }\nKeep :: (a: bool, b: bool, x: int) -> int { return x; }", 3, "Main,Yes,No,Keep", "return Yes() ; No() ; 3 ; Keep(Yes(), No(), 3) | return true | return false | return x"),
+        Accepted("chain", "package scalar\nMain :: () -> int { return A(11); }\nA :: (x: int) -> int { return B(x, 12); }\nB :: (x: int, y: int) -> int { return C(y, x); }\nC :: (p: int, q: int) -> int { return q; }", 11, "Main,A,B,C", "return 11 ; A(11) | return x ; 12 ; B(x, 12) | return y ; x ; C(y, x) | return q"),
+        Accepted("earlier_callee", "package scalar\nMain :: () -> int { return B(); }\nA :: () -> int { return 4; }\nB :: () -> int { return A(); }", 4, "Main,A,B", "return B() | return 4 | return A()"),
+        Accepted("repeated", "package scalar\nMain :: () -> int { return Second(Id(1), Id(2)); }\nId :: (x: int) -> int { return x; }\nSecond :: (a: int, b: int) -> int { return b; }", 2, "Main,Id,Second", "return 1 ; Id(1) ; 2 ; Id(2) ; Second(Id(1), Id(2)) | return x | return b"),
+        Accepted("nested", "package scalar\nMain :: () -> int { return Third(1, Second(2, 3), Third(4, 5, 6)); }\nSecond :: (a: int, b: int) -> int { return b; }\nThird :: (a: int, b: int, c: int) -> int { return c; }", 6, "Main,Second,Third", "return 1 ; 2 ; 3 ; Second(2, 3) ; 4 ; 5 ; 6 ; Third(4, 5, 6) ; Third(1, Second(2, 3), Third(4, 5, 6)) | return b | return c"),
+        Accepted("same_spelling", "package scalar\nMain :: () -> int { return Value(21); }\nValue :: (Value: int) -> int { return Value; }", 21, "Main,Value", "return 21 ; Value(21) | return Value"),
+        Accepted("twelve_parameters", "package scalar\nMain :: () -> int { return P(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12); }\nP :: (a: int, b: int, c: int, d: int, e: int, f: int, g: int, h: int, i: int, j: int, k: int, l: int) -> int { return k; }", 11, "Main,P", "return 1 ; 2 ; 3 ; 4 ; 5 ; 6 ; 7 ; 8 ; 9 ; 10 ; 11 ; 12 ; P(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) | return k"),
+        Accepted("int_max_argument", "package scalar\nMain :: () -> int { return Id(2147483647); }\nId :: (x: int) -> int { return x; }", 2147483647, "Main,Id", "return 2147483647 ; Id(2147483647) | return x"),
+        Accepted("recursion", "package scalar\nMain :: () -> int { return Sum(4); }\nSum :: (n: int) -> int {\n    if (n > 0) { return n + Sum(n - 1); }\n    return 0;\n}\n", 10, "Main,Sum", "return 4 ; Sum(4) | if n ; 0 ; n > 0 return n ; n ; 1 ; n - 1 ; Sum(n - 1) ; n + Sum(n - 1) end return 0"),
+        Accepted("mutual_recursion", "package scalar\nMain :: () -> int { return A(3); }\nA :: (n: int) -> int {\n    if (n > 0) { return B(n - 1); }\n    return 1;\n}\nB :: (n: int) -> int {\n    if (n > 0) { return A(n - 1); }\n    return 2;\n}\n", 2, "Main,A,B", "return 3 ; A(3) | if n ; 0 ; n > 0 return n ; 1 ; n - 1 ; B(n - 1) end return 1 | if n ; 0 ; n > 0 return n ; 1 ; n - 1 ; A(n - 1) end return 2"),
+        Rejected("unknown_argument", "package scalar\nMain :: () -> int { return Id(Missing()); }\nId :: (x: int) -> int { return x; }", "Unknown function 'Missing'", "Missing"),
+        Rejected("too_few_arguments", "package scalar\nMain :: () -> int { return Id(); }\nId :: (x: int) -> int { return x; }", "call has the wrong number of arguments", "Id()"),
+        Rejected("too_many_arguments", "package scalar\nMain :: () -> int { return Id(1, 2); }\nId :: (x: int) -> int { return x; }", "call has the wrong number of arguments", "Id(1, 2)"),
+        Rejected("argument_type", "package scalar\nMain :: () -> int { return Id(true); }\nId :: (x: int) -> int { return x; }", "argument differs from its parameter type", "Id(true)"),
+        Rejected("call_result_type", "package scalar\nMain :: () -> int { return Yes(); }\nYes :: () -> bool { return true; }", "returned value differs from the result type", "return Yes();"),
+        Rejected("function_value", "package scalar\nMain :: () -> int { return Id; }\nId :: (x: int) -> int { return x; }", "Unknown name 'Id'", "Id"),
+        Accepted("conversion", "package scalar\nMain :: () -> int { return Low(298); }\nLow :: (x: int) -> int { return int(u8(wrap: x)); }", 42, "Main,Low", "return 298 ; Low(298) | return x ; u8(wrap: x) ; int(u8(wrap: x))"),
+        Rejected("named_argument", "package scalar\nMain :: () -> int { return Id(x: 1); }\nId :: (x: int) -> int { return x; }", "unsupported syntax 'named_argument'", "x: 1"),
+        Accepted("default_parameter", "package scalar\nMain :: () -> int { return Id(); }\nId :: (x: int = 7) -> int { return x; }", 7, "Main,Id", "return Id() ; Id() | return x"),
+        Accepted("string_equality", "package scalar\nMain :: () -> int {\n    if (Name(1) == \"one\") { return 1; }\n    return 2;\n}\nName :: (n: int) -> string {\n    if (n == 1) { return \"one\"; }\n    return \"many\";\n}\n", 1, "Main,Name", "if 1 ; Name(1) ; \"one\" ; Name(1) == \"one\" return 1 end return 2 | if n ; 1 ; n == 1 return \"one\" end return \"many\""),
+        Accepted("int_operators", IntOperators(), 37, "Main,Id,Add,Sub,Mul,Div,Mod,BitAnd,BitOr,BitXor,Neg,BitNot,Mix", "return 1 + 2 ; Id(1 + 2) ; 4 ; 5 ; Mix(Id(1 + 2), 4, 5) | return x | return a ; b ; a + b | return a ; b ; a - b | return a ; b ; a * b | return a ; b ; a / b | return a ; b ; a % b | return a ; b ; a & b | return a ; b ; a | b | return a ; b ; a ^ b | return a ; -a | return a ; ~a | if a ; b ; +a < b return a ; b ; a + b ; c ; (a + b) * c ; c ; -c ; 3 ; -c % 3 ; (a + b) * c - -c % 3 end return a"),
+        Rejected("native_call", "package scalar\nMain :: () -> int { return print(1); }", "Unknown function 'print'", "print"),
+        Rejected("qualified_call", "package scalar\nMain :: () -> int { return scalar.Id(1); }\nId :: (x: int) -> int { return x; }", "Unknown function 'scalar.Id'", "Id"),
+        Rejected("duplicate_function", "package scalar\nMain :: () -> int { return Id(1); }\nId :: (x: int) -> int { return x; }\nId :: (y: int) -> int { return y; }", "Duplicate declaration 'Id'", "Id :: (y: int) -> int { return y; }"),
+        Accepted("helper_statement", "package scalar\nMain :: () -> int { return Id(1); }\nId :: (x: int) -> int { y := x; return y; }", 1, "Main,Id", "return 1 ; Id(1) | y := x return y"),
+        Accepted("many_functions", Chain(40), 39, ChainNames(40), ""),
+        Accepted("deep_operands", Nest(100), 1, "Main,Id", ""),
+        Accepted("large_source", Padded(32768), 1, "Main", "return 1"),
+        Accepted("min", "package scalar\nMain :: () -> int { return Min(7, 3); }\nMin :: (a: int, b: int) -> int {\n    if (a < b) { return a; }\n    return b;\n}\n", 3, "Main,Min", "return 7 ; 3 ; Min(7, 3) | if a ; b ; a < b return a end return b"),
+        Accepted("max", "package scalar\nMain :: () -> int { return Max(3, 7); }\nMax :: (a: int, b: int) -> int {\n    if (a > b) { return a; }\n    return b;\n}\n", 7, "Main,Max", "return 3 ; 7 ; Max(3, 7) | if a ; b ; a > b return a end return b"),
+        Accepted("clamp", "package scalar\nMain :: () -> int { return Clamp(12, 0, 10); }\nClamp :: (x: int, low: int, high: int) -> int { return Min(Max(x, low), high); }\nMin :: (a: int, b: int) -> int {\n    if (a < b) { return a; }\n    return b;\n}\nMax :: (a: int, b: int) -> int {\n    if (a > b) { return a; }\n    return b;\n}\n", 10, "Main,Clamp,Min,Max", "return 12 ; 0 ; 10 ; Clamp(12, 0, 10) | return x ; low ; Max(x, low) ; high ; Min(Max(x, low), high) | if a ; b ; a < b return a end return b | if a ; b ; a > b return a end return b"),
+        Accepted("operators", "package scalar\nMain :: () -> int { return If(Ge(2, 3), 1, 5); }\nIf :: (c: bool, a: int, b: int) -> int {\n    if (c) { return a; }\n    return b;\n}\nLt :: (a: int, b: int) -> bool { return a < b; }\nLe :: (a: int, b: int) -> bool { return a <= b; }\nGt :: (a: int, b: int) -> bool { return a > b; }\nGe :: (a: int, b: int) -> bool { return a >= b; }\nEq :: (a: int, b: int) -> bool { return a == b; }\nNe :: (a: int, b: int) -> bool { return a != b; }\n", 5, "Main,If,Lt,Le,Gt,Ge,Eq,Ne", "return 2 ; 3 ; Ge(2, 3) ; 1 ; 5 ; If(Ge(2, 3), 1, 5) | if c return a end return b | return a ; b ; a < b | return a ; b ; a <= b | return a ; b ; a > b | return a ; b ; a >= b | return a ; b ; a == b | return a ; b ; a != b"),
+        Accepted("call_condition", "package scalar\nMain :: () -> int {\n    if (Small(3)) { return 1; }\n    return 2;\n}\nSmall :: (x: int) -> bool { return x < 10; }\n", 1, "Main,Small", "if 3 ; Small(3) return 1 end return 2 | return x ; 10 ; x < 10"),
+        Accepted("lazy_arm", "package scalar\nMain :: () -> int { return Choose(false); }\nChoose :: (c: bool) -> int {\n    if (c) { return Taken(); }\n    return Skipped();\n}\nTaken :: () -> int { return 1; }\nSkipped :: () -> int { return 2; }\n", 2, "Main,Choose,Taken,Skipped", "return false ; Choose(false) | if c return Taken() end return Skipped() | return 1 | return 2"),
+        Accepted("bare_condition", "package scalar\nMain :: () -> int { return Positive(5); }\nPositive :: (x: int) -> int {\n    if x > 0 { return x; }\n    return 0;\n}\n", 5, "Main,Positive", "return 5 ; Positive(5) | if x ; 0 ; x > 0 return x end return 0"),
+        Accepted("else_branch", "package scalar\nMain :: () -> int {\n    if (true) { return 1; } else { return 2; }\n}\n", 1, "Main", "if true return 1 else return 2 end"),
+        Accepted("two_guards", "package scalar\nMain :: () -> int {\n    if (false) { return 1; }\n    if (true) { return 2; }\n    return 3;\n}\n", 2, "Main", "if false return 1 end if true return 2 end return 3"),
+        Rejected("guard_without_return", "package scalar\nMain :: () -> int {\n    if (true) { return 1; }\n}\n", "Missing return", "{\n    if (true) { return 1; }\n}"),
+        Accepted("bool_comparison", "package scalar\nMain :: () -> int { return If(Same(true, false), 1, 2); }\nSame :: (a: bool, b: bool) -> bool { return a == b; }\nIf :: (c: bool, a: int, b: int) -> int {\n    if (c) { return a; }\n    return b;\n}\n", 2, "Main,Same,If", "return true ; false ; Same(true, false) ; 1 ; 2 ; If(Same(true, false), 1, 2) | return a ; b ; a == b | if c return a end return b"),
+        Accepted("shift", "package scalar\nMain :: () -> int { return Shl(1); }\nShl :: (a: int) -> int { return a << 2; }", 4, "Main,Shl", "return 1 ; Shl(1) | return a ; 2 ; a << 2"),
+        Accepted("logical_and", "package scalar\nMain :: () -> int { return Mid(1, 2, 3); }\nMid :: (a: int, b: int, c: int) -> int {\n    if (a < b && b < c) { return b; }\n    return a;\n}\n", 2, "Main,Mid", "return 1 ; 2 ; 3 ; Mid(1, 2, 3) | if a ; b ; a < b ; a < b && b < c ; b ; c ; b < c return b end return a"),
+        Accepted("recursive_guard", "package scalar\nMain :: () -> int { return Down(3); }\nDown :: (x: int) -> int {\n    if (x > 0) { return Down(0); }\n    return x;\n}\n", 0, "Main,Down", "return 3 ; Down(3) | if x ; 0 ; x > 0 return 0 ; Down(0) end return x"),
+        Accepted("literal_comparison", "package scalar\nMain :: () -> int {\n    if (7 < 3) { return 1; }\n    return 2;\n}\n", 2, "Main", "if 7 ; 3 ; 7 < 3 return 1 end return 2"),
+        // Arrays are native values: a literal, a growing append, an element
+        // read and write, a loop over the elements, and a length. The sums
+        // are the squares up to 81 and 1 + 2 + 3 + 4.
+        Accepted("array_sum", "package scalar\nMain :: () -> int { return Sum([1, 2, 3, 4]) + Count(10); }\nSum :: (values: int[]) -> int {\n    total: int = 0;\n    for (value in values) { total += value; }\n    return total;\n}\nCount :: (n: int) -> int {\n    items: int[] = [];\n    for (i in 0..<n) { items.append(i * i); }\n    return items[n - 1] + length(items);\n}\n", 101, "Main,Sum,Count", ""),
+        // An index beside the item: 0*5 + 1*6 + 2*7 + 3*8 is 44, and the words at
+        // indexes 1 and 3 are two and four long.
+        Accepted("array_keyed_loop", "package scalar\nMain :: () -> int { return Weighted([5, 6, 7, 8]) + Odd([\"a\", \"bb\", \"ccc\", \"dddd\", \"eeeee\"]); }\nWeighted :: (values: int[]) -> int {\n    total: int = 0;\n    for (value, at in values) { total += value * at; }\n    return total;\n}\nOdd :: (words: string[]) -> int {\n    n: int = 0;\n    for (word, at in words) {\n        if (at % 2 == 0) { continue; }\n        n += text_byte_length(word);\n    }\n    return n;\n}\n", 50, "Main,Weighted,Odd", ""),
+        // A written parameter is the callee's own copy: the point's x is 6 and its
+        // y 7 where p keeps x 1, and the grown array has four elements where
+        // values keeps three, its first element still 1.
+        Accepted("mutated_parameters", "package scalar\nPoint :: struct { x: int; y: int; }\nMain :: () -> int {\n    values: int[] = [1, 2, 3];\n    p: Point = {x: 1, y: 2};\n    moved := Moved(p, 5);\n    grown := Grown(values);\n    return moved.x * 100 + moved.y + p.x + length(values) * 1000 + length(grown) * 10000 + values[0];\n}\nMoved :: (point: Point, by: int) -> Point {\n    point.x += by;\n    point.y = point.y + by;\n    return point;\n}\nGrown :: (items: int[]) -> int[] {\n    items.append(9);\n    items[0] = 7;\n    return items;\n}\n", 43609, "Main,Moved,Grown", ""),
+        // An array literal is a receiver and a loop's subject: a zeroed byte
+        // table of five, then the lengths of two words by their position.
+        Accepted("array_literal_receivers", "package scalar\nMain :: () -> int {\n    table := resize([u8(0)], 5);\n    total: int = 0;\n    for (word in [\"ab\", \"cde\"]) { total += text_byte_length(word); }\n    return length(table) * 10 + total;\n}\n", 55, "Main", ""),
+        // Several named results may hold a string and an array: a label of two
+        // bytes and the items 0, 1, 2.
+        Accepted("results_with_arrays", "package scalar\nMain :: () -> int {\n    r := Pair(3);\n    return text_byte_length(r.label) * 10 + length(r.items) + r.items[2];\n}\nPair :: (n: int) -> (label: string, items: int[]) {\n    label = \"ab\";\n    for (i in 0..<n) { items.append(i); }\n}\n", 25, "Main,Pair", ""),
+        // text_bytes widens each byte of a string to an int: 65 + 98 + 90 is 253,
+        // the string has three bytes and an empty one none, and the second byte
+        // is 98.
+        Accepted("array_text_bytes", "package scalar\nMain :: () -> int {\n    bytes := text_bytes(\"AbZ\");\n    total: int = 0;\n    for (b in bytes) { total += b; }\n    empty := text_bytes(\"\");\n    return total + length(bytes) * 1000 + length(empty) * 100000 + bytes[1];\n}\n", 3351, "Main", ""),
+        // text_from_bytes makes a string of a byte array: three bytes, the second
+        // 98, and an empty array gives an empty string.
+        Accepted("array_text_from_bytes", "package scalar\nMain :: () -> int {\n    data: u8[] = [65, 98, 90];\n    word := text_from_bytes(data);\n    empty: u8[] = [];\n    none := text_from_bytes(empty);\n    return text_byte_length(word) * 1000 + text_byte_at(word, 1) + text_byte_length(none) * 100000;\n}\n", 3098, "Main", ""),
+        // A literal led by a record's field is an array of that field's type: the
+        // loop adds 3 and 4, then 5 and 6 are the second pair.
+        Accepted("array_literal_fields", "package scalar\nPair :: struct { a: int; b: int; }\nMain :: () -> int {\n    p: Pair = {a: 3, b: 4};\n    total: int = 0;\n    for (v in [p.a, p.b]) { total += v; }\n    return total * 100 + length(resize([p.b], 5));\n}\n", 705, "Main", ""),
+        // A scoped parameter the callee writes is the caller's variable: Bump moves
+        // the point to (6, 7), Twice passes the parameter on for two more, (8, 9),
+        // Fill appends 0, 1, 2 to the caller's array and Add raises its total by 4.
+        Accepted("reference_parameters", "package scalar\nPoint :: struct { x: int; y: int; }\nMain :: () -> int {\n    p: Point = {x: 1, y: 2};\n    items: int[] = [];\n    total: int = 0;\n    a := Bump(&p, 5);\n    b := Twice(&p);\n    c := Fill(&items, 3);\n    d := Add(&total, 4);\n    return p.x * 100 + p.y * 10 + length(items) + total + a + b + c + d;\n}\nBump :: (point: ^Point, by: int) -> int {\n    point.x += by;\n    point.y = point.y + by;\n    return 1;\n}\nTwice :: (point: ^Point) -> int {\n    a := Bump(point, 1);\n    b := Bump(point, 1);\n    return a + b;\n}\nFill :: (items: ^(int[]), n: int) -> int {\n    for (i in 0..<n) { items.append(i); }\n    return n;\n}\nAdd :: (sum: ^int, by: int) -> int {\n    sum^ += by;\n    return 0;\n}\n", 903, "Main,Bump,Twice,Fill,Add", ""),
+        // rawptr is an opaque 64-bit word that an authored function takes and gives
+        // back: 7 through Id, and one more is 8.
+        Accepted("rawptr_parameter", "package scalar\nMain :: () -> int {\n    x: u64 = 7;\n    r: rawptr = Id(x);\n    y: u64 = r;\n    return int(y) + 1;\n}\nId :: (p: rawptr) -> rawptr { return p; }\n", 8, "Main,Id", ""),
+        // Functions with no result run for their writes through a reference: 4, then
+        // one more, an early return that is not taken, and one more, is 6.
+        Accepted("void_functions", "package scalar\nMain :: () -> int {\n    total: int = 0;\n    Add(&total, 4);\n    Twice(&total);\n    return total;\n}\nAdd :: (sum: ^int, by: int) { sum^ += by; }\nTwice :: (sum: ^int) {\n    Add(sum, 1);\n    if (sum^ > 100) { return; }\n    Add(sum, 1);\n}\n", 6, "Main,Add,Twice", ""),
+        // The parser's shape: a cursor and a node array written through scoped
+        // pointers, nested index writes, and functions with no result. The tree has
+        // root 0 with children 1 and 2: 2000 + 100 + 0 + 1, one failure, and a
+        // message of four bytes.
+        Accepted("parser_references", "package scalar\nNode :: struct { kind: string; parent: int; first: int; last: int; next: int; token: int; }\nCursor :: struct { pos: int; final: int; token: int; failed: bool; message: string; }\nMain :: () -> int {\n    n: Node[] = [];\n    c: Cursor = {pos: 0, final: 2, token: 7, failed: false, message: \"\"};\n    root := New(&n, \"root\");\n    t0 := New(&n, \"a\");\n    t1 := New(&n, \"b\");\n    taken := Take(&c, &n, root);\n    taken2 := Take(&c, &n, root);\n    Fail(&c, &n, \"boom\");\n    Fail(&c, &n, \"again\");\n    ok: int = 0;\n    if (c.failed) { ok = 1; }\n    return n[root].last * 1000 + n[root].first * 100 + taken * 10 + taken2 + ok * 10000 + text_byte_length(c.message) * 100000;\n}\nNew :: (n: ^(Node[]), kind: string) -> int {\n    node: Node = {kind: kind, parent: -1, first: -1, last: -1, next: -1, token: 0};\n    n.append(node);\n    return length(n^) - 1;\n}\nAdd :: (n: ^(Node[]), parent: int, child: int) {\n    n^[child].parent = parent;\n    if (n^[parent].last < 0) { n^[parent].first = child; } else { n^[n^[parent].last].next = child; }\n    n^[parent].last = child;\n}\nTake :: (c: ^Cursor, n: ^(Node[]), parent: int) -> int {\n    at := c.pos;\n    if (at < c.final) { c.pos += 1; c.token = c.token + 1; }\n    if (parent >= 0) { Add(n, parent, at + 1); }\n    return at;\n}\nFail :: (c: ^Cursor, n: ^(Node[]), message: string) {\n    if (!c.failed) { c.failed = true; c.message = message; }\n    c.pos = c.final;\n}\n", 412101, "Main,New,Add,Take,Fail", ""),
+        // Optionals are a union of nil and the payload: a tuple result holds one, a
+        // value becomes a Some and nil a Nil, and a comparison with nil tests the
+        // tag. 42 + 100 for no error, 1000 for one, and 10000 and 100000.
+        Accepted("optional_results", "package scalar\nMain :: () -> int {\n    a := Load(true);\n    b := Load(false);\n    c := Check(-3);\n    d := Check(3);\n    total: int = a.value;\n    h := Half(4);\n    if (h != nil) { total += 1000000; }\n    g := Half(3);\n    if (g == nil) { total += 2000000; }\n    if (a.error == nil) { total += 100; }\n    if (b.error != nil) { total += 1000; }\n    if (c != nil) { total += 10000; }\n    if (d == nil) { total += 100000; }\n    return total;\n}\nError :: struct { kind: int; code: int; }\nFailure :: (code: int) -> Error { return {kind: 1, code: code}; }\nLoad :: (ok: bool) -> (value: int, error: Error?) {\n    if (!ok) { return (0, Failure(7)); }\n    return (42, nil);\n}\nCheck :: (code: int) -> Error? {\n    if (code < 0) { return Failure(code); }\n    return nil;\n}\nHalf :: (n: int) -> int? {\n    if (n % 2 != 0) { return nil; }\n    return n / 2;\n}\n", 3111142, "Main,Failure,Load,Check,Half", ""),
+        // A call statement drops its result: a number, then a string, an array and a record,
+        // then a record of several results. Each function counts its call in `total`.
+        Accepted("discarded_scalar_call", "package scalar\nMain :: () -> int {\n    total: int = 0;\n    Bump(&total);\n    Bump(&total);\n    return total;\n}\nBump :: (sum: ^int) -> int {\n    sum^ += 5;\n    return 100;\n}\n", 10, "Main,Bump", ""),
+        Accepted("discarded_managed_calls", "package scalar\nPoint :: struct { x: int; y: int; }\nMain :: () -> int {\n    total: int = 0;\n    Text(&total);\n    Items(&total);\n    Make(&total);\n    return total;\n}\nText :: (sum: ^int) -> string {\n    sum^ += 1;\n    return \"dropped\";\n}\nItems :: (sum: ^int) -> int[] {\n    sum^ += 10;\n    return [1, 2, 3];\n}\nMake :: (sum: ^int) -> Point {\n    sum^ += 100;\n    p: Point = {x: 1, y: 2};\n    return p;\n}\n", 111, "Main,Text,Items,Make", ""),
+        Accepted("discarded_several_results", "package scalar\nMain :: () -> int {\n    total: int = 0;\n    Pair(&total);\n    Pair(&total);\n    return total;\n}\nPair :: (sum: ^int) -> (value: int, other: int) {\n    sum^ += 1;\n    return (3, 4);\n}\n", 2, "Main,Pair", ""),
+        // A rawptr is a 64-bit word an authored function takes and gives: 40 passes
+        // through Id and Next adds 2; a value past 32 bits comes back equal.
+        Accepted("rawptr_parameters", "package scalar\nMain :: () -> int {\n    a: rawptr = 40;\n    b := Next(Id(a));\n    return int(b);\n}\nId :: (p: rawptr) -> rawptr {\n    return p;\n}\nNext :: (p: rawptr) -> rawptr {\n    return p + 2;\n}\n", 42, "Main,Id,Next", ""),
+        Accepted("rawptr_stays_64_bit", "package scalar\nMain :: () -> int {\n    big: rawptr = 12884901888;\n    r := Id(big);\n    if (r == big) { return 7; }\n    return 0;\n}\nId :: (p: rawptr) -> rawptr {\n    return p;\n}\n", 7, "Main,Id", ""),
+        // Assigning an array copies it: b changes alone, then a alone. a ends
+        // as [1, 2, 3, 4] and b as [10, 2, 3].
+        Accepted("array_copy_independence", "package scalar\nMain :: () -> int {\n    a: int[] = [1, 2, 3];\n    b := a;\n    b[0] = 10;\n    a.append(4);\n    return a[0] * 100 + b[0] + length(a) * 1000 + length(b) * 10000;\n}\n", 34110, "Main", ""),
+        // A callee changes its own copy of a parameter, and returns a copy of
+        // a parameter, so the caller's array is as it was.
+        Accepted("array_parameter_copy", "package scalar\nMain :: () -> int {\n    a: int[] = [5, 6];\n    c := Bump(a);\n    d := Same(a);\n    d[1] = 0;\n    return a[0] * 1000 + a[1] * 100 + c[0] * 10 + length(c) + d[1];\n}\nBump :: (values: int[]) -> int[] {\n    out := values;\n    out[0] += 1;\n    out.append(9);\n    return out;\n}\nSame :: (values: int[]) -> int[] { return values; }\n", 5663, "Main,Bump,Same", ""),
+        Accepted("array_growth", "package scalar\nMain :: () -> int {\n    items: int[] = [];\n    i: int = 0;\n    while (i < 100) {\n        items.append(i);\n        i += 1;\n    }\n    total: int = 0;\n    for (value in items) { total += value; }\n    return total + length(items);\n}\n", 5050, "Main", ""),
+        Accepted("array_strings", "package scalar\nMain :: () -> int {\n    words: string[] = [\"a\", \"bb\", \"ccc\"];\n    words.append(\"dddd\");\n    n: int = 0;\n    for (word in words) { n += text_byte_length(word); }\n    return n + length(words) + text_byte_length(words[1]);\n}\n", 16, "Main", ""),
+        Accepted("array_floats_and_bools", "package scalar\nMain :: () -> int {\n    xs: f64[] = [1.5, 2.5];\n    flags: bool[] = [true, false];\n    xs[1] = xs[0] + 3.0;\n    if (flags[0] && !flags[1]) { return int(xs[1]); }\n    return 0;\n}\n", 4, "Main", ""),
+        Accepted("array_result_loop", "package scalar\nMain :: () -> int {\n    squares := Squares(5);\n    total: int = 0;\n    for (value in squares) { total += value; }\n    return total;\n}\nSquares :: (n: int) -> int[] {\n    out: int[] = [];\n    for (i in 1..n) { out.append(i * i); }\n    return out;\n}\n", 55, "Main,Squares", ""),
+        // Arrays of records: built in a loop and summed, then every element's
+        // fields written through the array: (0,0), (1,2), (2,4) become (1,10),
+        // (2,20), (3,30).
+        Accepted("array_records", "package scalar\nPoint :: struct { x: int; y: int; }\nMain :: () -> int { return Sum(Points(5)); }\nPoints :: (n: int) -> Point[] {\n    out: Point[] = [];\n    for (i in 0..<n) { out.append({x: i, y: i * 2}); }\n    return out;\n}\nSum :: (points: Point[]) -> int {\n    total: int = 0;\n    for (p in points) { total += p.x + p.y; }\n    return total;\n}\n", 30, "Main,Points,Sum", ""),
+        Accepted("array_record_fields", "package scalar\nPoint :: struct { x: int; y: int; }\nMain :: () -> int {\n    moved := Bump(Points(3));\n    last := moved[2];\n    return last.x * 100 + moved[2].y + length(moved);\n}\nPoints :: (n: int) -> Point[] {\n    out: Point[] = [];\n    for (i in 0..<n) { out.append({x: i, y: i * 2}); }\n    return out;\n}\nBump :: (points: Point[]) -> Point[] {\n    out := points;\n    for (i in 0..<length(out)) {\n        out[i].x += 1;\n        out[i].y = out[i].x * 10;\n    }\n    return out;\n}\n", 333, "Main,Points,Bump", ""),
+        Accepted("array_record_strings", "package scalar\nEntry :: struct { name: string; size: int; }\nMain :: () -> int {\n    entries: Entry[] = [];\n    entries.append({name: \"ab\", size: 2});\n    entries.append({name: \"cde\", size: 3});\n    n: int = 0;\n    for (e in entries) { n += text_byte_length(e.name) + e.size; }\n    return n + length(entries);\n}\n", 12, "Main", ""),
+        // The array natives: extend, slice, resize, contains and remove_index,
+        // on ints, strings and records. Extending doubles [1, 2, 3], slicing
+        // takes [3, 1, 2], resizing adds two zeros, and removing index 0
+        // leaves [1, 2, 0, 0], whose sum is 3.
+        Accepted("array_natives", "package scalar\nMain :: () -> int {\n    items: int[] = [1, 2, 3];\n    items.extend(items);\n    middle := slice(items, 2, 3);\n    grown := resize(middle, 5);\n    grown.remove_index(0);\n    total: int = 0;\n    for (value in grown) { total += value; }\n    two: int = 2;\n    nine: int = 9;\n    if (contains(grown, two) && !contains(grown, nine)) { total += 100; }\n    return total * 10 + length(grown) + length(slice(items, -4, 100)) * 1000;\n}\n", 7034, "Main", ""),
+        Accepted("array_native_strings", "package scalar\nMain :: () -> int {\n    words: string[] = [\"a\", \"bb\"];\n    more: string[] = [\"ccc\"];\n    words.extend(more);\n    words.extend([\"dddd\", \"\"]);\n    kept := slice(words, 1, 3);\n    kept.remove_index(5);\n    kept.remove_index(0);\n    n: int = 0;\n    for (word in kept) { n += text_byte_length(word); }\n    if (words.contains(\"ccc\") && !words.contains(\"c\")) { n += 10; }\n    return n * 100 + length(kept) + length(resize(kept, 6)) * 1000;\n}\n", 7702, "Main", ""),
+        Accepted("array_native_records", "package scalar\nPoint :: struct { x: int; y: int; }\nMain :: () -> int {\n    points: Point[] = [{x: 1, y: 2}];\n    points.extend([{x: 3, y: 4}, {x: 5, y: 6}]);\n    points.remove_index(1);\n    grown := resize(points, 3);\n    total: int = 0;\n    for (p in grown) { total += p.x * 10 + p.y; }\n    return total * 10 + length(slice(points, 1, 1)) + length(grown) * 1000;\n}\n", 3681, "Main", ""),
+        // Unions and records that hold arrays, strings and records: the array
+        // a union carries is summed in its arm, a record built from local
+        // arrays keeps its own copies when they change after, and a record
+        // holds a record and an array of them.
+        Accepted("union_array_payload", "package scalar\nResult :: union { Built(rows: int[]) | Failed(code: int) }\nMain :: () -> int { return Sum(Make(4)) + Sum(Fail()); }\nMake :: (n: int) -> Result {\n    items: int[] = [];\n    for (i in 0..<n) { items.append(i + 1); }\n    return Result.Built(items);\n}\nFail :: () -> Result { return Result.Failed(7); }\nSum :: (r: Result) -> int {\n    switch r {\n        case .Built(rows):\n            total: int = 0;\n            for (v in rows) { total += v; }\n            return total;\n        case .Failed(code):\n            return code;\n    }\n}\n", 17, "Main,Make,Fail,Sum", ""),
+        Accepted("record_array_fields", "package scalar\nTable :: struct { names: string[]; sizes: int[]; label: string; }\nMain :: () -> int {\n    t := Build(3);\n    total: int = 0;\n    for (size in t.sizes) { total += size; }\n    return total + length(t.names) * 100 + text_byte_length(t.label) * 1000 + t.sizes[2] * 10;\n}\nBuild :: (n: int) -> Table {\n    names: string[] = [];\n    sizes: int[] = [];\n    for (i in 0..<n) {\n        names.append(\"ab\");\n        sizes.append(i * 3);\n    }\n    t: Table = {names: names, sizes: sizes, label: \"tbl\"};\n    sizes[0] = 99;\n    return t;\n}\n", 3369, "Main,Build", ""),
+        // An array field of a record variable grows in place: append and extend on `bag.items`,
+        // then another record extended by it: 30 + 7 + 5, 2 items, 3 items.
+        Accepted("record_array_field_append", "package scalar\nBag :: struct { items: int[]; total: int; }\nMain :: () -> int {\n    bag: Bag = {items: [], total: 5};\n    bag.items.append(30);\n    bag.items.append(7);\n    other: Bag = {items: [1], total: 0};\n    other.items.extend(bag.items);\n    return bag.items[0] + bag.items[1] + bag.total + length(bag.items) * 100 + length(other.items) * 1000;\n}\n", 3242, "Main", ""),
+        // An element of an array field is assigned and combined, on a record variable and through a scoped pointer. 40 + 107 + 1, then 2 and 1 items after resize.
+        Accepted("record_array_field_elements", "package scalar\nFrame :: struct { items: int[]; count: int; }\nMain :: () -> int {\n    frame: Frame = {items: [], count: 0};\n    frame.items.append(1);\n    frame.items.append(2);\n    frame.items[0] = 40;\n    frame.items[1] += 5;\n    Bump(&frame, 1);\n    frame.items.append(9);\n    frame.items.resize(2);\n    others: int[] = [7, 8, 9];\n    others.resize(1);\n    return frame.items[0] + frame.items[1] + frame.count + length(frame.items) * 1000 + length(others) * 10000;\n}\nBump :: (f: ^Frame, at: int) {\n    f.items[at] += 100;\n    f.count += 1;\n}\n", 12148, "Main,Bump", ""),
+        // An array literal whose first element is an element of an array of records. 3 + 30 + 400.
+        Accepted("array_literal_of_elements", "package scalar\nPair :: struct { a: int; b: int; }\nMain :: () -> int {\n    pairs: Pair[] = [{a: 1, b: 2}, {a: 3, b: 4}];\n    joined := extend([pairs[1]], pairs);\n    return joined[0].a + length(joined) * 10 + joined[2].b * 100;\n}\n", 433, "Main", ""),
+        // An optional is a condition: true when it is not nil, on a named result and a local, and negated. 1 + 20 + 300 + 4000.
+        Accepted("optional_condition", "package scalar\nMain :: () -> int {\n    total: int = 0;\n    a := Find(true);\n    b := Find(false);\n    if (a.error) { total += 1; }\n    if (b.error) { total += 2; }\n    if (!b.error) { total += 20; }\n    h := Half(3);\n    if (h) { total += 100; }\n    if (!h) { total += 300; }\n    return total + 4000;\n}\nFind :: (fail: bool) -> (value: int, error: int?) {\n    if (fail) { return (0, 7); }\n    return (1, nil);\n}\nHalf :: (n: int) -> int? {\n    if (n % 2 != 0) { return nil; }\n    return n / 2;\n}\n", 4321, "Main,Find,Half", ""),
+        // A result tuple holds an array and an optional error: returned, destructured by name and propagated. 20 + 1.
+        Accepted("tuple_array_results", "package scalar\nMain :: () -> int {\n    good := Pass(true);\n    bad := Pass(false);\n    total: int = 0;\n    if (good.error == nil) { total += length(good.names) * 10; }\n    if (bad.error != nil) { total += 1; }\n    return total;\n}\nError :: struct { kind: int; code: int; }\nFailure :: (code: int) -> Error { return {kind: 1, code: code}; }\nList :: (ok: bool) -> (names: string[], error: Error?) {\n    if (!ok) {\n        empty: string[] = [];\n        return (empty, Failure(7));\n    }\n    return (Names(), nil);\n}\nNames :: () -> string[] {\n    found: string[] = [\"a\", \"bb\"];\n    return found;\n}\nPass :: (ok: bool) -> (names: string[], error: Error?) {\n    listed := List(ok);\n    if (listed.error != nil) {\n        return (listed.names, listed.error);\n    }\n    return (listed.names, nil);\n}\n", 21, "Main,Failure,List,Names,Pass", ""),
+        // Two written array parameters: each is a local copy at the body's opening, which the caller does not see. 3 + 0 + 100.
+        Accepted("written_array_parameters", "package scalar\nMain :: () -> int {\n    x: int[] = [];\n    y: int[] = [5];\n    return Fill(x, y) + length(x) * 10 + length(y) * 100;\n}\nFill :: (a: int[], b: int[]) -> int {\n    a.append(1);\n    b.append(2);\n    return length(a) + length(b);\n}\n", 103, "Main,Fill", ""),
+        // Arrays dropped as they are overwritten, left behind or read: reassignment and growth, fresh temporaries of
+        // every reading row, breaks, continues and early returns out of nested scopes, loops over fresh arrays, and
+        // arrays of records and strings, 30 rounds. Linux runs it under ASan at O0 and O2: no leak, no double free.
+        Accepted("array_drops", "package scalar\n\nPair :: struct {\n    a: int;\n    b: int;\n}\n\nMain :: () -> int {\n    total: int = 0;\n    for (round in 0..<30) {\n        total += Reassign(round);\n        total += Fresh();\n        total += Loops(round);\n        total += Records();\n        total += Strings();\n        total += Early(round);\n    }\n    return total % 251;\n}\n\nReassign :: (n: int) -> int {\n    a: int[] = [];\n    for (i in 0..<40) {\n        a = append(a, i);\n    }\n    a = Make(n % 7 + 1);\n    b := slice(a, 0, 2);\n    c := resize(b, 5);\n    c = extend(c, a);\n    d := c;\n    d.extend(a);\n    e := Make(3);\n    e.append(length(d));\n    return length(a) + length(b) + length(c) + length(d) + e[3];\n}\n\nFresh :: () -> int {\n    total := length(Make(10)) + Make(4)[2] + length(extend(Make(2), Make(3)));\n    if (contains(Make(5), int(3))) {\n        total += 1;\n    }\n    for (x in Make(4)) {\n        total += x;\n    }\n    return total;\n}\n\nLoops :: (n: int) -> int {\n    total: int = 0;\n    i := 0;\n    while (i < 6) {\n        t := Make(i + 1);\n        i += 1;\n        if (i == 2) {\n            continue;\n        }\n        u := Make(2);\n        if (i == 5) {\n            break;\n        }\n        total += length(t) + length(u);\n    }\n    for (k in 0..<4) {\n        inner := Make(k + 1);\n        for (x in inner) {\n            if (x == 2) {\n                break;\n            }\n            total += x;\n        }\n    }\n    return total;\n}\n\nRecords :: () -> int {\n    pairs: Pair[] = [];\n    for (i in 0..<5) {\n        pairs.append({a: i, b: i * 2});\n    }\n    kept := pairs;\n    return length(kept) + pairs[3].b;\n}\n\nStrings :: () -> int {\n    names: string[] = [];\n    for (i in 0..<4) {\n        names.append(\"n\");\n    }\n    copy := names;\n    copy.append(\"x\");\n    return length(names) + length(copy);\n}\n\nEarly :: (n: int) -> int {\n    a := Make(3);\n    if (n % 2 == 0) {\n        b := Make(5);\n        return length(b);\n    }\n    for (x in Make(3)) {\n        if (x == 1) {\n            c := Make(2);\n            return length(c) + length(a);\n        }\n    }\n    return Take(a);\n}\n\nTake :: (items: int[]) -> int {\n    mine := items;\n    mine.append(1);\n    return length(mine);\n}\n\nMake :: (n: int) -> int[] {\n    items: int[] = [];\n    for (i in 0..<n) {\n        items.append(i);\n    }\n    return items;\n}\n", 163, "Main,Reassign,Fresh,Loops,Records,Strings,Early,Take,Make", ""),
+        // Strings dropped as they are overwritten, left behind, read or returned: fresh strings from bytes, a copy
+        // that shares the owner, a slice that views it, text built by repeated concatenation, strings kept in an
+        // array and its copy, a returned parameter, and early returns out of loops. Linux runs it under ASan: every
+        // allocation is released.
+        Accepted("string_drops", "package scalar\nMain :: () -> int {\n    total: int = 0;\n    kept: string = \"\";\n    names: string[] = [];\n    for (round in 0..<30) {\n        a := Name(round);\n        b := Cat(a, a);\n        total += text_byte_length(b);\n        c := b;\n        d := text_slice(c, 1, 3);\n        if (d == \"bc\" || d == \"abc\") {\n            total += 1;\n        }\n        text: string = \"\";\n        for (i in 0..<5) {\n            text = Cat(text, a);\n        }\n        total += text_byte_length(text);\n        kept = Pick(kept, a, round);\n        names.append(a);\n        copy := names;\n        total += length(copy) + text_byte_length(copy[round]);\n        total += Early(round);\n    }\n    return (total + text_byte_length(kept) + length(names)) % 251;\n}\nName :: (n: int) -> string {\n    bytes: u8[] = [];\n    for (i in 0..<3) {\n        bytes.append(u8(97 + (n + i) % 26));\n    }\n    return text_from_bytes(bytes);\n}\nCat :: (a: string, b: string) -> string {\n    bytes: u8[] = [];\n    for (x in text_bytes(a)) {\n        bytes.append(u8(x));\n    }\n    for (x in text_bytes(b)) {\n        bytes.append(u8(x));\n    }\n    return text_from_bytes(bytes);\n}\nPick :: (old: string, fresh: string, round: int) -> string {\n    if (round % 3 == 0) {\n        return fresh;\n    }\n    return old;\n}\nEarly :: (n: int) -> int {\n    s := Name(n);\n    if (n % 2 == 0) {\n        t := Cat(s, s);\n        return text_byte_length(t);\n    }\n    for (i in 0..<3) {\n        u := Name(i);\n        if (u == \"abc\") {\n            return 100;\n        }\n    }\n    return text_byte_length(s);\n}\n", 47, "Main,Name,Cat,Pick,Early", ""),
+        // Arrays moved instead of copied where the copy is the last thing to read them: a changed parameter the caller
+        // gives away (`rows = Grow(rows, n)`), one a switch hands back in a union's payload, a copy that is a variable's
+        // last use, and a returned parameter in a union. Linux runs it under ASan: every allocation is released.
+        Accepted("move_drops", "package scalar\nResult :: union { Done(rows: int[]) | Failed(code: int) }\nMain :: () -> int {\n    rows: int[] = [];\n    total: int = 0;\n    for (round in 0..<40) {\n        rows = Grow(rows, round);\n        switch Step(rows, round) {\n            case .Done(more):\n                rows = more;\n            case .Failed(code):\n                return code;\n        }\n        copy := rows;\n        total += length(copy) + copy[0];\n        other := Grow(copy, 7);\n        total += length(other);\n        if (round % 10 == 9) {\n            rows = [];\n        }\n    }\n    return (total + length(rows)) % 251;\n}\nGrow :: (items: int[], n: int) -> int[] {\n    items.append(n);\n    return items;\n}\nStep :: (items: int[], n: int) -> Result {\n    items.append(n * 2);\n    if (n < 0) {\n        return Result.Failed(1);\n    }\n    return Result.Done(items);\n}\n", 14, "Main,Grow,Step", ""),
+        // Arrays that are not moved because something reads them afterwards: a variable read on every pass of a
+        // loop, one a branch may or may not overwrite, and one a break leaves alone. The VM's value says the
+        // arrays were copied; Linux runs it under ASan with every allocation released.
+        Accepted("live_drops", "package scalar\nMain :: () -> int {\n    total: int = 0;\n    a := Make(3);\n    for (i in 0..<6) {\n        b := Grow(a, i);\n        total += length(a) + length(b);\n        if (i == 4) {\n            a = b;\n        }\n    }\n    x := Make(2);\n    for (round in 0..<5) {\n        r := Grow(x, round);\n        if (round % 2 == 0) {\n            x = r;\n        }\n        total += length(x) + length(r);\n    }\n    y := Make(1);\n    k := 0;\n    while (k < 4) {\n        z := Grow(y, k);\n        k += 1;\n        if (k == 3) {\n            break;\n        }\n        y = z;\n    }\n    total += length(y) + k;\n    return total + length(a) + length(x);\n}\nGrow :: (items: int[], n: int) -> int[] {\n    items.append(n);\n    return items;\n}\nMake :: (n: int) -> int[] {\n    items: int[] = [];\n    for (i in 0..<n) {\n        items.append(i);\n    }\n    return items;\n}\n", 99, "Main,Grow,Make", ""),
+        // A lent array parameter named by a local that nothing changes or stores whole is not copied (`alias := items`);
+        // one changed, or returned through another name, is. Linux runs it under ASan with every allocation released.
+        Accepted("alias_drops", "package scalar\nMain :: () -> int {\n    total: int = 0;\n    for (round in 0..<30) {\n        items := Make(round % 7 + 1);\n        total += Look(items) + Change(items) + length(items);\n        total += Keep(items)[0] + Look(Make(3));\n    }\n    return total % 251;\n}\nLook :: (items: int[]) -> int {\n    alias := items;\n    sum: int = 0;\n    for (value in alias) {\n        sum += value;\n    }\n    return sum + length(alias) + alias[0];\n}\nChange :: (items: int[]) -> int {\n    mine := items;\n    mine.append(9);\n    return length(mine) + length(items);\n}\nKeep :: (items: int[]) -> int[] {\n    same := items;\n    return same;\n}\nMake :: (n: int) -> int[] {\n    items: int[] = [];\n    for (i in 0..<n) {\n        items.append(i + 1);\n    }\n    return items;\n}\n", 186, "Main,Look,Change,Keep,Make", ""),
+        // A record literal that names lent array parameters borrows them when no function changes the field and its
+        // local is used only through its fields (`view: View = {items: items}`); a changed field (`Edit.rows`) copies.
+        Accepted("view_drops", "package scalar\nView :: struct {\n    items: int[];\n    more: int[];\n    steps: int;\n}\nEdit :: struct {\n    rows: int[];\n    steps: int;\n}\nMain :: () -> int {\n    total: int = 0;\n    for (round in 0..<20) {\n        a := Make(round % 5 + 2);\n        b := Make(3);\n        total += Run(a, b) + Taken(a) + length(a);\n    }\n    return total % 251;\n}\nRun :: (items: int[], more: int[]) -> int {\n    view: View = {items: items, more: more, steps: 0};\n    Count(&view);\n    return view.steps + Walk(&view) + length(view.items);\n}\nWalk :: (view: ^View) -> int {\n    return view.items[0] + view.more[1] + view.items[1];\n}\nCount :: (view: ^View) {\n    view.steps += 1;\n}\nTaken :: (items: int[]) -> int {\n    rows := items;\n    edit: Edit = {rows: rows, steps: 1};\n    Grow(&edit);\n    return edit.rows[length(edit.rows) - 1] + length(items) + edit.steps;\n}\nGrow :: (edit: ^Edit) {\n    edit.rows.append(7);\n    edit.steps += 1;\n}\nMake :: (n: int) -> int[] {\n    items: int[] = [];\n    for (i in 0..<n) {\n        items.append(i + 1);\n    }\n    return items;\n}\n", 38, "Main,Run,Walk,Count,Taken,Grow,Make", ""),
+        // A parameter that a function only hands on to a parameter that is the callee's own is its own too: the argument
+        // is a move where the caller is done with it (`rows = First(rows, round)`), a copy only where it is not.
+        Accepted("thread_drops", "package scalar\nMain :: () -> int {\n    total: int = 0;\n    rows: int[] = [];\n    for (round in 0..<40) {\n        rows = First(rows, round);\n        total += length(rows);\n        if (round % 10 == 9) {\n            total += Count(rows);\n            rows = [];\n        }\n    }\n    return total % 251;\n}\nFirst :: (rows: int[], n: int) -> int[] {\n    if (n % 2 == 0) {\n        return Second(rows, n);\n    }\n    return Second(rows, n + 1);\n}\nSecond :: (rows: int[], n: int) -> int[] {\n    out := rows;\n    out.append(n);\n    return out;\n}\nCount :: (rows: int[]) -> int {\n    sum: int = 0;\n    for (value in rows) {\n        sum += value;\n    }\n    return sum;\n}\n", 16, "Main,First,Second,Count", ""),
+        // The arm that binds an array payload of the union a call returned owns it: used without being moved (`out.extend(rows)`),
+        // it is dropped at the arm's end. Linux runs it under ASan with every allocation released.
+        Accepted("union_drops", "package scalar\nResult :: union {\n    Failed(code: int) | Built(rows: int[])\n}\nMain :: () -> int {\n    total: int = 0;\n    out: int[] = [];\n    for (round in 0..<30) {\n        switch Make(round) {\n            case .Failed(code):\n                total += code;\n            case .Built(rows):\n                out.extend(rows);\n                total += length(rows);\n        }\n        if (round % 10 == 9) {\n            total += length(out);\n            out = [];\n        }\n    }\n    return total % 251;\n}\nMake :: (n: int) -> Result {\n    if (n % 7 == 0) {\n        return Result.Failed(n);\n    }\n    rows: int[] = [];\n    for (i in 0..<n % 5 + 1) {\n        rows.append(i);\n    }\n    return Result.Built(rows);\n}\n", 220, "Main,Make", ""),
+        // A function that hands the rows it was given to one that is its own and gets a union back, through three levels
+        // of switch and return (`Convert` -> `Operand` / `Conversion`), moves them each time and frees what it drops.
+        Accepted("chain_drops", "package scalar\nOps :: union {\n    Failed(code: int) | Built(rows: int[])\n}\nMain :: () -> int {\n    total: int = 0;\n    for (round in 0..<20) {\n        rows: int[] = [];\n        for (i in 0..<5) {\n            rows.append(i);\n        }\n        switch Convert(rows, round) {\n            case .Failed(code):\n                total += code;\n            case .Built(out):\n                total += length(out);\n        }\n    }\n    return total % 251;\n}\nConvert :: (rows: int[], n: int) -> Ops {\n    switch Operand(rows, n) {\n        case .Failed(code):\n            return Ops.Failed(code);\n        case .Built(built):\n            return Conversion(built, n);\n    }\n}\nOperand :: (rows: int[], n: int) -> Ops {\n    if (n % 5 == 0) {\n        return Ops.Failed(n);\n    }\n    output := rows;\n    output.append(n);\n    return Ops.Built(output);\n}\nConversion :: (rows: int[], n: int) -> Ops {\n    if (n % 2 == 0) {\n        return Ops.Built(rows);\n    }\n    output := rows;\n    output.extend([n, n + 1]);\n    return Ops.Built(output);\n}\n", 142, "Main,Convert,Operand,Conversion", ""),
+        // A variable that only calls' results are stored in and nothing reads after the switch (`built := Make(round)`) hands the
+        // payload it holds to the arm that binds it, as a call's result does. An overwrite of such a variable still leaks.
+        Accepted("var_union_drops", "package scalar\nResult :: union {\n    Failed(code: int) | Built(rows: int[])\n}\nMain :: () -> int {\n    total: int = 0;\n    out: int[] = [];\n    for (round in 0..<30) {\n        again := Make(round + 1);\n        switch again {\n            case .Failed(code2):\n                total += code2;\n            case .Built(first):\n                total += length(first);\n        }\n        switch again {\n            case .Failed(code3):\n                total += code3;\n            case .Built(second):\n                total += second[0] + 1;\n        }\n        Make(round);\n        built := Make(round);\n        local: int[] = [1, 2, round];\n        made := Result.Built(local);\n        switch made {\n            case .Failed(code):\n                total += code;\n            case .Built(copy):\n                total += length(copy) + copy[2];\n        }\n        switch built {\n            case .Failed(code):\n                total += code;\n            case .Built(rows):\n                out.extend(rows);\n                total += length(rows);\n        }\n        if (round % 10 == 9) {\n            total += length(out);\n            out = [];\n        }\n    }\n    return total % 251;\n}\nMake :: (n: int) -> Result {\n    if (n % 7 == 0) {\n        return Result.Failed(n);\n    }\n    rows: int[] = [];\n    for (i in 0..<n % 5 + 1) {\n        rows.append(i);\n    }\n    return Result.Built(rows);\n}\n", 234, "Main,Make", ""),
+        // A union a function is lent keeps its payloads for the caller: the arm that binds one of a parameter (`Total`) or
+        // of a local that is also passed on (`built`) borrows it, and frees nothing.
+        Accepted("param_union_drops", "package scalar\nResult :: union {\n    Failed(code: int) | Built(rows: int[])\n}\nMain :: () -> int {\n    total: int = 0;\n    out: int[] = [];\n    for (round in 0..<30) {\n        built := Make(round);\n        total += Total(built);\n        switch built {\n            case .Failed(code):\n                total += code;\n            case .Built(rows):\n                out.extend(rows);\n                total += length(rows);\n        }\n        if (round % 10 == 9) {\n            total += length(out);\n            out = [];\n        }\n    }\n    return total % 251;\n}\nMake :: (n: int) -> Result {\n    if (n % 7 == 0) {\n        return Result.Failed(n);\n    }\n    rows: int[] = [];\n    for (i in 0..<n % 5 + 1) {\n        rows.append(i);\n    }\n    return Result.Built(rows);\n}\nTotal :: (result: Result) -> int {\n    switch result {\n        case .Failed(code):\n            return code;\n        case .Built(rows):\n            return length(rows) + rows[0];\n    }\n}\n", 114, "Main,Make,Total", ""),
+        // Unary minus on a float or a double (`-x`) flips the sign (`fneg`), as the VM's negation does.
+        Accepted("float_negation", "package scalar\nMain :: () -> int {\n    x: f64 = 2.5;\n    y: f32 = 1.5;\n    z: f64 = -x + 10.0;\n    w: f32 = -y * 2.0;\n    n: int = 7;\n    back: f64 = -(-x);\n    return int(z) + int(-w) + int(-(x * x)) + (-n) + int(back * 4.0) + 100;\n}\n", 107, "Main", ""),
+        // A reference to a local's field (`&point.x`) is lent to a callee that changes it, and the local sees the change.
+        Accepted("field_reference", "package scalar\nPoint :: struct {\n    x: int;\n    y: int;\n}\nMain :: () -> int {\n    point: Point = {x: 3, y: 4};\n    a := Bump(&point.x, 10);\n    b := Bump(&point.y, 20);\n    return (point.x * 100 + point.y + a + b) % 251;\n}\nBump :: (value: ^int, by: int) -> int {\n    value^ += by;\n    return 1;\n}\n", 71, "Main,Bump", ""),
+        // A reference to a record parameter's field points into the caller's record.
+        Accepted("field_reference_forwarded", "package scalar\nPoint :: struct {\n    x: int;\n    y: int;\n}\nMain :: () -> int {\n    point: Point = {x: 3, y: 4};\n    count := Update(&point);\n    return (point.x * 100 + point.y + count) % 251;\n}\nUpdate :: (point: ^Point) -> int {\n    return Bump(&point.x, 10) + Bump(&point.y, 20);\n}\nBump :: (value: ^int, by: int) -> int {\n    value^ += by;\n    return 1;\n}\n", 71, "Main,Update,Bump", ""),
+        // Field addresses keep each scalar width and type, including bool and floating point.
+        Accepted("field_reference_scalars", "package scalar\nValues :: struct {\n    a: f64;\n    b: f32;\n    flag: bool;\n    wide: i64;\n    small: u8;\n}\nMain :: () -> int {\n    values: Values = {a: 2.5, b: 1.5, flag: false, wide: 5, small: 3};\n    Change(&values.a, &values.b, &values.flag, &values.wide, &values.small);\n    total := int(-values.a * 4.0) + int(values.b * 2.0) + int(values.wide) + int(values.small);\n    if (values.flag) { total += 100; }\n    return total;\n}\nChange :: (a: ^f64, b: ^f32, flag: ^bool, wide: ^i64, small: ^u8) {\n    a^ = -a^;\n    b^ = -b^;\n    flag^ = !flag^;\n    wide^ += 7;\n    small^ += 1;\n}\n", 123, "Main,Change", ""),
+        // An element of a temporary array keeps its owned text after the array is released, including on a logical RHS.
+        Accepted("temporary_array_string", "package scalar\nMain :: () -> int {\n    text := Make()[0];\n    for (index in 0..<50) {\n        churn := Make();\n        assert(churn[0] == \"value\");\n    }\n    assert(text == \"value\");\n    assert(true && Make()[0] == \"value\");\n    assert(false || (true && Make()[0] == \"value\"));\n    assert(!(false && Make()[0] == \"value\"));\n    assert(true || Make()[0] == \"value\");\n    return text_byte_length(text);\n}\nMake :: () -> string[] {\n    bytes: u8[] = [118, 97, 108, 117, 101];\n    return [text_from_bytes(bytes)];\n}\n", 5, "Main,Make", ""),
+        // A loop over an array literal whose first element is a package constant, then one of a conversion.
+        Accepted("for_array_literal_constants", "package scalar\nFirst: int : 3;\nSecond: int : 40;\nMain :: () -> int {\n    total: int = 0;\n    for (kind in [First, Second, 500]) { total += kind; }\n    for (n in [int(1), 2]) { total += n * 10000; }\n    return total;\n}\n", 30543, "Main", ""),
+        // An element of an array of unions is a local, and a switch takes it apart. 2 + 7 + 100.
+        Accepted("union_array_elements", "package scalar\nResult :: union { Built(rows: int[]) | Failed(code: int) }\nMain :: () -> int {\n    items: int[] = [4, 5];\n    results: Result[] = [Result.Failed(7), Result.Built(items)];\n    total: int = 0;\n    index: int = 0;\n    while (index < length(results)) {\n        r := results[index];\n        switch r {\n            case .Built(rows):\n                total += length(rows);\n            case .Failed(code):\n                total += code;\n        }\n        index += 1;\n    }\n    return total + 100;\n}\n", 109, "Main", ""),
+        Accepted("record_nested_records", "package scalar\nInner :: struct { x: int; y: int; }\nOuter :: struct { inner: Inner; items: Inner[]; }\nMain :: () -> int {\n    items: Inner[] = [{x: 1, y: 2}, {x: 3, y: 4}];\n    o: Outer = {inner: {x: 5, y: 6}, items: items};\n    return o.inner.x * 1000 + o.items[1].y * 100 + length(o.items) * 10 + o.inner.y;\n}\n", 5426, "Main", ""),
+        // The value forms append(a, x) and extend(a, b) give new arrays and
+        // leave a alone.
+        Accepted("array_value_forms", "package scalar\nMain :: () -> int {\n    base: int[] = [1, 2];\n    three: int = 3;\n    more := append(base, three);\n    joined := extend(more, base);\n    grown := Add(base, 9);\n    return length(base) * 1000 + length(more) * 100 + length(joined) * 10 + joined[4] + grown[2] * 10000;\n}\nAdd :: (items: int[], value: int) -> int[] { return append(items, value); }\n", 92352, "Main,Add", ""),
+        // A switch on a call evaluates it once, and the arms bind its payloads.
+        Accepted("switch_on_call", "package scalar\nShape :: union { Dot | Box(w: int, h: int) | Line(items: int[]) }\nMain :: () -> int { return Sizes(0) + Sizes(1) * 10 + Sizes(2) * 100; }\nMake :: (kind: int) -> Shape {\n    if (kind == 0) { return Shape.Dot; }\n    if (kind == 1) { return Shape.Box(3, 4); }\n    items: int[] = [5, 6, 7];\n    return Shape.Line(items);\n}\nSizes :: (kind: int) -> int {\n    switch Make(kind) {\n        case .Dot: return 1;\n        case .Box(w, h): return w * h;\n        case .Line(items): return length(items);\n    }\n}\n", 421, "Main,Make,Sizes", ""),
+        Rejected("array_main_result", "package scalar\nMain :: () -> int[] { return [42]; }", "scalar proof requires its first function to return int or nothing", "int[]"),
+        Rejected("nested_arrays", "package scalar\nMain :: () -> int {\n    rows: int[][] = [[1]];\n    return 1;\n}\n", "scalar proof supports only arrays of numbers, bool, strings, records and unions with a value", "rows: int[][] = [[1]];")];
+}
+pub Count :: () -> int {
+    return length(Cases());
+}
+pub Source :: (index: int) -> string {
+    cases := Cases();
+    return cases[index].source;
+}
+pub CaseName :: (index: int) -> string {
+    cases := Cases();
+    return cases[index].name;
+}
+// The fixture's literal oracle, independent of producer rows and execution.
+pub ExpectedValue :: (index: int) -> int {
+    cases := Cases();
+    return cases[index].value;
+}
+Excerpt :: (text: string, row: facts.Row) -> string {
+    return strings.Slice(text, row.start, row.end - row.start);
+}
+Position :: (text: string, start: int, line: int, column: int) -> bool {
+    bytes := strings.Bytes(text);
+    if (start < 0 || start > length(bytes)) {
+        return false;
+    }
+    row: int = 1;
+    col: int = 1;
+    for (at in 0..<start) {
+        if (bytes[at] == 10) {
+            row += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    return line == row && column == col;
+}
+// The row of each function, in declaration order.
+Heads :: (rows: facts.Row[]) -> int[] {
+    heads: int[] = [];
+    for (index in 0..<length(rows)) {
+        if (rows[index].kind == facts.FunctionRow) {
+            heads.append(index);
+        }
+    }
+    return heads;
+}
+// `value` as a value of `type`: its low bits, sign-extended when the type is
+// signed. The values are i64, which holds every type but u64, and Check
+// rejects rows of u64 rather than evaluate them.
+Wrapped :: (value: i64, type: int) -> i64 {
+    bits := facts.Bits(type);
+    if (bits == 0 || bits == 64) {
+        return value;
+    }
+    low := value & ((i64(1) << u32(bits)) - 1);
+    if (!facts.Unsigned(type) && (low >> u32(bits - 1)) == 1) {
+        return low - (i64(1) << u32(bits));
+    }
+    return low;
+}
+// `value` clamped to the range of `type`.
+Clamped :: (value: i64, type: int) -> i64 {
+    bits := facts.Bits(type);
+    if (bits == 64) {
+        return value;
+    }
+    least: i64 = 0;
+    greatest := (i64(1) << u32(bits)) - 1;
+    if (!facts.Unsigned(type)) {
+        least = 0 - (i64(1) << u32(bits - 1));
+        greatest = (i64(1) << u32(bits - 1)) - 1;
+    }
+    if (value < least) {
+        return least;
+    }
+    if (value > greatest) {
+        return greatest;
+    }
+    return value;
+}
+// The value a comparison operator gives for `left` and `right`.
+Compared :: (operator: int, left: i64, right: i64) -> bool {
+    if (operator == facts.Less) {
+        return left < right;
+    }
+    if (operator == facts.LessEqual) {
+        return left <= right;
+    }
+    if (operator == facts.Greater) {
+        return left > right;
+    }
+    if (operator == facts.GreaterEqual) {
+        return left >= right;
+    }
+    if (operator == facts.Equal) {
+        return left == right;
+    }
+    return left != right;
+}
+// The value an arithmetic operator gives for `left` and `right`, before it
+// wraps to their type, as the integer contract defines it: nothing fails,
+// x / 0 is 0, x % 0 is x, MIN / -1 is MIN and MIN % -1 is 0, and a count at or
+// past the width shifts out every bit or gives the sign fill.
+Computed :: (operator: int, left: i64, right: i64) -> i64 {
+    if (operator == facts.Add) {
+        return left + right;
+    }
+    if (operator == facts.Subtract) {
+        return left - right;
+    }
+    if (operator == facts.Multiply) {
+        return left * right;
+    }
+    if (operator == facts.And) {
+        return left & right;
+    }
+    if (operator == facts.Or) {
+        return left | right;
+    }
+    if (operator == facts.Xor) {
+        return left ^ right;
+    }
+    if (operator == facts.ShiftLeft) {
+        return left << u32(right);
+    }
+    if (operator == facts.ShiftRight) {
+        return left >> u32(right);
+    }
+    if (right == 0) {
+        if (operator == facts.Divide) {
+            return 0;
+        }
+        return left;
+    }
+    if (right == -1) {
+        if (operator == facts.Divide) {
+            return 0 - left;
+        }
+        return 0;
+    }
+    if (operator == facts.Divide) {
+        return left / right;
+    }
+    return left % right;
+}
+// The Else or End row of the if statement whose consequence or alternative
+// starts at row `at`.
+Skipped :: (rows: facts.Row[], at: int) -> int {
+    depth: int = 0;
+    index := at;
+    while (depth > 0 || (rows[index].kind != facts.ElseRow && rows[index].kind != facts.EndRow)) {
+        if (rows[index].kind == facts.IfRow) {
+            depth += 1;
+        } else if (rows[index].kind == facts.EndRow) {
+            depth -= 1;
+        }
+        index += rows[index].count + 1;
+    }
+    return index;
+}
+// The value function `function` returns for `arguments`: its statements run
+// as the rows record them, an if statement's consequence when its condition
+// is 1 and otherwise its alternative, until a return. Each statement's
+// operands are read as the evaluation they record, operand by operand, with
+// `variables` the values of the function's variables by ordinal; a logical
+// whose left operand decides it skips its right rows. Each case's asserts
+// hold, so an assert runs on. Bools are 0 and 1, and each integer is the i64
+// its type's value is. Only calls recurse, one frame each, so the depth is
+// the call chain's.
+Evaluate :: (rows: facts.Row[], heads: int[], function: int, arguments: i64[]) -> i64 {
+    head := heads[function];
+    variables := arguments;
+    at := head + 1 + rows[head].count;
+    while (true) {
+        row := rows[at];
+        if (row.kind == facts.EndRow) {
+            at += 1;
+            continue;
+        }
+        // The consequence ran, so its alternative does not.
+        if (row.kind == facts.ElseRow) {
+            at = Skipped(rows, at + 1);
+            continue;
+        }
+        stack: i64[] = [];
+        index := at + 1;
+        while (index < at + 1 + rows[at].count) {
+            operand := rows[index];
+            index += 1;
+            if (operand.kind == facts.LiteralRow) {
+                stack.append(operand.literal);
+            } else if (operand.kind == facts.ReadRow) {
+                stack.append(variables[operand.value]);
+            } else if (operand.kind == facts.LogicalRow) {
+                left := stack[length(stack) - 1];
+                decided := left == 0;
+                if (operand.value == facts.LogicalOr) {
+                    decided = left == 1;
+                }
+                if (decided) {
+                    index += operand.count;
+                } else {
+                    stack = slice(stack, 0, length(stack) - 1);
+                }
+            } else if (operand.kind == facts.ArithmeticRow) {
+                base := length(stack) - 2;
+                computed := Wrapped(Computed(operand.value, stack[base], stack[base + 1]), operand.type);
+                stack = slice(stack, 0, base);
+                stack.append(computed);
+            } else if (operand.kind == facts.UnaryRow) {
+                base := length(stack) - 1;
+                computed := ~stack[base];
+                if (operand.value == facts.Negate) {
+                    computed = 0 - stack[base];
+                } else if (operand.value == facts.Not) {
+                    computed = 1 - stack[base];
+                }
+                stack = slice(stack, 0, base);
+                stack.append(Wrapped(computed, operand.type));
+            } else if (operand.kind == facts.ConvertRow) {
+                base := length(stack) - 1;
+                converted := Clamped(stack[base], operand.type);
+                if (operand.value == facts.Wrap) {
+                    converted = Wrapped(stack[base], operand.type);
+                }
+                stack = slice(stack, 0, base);
+                stack.append(converted);
+            } else if (operand.kind == facts.CompareRow) {
+                base := length(stack) - 2;
+                compared: i64 = 0;
+                if (Compared(operand.value, stack[base], stack[base + 1])) {
+                    compared = 1;
+                }
+                stack = slice(stack, 0, base);
+                stack.append(compared);
+            } else {
+                base := length(stack) - operand.count;
+                passed: i64[] = [];
+                for (argument in base..<length(stack)) {
+                    passed.append(stack[argument]);
+                }
+                stack = slice(stack, 0, base);
+                stack.append(Evaluate(rows, heads, operand.value, passed));
+            }
+        }
+        value := stack[length(stack) - 1];
+        if (row.kind == facts.ReturnRow) {
+            return value;
+        }
+        at += row.count + 1;
+        if (row.kind == facts.IfRow && value != 1) {
+            at = Skipped(rows, at);
+            if (rows[at].kind == facts.ElseRow) {
+                at += 1;
+            }
+        } else if (row.kind != facts.IfRow && row.kind != facts.AssertRow) {
+            // A local of a branch that did not run has no value.
+            while (length(variables) <= row.value) {
+                variables.append(i64(0));
+            }
+            variables[row.value] = value;
+        }
+    }
+}
+// Whether a module has an Array row, a reference or an optional, which the
+// recorded evaluation does not model.
+Arrayed :: (rows: facts.Row[]) -> bool {
+    for (row in rows) {
+        if (row.kind == facts.ArrayRow || row.kind == facts.RefRow || (row.kind == facts.UnionRow && strings.HasPrefix(row.name, "optional"))) {
+            return true;
+        }
+    }
+    return false;
+}
+// Function names joined by commas, and operand excerpts by function.
+Names :: (rows: facts.Row[]) -> string {
+    names := "";
+    for (head in Heads(rows)) {
+        if (names != "") {
+            names = format_text("{},", names);
+        }
+        names = format_text("{}{}", names, rows[head].name);
+    }
+    return names;
+}
+// Each function's statements: each a word, then its operands' excerpts
+// separated by " ; ". A return's word is `return`, a local's its name and
+// `:=`, an assignment's its variable's name and `=`, and an if statement's
+// `if`, then `else` and `end`.
+Trace :: (rows: facts.Row[]) -> string {
+    trace := "";
+    separator := "";
+    names: string[] = [];
+    for (row in rows) {
+        word := "";
+        if (row.kind == facts.FunctionRow) {
+            if (trace != "") {
+                trace = format_text("{} |", trace);
+            }
+            names = slice(names, 0, 0);
+        } else if (row.kind == facts.ParameterRow) {
+            names.append(row.name);
+        } else if (row.kind == facts.ReturnRow) {
+            word = "return";
+        } else if (row.kind == facts.LocalRow) {
+            names.append(row.name);
+            word = format_text("{} :=", row.name);
+        } else if (row.kind == facts.AssignRow) {
+            word = format_text("{} =", names[row.value]);
+        } else if (row.kind == facts.IfRow) {
+            word = "if";
+        } else if (row.kind == facts.AssertRow) {
+            word = "assert";
+        } else if (row.kind == facts.ElseRow) {
+            word = "else";
+        } else if (row.kind == facts.EndRow) {
+            word = "end";
+        } else if (row.kind != facts.SourceRow && row.kind != facts.DocumentRow) {
+            trace = format_text("{}{}{}", trace, separator, Excerpt(rows[0].text, row));
+            separator = " ; ";
+        }
+        if (word != "") {
+            if (trace != "") {
+                separator = " ";
+            }
+            trace = format_text("{}{}{}", trace, separator, word);
+            separator = " ";
+        }
+    }
+    return trace;
+}
+// An independent integer semantic oracle for focused producer regressions
+// whose sources are not entries in the broad authored corpus.
+pub Value :: (rows: facts.Row[]) -> i64 {
+    empty: i64[] = [];
+    return Evaluate(rows, Heads(rows), 0, empty);
+}
+// Positive when the producer's rows are the case's expected result.
+pub Check :: (rows: facts.Row[]) -> int {
+    cases := Cases();
+    index: int = 0;
+    while (index < length(cases) && (length(rows) < 1 || cases[index].source != rows[0].text)) {
+        index += 1;
+    }
+    if (index >= length(cases)) {
+        return -1;
+    } // "unknown scalar fixture source"
+    expected := cases[index];
+    if (rows[0].kind != facts.SourceRow || rows[0].name != "Scalar.chibi" || length(rows) < 2) {
+        return -2;
+    } // "source path was not retained"
+    if (!expected.accepted) {
+        if (length(rows) != 2 || rows[1].kind != facts.RejectionRow) {
+            return -3;
+        } // "unsupported source was certified, or a rejection kept a partial result"
+        rejection := rows[1];
+        if (rejection.text != expected.message) {
+            return -4;
+        } // "rejection message differs"
+        if (!Position(rows[0].text, rejection.start, rejection.line, rejection.column) ||
+            rejection.end < rejection.start || rejection.end > strings.ByteLength(rows[0].text)) {
+            return -5;
+        } // "diagnostic byte position differs"
+        if (expected.excerpt != "" && Excerpt(rows[0].text, rejection) != expected.excerpt) {
+            return -6;
+        } // "diagnostic does not identify the unsupported source"
+        return 1;
+    }
+    if (rows[1].kind != facts.DocumentRow || rows[1].name != "project:Scalar.chibi") {
+        return -7;
+    } // "source identity differs"
+    if (Names(rows) != expected.functions) {
+        return -8;
+    } // "functions differ"
+    // A 64-bit word and a float's negation are not modeled by this evaluation; the VMs and the native code give the value.
+    wide := false;
+    for (row in rows) {
+        wide = wide || row.type == facts.WordType || (row.kind == facts.UnaryRow && facts.Floating(row.type));
+    }
+    empty: i64[] = [];
+    // Arrays, references and loops are evaluated by the VMs and the native code, which
+    // must give the case's value; this evaluation covers straight-line rows.
+    if (!Arrayed(rows) && !wide && Evaluate(rows, Heads(rows), 0, empty) != i64(expected.value)) {
+        return -9;
+    } // "the recorded evaluation differs"
+    if (expected.trace != "" && Trace(rows) != expected.trace) {
+        return -10;
+    } // "operand order or provenance differs"
+    for (row in rows) {
+        if (row.kind >= facts.FunctionRow && !Position(rows[0].text, row.start, row.line, row.column)) {
+            return -11;
+        } // "row position differs"
+    }
+    return 1;
+}

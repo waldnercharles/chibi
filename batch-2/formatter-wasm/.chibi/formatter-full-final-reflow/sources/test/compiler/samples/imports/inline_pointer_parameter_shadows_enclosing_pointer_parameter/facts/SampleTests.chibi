@@ -1,0 +1,15 @@
+package facts
+
+// inline pointer parameter shadows enclosing pointer parameter
+@test
+Calls :: () {
+    r1: int = Main();
+    e1: int = 3993;
+    assert(r1 == e1, "Main call 1");
+    r2: int = Scoped();
+    e2: int = 44;
+    assert(r2 == e2, "Scoped call 2");
+    r3: int = Managed();
+    e3: int = 55;
+    assert(r3 == e3, "Managed call 3");
+}

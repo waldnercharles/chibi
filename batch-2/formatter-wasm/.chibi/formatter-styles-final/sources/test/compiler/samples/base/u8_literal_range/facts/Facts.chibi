@@ -1,0 +1,4 @@
+package facts
+One :: () -> u8 { return 256; }
+
+// error: 2:26: Numeric literal is outside the range of u8

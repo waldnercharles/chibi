@@ -1,0 +1,2 @@
+package facts
+pub Fold :: (value: f64) -> number { return number(value); }

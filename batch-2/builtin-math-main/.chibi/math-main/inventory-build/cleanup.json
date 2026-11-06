@@ -1,0 +1,18 @@
+{
+  "removed": "New inventory snapshot and generated native build products after the focused check passed. Logs, source patch, commands, hashes and red/green receipts retained. Existing frozen proofs and codec hosts were not removed.",
+  "paths": [
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/inventory-validation",
+    ".DS_Store",
+    "CMakeFiles/",
+    ".ninja_deps",
+    "cmake_install.cmake",
+    "build.ninja",
+    "testing/",
+    "sdk/",
+    "CMakeCache.txt",
+    "test_language",
+    ".ninja_log",
+    "share/"
+  ],
+  "retained_evidence_directory": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/inventory-build"
+}

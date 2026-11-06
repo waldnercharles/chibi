@@ -1,0 +1,12 @@
+package facts
+
+// Two pointers are equal when they point at the same location, whatever the
+// values there; two nil pointers are equal.
+@test
+Calls :: () {
+    assert(Same(), "the same field");
+    assert(!OtherField(), "another field with an equal value");
+    assert(!OtherRecord(), "an equal record elsewhere");
+    assert(Relayed(), "a copied pointer");
+    assert(NilPointers(), "nil");
+}

@@ -1,0 +1,9 @@
+package release_reentry
+Main :: () -> int {
+    values := Make();
+    scratch: int[] = [1];
+    scratch = [];
+    assert(values[0]^ == 7);
+    return length(scratch);
+}
+Make :: () -> ^int[] { value := 7; return [&value]; }

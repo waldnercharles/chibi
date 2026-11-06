@@ -1,0 +1,3 @@
+package outside
+import testing "core:testing"
+Main :: () -> int { testing.ExpectFailure(testing.Failure.AssertionFailed); return 0; }

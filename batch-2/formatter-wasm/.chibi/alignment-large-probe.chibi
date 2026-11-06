@@ -1,0 +1,48 @@
+package alignment_large_probe
+
+import format "project:source_format"
+import strings "core:strings"
+import os "core:os"
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    mode := "right";
+    if (length(arguments) > 0) { mode = arguments[0]; }
+    pieces := ["package p\nMain :: () {\n    rows := [\n"];
+    for (index in 0..<5000) {
+        if (mode == "outlier") {
+            if (index == 0) { pieces.append(strings.Concatenate(["        [1, \"", strings.Repeat("x", 10000), "\", 0]", ",\n"])); }
+            else { pieces.append("        [1, \"x\", 0],\n"); }
+        } else {
+            if (index % 2 == 0) { pieces.append("        [1, 200],\n"); }
+            else { pieces.append("        [30, 4],\n"); }
+        }
+    }
+    pieces.append("    ];\n}\n");
+    source := strings.Join(pieces, "");
+    options := format.Defaults();
+    if (mode != "default") { options.data_alignment = 3; }
+    if (mode == "left" || mode == "outlier") { options.data_alignment = 2; }
+    if (mode == "cap") { options.alignment_max_padding = 1; }
+    output := "";
+    switch format.Format(source, options) {
+        case .Rejected(message): print_string(message); return 1;
+        case .Formatted(text, notes): output = text;
+    }
+    assert(strings.ByteLength(output) <= format.MaxBytes, "large table remains within the formatter source bound");
+    if (mode == "default" || mode == "cap" || mode == "outlier") {
+        assert(output == source, "padding caps and default preserve canonical unaligned rows");
+    }
+    if (mode == "left") {
+        assert(strings.Contains(output, "        [1,  200],\n        [30, 4]"), "large left-aligned table has expected column starts");
+    }
+    if (mode == "right") {
+        assert(strings.Contains(output, "        [ 1, 200],\n        [30,   4]"), "large numeric table has expected right-aligned values");
+    }
+    switch format.Format(output, options) {
+        case .Rejected(message): print_string(message); return 1;
+        case .Formatted(again, notes): assert(again == output, "large table alignment is a fixed point");
+    }
+    print_string(format_text("PASS mode={} rows=5000 input_bytes={} output_bytes={}\n", mode, strings.ByteLength(source), strings.ByteLength(output)));
+    return 0;
+}

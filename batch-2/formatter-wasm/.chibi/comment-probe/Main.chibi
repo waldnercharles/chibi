@@ -1,0 +1,15 @@
+package comment_probe
+import f "project:source_format"
+import strings "core:strings"
+Main :: () -> int {
+    policy := f.CommentDefaults(); policy.comment_reflow = 1; policy.comment_width = 32; policy.tab_width = 4;
+    switch f.CommentStyle("\t// This paragraph wraps with tabs counted as indentation columns.\r\n", policy) {
+        case .Rejected(message): print_string(message);
+        case .Formatted(text, notes):
+            print_string(text);
+            bytes: string[] = [];
+            for (byte in text_bytes(text)) { bytes.append(format_text("{}", byte)); }
+            print_string(strings.Join(bytes, ","));
+    }
+    return 0;
+}

@@ -1,0 +1,189 @@
+diff --git a/test/language/main.c b/test/language/main.c
+index 52d6e742d..4459be2e9 100644
+--- a/test/language/main.c
++++ b/test/language/main.c
+@@ -97,6 +97,9 @@ void test_language_package_resolution();
+ void test_language_package_imports();
+ void test_language_package_files();
+ void test_language_package_core();
++void test_language_package_portable();
++void test_language_package_portable_compiler();
++void test_language_package_portable_costs();
+ void test_language_package_tests();
+ void test_language_docs_markdown();
+ void test_language_scalarize();
+@@ -314,6 +317,11 @@ int main(int argc, char **argv)
+     bool package_resolution = argc == 2 && !strcmp(argv[1], "--package-resolution");
+     bool package_imports = argc == 2 && !strcmp(argv[1], "--package-imports");
+     bool package_core = argc == 2 && !strcmp(argv[1], "--package-core");
++    bool package_portable_compiler = argc == 2 &&
++                                     !strcmp(argv[1], "--package-portable-compiler");
++    bool package_portable_costs = argc == 2 &&
++                                  !strcmp(argv[1], "--package-portable-costs");
++    bool package_portable = argc == 2 && !strcmp(argv[1], "--package-portable");
+     bool package_tests = argc == 2 && !strcmp(argv[1], "--package-tests");
+     bool docs_markdown = argc == 2 && !strcmp(argv[1], "--docs-markdown");
+     bool package_files = argc == 2 && !strcmp(argv[1], "--package-files");
+@@ -374,11 +382,12 @@ int main(int argc, char **argv)
+          !package_compiler_chibi_native_arguments_oracle && !lexical_binding_chibi &&
+          !nominal_binding_chibi && !named_binding_chibi && !type_constructors_chibi &&
+          !type_relations_chibi && !unit_algebra_chibi && !signature_reader_chibi &&
+-         !snapshot_reader_chibi && !callable_headers_chibi &&
+-         !unit_analysis_chibi && !unit_analysis_zero_id && !unit_analysis_deep &&
+-         !union_members_chibi && !effect_analysis_chibi && !record_members_chibi &&
+-         !package_execution && !package_resolution && !package_imports &&
+-         !package_files && !package_core && !package_tests && !docs_markdown &&
++         !snapshot_reader_chibi && !callable_headers_chibi && !unit_analysis_chibi &&
++         !unit_analysis_zero_id && !unit_analysis_deep && !union_members_chibi &&
++         !effect_analysis_chibi && !record_members_chibi && !package_execution &&
++         !package_resolution && !package_imports && !package_files &&
++         !package_core && !package_portable && !package_portable_costs &&
++         !package_portable_compiler && !package_tests && !docs_markdown &&
+          !component_write && !component_write_layout && !scalarize && !borrow &&
+          !reductions && !binding_schedule && !activation_cache && !headless &&
+          !build_workflow && !navigation && !publication && !field_runtime &&
+@@ -438,6 +447,8 @@ int main(int argc, char **argv)
+             "--package-syntax | --package-syntax-chibi | --package-execution | "
+             "--package-resolution | "
+             "--package-imports | --package-files | --package-core | "
++            "--package-portable | --package-portable-costs | "
++            "--package-portable-compiler | "
+             "--package-tests | --docs-markdown | "
+             "--component-write | --component-write-layout | --scalarize | "
+             "--borrow | --reductions | "
+@@ -711,6 +722,12 @@ int main(int argc, char **argv)
+         test_language_package_imports();
+     } else if (package_core) {
+         test_language_package_core();
++    } else if (package_portable_compiler) {
++        test_language_package_portable_compiler();
++    } else if (package_portable_costs) {
++        test_language_package_portable_costs();
++    } else if (package_portable) {
++        test_language_package_portable();
+     } else if (package_tests) {
+         test_language_package_tests();
+     } else if (docs_markdown) {
+diff --git a/tools/graph/engine/Targets.chibi b/tools/graph/engine/Targets.chibi
+index 5892c0a8c..cc13f6feb 100644
+--- a/tools/graph/engine/Targets.chibi
++++ b/tools/graph/engine/Targets.chibi
+@@ -739,6 +739,8 @@ Files :: (target: string) -> string[] {
+             "test/language/package_execution.c", "test/language/package_resolution.c",
+             "test/language/package_imports.c", "test/language/package_files.c",
+             "test/language/package_core.c", "test/language/package_tests.c",
++            "test/language/package_portable.c", "test/language/package_portable_compiler.c",
++            "test/language/package_portable_costs.c",
+             "test/language/package_graph_chibi.c", "test/language/docs_markdown.c",
+             "test/language/syntax_corpus.c", "test/language/syntax_chibi.c",
+             "test/language/compiler_fixture.c", "test/language/package_syntax_chibi.c",
+@@ -3491,6 +3493,8 @@ LanguageTestsOverSource :: () -> string[] {
+         "test/language/numeric.c",
+         "test/language/outliner_projection.c", "test/language/package_compiler_chibi.c",
+         "test/language/package_paths_chibi.c", "test/language/package_routes_chibi.c",
++        "test/language/package_portable.c", "test/language/package_portable_compiler.c",
++        "test/language/package_portable_costs.c",
+         "test/language/package_snapshot_chibi.c", "test/language/package_syntax.c",
+         "test/language/package_syntax_chibi.c", "test/language/prepared_writer_chibi.c",
+         "test/language/program.c", "test/language/query_boundary.c", "test/language/query_values.c", "test/language/query_migration.c", "test/language/ranges.c",
+@@ -3520,7 +3524,7 @@ pub SourceDefines :: (target: string, file: string) -> string[] {
+     }
+     if (target == "test_language" &&
+         (file == "test/language/source_tokenizer_chibi.c" || file == "test/language/asset_packaging_chibi.c" ||
+-         file == "test/language/integer_semantics.c")) {
++         file == "test/language/integer_semantics.c" || file == "test/language/package_portable_compiler.c")) {
+         return ["CHIBI_SOURCE_ROOT=\"{source_root}\""];
+     }
+     return [];
+@@ -3593,6 +3597,8 @@ pub Configures :: (target: string) -> string[] {
+             "test/parallel.h=test/parallel.h",
+             "package_core_source.h=test/language/package_core_source.h.in",
+             "core_strings_tests_source.h=test/language/core_strings_tests_source.h.in",
++            "package_portable_source.h=test/language/package_portable_source.h.in",
++            "package_portable_consumer.h=test/language/package_portable_consumer.h.in",
+             "docs_markdown_source.h=test/language/docs_markdown_source.h.in",
+             "package_graph_chibi_source.h=test/language/package_graph_chibi_source.h.in",
+             "syntax_chibi_source.h=test/language/syntax_chibi_source.h.in",
+@@ -3664,6 +3670,27 @@ pub Substitutions :: (target: string) -> string[] {
+             "CHIBI_CORE_STRINGS_BYTES=bytes:packages/core/strings/Strings.chibi",
+             "CHIBI_CORE_STRINGS_TEST_SOURCES=test-sources:CORE_STRINGS_TEST_SOURCE:core_strings:test/core_strings",
+             "CHIBI_CORE_STRINGS_TEST_INPUTS=test-inputs:CORE_STRINGS_TEST_SOURCE:core_strings:test/core_strings",
++            "CHIBI_PORTABLE_CONSUMER_BYTES=bytes:test/packages/portable_consumer/Consumer.chibi",
++            "CHIBI_PORTABLE_BYTES_SOURCES=test-sources:PORTABLE_BYTES:bytes:packages/core/bytes",
++            "CHIBI_PORTABLE_BYTES_INPUTS=test-inputs:PORTABLE_BYTES:bytes:packages/core/bytes",
++            "CHIBI_PORTABLE_ENCODING_ENDIAN_SOURCES=test-sources:PORTABLE_ENCODING_ENDIAN:encoding/endian:packages/core/encoding/endian",
++            "CHIBI_PORTABLE_ENCODING_ENDIAN_INPUTS=test-inputs:PORTABLE_ENCODING_ENDIAN:encoding/endian:packages/core/encoding/endian",
++            "CHIBI_PORTABLE_UTF8_SOURCES=test-sources:PORTABLE_UTF8:utf8:packages/core/utf8",
++            "CHIBI_PORTABLE_UTF8_INPUTS=test-inputs:PORTABLE_UTF8:utf8:packages/core/utf8",
++            "CHIBI_PORTABLE_PATH_SLASHPATH_SOURCES=test-sources:PORTABLE_PATH_SLASHPATH:path/slashpath:packages/core/path/slashpath",
++            "CHIBI_PORTABLE_PATH_SLASHPATH_INPUTS=test-inputs:PORTABLE_PATH_SLASHPATH:path/slashpath:packages/core/path/slashpath",
++            "CHIBI_PORTABLE_MATH_BITS_SOURCES=test-sources:PORTABLE_MATH_BITS:math/bits:packages/core/math/bits",
++            "CHIBI_PORTABLE_MATH_BITS_INPUTS=test-inputs:PORTABLE_MATH_BITS:math/bits:packages/core/math/bits",
++            "CHIBI_PORTABLE_HASH_FNV_SOURCES=test-sources:PORTABLE_HASH_FNV:hash/fnv:packages/core/hash/fnv",
++            "CHIBI_PORTABLE_HASH_FNV_INPUTS=test-inputs:PORTABLE_HASH_FNV:hash/fnv:packages/core/hash/fnv",
++            "CHIBI_PORTABLE_HASH_ADLER32_SOURCES=test-sources:PORTABLE_HASH_ADLER32:hash/adler32:packages/core/hash/adler32",
++            "CHIBI_PORTABLE_HASH_ADLER32_INPUTS=test-inputs:PORTABLE_HASH_ADLER32:hash/adler32:packages/core/hash/adler32",
++            "CHIBI_PORTABLE_HASH_CRC32_SOURCES=test-sources:PORTABLE_HASH_CRC32:hash/crc32:packages/core/hash/crc32",
++            "CHIBI_PORTABLE_HASH_CRC32_INPUTS=test-inputs:PORTABLE_HASH_CRC32:hash/crc32:packages/core/hash/crc32",
++            "CHIBI_PORTABLE_ENCODING_HEX_SOURCES=test-sources:PORTABLE_ENCODING_HEX:encoding/hex:packages/core/encoding/hex",
++            "CHIBI_PORTABLE_ENCODING_HEX_INPUTS=test-inputs:PORTABLE_ENCODING_HEX:encoding/hex:packages/core/encoding/hex",
++            "CHIBI_PORTABLE_ENCODING_BASE64_SOURCES=test-sources:PORTABLE_ENCODING_BASE64:encoding/base64:packages/core/encoding/base64",
++            "CHIBI_PORTABLE_ENCODING_BASE64_INPUTS=test-inputs:PORTABLE_ENCODING_BASE64:encoding/base64:packages/core/encoding/base64",
+             "CHIBI_DOCS_GRAMMAR_BYTES=bytes:tools/docs/grammar/Grammar.chibi",
+             "CHIBI_DOCS_MARKDOWN_BYTES=bytes:tools/docs/markdown/Markdown.chibi",
+             "CHIBI_DOCS_REFERENCE_BYTES=bytes:tools/docs/reference/Reference.chibi",
+@@ -3800,7 +3827,7 @@ pub Resources :: (target: string) -> string[] {
+     if (target == "chibi") {
+         return [
+             "build/share/chibi/engine.json=build/sdk/chibi_engine_metadata.json",
+-            "build/share/chibi/core/strings/Strings.chibi=packages/core/strings/Strings.chibi",
++            "build/share/chibi/core=packages/core",
+             "build/share/chibi/docs/markdown/Markdown.chibi=tools/docs/markdown/Markdown.chibi",
+             "build/share/chibi/docs/site/Site.chibi=tools/docs/site/Site.chibi",
+             "build/share/chibi/docs/reference/Reference.chibi=tools/docs/reference/Reference.chibi",
+diff --git a/tools/test_policy.py b/tools/test_policy.py
+index 9a320ffbf..15605497f 100644
+--- a/tools/test_policy.py
++++ b/tools/test_policy.py
+@@ -450,6 +450,12 @@ TOOLS = {
+                                '--package-files'],
+     'language-package-core': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                               '--package-core'],
++    'language-package-portable-compiler': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
++                                           '--package-portable-compiler'],
++    'language-package-portable-costs': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
++                                        '--package-portable-costs'],
++    'language-package-portable': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
++                                  '--package-portable'],
+     'language-docs-markdown': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                '--docs-markdown'],
+     'language-package-tests': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+@@ -511,6 +517,9 @@ for selector in ('', '-compiled', '-types', '-types-compiled', '-collections', '
+     TOOLS['wasm-package-compiler-chibi' + selector] = ['node', str(wasm_build / 'test_language.js'),
+                                                        '--package-compiler-chibi' + selector]
+ 
++for selector in ('package-portable', 'package-portable-compiler'):
++    TOOLS['wasm-' + selector] = ['node', str(wasm_build / 'test_language.js'), '--' + selector]
++
+ 
+ GPU_TOOLS = (
+     'studio-source-edit',
+@@ -565,7 +574,8 @@ GROUPS = {
+     'wasm': ['wasm-wasm', 'wasm-execution', 'wasm-program', 'wasm-headless',
+              'wasm-publication', 'wasm-operations', 'wasm-modules', 'wasm-runtime-attribution', 'wasm-ranges', 'wasm-scalarize', 'wasm-component-write',
+              'wasm-binding-schedule', 'wasm-borrow', 'wasm-activation-cache', 'wasm-reductions', 'wasm-row-array', 'wasm-outliner-projection',
+-             'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled'],
++             'wasm-package-compiler-chibi', 'wasm-package-compiler-chibi-compiled',
++             'wasm-package-portable', 'wasm-package-portable-compiler'],
+     'native': ['native-runtime', 'native-catalog', 'native-values', 'audio-analysis', 'shader-webgpu',
+                'player-url', 'player-clock',
+                'physics', 'physics3d',
+@@ -596,7 +606,7 @@ GROUPS = {
+                   'material-simulation', 'material-ecs', 'material-render'],
+     'language': ['language-test-parallel', 'execution-scope', 'language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-query-program', 'language-query-values', 'language-query-migration', 'language-incremental', 'language-operations', 'language-ranges', 'language-scalarize', 'language-component-write',
+                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
+-                 'language-headless', 'language-format', 'language-package-tests', 'language-package-core', 'language-docs-markdown', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
++                 'language-headless', 'language-format', 'language-package-tests', 'language-package-core', 'language-package-portable', 'language-package-portable-compiler', 'language-docs-markdown', 'language-navigation', 'language-publication', 'language-modules', 'language-native-calls', 'language-runtime-attribution',
+                  'field-runtime', 'prototype-document', 'ui-authoring', 'text-format', 'graph-model',
+                  'graph-authoring', 'model-runtime', 'language-row-array', 'language-outliner-projection',
+                  'language-shader-source-chibi', 'language-compiler-fixture', 'language-package-compiler-chibi-scalar',

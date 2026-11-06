@@ -1,0 +1,208 @@
+package toolchain
+
+import os "core:os"
+import strings "core:strings"
+import files "graph:install"
+import engine "graph:engine"
+
+// Install the graph-built private compiler tools into a fresh prefix. This is
+// the compiler-tools part of SDK packaging, without public libraries/headers.
+//   CompilerTools -- --build ABS --output ABS --third-party ABS
+// The dependency archive must be the one both executable link records name.
+// Publication refuses existing prefixes; a failed preparation removes only the
+// sibling stage this invocation reserved. No compiler/bootstrap bytes change.
+Join :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+Option :: (arguments: string[], name: string) -> string {
+    for (i in 0..<length(arguments) - 1) {
+        if (arguments[i] == name) {
+            return arguments[i + 1];
+        }
+    }
+    return "";
+}
+// Every item is DESTINATION=SOURCE, with absolute source paths.
+Entries :: (root: string, build_dir: string, third_party: string) -> string[] {
+    return [
+        Join(["libexec/chibi/chibi-build-host=", build_dir, "/sdk/chibi-build-host"]),
+        Join(["libexec/chibi/chibi-compiler-host=", build_dir, "/sdk/chibi-compiler-host"]),
+        Join(["share/chibi/compiler=", build_dir, "/share/chibi/compiler"]),
+        Join(["share/chibi/core=", build_dir, "/share/chibi/core"]),
+        Join(["share/chibi/tools/native_aot=", build_dir, "/share/chibi/tools/native_aot"]),
+        Join(["share/chibi/tools/toolchain/Build.chibi=", root, "/tools/toolchain/Build.chibi"]),
+        Join(["share/chibi/tools/toolchain/Graph.chibi=", root, "/tools/toolchain/Graph.chibi"]),
+        Join(["share/chibi/tools/toolchain/SDK.chibi=", root, "/tools/toolchain/SDK.chibi"]),
+        Join(["share/chibi/graph=", root, "/tools/graph"]),
+        Join(["share/chibi/licenses/chibi/LICENSE.md=", root, "/LICENSE.md"]),
+        Join(["share/chibi/licenses/chibi/COPYING=", root, "/COPYING"]),
+        Join(["share/chibi/licenses/chibi/COPYING.LESSER=", root, "/COPYING.LESSER"]),
+        Join(["share/chibi/licenses/chibi/COPYING.EXAMPLES=", root, "/COPYING.EXAMPLES"]),
+        Join(["share/chibi/licenses/chibi/docs/distribution-licensing.md=", root, "/docs/distribution-licensing.md"]),
+        Join(["share/chibi/licenses/fmt/LICENSE=", root, "/third_party/fmt/LICENSE"]),
+        Join(["share/chibi/licenses/fmt/README.md=", root, "/third_party/fmt/README.md"]),
+        Join(["share/chibi/licenses/yyjson/LICENSE=", root, "/third_party/yyjson/LICENSE"]),
+        Join(["share/chibi/licenses/vendor/sljit/LICENSE=", third_party, "/share/chibi/licenses/vendor/sljit/LICENSE"])
+    ];
+}
+// The installed build host must compile and execute the SDK's new bindings,
+// with its own executable-relative compiler resources.
+Verify :: () -> int {
+    reserved := Join([os.Root(), "/.compiler-tools-probe"]);
+    published := Join([reserved, ".published"]);
+    if (os.Reserve(reserved)) {
+        return 1;
+    }
+    if (os.Publish(reserved, published)) {
+        if (os.Remove(reserved)) {
+            os.Print(Join(["sdk: cannot remove ", reserved]));
+        }
+        return 1;
+    }
+    if (os.Remove(published)) {
+        return 1;
+    }
+    return 0;
+}
+Prepare :: (stage: string, entries: string[]) -> bool {
+    for (item in entries) {
+        if (!files.CopyTree(strings.Partition(item, "=").tail, Join([stage, "/", strings.Partition(item, "=").head]))) {
+            os.Print(Join(["sdk: cannot copy ", strings.Partition(item, "=").tail]));
+            return false;
+        }
+    }
+    compiler := Join([stage, "/share/chibi/compiler"]);
+    if (os.Run([Join([stage, "/libexec/chibi/chibi-compiler-host"]),
+                   "--validate", "--bootstrap", Join([compiler, "/bootstrap"]),
+                   "--compiler", compiler, "--core", Join([stage, "/share/chibi/core"])]) != 0) {
+        os.Print("sdk: staged compiler resources failed validation");
+        return false;
+    }
+    if (os.Run([Join([stage, "/libexec/chibi/chibi-build-host"]),
+                   "--root", stage, "--source", Join([stage, "/share/chibi/tools/toolchain/SDK.chibi"]),
+                   "--core", Join([stage, "/share/chibi/core"]),
+                   "--collection", Join(["graph=", stage, "/share/chibi/graph"]), "--entry", "Verify", "--timeout-ms", "120000"]) != 0) {
+        os.Print("sdk: staged build host failed capability verification");
+        return false;
+    }
+    return !os.WriteText(Join([stage, "/share/chibi/compiler-tools.tsv"]), Join(["1\n", files.Inventory(stage, "")]));
+}
+CompilerTools :: () -> int {
+    arguments := os.Arguments();
+    build_dir := Option(arguments, "--build");
+    output := Option(arguments, "--output");
+    third_party := Option(arguments, "--third-party");
+    if (!strings.HasPrefix(build_dir, "/") || !strings.HasPrefix(output, "/") ||
+        !strings.HasPrefix(third_party, "/") || strings.HasSuffix(output, "/") ||
+        strings.HasSuffix(output, "/.") || strings.HasSuffix(output, "/..")) {
+        os.Print("sdk: --build, --output and --third-party must be absolute paths; output must name a fresh prefix");
+        return 2;
+    }
+    if (os.Kind(output) != os.KindNone) {
+        os.Print("sdk: output already exists");
+        return 2;
+    }
+    root := os.Root();
+    output = files.CanonicalPath(output);
+    if (output == "") {
+        os.Print("sdk: output has an invalid directory ancestor");
+        return 2;
+    }
+    stage := files.CanonicalPath(Join([output, ".chibi-stage"]));
+    if (stage == "") {
+        os.Print("sdk: staging has an invalid directory ancestor");
+        return 2;
+    }
+    entries := Entries(root, build_dir, third_party);
+    for (item in entries) {
+        source := strings.Partition(item, "=").tail;
+        if (os.IsDirectory(source) &&
+            (files.Inside(output, source) || files.Inside(stage, source))) {
+            os.Print("sdk: output or staging lies inside a distribution input");
+            return 2;
+        }
+    }
+    if (!files.SameTree(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"])) ||
+        !files.SameTree(Join([root, "/packages/core"]), Join([build_dir, "/share/chibi/core"]))) {
+        os.Print("sdk: graph compiler/core resources are missing or stale; rebuild the private hosts");
+        return 1;
+    }
+    for (host in ["chibi-build-host", "chibi-compiler-host"]) {
+        record := build.read_file(Join([build_dir, "/sdk/", host, ".chibi-record"]));
+        for (library_name in ["sljit"]) {
+            archive := Join([third_party, "/lib/chibi-vendor/libchibi_vendor_", library_name, ".a"]);
+            found := false;
+            for (line in strings.Lines(record)) {
+                found = found || line == archive;
+            }
+            if (!found) {
+                os.Print("sdk: dependency archive differs from the graph executable link record");
+                return 1;
+            }
+        }
+    }
+    for (item in entries) {
+        source := strings.Partition(item, "=").tail;
+        kind := os.Kind(source);
+        if (kind != os.KindFile && kind != os.KindDirectory) {
+            os.Print(Join(["sdk: missing distribution input ", source]));
+            return 1;
+        }
+    }
+    if (os.MakeDirectory(files.Parent(output))) {
+        os.Print("sdk: cannot create output parent");
+        return 1;
+    }
+    if (os.Reserve(stage)) {
+        os.Print("sdk: cannot reserve staging directory; existing staging is preserved");
+        return 1;
+    }
+    if (!Prepare(stage, entries) || os.Publish(stage, output)) {
+        if (!files.RemoveTree(stage)) {
+            os.Print(Join(["sdk: incomplete staging directory retained at ", stage]));
+        }
+        os.Print("sdk: compiler-tools publication failed");
+        return 1;
+    }
+    os.Print(Join(["sdk: installed compiler tools at ", output]));
+    return 0;
+}
+
+// Install the Release graph products into PREFIX, overlaying what is there, as
+// the layout the launcher and private hosts read: products in bin, hosts in
+// libexec/chibi, resources in share/chibi.
+//   Install -- --build ABS --prefix ABS
+InstallEntries :: (root: string, build_dir: string, third_party: string) -> string[] {
+    entries := Entries(root, build_dir, third_party);
+    entries.extend([
+        Join(["bin/chibi=", build_dir, "/sdk/chibi"]),
+        Join(["bin/chibi-compile=", build_dir, "/sdk/chibi-compile"]),
+        Join(["share/chibi/engine.json=", build_dir, "/share/chibi/engine.json"]),
+        Join(["share/chibi/apps=", build_dir, "/share/chibi/apps"])
+    ]);
+    return entries;
+}
+Install :: () -> int {
+    arguments := os.Arguments();
+    build_dir := Option(arguments, "--build");
+    prefix := Option(arguments, "--prefix");
+    if (!strings.HasPrefix(build_dir, "/") || !strings.HasPrefix(prefix, "/")) {
+        os.Print("sdk: --build and --prefix must be absolute paths");
+        return 2;
+    }
+    entries := InstallEntries(os.Root(), build_dir, engine.ThirdParty(os.Root(), "", ""));
+    for (item in entries) {
+        if (os.Kind(strings.Partition(item, "=").tail) == os.KindNone) {
+            os.Print(Join(["sdk: missing install input ", strings.Partition(item, "=").tail]));
+            return 1;
+        }
+    }
+    for (item in entries) {
+        if (!files.CopyTree(strings.Partition(item, "=").tail, Join([prefix, "/", strings.Partition(item, "=").head]))) {
+            os.Print(Join(["sdk: cannot install ", strings.Partition(item, "=").head]));
+            return 1;
+        }
+    }
+    os.Print(Join(["sdk: installed at ", prefix]));
+    return 0;
+}

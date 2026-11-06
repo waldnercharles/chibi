@@ -1,0 +1,10 @@
+tools/compiler/package_compiler
+tools/compiler/scalar_facts
+tools/compiler/asset_compiler
+tools/compiler/asset_source
+tools/compiler/asset_packaging
+packages/core
+packages/game
+tools/graph/asset_compiler
+tools/compiler/cost_explanations
+tools/compiler/math_types

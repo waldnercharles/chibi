@@ -1,0 +1,34 @@
+package toolchain
+
+import evidence "graph:evidence"
+import os "core:os"
+
+// `chibi build native-evidence --build DIR --output DIR --nm PATH --sha SHA
+// --sanitizers ON|OFF --profile NAME --optimization N --frame-pointers on|""
+// --outcome success|... [--run ID --attempt N --job NAME]`: verifies that the
+// build in DIR ran with the profile CI selected, and writes receipt.json and the
+// records, symbol listings and command databases it checked to OUTPUT.
+Option :: (arguments: string[], name: string) -> string {
+    for (i in 0..<length(arguments) - 1) {
+        if (arguments[i] == name) {
+            return arguments[i + 1];
+        }
+    }
+    return "";
+}
+Capture :: () -> int {
+    arguments := os.Arguments();
+    build := Option(arguments, "--build");
+    output := Option(arguments, "--output");
+    nm := Option(arguments, "--nm");
+    if (build == "" || output == "" || nm == "") {
+        os.Print("evidence: --build, --output and --nm are required");
+        return 2;
+    }
+    selected: evidence.Selected = {sha: Option(arguments, "--sha"), run: Option(arguments, "--run"),
+                                   attempt: Option(arguments, "--attempt"), job: Option(arguments, "--job"),
+                                   sanitizers: Option(arguments, "--sanitizers"), profile: Option(arguments, "--profile"),
+                                   optimization: Option(arguments, "--optimization"),
+                                   frame_pointers: Option(arguments, "--frame-pointers"), outcome: Option(arguments, "--outcome")};
+    return evidence.Capture(os.Root(), build, output, nm, selected);
+}

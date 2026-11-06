@@ -1,0 +1,37 @@
+package facts
+
+// compile-time floats follow IEEE rounding
+@test
+Calls :: () {
+    quarter: f64 = Quarter;
+    expected_quarter: f64 = 12.5;
+    assert(quarter == expected_quarter, "interpolation");
+    average: f64 = Average;
+    expected_average: f64 = 3.0;
+    assert(average == expected_average, "mean over an array");
+    tenths: f64 = Tenths;
+    expected_tenths: f64 = 0.30000000000000004;
+    assert(tenths == expected_tenths, "0.1 + 0.2 rounds like binary64");
+    thirds: f32 = Thirds;
+    expected_thirds: f32 = 0.33333334;
+    assert(thirds == expected_thirds, "binary32 division rounds once");
+    infinite: f64 = Infinite;
+    big: f64 = 1.0e308;
+    assert(infinite > big, "division by zero is infinity");
+    overflow: f64 = Overflow;
+    assert(overflow == infinite, "overflow is infinity");
+    invalid: f64 = Invalid;
+    assert(invalid != invalid, "zero over zero is NaN");
+    subnormal: f64 = Subnormal;
+    least: f64 = 2.2250738585072014e-308;
+    assert(subnormal * 2.0 == least, "gradual underflow keeps the bits");
+    half: f32 = Half;
+    expected_half: f32 = 2.5;
+    assert(half == expected_half, "binary32 function");
+    scale: f64 = Scale;
+    expected_scale: f64 = 5.5;
+    assert(scale == expected_scale, "compound assignment on a float local");
+    ordered: int = Ordered;
+    expected_ordered: int = 10;
+    assert(ordered == expected_ordered, "comparison of floats");
+}

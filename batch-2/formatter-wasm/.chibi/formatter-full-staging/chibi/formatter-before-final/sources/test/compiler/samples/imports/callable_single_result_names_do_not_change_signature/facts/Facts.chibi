@@ -1,0 +1,6 @@
+package facts
+import lib "project:callable_single_result_names_do_not_change_signature/lib"
+Named :: () -> (answer: int) { return 7; }
+Unnamed :: () -> int { return 11; }
+Main :: () -> int { return lib.UnnamedContract(Named) * 100 + lib.NamedContract(Unnamed); }
+Inline :: () -> int { answer := 90; return lib.UnnamedContract(() -> (answer: int) { answer = 13; return; }) + lib.NamedContract(() => 17) + answer; }

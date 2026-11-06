@@ -1,0 +1,5 @@
+package facts
+A: int : 1;
+A :: () -> int { return 1; }
+
+// error: 3:1: Duplicate declaration 'A'

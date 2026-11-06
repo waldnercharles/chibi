@@ -1,0 +1,294 @@
+package shader_source
+
+import facts "project:compiler_facts"
+
+// Linked transport codes, not semantic classifications or a second shader IR.
+// The native adapter copies these scalar rows into the existing shader_graph.
+pub ScalarTarget :: struct {
+    float_storage: int;
+    constant_op: int;
+    add_op: int;
+    multiply_op: int;
+}
+pub ScalarNode :: struct {
+    op: int;
+    left: int;
+    right: int;
+    bits: u64;
+    source_id: u64;
+}
+pub ScalarLowering :: union {
+    Ready(nodes: ScalarNode[], output: int, documents: Document[],
+          origins: Origin[], results: SourceResult[])
+    | Rejected(failure: Failure)
+}
+ScalarFrame :: struct {
+    expression: int;
+    finish: bool;
+}
+
+ScalarIndex :: (index: int, count: int) -> bool {
+    return index >= 0 && index < count;
+}
+ScalarAbsent :: (count: int) -> int[] {
+    values: int[] = [];
+    index: int = 0;
+    while (index < count) {
+        values.append(int(-1));
+        index += 1;
+    }
+    return values;
+}
+ScalarSpan :: (first: int, count: int, total: int) -> bool {
+    return first >= 0 && first <= total && count >= 0 && count <= total - first;
+}
+ScalarType :: (types: facts.Type[], index: int, target: ScalarTarget) -> bool {
+    if (!ScalarIndex(index, length(types))) {
+        return false;
+    }
+    type := types[index];
+    return type.storage == target.float_storage && type.container == 0 &&
+           type.nominal == u64(0) && type.qualifiers == 0 && type.field_count == 0;
+}
+RejectScalar :: (origins: Origin[], index: int, message: string) -> ScalarLowering {
+    if (!ScalarIndex(index, length(origins))) {
+        return ScalarLowering.Rejected(WithoutRange(u64(0), -1, message));
+    }
+    return ScalarLowering.Rejected(FromOrigin(origins[index], message));
+}
+
+// This consumes ordinary accepted facts; it does not parse source, resolve
+// names/types or implement Analyze. The initial bounded slice is one nullary,
+// pure source function returning a nonnominal float, with immutable local
+// initializers, exact finite constants and scalar add/multiply. Unsupported
+// statements are rejected even when their initialized value is unused.
+pub LowerScalar :: (analysis: facts.Result, target: ScalarTarget) -> ScalarLowering {
+    switch analysis {
+        case .Rejected(source_documents, diagnostic):
+            return ScalarLowering.Rejected({source_id: u64(0), node: -1,
+                                            document: diagnostic.document, start: diagnostic.start,
+                                            end: diagnostic.end, message: diagnostic.message});
+        case .Accepted(entry_function, source_documents, source_origins, types,
+                       fields, functions, bindings, statements, expressions, arguments):
+            if (length(source_documents) > DocumentLimit || length(source_origins) > OriginLimit ||
+                length(types) > 1024 || length(fields) > 1024 || length(functions) > 1024 ||
+                length(bindings) > 1024 || length(statements) > 1024 ||
+                length(expressions) > NodeLimit || length(arguments) > 2048) {
+                return ScalarLowering.Rejected(WithoutRange(u64(0), -1,
+                                                            "Shader scalar facts exceed their table limits"));
+            }
+            documents: Document[] = [];
+            for (document in source_documents) {
+                captured: Document = {identity: document.identity, text: document.text};
+                documents.append(captured);
+            }
+            origins: Origin[] = [];
+            for (origin in source_origins) {
+                // IDs are bundle-local and deterministic, not compiler node
+                // anchors, occurrences or live program-generation tokens.
+                captured: Origin = {source_id: u64(length(origins) + 1),
+                                    occurrence: origin.occurrence, call_site: u64(0),
+                                    document: origin.document, start: origin.start, end: origin.end};
+                origins.append(captured);
+            }
+            results: SourceResult[] = [];
+            node_sources: u64[] = [];
+            checked := Validate(documents, origins, results, node_sources);
+            if (checked is .Failed(failure)) {
+                return ScalarLowering.Rejected(failure);
+            }
+            if (target.float_storage < 0 || target.constant_op < 0 || target.add_op < 0 ||
+                target.multiply_op < 0 || target.constant_op == target.add_op ||
+                target.constant_op == target.multiply_op || target.add_op == target.multiply_op ||
+                !ScalarIndex(entry_function, length(functions))) {
+                return RejectScalar(origins, -1, "Invalid shader scalar target or entry");
+            }
+            function := functions[entry_function];
+            if (!ScalarIndex(function.origin, length(origins)) ||
+                function.kind != facts.SourceFunction || function.parameter_count != 0 ||
+                function.unsupported != "" || !ScalarType(types, function.result_type, target)) {
+                return RejectScalar(origins, function.origin,
+                                    "Shader scalar entry must be a nullary source function returning number");
+            }
+            if (function.effects != 0) {
+                return RejectScalar(origins, function.origin, "Shader scalar entry must be pure");
+            }
+            if (function.statement_count < 1 ||
+                !ScalarSpan(function.first_statement, function.statement_count, length(statements))) {
+                return RejectScalar(origins, function.origin, "Invalid shader scalar statement span");
+            }
+            nodes: ScalarNode[] = [];
+            values: int[] = ScalarAbsent(length(expressions));
+            locals: int[] = ScalarAbsent(length(bindings));
+            principal: int[] = ScalarAbsent(length(origins));
+            colors: int[] = resize([int(0)], length(expressions));
+            frame: ScalarFrame = {expression: 0, finish: false};
+            stack := [frame];
+            output: int = -1;
+            statement_index := function.first_statement;
+            statement_end := statement_index + function.statement_count;
+            while (statement_index < statement_end) {
+                statement := statements[statement_index];
+                if (!ScalarIndex(statement.origin, length(origins)) || statement.unsupported != "" ||
+                    (statement.kind != facts.InitializeStatement && statement.kind != facts.ReturnStatement)) {
+                    return RejectScalar(origins, statement.origin, "Unsupported shader scalar statement");
+                }
+                if (statement.kind == facts.ReturnStatement && statement_index != statement_end - 1) {
+                    return RejectScalar(origins, statement.origin, "Shader scalar return must be the final statement");
+                }
+                if (!ScalarIndex(statement.expression, length(expressions))) {
+                    return RejectScalar(origins, statement.origin, "Invalid shader scalar expression reference");
+                }
+                if (statement.kind == facts.InitializeStatement) {
+                    if (!ScalarIndex(statement.binding, length(bindings))) {
+                        return RejectScalar(origins, statement.origin, "Invalid shader scalar binding");
+                    }
+                    binding := bindings[statement.binding];
+                    if (!ScalarIndex(binding.origin, length(origins)) || binding.function != entry_function ||
+                        binding.role != facts.LocalBinding || !ScalarType(types, binding.type, target) ||
+                        binding.initializer != statement.expression || locals[statement.binding] >= 0) {
+                        return RejectScalar(origins, statement.origin, "Invalid shader scalar initialization");
+                    }
+                    if (binding.write_origin != -1) {
+                        return RejectScalar(origins, binding.write_origin, "Shader scalar bindings must be immutable");
+                    }
+                    if (binding.ref_origin != -1) {
+                        return RejectScalar(origins, binding.ref_origin, "Shader scalar bindings cannot escape by reference");
+                    }
+                }
+                top: int = 0;
+                stack[0] = {expression: statement.expression, finish: false};
+                while (top >= 0) {
+                    current := stack[top];
+                    index := current.expression;
+                    expression := expressions[index];
+                    if (colors[index] == 2) {
+                        top -= 1;
+                        continue;
+                    }
+                    if (!ScalarIndex(expression.origin, length(origins)) || expression.unsupported != "" ||
+                        !ScalarType(types, expression.type, target)) {
+                        return RejectScalar(origins, expression.origin, "Unsupported shader scalar expression or type");
+                    }
+                    node: int = -1;
+                    if (!current.finish) {
+                        if (colors[index] == 1) {
+                            return RejectScalar(origins, expression.origin, "Shader scalar expressions contain a cycle");
+                        }
+                        colors[index] = 1;
+                        if (expression.kind == facts.BinaryExpression) {
+                            if (!ScalarType(types, expression.operand_type, target) || expression.argument_count != 2 ||
+                                !ScalarSpan(expression.first_argument, 2, length(arguments)) ||
+                                (expression.operation != facts.AddOperation && expression.operation != facts.MultiplyOperation)) {
+                                return RejectScalar(origins, expression.origin, "Unsupported shader scalar binary operation");
+                            }
+                            left := arguments[expression.first_argument];
+                            right := arguments[expression.first_argument + 1];
+                            if (!ScalarIndex(left.expression, length(expressions)) ||
+                                !ScalarIndex(right.expression, length(expressions)) || left.parameter != -1 ||
+                                right.parameter != -1 || left.field != -1 || right.field != -1 ||
+                                left.defaulted || right.defaulted) {
+                                return RejectScalar(origins, expression.origin, "Invalid shader scalar operands");
+                            }
+                            if (top > 1021) {
+                                return RejectScalar(origins, expression.origin, "Shader scalar expression depth exceeded");
+                            }
+                            stack[top] = {expression: index, finish: true};
+                            // Push right first so source evaluation/diagnostic
+                            // order remains left then right, not pool order.
+                            right_frame: ScalarFrame = {expression: right.expression, finish: false};
+                            left_frame: ScalarFrame = {expression: left.expression, finish: false};
+                            if (top + 1 == length(stack)) {
+                                stack.append(right_frame);
+                            } else {
+                                stack[top + 1] = right_frame;
+                            }
+                            if (top + 2 == length(stack)) {
+                                stack.append(left_frame);
+                            } else {
+                                stack[top + 2] = left_frame;
+                            }
+                            top += 2;
+                            continue;
+                        }
+                        if (expression.argument_count != 0) {
+                            return RejectScalar(origins, expression.origin, "Unsupported shader scalar expression");
+                        }
+                        if (expression.kind == facts.ConstantExpression) {
+                            if ((expression.bits >> 32) != u64(0) ||
+                                (expression.bits & 0x7f800000) == 0x7f800000) {
+                                return RejectScalar(origins, expression.origin, "Shader scalar constants must be finite f32 bits");
+                            }
+                            node = length(nodes);
+                            emitted: ScalarNode = {op: target.constant_op, left: -1, right: -1,
+                                                   bits: expression.bits, source_id: origins[expression.origin].source_id};
+                            nodes.append(emitted);
+                        } else if (expression.kind == facts.ReadExpression) {
+                            if (!ScalarIndex(expression.binding, length(bindings))) {
+                                return RejectScalar(origins, expression.origin, "Invalid shader scalar read");
+                            }
+                            binding := bindings[expression.binding];
+                            if (binding.function != entry_function || binding.role != facts.LocalBinding ||
+                                !ScalarType(types, binding.type, target) || locals[expression.binding] < 0 ||
+                                binding.write_origin != -1 || binding.ref_origin != -1) {
+                                return RejectScalar(origins, expression.origin, "Shader scalar read requires an initialized immutable local");
+                            }
+                            node = locals[expression.binding];
+                        } else {
+                            return RejectScalar(origins, expression.origin, "Unsupported shader scalar expression");
+                        }
+                    } else {
+                        left := values[arguments[expression.first_argument].expression];
+                        right := values[arguments[expression.first_argument + 1].expression];
+                        op := target.add_op;
+                        if (expression.operation == facts.MultiplyOperation) {
+                            op = target.multiply_op;
+                        }
+                        node = length(nodes);
+                        emitted: ScalarNode = {op: op, left: left, right: right, bits: u64(0),
+                                               source_id: origins[expression.origin].source_id};
+                        nodes.append(emitted);
+                    }
+                    values[index] = node;
+                    colors[index] = 2;
+                    if (principal[expression.origin] >= 0 && principal[expression.origin] != node) {
+                        return RejectScalar(origins, expression.origin, "Shader scalar origin has conflicting results");
+                    }
+                    if (principal[expression.origin] < 0) {
+                        result: SourceResult = {source_id: origins[expression.origin].source_id, node: node, field: -1};
+                        results.append(result);
+                        principal[expression.origin] = node;
+                    }
+                    top -= 1;
+                }
+                output = values[statement.expression];
+                bound_origin := function.origin;
+                if (statement.kind == facts.InitializeStatement) {
+                    locals[statement.binding] = output;
+                    bound_origin = bindings[statement.binding].origin;
+                }
+                for (origin in [statement.origin, bound_origin]) {
+                    if (principal[origin] >= 0 && principal[origin] != output) {
+                        return RejectScalar(origins, origin, "Shader scalar origin has conflicting results");
+                    }
+                    if (principal[origin] < 0) {
+                        result: SourceResult = {source_id: origins[origin].source_id, node: output, field: -1};
+                        results.append(result);
+                        principal[origin] = output;
+                    }
+                }
+                statement_index += 1;
+            }
+            if (statements[statement_end - 1].kind != facts.ReturnStatement) {
+                return RejectScalar(origins, function.origin, "Shader scalar entry needs a final return");
+            }
+            for (node in nodes) {
+                node_sources.append(node.source_id);
+            }
+            checked = Validate(documents, origins, results, node_sources);
+            if (checked is .Failed(failure)) {
+                return ScalarLowering.Rejected(failure);
+            }
+            return ScalarLowering.Ready(nodes, output, documents, origins, results);
+    }
+}

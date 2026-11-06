@@ -1,0 +1,22 @@
+{
+  "validated_head": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+  "validated_source_tree": "b4dbc77d99590a823361cddce8f81f08fddadb9e",
+  "validation_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/validation-receipt.json",
+  "validation_receipt_sha256": "c878af777337cf8fbf6d520950da8e4bae1559b6bf1cd167290f30ff6d89c9fa",
+  "final_documented_staged_tree": "0abd96c6b800a596c24d23a6e6719b15fe5e75d6",
+  "final_documented_patch_sha256": "c4db1fe73d51dc02feef90688c2dccf77d47ffca686685a61b80fef709792c49",
+  "final_documented_patch_command": [
+    "git",
+    "diff",
+    "--binary",
+    "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+    "0abd96c6b800a596c24d23a6e6719b15fe5e75d6"
+  ],
+  "only_changed_paths_since_validated_tree": [
+    "docs/chibi-shaders/builtin-math-stage.md"
+  ],
+  "doc_only_diff_sha256": "fb8b18c1dc8c359706ec157cd97a440bea23e5f5438b2c241251db3f7970309f",
+  "all_product_compiler_fixture_blobs_identical": true,
+  "no_unstaged_or_unmerged_files": true,
+  "admission": "Current staged candidate has identical compiled inputs and executable source to the validated frozen tree. Only the stage document results paragraph changed; the lightweight native proof applies without repeating checks."
+}

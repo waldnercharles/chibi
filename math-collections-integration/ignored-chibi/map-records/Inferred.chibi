@@ -1,0 +1,2 @@
+package inferred_map_review
+Main :: () -> int { values := [1: 2]; return values[1]; }

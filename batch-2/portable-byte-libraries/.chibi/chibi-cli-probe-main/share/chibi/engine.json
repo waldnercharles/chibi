@@ -1,0 +1,1 @@
+{"sdk_version": "9.8.7", "system": "Darwin","processors": ["arm64"], "backends": ["bytecode", "sljit"], "project_version": 25, "artifact_formats": {"execution": {"version": 15}}}

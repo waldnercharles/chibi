@@ -1,0 +1,2231 @@
+{
+  "head": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+  "tree": "0abd96c6b800a596c24d23a6e6719b15fe5e75d6",
+  "patch_sha256": "c4db1fe73d51dc02feef90688c2dccf77d47ffca686685a61b80fef709792c49",
+  "stash_commit": "47b0b049edc714d157db3d18a68cd22bf4552b52",
+  "accepted_base": "79743c5675e5a18eeea14193d729cc6e45bdf926",
+  "accepted_tree": "93f816890023819ddd09b287287db46a2fc8b20a",
+  "selected_owner_commit": "6c0cee1c5604dfc8fc4f49c518235626e0a66ea4",
+  "selected_patch_sha256": "e497dda37cd4cd57222040b82fbabb6df8f7439508ba7258164166bf4e93298c",
+  "selected_patch_original": "/Users/cwaldner/Personal/chibi/.worktrees/array-argument-effects-a253/chibi/.chibi/argument-effects-797/scoped-write-only.patch",
+  "protected_evidence": {
+    ".chibi/math-main/seed/compiler.chibip": {
+      "bytes": 22469206,
+      "sha256": "f1a6bdffc9d8bec2de2b55f61bad48a2d8593c2a8ab1fc21cca42f46a6497c9c"
+    },
+    ".chibi/math-main/experimental-bootstrap/bootstrap.json": {
+      "bytes": 26769,
+      "sha256": "25e11f25b9c4cd71a48bdc4a907df76df3ddf2191d75eb1651862d5b3214f73c"
+    },
+    ".chibi/math-main/runtime308-gc-effects-build/receipt.json": {
+      "bytes": 26060,
+      "sha256": "97825f2be3f90a97b0a39d6c9818fcdded7dc7f063ed2203e72b61bb81f6dab8"
+    },
+    ".chibi/math-main/runtime74a-validation/build/validation-receipt.json": {
+      "bytes": 10330,
+      "sha256": "f8406e534ab4c8b6f64d7226529eb709d6035681b8cdd560c7dd8ff6dfc05cc8"
+    },
+    ".chibi/math-main/runtimea253-prep/source-forwardport.json": {
+      "bytes": 12309,
+      "sha256": "0b02ff71b2846ab40ad94e03fe0ce156b59ada2f6ae6a1151ee862c9928845ea"
+    },
+    ".chibi/math-main/runtimea253-prep/final-documented.patch": {
+      "bytes": 346850,
+      "sha256": "c4db1fe73d51dc02feef90688c2dccf77d47ffca686685a61b80fef709792c49"
+    },
+    ".chibi/math-main/runtimea253-prep/source-forwardport.patch": {
+      "bytes": 346090,
+      "sha256": "427de2b8d5a6459454ddd2377711ef15d61181a44d8f6d5e4bc4bff06f369825"
+    },
+    ".chibi/math-main/runtimea253-prep/pre-forwardport.patch": {
+      "bytes": 345512,
+      "sha256": "582f0440a9688738a78b64bbbe1b42db125da08fd169a9fede87093e8746d7b1"
+    },
+    ".chibi/math-main/runtimea253-prep/failure-attribution.json": {
+      "bytes": 1922,
+      "sha256": "ab22023de1998f71ab2e911eec139e898aad4f76e94aa11850d1c48572a49d98"
+    },
+    ".chibi/math-main/runtimea253-prep/validation-plan.json": {
+      "bytes": 2390,
+      "sha256": "777ceeb5066ca84f86c21ca31f702fc40a5c7ca8499c008fc5a4cdf4b5a042e5"
+    },
+    ".chibi/math-main/runtimea253-prep/pre-forwardport.json": {
+      "bytes": 385,
+      "sha256": "38658974c1b2bfc6af752228116babce4a6a989f11c286225cb006c6b4c73548"
+    },
+    ".chibi/math-main/runtimea253-validation/build/validation-receipt.json": {
+      "bytes": 7878,
+      "sha256": "c878af777337cf8fbf6d520950da8e4bae1559b6bf1cd167290f30ff6d89c9fa"
+    },
+    ".chibi/math-main/runtimea253-validation/build/package-tests.log": {
+      "bytes": 6585,
+      "sha256": "32032b7a633eeee06be34ce9d75dea9d6445250978fe17a6180bc82c3322d99d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/source-identity.json": {
+      "bytes": 780132,
+      "sha256": "39a75c559080e328ea9c232ce20936ab70cc97f1512f2869635b8097fad7f183"
+    },
+    ".chibi/math-main/runtimea253-validation/build/old-proof-preservation.json": {
+      "bytes": 288,
+      "sha256": "13648422383e4efd034d2612d20cc1e25639d40a695a8539a5738d1d47c3922f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/candidate.patch": {
+      "bytes": 348818,
+      "sha256": "1c2474cc09a8af5de57eeb7350434683da2f6a21bc8e3dba0f058e2ee6d46dc8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/package-imports.log": {
+      "bytes": 1927,
+      "sha256": "7e511580f2bd399c5e0ac8472cd44bf5be4310f220028c6e4f9e3821c8f316eb"
+    },
+    ".chibi/math-main/runtimea253-validation/build/compile_commands.json": {
+      "bytes": 2021341,
+      "sha256": "c06ad7e973a9364742098fa887ad9d2cb702ff4b8db4b0038ee9f76fbd01c27d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/final-documented-candidate.patch": {
+      "bytes": 346850,
+      "sha256": "c4db1fe73d51dc02feef90688c2dccf77d47ffca686685a61b80fef709792c49"
+    },
+    ".chibi/math-main/runtimea253-validation/build/REPLAY.md": {
+      "bytes": 2756,
+      "sha256": "658e788fbb0a4e6258195216014bcfd3e9d05d46006c8c100a3eeabb7f7f12ea"
+    },
+    ".chibi/math-main/runtimea253-validation/build/configure.log": {
+      "bytes": 593,
+      "sha256": "d538da8efd75bdde09edf7995e2ddf8a1fa825a470d354f663d08abefc9ea475"
+    },
+    ".chibi/math-main/runtimea253-validation/build/corpus.txt": {
+      "bytes": 16629,
+      "sha256": "a4c823abefd0d9d8b728554b5cb546233f511e0108e65fa5b7c01a934818b2ec"
+    },
+    ".chibi/math-main/runtimea253-validation/build/final-doc-only.diff": {
+      "bytes": 1327,
+      "sha256": "fb8b18c1dc8c359706ec157cd97a440bea23e5f5438b2c241251db3f7970309f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/object-identity.json": {
+      "bytes": 223512,
+      "sha256": "d2d27c600b8ed2fa8dcec05721e7cced27b4d0512ab3d15bd12fbff9bdd67703"
+    },
+    ".chibi/math-main/runtimea253-validation/build/.ninja_deps": {
+      "bytes": 507964,
+      "sha256": "299e077fe90b7f382b75f6b272c0879abd0036b7d53f316091dc1226414d1b1c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/cmake_install.cmake": {
+      "bytes": 2481,
+      "sha256": "59330b36b36893b1a328db6a1a459f92370afd26ba6770af8c9b585727d89265"
+    },
+    ".chibi/math-main/runtimea253-validation/build/build.ninja": {
+      "bytes": 2489115,
+      "sha256": "a5ea7220746278fe13dcd655126cb67bc3efe152a5650ea38da600e252f7d05c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/canonical-candidate.patch": {
+      "bytes": 346090,
+      "sha256": "427de2b8d5a6459454ddd2377711ef15d61181a44d8f6d5e4bc4bff06f369825"
+    },
+    ".chibi/math-main/runtimea253-validation/build/source-recovery.json": {
+      "bytes": 1075,
+      "sha256": "203d340332b1083924213463e826634f39025ef47843e36b8b11bbc6aae5cf82"
+    },
+    ".chibi/math-main/runtimea253-validation/build/cleanup-inventory.json": {
+      "bytes": 1209779,
+      "sha256": "10d761d62106b52d9313444abc97fe71fa70a55f2fa049ceddea66f26c6633ea"
+    },
+    ".chibi/math-main/runtimea253-validation/build/cleanup.py": {
+      "bytes": 4106,
+      "sha256": "0e287906a81e62c13ebce35277f55728a4ab5196cc7ced5e6ee4e8a814aeda0f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/selectors-result.json": {
+      "bytes": 2142,
+      "sha256": "5b31f60c15da9fb087381169fda4fbe2c0520efd1ddf948a9a80dc83806db501"
+    },
+    ".chibi/math-main/runtimea253-validation/build/dependency-commands.log": {
+      "bytes": 1893468,
+      "sha256": "b248c6ad210e397150ec7e0d48edfd72563386fa2eb6ce7cf1ffdfb63d667890"
+    },
+    ".chibi/math-main/runtimea253-validation/build/compiler-fixture.log": {
+      "bytes": 952,
+      "sha256": "ba3f09b9b1edd3e409bd807aeb312b63a0eb666c5e0c0a545b0628a9bd6f86e5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/cleanup-process-check.json": {
+      "bytes": 347,
+      "sha256": "06a5bb14653d2ed7a813eb2d5cb707e3301443a23787cc876b3adc92f1c0617c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/compiled-dependencies.log": {
+      "bytes": 6130156,
+      "sha256": "a45a9f0e41708032d56e0c3d1aed74115f7a1b308595d0c1f19cf5a4b7107a70"
+    },
+    ".chibi/math-main/runtimea253-validation/build/dependency-plan.log": {
+      "bytes": 207,
+      "sha256": "b7ed326829355fd5fc19d664addb85e371d01b94ec5629880f9b51f4c9ec83da"
+    },
+    ".chibi/math-main/runtimea253-validation/build/dependency-graph.dot": {
+      "bytes": 380891,
+      "sha256": "53e42eca70e2583a4b4b361bb61b139115922daaba33599ffc59194f4192872c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/final-source-admission.json": {
+      "bytes": 1287,
+      "sha256": "f88e5fb0acd328e923e99162df778d5f5c83f7cdeda4487a629bab80131dab16"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeCache.txt": {
+      "bytes": 16891,
+      "sha256": "f12ca8a8fb886457911a036daccc45a41b7f15211fd58f05c5a11aba2466007e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/dependency-audit.json": {
+      "bytes": 193474,
+      "sha256": "7bf8455826c54a4e0ccba6836fb7d1e0c4733362206ccd6e3fa704e78cc960c4"
+    },
+    ".chibi/math-main/runtimea253-validation/build/cleanup-receipt.json": {
+      "bytes": 2921,
+      "sha256": "060212ad8a8d001f62a8e5cde51826fe74bf573f6355d8663360303584822663"
+    },
+    ".chibi/math-main/runtimea253-validation/build/chibi_package_targets-Release.txt": {
+      "bytes": 12079,
+      "sha256": "9e2dfd5dc9085c033d57935fbfa8e419b7448c9b68e8338349817c8d99b5d9b8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/compiled-input-identity.json": {
+      "bytes": 355669,
+      "sha256": "10186731ec54e11913ba83687fb24015f5cd7129fb6b6a0f3212c86684dfeaa5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/configure-result.json": {
+      "bytes": 1004,
+      "sha256": "63b6f822de01f0dff25b9c1b6f6e2a9b1598db312fd3dd5ced6f908a0f4a4cb2"
+    },
+    ".chibi/math-main/runtimea253-validation/build/archive-identity.json": {
+      "bytes": 5648,
+      "sha256": "3508ed8302ed1f4bfc782b4aff856082f739af15b2710b3d99f4d24510f6e09b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/.ninja_log": {
+      "bytes": 95827,
+      "sha256": "8b32039f79bd05bbcc895f91f81c554489378d768282b95508855a27945c6097"
+    },
+    ".chibi/math-main/runtimea253-validation/build/build-result.json": {
+      "bytes": 417,
+      "sha256": "359c5f5941d32517a533dbe0ff25055ba0203f8d8aa41760335c0903ab55f9ea"
+    },
+    ".chibi/math-main/runtimea253-validation/build/old-proof-baseline.json": {
+      "bytes": 577794,
+      "sha256": "680f8d663cd0969b3518519bc7c7a35a74584313a60868edd95e871df25b1ed0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/build.log": {
+      "bytes": 85820,
+      "sha256": "abaedd169c98e9b9415dd6f527bbe616da81792c54d4b3169ddf81074c2b195a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeFiles/cmake.check_cache": {
+      "bytes": 85,
+      "sha256": "a26189e394421da57f45706a07713c5720acd200a41711b0c0c590c3c63371c4"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeFiles/CMakeConfigureLog.yaml": {
+      "bytes": 121298,
+      "sha256": "3dbb36ec3b8a93e21d5c5a6efe784d4cc62656beff6ba171fc8329b4f6c08628"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeFiles/rules.ninja": {
+      "bytes": 57863,
+      "sha256": "bad11e735ab0a7389cf6993e894c1262b8edcb3eaceba85b74a4ed5445243dac"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeFiles/cmake.verify_globs": {
+      "bytes": 77,
+      "sha256": "5fed4d979e2477ee4187dcb2785fb7dfa80456dbcafe16da7f7b95b2e5cfdb7c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeFiles/InstallScripts.json": {
+      "bytes": 479,
+      "sha256": "386e8a3b7c5f28b02a7fc898a123ef3918376e69bed889919d3527cacd3a7166"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeFiles/VerifyGlobs.cmake": {
+      "bytes": 50710,
+      "sha256": "2f507f85c49ade0dcf316dabe4fb2985d429f4da68febc05d4730d249e244910"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeFiles/TargetDirectories.txt": {
+      "bytes": 13406,
+      "sha256": "2da91d2493ad8d2b483b9f1cf660d8e659ca4ba0bfbf2441de77383d42d45173"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/chibi_engine_metadata.json": {
+      "bytes": 6166,
+      "sha256": "ea3f05dbcc58a2ff16cf3c583bf185c9d3454c2f71f86054a91098107d81d2d9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/cmake_install.cmake": {
+      "bytes": 153502,
+      "sha256": "4e28481cee65430d86b94e1a307567821fd9b79f247c6d90a78f2698b82f2eb4"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/ChibiConfig.cmake": {
+      "bytes": 3686,
+      "sha256": "097d659d0794fa0828feb0c3f18155ca7804235c6e463ee6e00a43bd1ecabe61"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/ChibiConfigVersion.cmake": {
+      "bytes": 3277,
+      "sha256": "bcfadc3a489a3340bf62e83ccd41b9b9de34c51e5bc281539cad9e5a7bd947f6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/ChibiVendorDependencies.cmake": {
+      "bytes": 1479,
+      "sha256": "36c90adf161957d64fde349f26b578bcaf8967b26142987f41885f17b67b0574"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/runtime.json": {
+      "bytes": 922,
+      "sha256": "e1adf32b577f9a20993e9db40d4c3777d2b3a8325d1bb8a19a57bf2256f23348"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/bootstrap.kdl": {
+      "bytes": 579,
+      "sha256": "181c146506dd0bf8d68a6136c0963a01d8509561f4dcf193e9618797fb43d26a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/named_binding/Binding.chibi": {
+      "bytes": 16240,
+      "sha256": "a2de1e358d7319333486b6e819f4e9a90a250a44727b62553aa37d51ed33aa79"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/lexical_binding/Binding.chibi": {
+      "bytes": 8673,
+      "sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/scalar_facts/Facts.chibi": {
+      "bytes": 16982,
+      "sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/cost_explanations/ExplainTests.chibi": {
+      "bytes": 6846,
+      "sha256": "343404563e4927042ba8dbcb7e0e6005e62c0abfaf6b4cbe2581b789384957e3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/cost_explanations/Explain.chibi": {
+      "bytes": 7954,
+      "sha256": "1298e10547f534967c488b14f49867bd9f04cffb588e7041ee6869789846c325"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/constant_ir/IR.chibi": {
+      "bytes": 1323,
+      "sha256": "8d8cdcc75af71c3090fb89a25beb5ee7a9133cd347c53c1439cdad910967e0a3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/bootstrap/compiler.chibip": {
+      "bytes": 20792064,
+      "sha256": "27d8f3d0568e442e1a70b167c04ba97c671ea0d0b1e85e3a7493d88fc59bb912"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/bootstrap/bootstrap.json": {
+      "bytes": 26287,
+      "sha256": "2204ba9cce1e68ab95d8a5b7ed6158ba4d1bbae864f0dee624aaa550672c80f1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/shader_source/Lower.chibi": {
+      "bytes": 16828,
+      "sha256": "6c475f4fe5d2430988121aac46466b7827a7d49912c1e7b12830bed76a2256b5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/shader_source/SourceMap.chibi": {
+      "bytes": 11817,
+      "sha256": "831f59c174783ff951099cbda9318556b36282354708e8fb847f0df3d44fd50f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/math_types/Types.chibi": {
+      "bytes": 9036,
+      "sha256": "db0a52e91c89b97fa91d121d745c3b5607ecee7f76cf4cb6cda8d4173b592e68"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/math_types/Functions.chibi": {
+      "bytes": 4634,
+      "sha256": "745e16490fa4c2fed8980a347a65a5a2debcac0699b8b3aad31bcccf54865d64"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/constant_admissibility/Proof.chibi": {
+      "bytes": 5272,
+      "sha256": "ba3a1fa01af65fd1573f8ae92cb1c65f9925df468c441ba72ea10d7083391c27"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/bounded_compiler/Compile.chibi": {
+      "bytes": 15554,
+      "sha256": "87b6e6c2c0d53d8a5ae6fc792af86e830290b8a7a9ee6bd514cc7aafc8f91880"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/bounded_compiler/Prepare.chibi": {
+      "bytes": 8081,
+      "sha256": "607c92b8c15e1e1a68d9b6b206b93b30da483de068f2263ddb092c583cf03bc6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/bounded_compiler/Expression.chibi": {
+      "bytes": 11849,
+      "sha256": "65e2c9f9fd1b232877227744ab11d41f8b99b1af5f767d457aa73609340e476a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/compiler_facts/Facts.chibi": {
+      "bytes": 6291,
+      "sha256": "fba05d29b81a4771336945910ea54384ffe999f43ab49c5ebbf1ec40cf66ca7b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/unit_analysis/Analysis.chibi": {
+      "bytes": 36501,
+      "sha256": "f6496514e22f5ffa0da645a8e34a5f842f8293434c4a7b0f6d4c34744d3ad134"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/scalar_lowering/Lower.chibi": {
+      "bytes": 23724,
+      "sha256": "07613bb22c6e7ea97520f66d893c11ccf4a2398ca09237cf578a032b9e09def1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/effect_analysis/Effects.chibi": {
+      "bytes": 35732,
+      "sha256": "38a17dfaa1697a48c2891b01e46652da784662ea243cf7fe099b42af24138ac6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/prepared_writer/Writer.chibi": {
+      "bytes": 40444,
+      "sha256": "2dcc3d41a4feb3e95855d9de860eaf36b1347ae96bdab0d7bd3280720a838081"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/type_constructors/Constructors.chibi": {
+      "bytes": 17035,
+      "sha256": "f6136b7f2f72b8fc3bd356fa3d153aa3bce2188c64f4d5ca34310f876fbea232"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/analysis_state/State.chibi": {
+      "bytes": 4105,
+      "sha256": "1cc36c6f000447854466a968b24bc09b02f5269d5c34b1e6ee7321eeb86fb4b0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/native_abi/Abi.chibi": {
+      "bytes": 6877,
+      "sha256": "a860619691be09a9cdb74bb795f14a11f74b6c82f1b9427aadcb4afad0230dbe"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/compiler_syntax/Syntax.chibi": {
+      "bytes": 1529,
+      "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/constant_scalar/Scalar.chibi": {
+      "bytes": 23764,
+      "sha256": "23c1788ba00dfc46965206aa353481f490ff44ab6467265577adfa3efdb5dabf"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/math_layout/Layout.chibi": {
+      "bytes": 3131,
+      "sha256": "eb8cd759c9c4ae3912e1bbb67028ddbe1196ace0cc97baa314815207f05056e6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/scalar_llvm/Emit.chibi": {
+      "bytes": 69845,
+      "sha256": "4b71ac701c6d7ca146c203fa3be0e8ee4a62e55048f916ff2e2f06c3327bbf53"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/asset_compiler/Compile.chibi": {
+      "bytes": 8196,
+      "sha256": "9f9d46ad42591f38fa2f36007e2e3dbdb0d7175fd85159f014b6d680aa0328f0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/asset_compiler/Cache.chibi": {
+      "bytes": 2626,
+      "sha256": "f01b5320631523b746c0f19b3940602d9643bc135ae185e3b7663988ab1a8419"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/asset_compiler/CompilerSources.txt": {
+      "bytes": 896,
+      "sha256": "d2e651f4092577d268d6a71a0ed01e63c66bb55df25ed34b7ae792d8af887e13"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/record_members/Members.chibi": {
+      "bytes": 5667,
+      "sha256": "675cd9ae9856d25c17a9af41669322f5fb5a44a8f0d35409ec89c831a6800be0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/type_relations/Relations.chibi": {
+      "bytes": 11204,
+      "sha256": "ed78d4f9bce8b0974b837f3e116b65e2299dd274e20529d5949ccad0b01b55fa"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/union_members/Members.chibi": {
+      "bytes": 33398,
+      "sha256": "b56c21cc50f150074bc97c023a86a73e9a50fa17e73fa04d2b05237a96cb6b49"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/math_constants/Values.chibi": {
+      "bytes": 14196,
+      "sha256": "4ddddf3eb71585753e2f64fe3ab393865a43eca2087ad4fe2ba2700091e669bd"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/constant_folding/Fold.chibi": {
+      "bytes": 9259,
+      "sha256": "b3c8735009eb86711c5ea147866a1fbd8188913fe2a7a9510222459669252f87"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/llvm_native/Emit.chibi": {
+      "bytes": 69609,
+      "sha256": "89496babb6cc10beeca2a3627799b26e6dfd6f6d67e2d0db3dfcfc2f74bab0ab"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/llvm_native/README.md": {
+      "bytes": 12228,
+      "sha256": "04595d4e249dd9095343028ca016bd2dc0d7ac4580de1cfcdd08ac391b1cb019"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/signature_reader/Reader.chibi": {
+      "bytes": 44431,
+      "sha256": "3061205b43f9abb2798582f45bcc748dc3d9c7aa4a4a82d25355e1be2f23a2ac"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/source_tokenizer/Tokenizer.chibi": {
+      "bytes": 27900,
+      "sha256": "12ea5d9334b0d3d195b63e8ff57ef3bee243912556ce3d86da020c4561b9affd"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/unit_algebra/Units.chibi": {
+      "bytes": 8833,
+      "sha256": "d18c78a05a58ee6e3d0b3c4b53f11e3dab285c3fc4d29c4c28a6f6ed93c0ec48"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/syntax_diagnostics/Diagnostics.chibi": {
+      "bytes": 2282,
+      "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/source_snapshot/Snapshot.chibi": {
+      "bytes": 15871,
+      "sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Compile.chibi": {
+      "bytes": 152180,
+      "sha256": "a0a98b210626412331268afdf9d0ae0f2c6c86d62656f93c3b2822b935617cd2"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Tree.chibi": {
+      "bytes": 2578,
+      "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Queries.chibi": {
+      "bytes": 93003,
+      "sha256": "772064ffa7540a34d1beb7070da58d208b5d51e6b5111e9bd23e6fb7648c1b28"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Body.chibi": {
+      "bytes": 182502,
+      "sha256": "7d8ea6d4dbeca38f1d6b099c88da6d6b1e1877525d4a99e434cdda6e9af021f3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Optional.chibi": {
+      "bytes": 20734,
+      "sha256": "7314b48d92d2daa35348c30ed467b8976189cc83ca36ba31c408678c2604f3a0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/References.chibi": {
+      "bytes": 40733,
+      "sha256": "d73825ac0b16dd082005650699e2bd6a35987592103a553f76fd0b5783414852"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Behavior.chibi": {
+      "bytes": 57051,
+      "sha256": "18ee4b37aaf54288c4be665fecf1fff2bb95e4153dcad0821e82a21e91e30083"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Tasks.chibi": {
+      "bytes": 11882,
+      "sha256": "43c5ec60e6a9d87490dabe19a2ce379cc0a57c40c2d88d9ffeebaa60c0700970"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Scalar.chibi": {
+      "bytes": 115064,
+      "sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/TaskResults.chibi": {
+      "bytes": 10463,
+      "sha256": "dfb8db278474f39ccec2c5066ae13137d885eca76c430b32dcfe0cc3b86bfef1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Sequences.chibi": {
+      "bytes": 61586,
+      "sha256": "d963c2f14a2350de551c17a71e758bccbab188b6d4b8ea1a929dedf157cafb97"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Pointers.chibi": {
+      "bytes": 52385,
+      "sha256": "b33a3530e4c4d3cc955d8e5332e4a0946c2b6aa3beeb7018d17e0f974fa34b48"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/QueryLoops.chibi": {
+      "bytes": 12308,
+      "sha256": "6d731bf9a6a97533119dc83c186119f4ff9070a681bb5be890e9d432198be588"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Math.chibi": {
+      "bytes": 75387,
+      "sha256": "7fa30b00f73316cef388177d0d8120419cd9648f5cb1e48c9ef05411eaf6d691"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Number.chibi": {
+      "bytes": 29513,
+      "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Maps.chibi": {
+      "bytes": 29459,
+      "sha256": "351d13270cdfffcda31f35026681b33933e9fde05babb221fc963976061add00"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_compiler/Steps.chibi": {
+      "bytes": 312902,
+      "sha256": "7f46d8000590d367884ba8bbf8162fd2fb099cab16cf3ceed5491a32da9d59f0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_syntax/Extract.chibi": {
+      "bytes": 4276,
+      "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/asset_packaging/Packaging.chibi": {
+      "bytes": 2606,
+      "sha256": "117134a150f6fe567539c273f32a6cdf58fbab71fbb6c71e55639fd24a463db8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/nominal_binding/Nominal.chibi": {
+      "bytes": 4163,
+      "sha256": "dc256b6da8d6f59dd7a2a55fb1e251b9220b97ec9b8b534825a05841d048c53b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/callable_headers/Headers.chibi": {
+      "bytes": 45551,
+      "sha256": "c95f893d052d362287cf0517b1c4320d38d5f5af398e44041bf92ff8eee5251c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_paths/Paths.chibi": {
+      "bytes": 2274,
+      "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/asset_source/Reconcile.chibi": {
+      "bytes": 14709,
+      "sha256": "8127ee31e9c381de51be965358c5d3c34c2ad8d3520ff550bf949977bbf64131"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/asset_source/Write.chibi": {
+      "bytes": 19875,
+      "sha256": "614c05e7b6c67e62b6680fc9a8fe79ca4ce49b341b09fd6c49202a44688e2e66"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/asset_source/Parameters.chibi": {
+      "bytes": 6024,
+      "sha256": "55d59d5209da33aecb6c03179b060a24a446a096338e74404764627e097f2a51"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/asset_source/Metadata.chibi": {
+      "bytes": 30709,
+      "sha256": "c2c0f9509cd3a7e6c0c776adefdbb93f198b7cc805eb95807fd11c20c95f44e9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/asset_source/Computed.chibi": {
+      "bytes": 12989,
+      "sha256": "e9bef92c999715be54b43e3e02ae62429e0ad1b0fc24c6aee7e7b672c0694359"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/asset_source/Validate.chibi": {
+      "bytes": 4044,
+      "sha256": "ed111c7f2e5bfa34f98f7f3d62e3546f26f28591bb3e0ffc585a1157e738c1cf"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_graph/Graph.chibi": {
+      "bytes": 13271,
+      "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/compiler/package_routes/Routes.chibi": {
+      "bytes": 7736,
+      "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/core/strings/Strings.chibi": {
+      "bytes": 16404,
+      "sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/tools/native_aot/Driver.chibi": {
+      "bytes": 41244,
+      "sha256": "e81535c5afda32363226f74c4265df550483f91ca1e441134e34305429364285"
+    },
+    ".chibi/math-main/runtimea253-validation/build/share/chibi/tools/native_aot/emitter/Emitter.chibi": {
+      "bytes": 3416,
+      "sha256": "3cea36adb07089dbc215c2f90ace86cccfa4c9cfa58a59cb28c65e4ed8c12532"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/cmake_install.cmake": {
+      "bytes": 3329,
+      "sha256": "e404d6a459f6d124e0f6cd154d9c25fe1fac0c2f0e84ea21cea17d14a0a4ac54"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/asset_values/support/float_text.h": {
+      "bytes": 1204,
+      "sha256": "12685ca667a09774c5929c71986c1679d288932c8bbad396b0988ac01a72aa02"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/asset_text/support/float_text.h": {
+      "bytes": 1204,
+      "sha256": "12685ca667a09774c5929c71986c1679d288932c8bbad396b0988ac01a72aa02"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/asset_compiler_host/authoring/asset_compiler_host_internal.h": {
+      "bytes": 1630,
+      "sha256": "49f8240343150d2d6c10a80032d23ce0804630c3a269463561cdd95a3cff62b6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/asset_compiler_host/support/binary_cache.h": {
+      "bytes": 1462,
+      "sha256": "01f88a26fbd0ec50e642f8ef9560d5b870f53bf6e735134f2a68f65f4823c655"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/asset_compiler_host/support/sha256.h": {
+      "bytes": 515,
+      "sha256": "61302fd5cf350db73aa7af535ccbc2889f16ba6abd73671272343dd64b0ee6f3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/image_preparation/vendor/image_png.h": {
+      "bytes": 61412,
+      "sha256": "f1d2133090fc3cce0df08e17f18b5ed9f03ebc6191f8aaf034047a662ff2b3fd"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/image_preparation/vendor/image_jpg.h": {
+      "bytes": 44061,
+      "sha256": "20aa1f10718c1b4a91eead886a942a40fa68622762d540a799e6ea1b9390a929"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/prepared_internal.h": {
+      "bytes": 1424,
+      "sha256": "71b1174db2f6eab76ecb82ab7c7d0b9130396db0fc606d5f1ea4523254e2e585"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/source_debug.h": {
+      "bytes": 877,
+      "sha256": "3f74ca92e54cc5df84924fffa1a256e03fb38d2bae50487c1836a86bf5b43859"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/wasm_emit.h": {
+      "bytes": 495,
+      "sha256": "7a52a120370758b3d4e0bb88d5ec42b9da0b1d835e71960682442d44e5de3d39"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/task.h": {
+      "bytes": 1002,
+      "sha256": "88806cbc2c2c76673806805b0221797257c567069fe71fe800bc95964ad62a1e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/function_builder.h": {
+      "bytes": 6685,
+      "sha256": "3bf63aafe7cd13dcdb456b143e4b6f57f562e90ae510747abbdfa19dfe292e1e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/definition.h": {
+      "bytes": 16035,
+      "sha256": "4e44f16a3063133a2717fa736bf258ccc9137d352988721eab76001cf90e0632"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/status.h": {
+      "bytes": 524,
+      "sha256": "f6820858b2cc90fc103cf8fbf1ddd718b1f8f9917c3556020f602fc05084670e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/integer_report.h": {
+      "bytes": 1520,
+      "sha256": "fbe9be360a2fd0cc50bf8859e3ec2c4aedc4f4f9f4493407d24e6d1dfde92c7f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/query.h": {
+      "bytes": 1339,
+      "sha256": "90cbceb0153ed5c4c2751c747e09fd0f6bc73f3aa862bd7d790d4730989cecb6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/host.h": {
+      "bytes": 6333,
+      "sha256": "8c1b9592d5cc6ba625f6003a87c15e5bf50e5b7a8782332a8e6eaebb6a8fd4a3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/ecs_reader.h": {
+      "bytes": 358,
+      "sha256": "59510ea538a80921def3e98bf6538d1c22f6f72d7dbd73d741c8391c7aed6ca0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/value_kind.h": {
+      "bytes": 716,
+      "sha256": "49e639ea89befdc44475ef567e8ff4e7140c07928b13d48d6cb010b61f4a343b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/native.h": {
+      "bytes": 6515,
+      "sha256": "d8bcd7f262a24cc252f5c9bc8b18aea9be1a279547105d0195ee02d1395bc33a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/machine.h": {
+      "bytes": 1148,
+      "sha256": "3fdcf15ff2253d61d211930dc3041083799a79a73ff81608cfe9bbd77bde234c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/map_intrinsics.h": {
+      "bytes": 562,
+      "sha256": "f46926a340ee51341ab69ca4cd2182de96eb95a1a5b259f9049cb9fc84ede04a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/service.h": {
+      "bytes": 686,
+      "sha256": "fbf5e3dc5b4ab310412ef083fd1457c2ba244c162a508b19440c9f04bfedfd9f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/backend.h": {
+      "bytes": 685,
+      "sha256": "e91ac9f385c40963a4ad72da57a2a45d7d10664922c44e0c758372d39fc7be23"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/arguments.h": {
+      "bytes": 272,
+      "sha256": "36b9f1cc256bb2f3d57840ecf1f60a865ec2678ab68f0edbdb4e2e4d150b1a7a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/prepared.h": {
+      "bytes": 4113,
+      "sha256": "02d219f2f7d637efdcb6abacd1e3b78c9e8eba1207463373295dfa5c445c4254"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/program_internal.h": {
+      "bytes": 12292,
+      "sha256": "b0739ca984eef55aff76003c4df44e002a2d9ec40d5793b7c82f422a65d0add0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/borrow.h": {
+      "bytes": 4945,
+      "sha256": "26a625868ad0fcbc98c9bf07110aa52d019766c6e2cd7d76d09b170d18b49ba8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/intrinsics.h": {
+      "bytes": 9545,
+      "sha256": "7aaf195a3cba3e286136341c4b1e688b1fedd5707c53b247ad89916a0e072fb6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/program_inspection.h": {
+      "bytes": 479,
+      "sha256": "84314ea342c3b11c3abcf6bd4539add87cd3e4238c308ce9844d7034e41ef5c6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/scalar.h": {
+      "bytes": 5057,
+      "sha256": "27350990f49882a015f36516eb134fdd59fb1c38ddd535da0d2fe13f040a5821"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/artifact.h": {
+      "bytes": 1073,
+      "sha256": "16806e74fe4877adeb59c4ad73e09ef91bfd4b1c9e0f53892aec29a02a6a9097"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/managed.h": {
+      "bytes": 3496,
+      "sha256": "295ff1bd16204d171a5852384c86b0dd99b4bc624a786928c3b60987763b5088"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/diagnostic.h": {
+      "bytes": 2869,
+      "sha256": "2422a6d402dc0c8901a1c6da65f76d83da17b1fe1ac704c720d9b9c462069c5f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/log.h": {
+      "bytes": 737,
+      "sha256": "9feebb46ac9702155ac939c17ae925787134714afe2744a01b80a10a1f52d78e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/storage.h": {
+      "bytes": 372,
+      "sha256": "09cd31d07fd5d6375778cd094c5a50037a5397e7b0d36db209cb9a0c36cd1bc0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/runner.h": {
+      "bytes": 1049,
+      "sha256": "58ee9d8f6f066ae95e4556c92880ecf7c42c173d0486fc8b78f0e71a96074726"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/preparation_budget.h": {
+      "bytes": 1099,
+      "sha256": "43bc728bb8dcafc76025b53b0a96c74389c951e5aa4a26d119638a30c8433598"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/request.h": {
+      "bytes": 2858,
+      "sha256": "4527fba7be90c0b603c909abaa934a0876d03000f7fec261079e13a3cedcc3ba"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/component.h": {
+      "bytes": 803,
+      "sha256": "b1b43622061c4f901ee10d60346834587a8f4d9e776b177d56a89907b2656832"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/delay.h": {
+      "bytes": 380,
+      "sha256": "4bba0cb3b2c3828d279ef54ecc5e9cfa96eaf1455609378c94efb172d734e46c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/update_jit.h": {
+      "bytes": 570,
+      "sha256": "c959a58fe9249feaccbaaf336f9e8cf14fad827a744bc2da4d1a06c97cf5ef7b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/module_builder.h": {
+      "bytes": 5734,
+      "sha256": "c88bf56de301709195a869c2261e5a0fc84959d90478b3dcb670211ac729c826"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/inspection.h": {
+      "bytes": 4772,
+      "sha256": "a8bb5786972af35341cbbec73d4d3f6da3cb1d29b4dcfe74dac501bcaeee6c69"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/module.h": {
+      "bytes": 15554,
+      "sha256": "82ca2085088aca529b99fbed8f1c703fdb273d89badc1ec5e7a3f5919f3653d3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/operation.h": {
+      "bytes": 657,
+      "sha256": "0d5dac2b036bd6f9d30b3010c24fe102a175270c37de17817d315357291e0c05"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/wasm_jit.h": {
+      "bytes": 1123,
+      "sha256": "4914c4c0924a5bd2872981e0f1d6a6e11db58d945fa39286496984ee69c52dda"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/scalar_lowering_plan.h": {
+      "bytes": 1344,
+      "sha256": "deef1a6e3a15f86019a3e45503af53529dafe777d0a299955cc9b9943adea3f2"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/instruction.h": {
+      "bytes": 6629,
+      "sha256": "d8588e4d9cc1df8e619c8da8a08c44a762df1120bee01ad79ebc3234c8810bb3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/module_effects.h": {
+      "bytes": 1422,
+      "sha256": "daec5bb63c4ab5203c67250bbaa1675f108e4ac3f477e80f05e6916737bde8a9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/state.h": {
+      "bytes": 1625,
+      "sha256": "c8637ed95a48693a6c6393758788cc137497da10ae89498c4314a4d7f4dabfc8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/component_write.h": {
+      "bytes": 1974,
+      "sha256": "ef415f96528bed73844c04a30b309ab1bb1331e1811d9148c79fb326c17a1deb"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/module_internal.h": {
+      "bytes": 911,
+      "sha256": "be77ca6d1025b3a80818a8cac6942db51ab3d3ff6fbd590a39f8f7b95eced8a9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/jit_internal.h": {
+      "bytes": 5442,
+      "sha256": "733da70ad7ababc1fe944a643b75bd520d7283ffaa66fc5a4da731ee04e25b1d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/function.h": {
+      "bytes": 28850,
+      "sha256": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/random.h": {
+      "bytes": 729,
+      "sha256": "84225842eed5fa8af4460010d4a6c2fe1a62a74d9041f7331e8bc1379f94547c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/execution/execution/update.h": {
+      "bytes": 2244,
+      "sha256": "3f57e8c514262446d140b6389b1212446fe99424c6cc68195c23594bed0dbc61"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/authoring/authoring/source_prepare_internal.h": {
+      "bytes": 713,
+      "sha256": "a6ca3f12f2777b1dffa22d95ad96bde3c615b259810333655960487cb5eb1ce6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/ecs/ecs/ecs_internal.h": {
+      "bytes": 6608,
+      "sha256": "5615273abf86a30c722f63ffd09086a174fdb5bc3a294db9b672ee9348669e01"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/ui_authoring/assets/ui_source_internal.h": {
+      "bytes": 365,
+      "sha256": "d75cfbce5df195471fadc7b95a1cae6c93421bd962b1e875d3f6771bde19b898"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/runtime/models/model_bounds.h": {
+      "bytes": 1143,
+      "sha256": "780b0925fc8f0ed7994c7ef75e96025ab30236adff7aebf98f3b2018a7918cc6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/runtime/models/model_program_internal.h": {
+      "bytes": 2652,
+      "sha256": "e956253307e9ed8dce08114c6e78a07ba99c8af3b7b81ee536869c1ace3bfd4b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/graph/document/serialize_internal.h": {
+      "bytes": 1886,
+      "sha256": "32837891e998c8bcceaab82001ab35368e1a12da77909afab68665071361c2df"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/graph/modeling/model_numeric.h": {
+      "bytes": 778,
+      "sha256": "b798974b6ac804c2d99a79dcf409b769911381a41e0d8d0e27278e74f04d5f09"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/graph/modeling/model_expand_internal.h": {
+      "bytes": 2466,
+      "sha256": "0589e67899d1652eef5035e7d41abe6b5f79cba3671d7e96226a4318cc3d6758"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/graph/modeling/model_internal.h": {
+      "bytes": 3020,
+      "sha256": "99968aa49573b849eae2698ea2e015670ff8631fe4c5774bcfe4aa58cb4e071b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/graph/modeling/model_expand.h": {
+      "bytes": 637,
+      "sha256": "92c9ecf3fcd8823897c1cab6c61c3cd9c5571f889071ad0c93c54d282d644e9b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/graph/authoring/optimize_internal.h": {
+      "bytes": 520,
+      "sha256": "57772016b9d4eb27c9b36fd238808ba50f3a3e1cabccbf7a9365a0022c18a1e9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/graph/authoring/arrange_internal.h": {
+      "bytes": 3233,
+      "sha256": "4fcc88a0efd5b09fc1892e87b0dc12c712b286429c46496b17988599b5dbb4a5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/graph/model/native_definition.h": {
+      "bytes": 2204,
+      "sha256": "ff2aa524649ba34a5170a7d545106a2189ad0ce6dc77b77162ef9d05af6cac8b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/graph/model/graph_internal.h": {
+      "bytes": 1688,
+      "sha256": "5968f531b1ec38d8c9c67e935b5697c84ae822aa5d1f5a83e4bce2dbc7de56d6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/graph/graph/compiler/structure_internal.h": {
+      "bytes": 259,
+      "sha256": "f9846679845bf2c051fc51844adc86b93efba970084a6aa9286387b6673fd5d4"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/studio_graph/graph/model/native_definition.h": {
+      "bytes": 2204,
+      "sha256": "ff2aa524649ba34a5170a7d545106a2189ad0ce6dc77b77162ef9d05af6cac8b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/build-host/host/build_timing.h": {
+      "bytes": 3116,
+      "sha256": "e46c4b8d2e0a4ab14936aa771a97f1c9cd25889a7dc628e57d7466be92bc2488"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/build-host/host/build_values.h": {
+      "bytes": 2226,
+      "sha256": "c958f11a5493421bed4a2c4a55ac7a033ad0c6d3618dde4d84bd6e0af775bda5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/build-host/host/build_io.h": {
+      "bytes": 4474,
+      "sha256": "6e8dfc7693f8bfc40a8993abb430a77854e17a8465927f589151adf58c29dc9d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/build-host/host/process.h": {
+      "bytes": 4773,
+      "sha256": "07349fee092faa70806a1ccaa648a79811f77c9ac40c50b3240c472fc31eb420"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/build-host/host/build_host_internal.h": {
+      "bytes": 2319,
+      "sha256": "5798be0bd7b73d51c7b10ce4c6851d6dfb4a87942478e55ec7a62f8eed7a6223"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/build-host/host/build_host.h": {
+      "bytes": 2767,
+      "sha256": "85e901bc40d699dde5f7035c16b9201392ee269d46237a1ef2a2449993fb9635"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/build-host/authoring/source_package_io.h": {
+      "bytes": 1879,
+      "sha256": "1ba2fc53ce54ecdbf3401751b3de9aeb6c9e7c39f100b1c7b0c73fd01aaeb5df"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/build-host/support/sha256.h": {
+      "bytes": 515,
+      "sha256": "61302fd5cf350db73aa7af535ccbc2889f16ba6abd73671272343dd64b0ee6f3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/source_catalog/capabilities/catalog_index.h": {
+      "bytes": 2537,
+      "sha256": "4b6cb09b2a06799889e66b6952be75286f015ff7136f4d1608097160edffe0b0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/source_catalog/authoring/source_package_paths.h": {
+      "bytes": 1126,
+      "sha256": "2a78a0aa7968b60a251a3020784014ed3993abe8aea9015f622d230c37398c32"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/source_catalog/authoring/source_catalog_snapshot.h": {
+      "bytes": 752,
+      "sha256": "83e06378fd2820d44585d7e62b94530dc808a333b6beea3346607566b9ca28d5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/source_catalog/authoring/source_package_routes.h": {
+      "bytes": 1979,
+      "sha256": "334d79e9e113a26a0bcbad4ae7821584cbf1d56e916f814b3e398ab9a8bee005"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/source_catalog/authoring/source_package_syntax.h": {
+      "bytes": 1946,
+      "sha256": "e0aaa2a23a998a7fe706fe953360fcf3ce6ecfd6b23f9b43e9a9262d6d87b1b4"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/source_catalog/authoring/source_prepare_internal.h": {
+      "bytes": 713,
+      "sha256": "a6ca3f12f2777b1dffa22d95ad96bde3c615b259810333655960487cb5eb1ce6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/native_capabilities/capabilities/catalog_index.h": {
+      "bytes": 2537,
+      "sha256": "4b6cb09b2a06799889e66b6952be75286f015ff7136f4d1608097160edffe0b0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/model_runtime/runtime/models/model_bounds.h": {
+      "bytes": 1143,
+      "sha256": "780b0925fc8f0ed7994c7ef75e96025ab30236adff7aebf98f3b2018a7918cc6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/model_runtime/runtime/models/model_program_internal.h": {
+      "bytes": 2652,
+      "sha256": "e956253307e9ed8dce08114c6e78a07ba99c8af3b7b81ee536869c1ace3bfd4b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/model_runtime/runtime/shaders/prepared_internal.h": {
+      "bytes": 426,
+      "sha256": "26dd51484874bb7fc92f09a45495e77c85a3d9510e9c21fc7453efc518f4c0ee"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/types/types/array_internal.h": {
+      "bytes": 362,
+      "sha256": "9a1a4df9c01f52040c93df7c5f18f2ceae71d942636eeadc009627c117f40088"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/types/types/copy_internal.h": {
+      "bytes": 1224,
+      "sha256": "c0e9e8c8b69363ac51fed7e0819a44c016b2b8b5758bab66c2ba65cbd3ca5058"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/compiler-host/support/sha256.h": {
+      "bytes": 515,
+      "sha256": "61302fd5cf350db73aa7af535ccbc2889f16ba6abd73671272343dd64b0ee6f3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/compiler-host/toolchain/compiler_json.h": {
+      "bytes": 718,
+      "sha256": "16669a0b0591ad7ac494717e489ca7715b6048ed1a8b5f01fa9836bc4f9e501e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/compiler-host/toolchain/compiler_syntax.h": {
+      "bytes": 887,
+      "sha256": "3e0d8648f7a65182d9a8175b8ba73e1d8ee5791b22c3969cfafa316c905a6d41"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/compiler-host/toolchain/compiler_bootstrap.h": {
+      "bytes": 3506,
+      "sha256": "eccd20e5a19a637ab0ac0479a0c50ccf649249e955838a616f94e1d4e10ca184"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/compiler-host/toolchain/compiler_host.h": {
+      "bytes": 6783,
+      "sha256": "30397594df0da90ba32ad3aa06e42dae9282cf9d5e9f3a2529cafa6e67f60c0b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/compiler-host/toolchain/compiler_artifact.h": {
+      "bytes": 1323,
+      "sha256": "213f4b7698533f8aa80d64ea69f09e18efc9df4a6a6272bb880630850682d8cf"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/compiler-host/toolchain/compiler_target.h": {
+      "bytes": 3905,
+      "sha256": "d323ebaad3106802f95692b4a3194b5a63800252231bf974f74c48906ab12ffa"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/source_presentation/authoring/source_edit_internal.h": {
+      "bytes": 3462,
+      "sha256": "cb3c807a556c0a917c93e9f4428edac1210f5f75be9853472d4cac9f1767f6d2"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/source_presentation/authoring/source_presentation_details.h": {
+      "bytes": 1190,
+      "sha256": "5fa4b406eed05bc6eecfd7f97d454d393b9f26e3267275608a192f0cbbf14342"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/source_presentation/authoring/source_presentation_anchors.h": {
+      "bytes": 623,
+      "sha256": "62bb9fb0786b75a8c9c52dacca7cd6a2e15bed5ebe388439bcdb25306a244f83"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/source_presentation/authoring/source_presentation_internal.h": {
+      "bytes": 1971,
+      "sha256": "511aeb7c10e8858d0339cacd0a919ab723e578a3bc69d7eb6c2f2ac4737dc714"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/source_presentation/authoring/source_edit_refactor_internal.h": {
+      "bytes": 796,
+      "sha256": "5c23080330ddbe6c38604caa9d9e5fcd14c3d8998ff6aed622cc62a5af211fdd"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/private/shader_runtime/runtime/shaders/prepared_internal.h": {
+      "bytes": 426,
+      "sha256": "26dd51484874bb7fc92f09a45495e77c85a3d9510e9c21fc7453efc518f4c0ee"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/math/cute_math3d.h": {
+      "bytes": 89508,
+      "sha256": "2ff7d2da606e415c55d8e3aa4bc0d930bfd4d33fa2fa148408d7bc1cb92fcbe7"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/math/cute_user_config.h": {
+      "bytes": 963,
+      "sha256": "91117bc0548e79909eb7d49b1bde32125bc5891345dff041537f847c011095c0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/math/cute_math.h": {
+      "bytes": 156340,
+      "sha256": "6ba6e7161f4ea137ab5299f41a8f1052e3ab3a6ba909b64e54663102d33ccedf"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/math/cute_defines.h": {
+      "bytes": 5998,
+      "sha256": "fc805aeae22ec852a54641a64ba330d9c6ab5b470f47ebc468b394276f30b19c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/json/yyjson.h": {
+      "bytes": 330530,
+      "sha256": "4a21e5179fd8629a391198c85cd91f62bf6bc35383bd314911927c3ac9739e03"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/field_catalog/runtime/material_field.h": {
+      "bytes": 3474,
+      "sha256": "6c2474b00b52a546197f8636506c9ef518a52e00978e2c327343df463272f47e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/field_catalog/runtime/material_field_prepared.h": {
+      "bytes": 868,
+      "sha256": "cfaf2f823c2343e59ea8d58fccb363fd1667164ebd2bfaaaa1b9de8f0d594411"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/asset_values/support/asset_value.h": {
+      "bytes": 6029,
+      "sha256": "a0b2697b6cf260c6578dedccc4b4347e9d49d54537aebaf4ebcda546f0ddb4db"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/asset_values/support/asset_format.h": {
+      "bytes": 256,
+      "sha256": "84783c2c72495a8bf7ed6ae7de364392e253319c1550afafdfb9251159ff52d3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/compiler/language/lower.h": {
+      "bytes": 2396,
+      "sha256": "d390443f5c852a05be5bf6e742c2cfcfd16eecc9922ce3fc4c733f2e8064ae52"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/component_presentation/authoring/component_presentation.h": {
+      "bytes": 3424,
+      "sha256": "d3e13d07c5d82dd0768b7cea94dcf0d4bb36c2e62a3b376cc62c089a8cad4bb8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/selection_capabilities/runtime/selection_definition.h": {
+      "bytes": 7123,
+      "sha256": "ca23b1317607178712e4634ed306153f4bfc72d97d88ba1fa89ef0b223d8338b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/selection_capabilities/runtime/selection.h": {
+      "bytes": 657,
+      "sha256": "fb31d5775902de4d236cd46963b6459ed27ebd194d184611ad2672fee195efc7"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/events/runtime/events.h": {
+      "bytes": 1064,
+      "sha256": "955208170f3c9f8dbb283730560b0eb1b04c9c95f986cd2c75a81426ea4ecf79"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/input_map/assets/input_map.h": {
+      "bytes": 1129,
+      "sha256": "fdde6e28c6575f1a4a4f5aaf6747f8370bd3d9ba1384c044d13b7a878d09f53d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/scene_document/assets/physics_settings.h": {
+      "bytes": 307,
+      "sha256": "39eefef6f2aaa485185886036332032af55ad472e2f35cdf0ab55209f731815b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/scene_document/assets/scene_document.h": {
+      "bytes": 4351,
+      "sha256": "8d5f7efabf6579dd5d349869d6887009baf897487fc6eb1a77d77c0243598084"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/asset_text/support/asset_text.h": {
+      "bytes": 778,
+      "sha256": "6afd1a1c3a5a0bd1e1442a3a003f494f7e3bb618de75202bcd23159933cf657e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/fields/runtime/fields/prepared.h": {
+      "bytes": 857,
+      "sha256": "78472be0a94fbfc8a7ab67f2269829d08cc52018e01051d0d9c3bf0f911e2edb"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/fields/runtime/fields/ir.h": {
+      "bytes": 1174,
+      "sha256": "e924037cda9737212ef1f94b760d45f810a427126338b1fa957f68a3b6d78220"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/fields/runtime/fields/program.h": {
+      "bytes": 4154,
+      "sha256": "edf4ce25a5c53739a8d794ff2354c8b9e6339f5128880cc2917ca4fefd55e382"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/arithmetic_capabilities/runtime/arithmetic_definition.h": {
+      "bytes": 15446,
+      "sha256": "5e719ff83b7e56b13d1745fd264cc02a8ad7f4d6caf133e67c35fd603f931d79"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/arithmetic_capabilities/runtime/arithmetic.h": {
+      "bytes": 1366,
+      "sha256": "1bf898750b9bb309b7809418632eb472b7670276dc1990d72bb5cba02e96fd53"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/asset_compiler_host/authoring/asset_compiler_host.h": {
+      "bytes": 3695,
+      "sha256": "39ac3780450bc734f298b6b55052b2f56516def6693a3866bbd160e271e7b827"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/image_catalog/runtime/images/catalog.h": {
+      "bytes": 2462,
+      "sha256": "c8805778ed77f6d0bc1d8dfba5933ee032f4acbd1ed3c41ef2546e813825ec74"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/image_catalog/runtime/images/table.h": {
+      "bytes": 900,
+      "sha256": "10b7583749542856ccdf1148c4bf14b3f0e5ff32f6fabd5b2b1020b1852da6d9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/image_catalog/runtime/images/sky.h": {
+      "bytes": 3454,
+      "sha256": "c1cc9b0c549e9b01ee648aa4e23beaf73c29da74458dbc336c2d6eb70f65cb5d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/value_document/types/value_document.h": {
+      "bytes": 1528,
+      "sha256": "5771a9f9d4f255c232e80a4685ee423c6ea24fa1b3e6a57412fb7c55696c8b0a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/text_search/support/text_search.h": {
+      "bytes": 943,
+      "sha256": "9b1adca162b5a68bc8eebe634e972debe93b6e237972248452fc070f727242e1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/text_search/support/text_rank.h": {
+      "bytes": 1339,
+      "sha256": "5e2643140a9e54dafe17b9cc8c611c8193f817c797ce4c92a839af61c4be6ff5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/language_syntax/language/syntax.h": {
+      "bytes": 1136,
+      "sha256": "fbea3d31ceae48cd38d1eb9093661bb004307c9e75dc3368c1b13651eb7bc7e4"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_catalog/authoring/graph_catalog.h": {
+      "bytes": 1266,
+      "sha256": "a360a74353894e07a7af769011891b31ffd70508108c5f12b15b4f1b9ca5bb95"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/project_document/assets/project.h": {
+      "bytes": 4815,
+      "sha256": "fe37540b39c52dc37c6c4455ed959d3a0aaaddaac78194177d77ebabf5912d12"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/project_document/assets/project_migrate.h": {
+      "bytes": 10598,
+      "sha256": "044a458dd798f997478d933e60db559cf403c21e563dead9aaead3d2617c8216"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/image_preparation/authoring/image_prepare.h": {
+      "bytes": 1560,
+      "sha256": "7fbb7ff7f6a7140b70b810051a6efcc2c6217ff61fce49d5189037530beff16c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/reference_index/authoring/reference_index.h": {
+      "bytes": 9075,
+      "sha256": "93c3f6bd33025124cf482d9e6265ce983d853eb36b45b3c5d4dca502da47fd07"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/conversion_capabilities/runtime/conversions.h": {
+      "bytes": 780,
+      "sha256": "18dda3ec849f9c41020a080e6d5e7c2e018b096432a271484910f6834e2c41c2"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/conversion_capabilities/runtime/conversion_definition.h": {
+      "bytes": 3840,
+      "sha256": "027a6464884a9eeacae88c300f9d002e3fc8bc451a2d1eded4230f3d5b954e2f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/task.h": {
+      "bytes": 1002,
+      "sha256": "88806cbc2c2c76673806805b0221797257c567069fe71fe800bc95964ad62a1e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/function_builder.h": {
+      "bytes": 6685,
+      "sha256": "3bf63aafe7cd13dcdb456b143e4b6f57f562e90ae510747abbdfa19dfe292e1e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/integer_report.h": {
+      "bytes": 1520,
+      "sha256": "fbe9be360a2fd0cc50bf8859e3ec2c4aedc4f4f9f4493407d24e6d1dfde92c7f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/ecs_reader.h": {
+      "bytes": 358,
+      "sha256": "59510ea538a80921def3e98bf6538d1c22f6f72d7dbd73d741c8391c7aed6ca0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/native.h": {
+      "bytes": 6515,
+      "sha256": "d8bcd7f262a24cc252f5c9bc8b18aea9be1a279547105d0195ee02d1395bc33a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/map_intrinsics.h": {
+      "bytes": 562,
+      "sha256": "f46926a340ee51341ab69ca4cd2182de96eb95a1a5b259f9049cb9fc84ede04a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/prepared.h": {
+      "bytes": 4113,
+      "sha256": "02d219f2f7d637efdcb6abacd1e3b78c9e8eba1207463373295dfa5c445c4254"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/intrinsics.h": {
+      "bytes": 9545,
+      "sha256": "7aaf195a3cba3e286136341c4b1e688b1fedd5707c53b247ad89916a0e072fb6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/delay.h": {
+      "bytes": 380,
+      "sha256": "4bba0cb3b2c3828d279ef54ecc5e9cfa96eaf1455609378c94efb172d734e46c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/module_builder.h": {
+      "bytes": 5734,
+      "sha256": "c88bf56de301709195a869c2261e5a0fc84959d90478b3dcb670211ac729c826"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/inspection.h": {
+      "bytes": 4772,
+      "sha256": "a8bb5786972af35341cbbec73d4d3f6da3cb1d29b4dcfe74dac501bcaeee6c69"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/module.h": {
+      "bytes": 15554,
+      "sha256": "82ca2085088aca529b99fbed8f1c703fdb273d89badc1ec5e7a3f5919f3653d3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/component_write.h": {
+      "bytes": 1974,
+      "sha256": "ef415f96528bed73844c04a30b309ab1bb1331e1811d9148c79fb326c17a1deb"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution/execution/update.h": {
+      "bytes": 2244,
+      "sha256": "3f57e8c514262446d140b6389b1212446fe99424c6cc68195c23594bed0dbc61"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/support/support/file_io.h": {
+      "bytes": 403,
+      "sha256": "8768757c46f7c52447407690ed7d70ff3fa5a1bf5bc49c4b123ca3e866213343"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/support/support/text_edit.h": {
+      "bytes": 494,
+      "sha256": "8d3fb0ec941dffd856e6a6991c33b7e4eb9c6dff24fecf09bcead9920dbd2b4a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/support/support/enum.h": {
+      "bytes": 1244,
+      "sha256": "2e06b3d664bb509e7fbcd2bb8e87427503b035fb397afc9388817bfdcffafd1d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/support/support/rcss_map.h": {
+      "bytes": 1321,
+      "sha256": "9fffd28f721b9a284e86ac7b136069ae17c732e53084b46c94abdcddef0ef9cd"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/support/support/array.h": {
+      "bytes": 4429,
+      "sha256": "62a43c9f1c66eb131da2baa918e04669e54b73c4b80a0ef964a19e575269d576"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/support/support/xalloc.h": {
+      "bytes": 641,
+      "sha256": "843983fa5a8f9d139d49b9c76b2cd6bddab8741f8e2dab48c13e5b21d1c6a1ff"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/support/support/math.h": {
+      "bytes": 24852,
+      "sha256": "ab20427e68e0701fc25a3753ec48b6853e2240f9f538c8d115ba5e0c05b98140"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/support/support/arena.h": {
+      "bytes": 5243,
+      "sha256": "e5b5dc6afee8ec5e8b4b5ec65f81b3eaf9e295c1930fc9864843ea28d1a214f1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/support/support/cos_sin.h": {
+      "bytes": 2389,
+      "sha256": "e38f458835e9201f2dc49180d77bb318ee285df4e6341c03401975e8da4d80ba"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/asset_json/support/asset_json.h": {
+      "bytes": 480,
+      "sha256": "135ec0219e590ccb6550770b782d618543d0cd2b632fa6786fda3a40bf0372cf"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/math_capabilities/runtime/math_native.h": {
+      "bytes": 1134,
+      "sha256": "3c05d913927f8138c9ac6adc35f41d988fe7194850e20790f441805d2c0d777d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/math_capabilities/runtime/math_definition.h": {
+      "bytes": 19040,
+      "sha256": "6f3b3d10e52a2b48e9949890b39e26b93a932894ad58c3b4e9f9d4ffe7591fb8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/authoring/authoring/source_references.h": {
+      "bytes": 511,
+      "sha256": "7754368f8a095e9ea07b5ce6ff7629fba39556def2f0e6d57422c5c003ca5ba9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/authoring/authoring/source_link.h": {
+      "bytes": 526,
+      "sha256": "c98e918474a0879d1e5cb673a193ef49e06066bc872e47f29b6d46b5417ea70f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/authoring/authoring/source_rename.h": {
+      "bytes": 1569,
+      "sha256": "6b638dd587962395c19a6087c7d5ea3ab0872d526b36b3407a28f1a60442145c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/authoring/authoring/source_format.h": {
+      "bytes": 2909,
+      "sha256": "1f6475b424e3358a092e14687c1d7a0c29960aa0869a12dca63cfd05720f41bf"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/authoring/authoring/source_prototype_flow.h": {
+      "bytes": 960,
+      "sha256": "3f02e839550d8d2684384ba8e972f0839b855fdd4c4feee7fe943cf641dbcd91"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/authoring/authoring/source_literal.h": {
+      "bytes": 716,
+      "sha256": "e6babed0660a62d673faab6cf4df259b66a823c179222b13250a93fef3327a28"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/authoring/authoring/source_declaration.h": {
+      "bytes": 956,
+      "sha256": "913ac5e09252de78b170cbf9efd4d1078b4300f8a16b9c04a0a3999037c365a7"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/authoring/authoring/source_navigation.h": {
+      "bytes": 4040,
+      "sha256": "b763c5b7fccb5593db8768d355ad65561945a0be0361c443f16bb5b8ff0964a3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/authoring/authoring/source_intelligence.h": {
+      "bytes": 1828,
+      "sha256": "0cab7ff562efa311fdabaf94e132845e9d5aac93c143bdeeaf79cc43bd1814d1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/authoring/authoring/source_prepare.h": {
+      "bytes": 2320,
+      "sha256": "db51fae8ebd6cc2783f20b50f3326e7e20c49f9eb31233fea171e0eb1f6f30c8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/authoring/authoring/native_bindings.h": {
+      "bytes": 379,
+      "sha256": "3a4db9778b848e2d5d49bc6951b36ae56ebfb0bbc36f6a3c852cb098edc2a829"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/input_action/runtime/input_action.h": {
+      "bytes": 954,
+      "sha256": "11d13874e89046e5c4ffde76c53c5ecbf07e5e6c7cb32d31009c71f9691a16d7"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/array_capabilities/runtime/arrays_definition.h": {
+      "bytes": 25080,
+      "sha256": "dc3a35de66273beb60df762b2abe572f48597e794d2a23cddf84314d73abba0e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/array_capabilities/runtime/arrays.h": {
+      "bytes": 605,
+      "sha256": "5f534b0280411e44877b2d67dc49dab75faecab0505a2ee535124a33c75af145"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/ui_document/support/rcss.h": {
+      "bytes": 1913,
+      "sha256": "4a7d92e6ae4a3416c477bb2d507d3aa02168b266c2c02bc2a507d96020ad42ef"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/ui_document/assets/ui_document.h": {
+      "bytes": 6071,
+      "sha256": "7c03802b935620e58c4cebe671b6e5c7c14960790319a141e14ce74bb5ef5989"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/prototype_document/assets/prototype.h": {
+      "bytes": 9931,
+      "sha256": "59432d62d32a04493b5696f42da99ac3168c7ad5a66a733627b8695cf8dbbe21"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/studio_capabilities/authoring/studio_schema.h": {
+      "bytes": 2288,
+      "sha256": "b30c3deafa3c95a4f00bc31276fc694104392de59869851618d912f40d8c0395"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/studio_capabilities/authoring/studio_definition.h": {
+      "bytes": 24698,
+      "sha256": "0747534a03c8284481652b986313c936348086b2b198f8f5199a40f41407d19b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/ecs/ecs/execution.h": {
+      "bytes": 3297,
+      "sha256": "e064d047457d6f916fd0476e5da19e7185cc751b5597de219a39dd668dfda9bf"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/ecs/ecs/ecs.h": {
+      "bytes": 21264,
+      "sha256": "a6fd59849270894be455fa5cbd670c663c7bf12f763990fb0169a5d2ad2c0912"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/ecs/ecs/component_catalog.h": {
+      "bytes": 601,
+      "sha256": "7541ac922e94a29a5c8bc5705b95cd61a905a70bc678b9ab6669d4104d3d39b2"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/scene_runtime/runtime/scenes/physics_settings.h": {
+      "bytes": 1646,
+      "sha256": "bd49b2c17ac3b3f0fa28272535e2fc416872756ed8033ac2cd22ad7929c0c680"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/scene_runtime/runtime/scenes/prepared.h": {
+      "bytes": 1701,
+      "sha256": "14dbb5cde8c7ae5388b092dab6414af0f0a28927c1eaf8f4aee7ba82a5b7965a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/scene_runtime/runtime/scenes/prototypes.h": {
+      "bytes": 892,
+      "sha256": "d5ffe5d17df275c3d10c36473b7068412c504dbd3b27d8944c559d9659091709"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/scene_runtime/runtime/scenes/scene.h": {
+      "bytes": 4760,
+      "sha256": "797853b53aae6c42e814dfe88237eaf76bcd9d7b5c0517676f45f7d36637eac5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/core_capabilities/runtime/core_definition.h": {
+      "bytes": 16071,
+      "sha256": "514838a0983db29399f7f97e8dc51bf20a05e85d5aa0781fc9270800cbee78a0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/language/language/semantic.h": {
+      "bytes": 16559,
+      "sha256": "241038d4c5202efd2e119f4db752c34cfb360fc1dd99f62e57ab1f1db137b1a7"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/language/language/identity.h": {
+      "bytes": 1333,
+      "sha256": "42713d678edce090853633d485d576824c084a3b18dec43378d8052c5a40b06e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/language/language/math_types.h": {
+      "bytes": 1327,
+      "sha256": "ff81aa1314ec1a88c1bea12ac072cf0bfb5ba7db208a6d2eb0c1cdec6be74e3a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/language/language/component.h": {
+      "bytes": 1776,
+      "sha256": "68da900efa931734574681e237f466b8b8edb62ab9245fc0d8f13057f0f9be34"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/source_debug.h": {
+      "bytes": 877,
+      "sha256": "3f74ca92e54cc5df84924fffa1a256e03fb38d2bae50487c1836a86bf5b43859"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/status.h": {
+      "bytes": 524,
+      "sha256": "f6820858b2cc90fc103cf8fbf1ddd718b1f8f9917c3556020f602fc05084670e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/host.h": {
+      "bytes": 6333,
+      "sha256": "8c1b9592d5cc6ba625f6003a87c15e5bf50e5b7a8782332a8e6eaebb6a8fd4a3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/value_kind.h": {
+      "bytes": 716,
+      "sha256": "49e639ea89befdc44475ef567e8ff4e7140c07928b13d48d6cb010b61f4a343b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/service.h": {
+      "bytes": 686,
+      "sha256": "fbf5e3dc5b4ab310412ef083fd1457c2ba244c162a508b19440c9f04bfedfd9f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/backend.h": {
+      "bytes": 685,
+      "sha256": "e91ac9f385c40963a4ad72da57a2a45d7d10664922c44e0c758372d39fc7be23"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/arguments.h": {
+      "bytes": 272,
+      "sha256": "36b9f1cc256bb2f3d57840ecf1f60a865ec2678ab68f0edbdb4e2e4d150b1a7a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/borrow.h": {
+      "bytes": 4945,
+      "sha256": "26a625868ad0fcbc98c9bf07110aa52d019766c6e2cd7d76d09b170d18b49ba8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/scalar.h": {
+      "bytes": 5057,
+      "sha256": "27350990f49882a015f36516eb134fdd59fb1c38ddd535da0d2fe13f040a5821"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/managed.h": {
+      "bytes": 3496,
+      "sha256": "295ff1bd16204d171a5852384c86b0dd99b4bc624a786928c3b60987763b5088"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/diagnostic.h": {
+      "bytes": 2869,
+      "sha256": "2422a6d402dc0c8901a1c6da65f76d83da17b1fe1ac704c720d9b9c462069c5f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/log.h": {
+      "bytes": 737,
+      "sha256": "9feebb46ac9702155ac939c17ae925787134714afe2744a01b80a10a1f52d78e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/request.h": {
+      "bytes": 2858,
+      "sha256": "4527fba7be90c0b603c909abaa934a0876d03000f7fec261079e13a3cedcc3ba"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/component.h": {
+      "bytes": 803,
+      "sha256": "b1b43622061c4f901ee10d60346834587a8f4d9e776b177d56a89907b2656832"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/operation.h": {
+      "bytes": 657,
+      "sha256": "0d5dac2b036bd6f9d30b3010c24fe102a175270c37de17817d315357291e0c05"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/instruction.h": {
+      "bytes": 6629,
+      "sha256": "d8588e4d9cc1df8e619c8da8a08c44a762df1120bee01ad79ebc3234c8810bb3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/state.h": {
+      "bytes": 1625,
+      "sha256": "c8637ed95a48693a6c6393758788cc137497da10ae89498c4314a4d7f4dabfc8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/function.h": {
+      "bytes": 28850,
+      "sha256": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/execution_contract/execution/random.h": {
+      "bytes": 729,
+      "sha256": "84225842eed5fa8af4460010d4a6c2fe1a62a74d9041f7331e8bc1379f94547c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/ui_authoring/assets/ui_events.h": {
+      "bytes": 902,
+      "sha256": "604e46c375314d111e75dece1b800436eea082a15646994a176306f4a00ea285"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/ui_authoring/assets/ui_source.h": {
+      "bytes": 12537,
+      "sha256": "ec43274fbd7e1f5572b43f7dd7bc66f664c1264a36e445969528c3492b850917"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/text_source/support/text_overlay.h": {
+      "bytes": 1041,
+      "sha256": "01edf6524839df027a6d662cf474b0d7e242e9b8bc66175363f342e49e1a6633"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/text_source/support/code_lex.h": {
+      "bytes": 801,
+      "sha256": "8b3c998dffc2024f235d31d624b48e993eebf02fc75391c5e67bf22d449958be"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/text_source/support/text_file.h": {
+      "bytes": 284,
+      "sha256": "efd8ea577fc31833eb01449d59851e15b2ebada03f7ae71d8c54e3d0e1af98bf"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/text_source/support/file_watch.h": {
+      "bytes": 988,
+      "sha256": "870c913c582787a83771dc24e336c638245ab347867e6681b979b8b3c61862f7"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/state_capabilities/runtime/state_definition.h": {
+      "bytes": 29654,
+      "sha256": "63d3cf13ecda85febb5e4b96da4f8b33ce564dba9d6ceeff6a7c67d9b0ff03fe"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/nodes/set_map_nodes.h": {
+      "bytes": 164,
+      "sha256": "e8d209dd36907620b89db9ea87fd3c406720572590150328c86e1f0617aedee8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/nodes/vector_nodes.h": {
+      "bytes": 373,
+      "sha256": "e7acd51c293aeb923f9c37ddd6c249fb49f9102d2f9adedd9ecbac7b207f9abd"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/nodes/math_nodes.h": {
+      "bytes": 1870,
+      "sha256": "cb5edcdd509ee21e72230e03640460cc73bc0e9470bd5b4afd9c19924d673ab2"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/nodes/component_nodes.h": {
+      "bytes": 6404,
+      "sha256": "2d5e44c464f98ea95300540ad1fe834fcbea2d3661aac600b76b4fe30bd70e68"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/nodes/array_nodes.h": {
+      "bytes": 257,
+      "sha256": "0f54046a12b26085616cf4bc54482a2557f8aba7c16447315c009adebb48237e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/nodes/behavior_expression.h": {
+      "bytes": 6490,
+      "sha256": "f13161ec63d77316b00036602bfad6a315a5baf61183b79ebb97f6f733130ee1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/nodes/state_nodes.h": {
+      "bytes": 330,
+      "sha256": "a90a2ee934da7a2eb186c75700a33382a6bc103fd1a9b7ab348c246f5a122e34"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/nodes/core_nodes.h": {
+      "bytes": 1275,
+      "sha256": "e7359eb9b2bed8acafd743a76265eaafbfd26ce90f69f4cf7a074aa9762c1a00"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/nodes/conv_nodes.h": {
+      "bytes": 1253,
+      "sha256": "ba88518c679a06187c3d1bcf90b5b0371f633a66700662580ffa83e5c3ad9b19"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/nodes/compare_nodes.h": {
+      "bytes": 664,
+      "sha256": "9022ebd46d94d4cf0e80c1007e0a89f18d748c96c4a63a5c22b211c0fc489db1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/nodes/fmt_nodes.h": {
+      "bytes": 363,
+      "sha256": "39480effb8a0fc71d9c75f8d1aa240bd8bed69ce91dc69546e53f5e180134580"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/document/library.h": {
+      "bytes": 1141,
+      "sha256": "bf607695102194c8f4158a502f9b2b04913a55047c7318016a7e7b401446d792"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/document/events.h": {
+      "bytes": 716,
+      "sha256": "ad05e90c236b0f79901c57b8fcfced0bed24675dba2d43c40bed678ab362b99a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/document/extract.h": {
+      "bytes": 1466,
+      "sha256": "a3009fc02613c7209cdc739cdf0b25356e4fea2cd88521f646fdae3d100373f9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/document/graph_signature.h": {
+      "bytes": 2706,
+      "sha256": "6d7facfdcd44237c84d5d78d4c94ec6ff7cce7ad3a2c2c02a29f7783ca6f4f25"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/document/serialize.h": {
+      "bytes": 2542,
+      "sha256": "80f274f2d6306fc0118b05c81abc60e195f72d922473966b4f725fc526364912"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/local_edit.h": {
+      "bytes": 471,
+      "sha256": "50801ee035818da2a7a30fdacdb37aa3e3dac4399d704157435c2e016ce0f584"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/pin_edit.h": {
+      "bytes": 1782,
+      "sha256": "36c38530a6491db18ce5a9cc497c4d8378482ee75aefaf625568055cb6fa691c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/align.h": {
+      "bytes": 827,
+      "sha256": "fa3ea116c914f0a9540fb1128d550a5bf7e4995c601ca91fb72abe7e594d02e1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/graph_edit.h": {
+      "bytes": 2574,
+      "sha256": "36be655ef2ee790c96244d7c0d07024987b189de069e7ae95350be9809dab064"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/optimize.h": {
+      "bytes": 1625,
+      "sha256": "bcc8b734e697cc2030c67906889ffbf15f0b853148357d6961357573fee11a9c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/find.h": {
+      "bytes": 1077,
+      "sha256": "6ba4c8d77f37801097df1d5387a5fa44cd1c6081b0c93fd51e70a22820f4d883"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/arrange_path.h": {
+      "bytes": 2013,
+      "sha256": "84077177740c92ed7e646fa1135d1384758d4fe551b6b3da86571462ca7520e0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/constant.h": {
+      "bytes": 416,
+      "sha256": "19835c5c6d78a56a15e13e9502ec5914699466cd110df8f435e59e17910090de"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/expand.h": {
+      "bytes": 967,
+      "sha256": "53e1f3429796f14fc58b77f494dc254108e871940eb3e25d32aa05d5690dc467"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/describe.h": {
+      "bytes": 1047,
+      "sha256": "c062530eade5e6801cc8454619d5ed3ba63dfd24c50a53d6b4ff056eb5ecf899"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/linked.h": {
+      "bytes": 621,
+      "sha256": "27ae7b8ad2d62b94096caafc91ed9f324d9ba35aab089f3a3cb3c74fee3cb9b8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/layout.h": {
+      "bytes": 1492,
+      "sha256": "ae8b9e2a296292bdf5f436b5d2a9254d8043ec5d7a163324ff76ebc494bfc9e3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/asset_edit.h": {
+      "bytes": 3001,
+      "sha256": "39b6f11b21d028130cd39d0a6f698d743370a65a1e76fd80558c0368cf45cde9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/arrange_score.h": {
+      "bytes": 1109,
+      "sha256": "ff525836013ae1efea84d1650cf5700b3f99f509a400cb474efcef69a00a7307"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/authoring/arrange.h": {
+      "bytes": 3144,
+      "sha256": "11594cc461ffe7f762ae9417f590e6e5a5400519d9947c631158f9bfc9e946a9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/model/reactive.h": {
+      "bytes": 1337,
+      "sha256": "a93c17d87d202a7ae0fdc4462bc789c680359efacdc8c77cbf249a141a0cacfb"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_authoring/graph/model/reactive_presentation.h": {
+      "bytes": 352,
+      "sha256": "7ba26f80906fd60346c0aae159777ba8101a2ec46a563cde425706c6a6bf28a2"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/studio_graph/graph/nodes/studio_nodes.h": {
+      "bytes": 333,
+      "sha256": "3c12534f44b37cba4d6c903df5e9a0ae5b3d533d0056481937dcdf37a96f160a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/host_native_catalog/host/native_catalog.h": {
+      "bytes": 547,
+      "sha256": "b81ed5ef36b11f79ea77e610d82de95f080e82ee7bdd4fe09a6079c8d103fd9d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_compilation/graph/nodes/field_nodes.h": {
+      "bytes": 204,
+      "sha256": "057f235ae1cec4229310d75d7556b096e114077077b1e23237ada0319ba5e8ed"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_compilation/graph/document/problems.h": {
+      "bytes": 1416,
+      "sha256": "edb54458b3991006a13306db864cf2c3e271881776ac8a6cbce40617e0c92043"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_compilation/graph/modeling/model_profile_paths.h": {
+      "bytes": 611,
+      "sha256": "0d8c25415291f0da22032b47dfda564f9993094e99e87052b3413ec38d5b47c6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_compilation/graph/modeling/model_authoring.h": {
+      "bytes": 602,
+      "sha256": "df4f464d6b0c25cc39c7225d1d77da67619cf81855370392f2c87f863c324bc7"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_compilation/graph/modeling/model_compile.h": {
+      "bytes": 2453,
+      "sha256": "38b719029311fcd100485362fc081ad7fc4d243d8012080fa206d7a470703458"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_compilation/graph/shader/shader_graph.h": {
+      "bytes": 1732,
+      "sha256": "69ed8a2f401283d04779624413b28c1efc5338d3470dda26a3462924188ead58"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_compilation/graph/compiler/material_field.h": {
+      "bytes": 303,
+      "sha256": "0f9a5561106410f7e722160852af01753fe307d805f387cbfb8004a91ba22697"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_compilation/graph/compiler/validation.h": {
+      "bytes": 1152,
+      "sha256": "7053e1d388bcfc63c8e408c516ae6ae1bdd3b7d0355e07e76bc000617f080756"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_compilation/graph/compiler/field_program.h": {
+      "bytes": 261,
+      "sha256": "46a1640e2753ed561088186e5d6442cba729ba04a9dd29f4c97e84971082db29"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/source_package_files.h": {
+      "bytes": 1130,
+      "sha256": "99388e57ae2a75c05864f86ad12da89b8867c9b2c7fdd8060c940cce8b9f9dcf"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/source_collection.h": {
+      "bytes": 3425,
+      "sha256": "61d585e8dbe936119833e0befdaf2dd8e4f6406937eaedf582f07c058d582841"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/source_package_io.h": {
+      "bytes": 1879,
+      "sha256": "1ba2fc53ce54ecdbf3401751b3de9aeb6c9e7c39f100b1c7b0c73fd01aaeb5df"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/source_prototype_edit.h": {
+      "bytes": 2720,
+      "sha256": "94f01e0783d40fe3b574c94ba07850eb89356692d083d575c6a338ee6195017e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/language_catalog.h": {
+      "bytes": 1107,
+      "sha256": "f973dbcc20629e61ef86474fef772bbc24042a67dd2617ea3c381dd96364bdbd"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/source_package_snapshot.h": {
+      "bytes": 2581,
+      "sha256": "f63c14115242a46ae259ff7ac67f589ab3cd3e0fd62e2b8ca4a37396dab16607"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/source_packages.h": {
+      "bytes": 3082,
+      "sha256": "cd41e6b77da628f7e776696007867a004348666a749e53af95fab7e041878319"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/source_catalog.h": {
+      "bytes": 3329,
+      "sha256": "19c3a804c1a4d3801d1ebb912cbef76d010a7ff12695a6b3eb817c4f04050c12"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/source_package_exports.h": {
+      "bytes": 978,
+      "sha256": "e35fa8b9313b0ce92ed578a6a70bb237969aec7148399df534f5ec9f47cade9d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/source_package_prepare.h": {
+      "bytes": 2034,
+      "sha256": "630e6060810758a84fa88acae253e942d83742f8b75340a243bba5b9da204823"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/source_asset.h": {
+      "bytes": 984,
+      "sha256": "67738dec3d27a75894a7c7b8c1d4f1fc015f1b5ab7adbeae5c6630658f2d0c0b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_catalog/authoring/package_tests.h": {
+      "bytes": 2232,
+      "sha256": "cda6da4e46da2e759036ca331cfc21621ba267dd380f071efdfefb129bb02b55"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/compiler_host/toolchain/compiler_host.h": {
+      "bytes": 6783,
+      "sha256": "30397594df0da90ba32ad3aa06e42dae9282cf9d5e9f3a2529cafa6e67f60c0b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/native_capabilities/runtime/type_definitions.h": {
+      "bytes": 971,
+      "sha256": "6ef8b551a5b485a2245692209cdbd8158ce1a2983765b1c914ed513bd045ce03"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/native_capabilities/runtime/native_definitions.h": {
+      "bytes": 1720,
+      "sha256": "67ec85d716841f62cac25fe662b213c75e1572bc10edb2efac81ae1b29f5b7a9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/native_capabilities/runtime/native_capabilities.h": {
+      "bytes": 2841,
+      "sha256": "f85acc774ae938939e69d3831bb6fdf9ef60db4186ef6a7cd16a3d9cd0f69335"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/set_capabilities/runtime/sets_definition.h": {
+      "bytes": 6554,
+      "sha256": "8b26b681d7ef8f9f5c3fa33d80cb9e37cf7d7f8fb8b6b901c27c0984dbc321d5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/set_capabilities/runtime/sets.h": {
+      "bytes": 758,
+      "sha256": "a833d5dfa58b566a21430fd2aeede6b01c5ac9332f0cffb448c8825ca81e4d27"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/scheduling/runtime/systems/scheduler.h": {
+      "bytes": 3786,
+      "sha256": "d2cc25d1ea0bbdae6b4fb15974d441abae311be0a2aa103cf0badcc376cfd917"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/vector_capabilities/runtime/vectors.h": {
+      "bytes": 535,
+      "sha256": "9e1fce1aa114c54cb80fb6438317efd7b7a483ecc73e6e696648d26083886b92"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/vector_capabilities/runtime/vectors_definition.h": {
+      "bytes": 7845,
+      "sha256": "3b928729bb654c3d6025ad13bbb8520bdedf57f4f5c1a78d4e61df1cd129ded4"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/model_runtime/runtime/models/model_inspection.h": {
+      "bytes": 917,
+      "sha256": "b56a64b932508ce0ed54e3616fd51eb0f62eb70201c00ede8476cecb43b63f3f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/model_runtime/runtime/models/prepared.h": {
+      "bytes": 779,
+      "sha256": "4bc7e3c6c3aed021f0ca560a603985e0bf8cd13537fde09d210c24d6515ea526"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/model_runtime/runtime/models/model_program.h": {
+      "bytes": 4908,
+      "sha256": "76d06c6584a9e05a3b8dc02353c23652ed1e8599969ec8c5289b9ef3bfcd3929"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/ui_documents/runtime/ui/font.h": {
+      "bytes": 780,
+      "sha256": "c89267c8f2d96ebc9a58f8ac3b0df6a1c36a7da75c48925322355808b7b41161"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/ui_documents/runtime/ui/documents.h": {
+      "bytes": 2423,
+      "sha256": "64012a662aded4da7b1db17958838a1c8a7d191b8132a2f620c83e0d762de15f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/comparison_capabilities/runtime/comparison_definition.h": {
+      "bytes": 9707,
+      "sha256": "828041a67fdeb6ad9017550085576d784ac899bbce8386200206c91d5d945fc7"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/comparison_capabilities/runtime/comparisons.h": {
+      "bytes": 834,
+      "sha256": "9327da2e7a72548765086e1e0dee688781ace859a9f2f9ed26639c66d428c2cc"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/builtin_fonts/runtime/ui/builtin_fonts.h": {
+      "bytes": 185,
+      "sha256": "bf6dc07dfb384a37c14b6635fd3c06a11cb87e48506ae3e7b003a2589c2aa030"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/ui_document_values/ui/document.h": {
+      "bytes": 776,
+      "sha256": "96e83bb65b7a1c00c212adfeec2ab995a0745c77c388ac02540ff61e8ce81895"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/model_bake/runtime/models/model_bake.h": {
+      "bytes": 1479,
+      "sha256": "4b0db5862fcf474c34da6bf28ceb3d8f4bc842f5240b191cf4612e2ce81cd22b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/capabilities/capabilities/definition.h": {
+      "bytes": 6597,
+      "sha256": "e9a339dbb2a24269d87c2f2d7f0a055cc4f41e98aff11ae90033a8116b76e1b9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/capabilities/capabilities/catalog.h": {
+      "bytes": 14070,
+      "sha256": "b1220fabea73d28ee98df316e97c14bd3350168b9a2783526cb2c8eca56e1857"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/capabilities/capabilities/catalog_snapshot.h": {
+      "bytes": 466,
+      "sha256": "14bb64a0793853736af3e81c28a980a0e2059aaddb11cb0d8152c8febfd9d8d9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_model/graph/model/node.h": {
+      "bytes": 12656,
+      "sha256": "e42f541aa6a62cdbcf8ebf710c2a8fdf59c116bca9762f45924d1f4f0c02a7d9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_model/graph/model/registry.h": {
+      "bytes": 1204,
+      "sha256": "9eb5f0b0c1c752bb946dbdbc3b42318b2399f007558385baf6e88ab8ab761eca"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_model/graph/model/graph.h": {
+      "bytes": 8580,
+      "sha256": "956b4cf26fd064702ac83b23236af4d5c7dfd92981b20b7863d4df88e95b7bd5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_model/graph/model/behavior_asset.h": {
+      "bytes": 5989,
+      "sha256": "7b4bc034f801e234a72b9a8cf08b9053e8608b375a9f1bafaebea0145e1cdb20"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_model/graph/model/value_copy.h": {
+      "bytes": 526,
+      "sha256": "4b1881753dfeb9ed8157a4c7ccc1e527044678729681ac155bb826a527bfc824"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_model/graph/model/pin.h": {
+      "bytes": 2455,
+      "sha256": "775670deb0639d1283928d25c6af042f197777aae5eb46cfc0588d11774fed63"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_model/graph/model/local.h": {
+      "bytes": 1011,
+      "sha256": "488ab56c7215b0c47573adbe4717842b237fdb17664874432e4c15b9682c3c23"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/graph_model/graph/model/pin_conv.h": {
+      "bytes": 703,
+      "sha256": "33a303ee4ce08e34537287f3c9ebc15fbdf7d90c13d7ab1a7c8914a55d0e6292"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/type.h": {
+      "bytes": 5461,
+      "sha256": "dcf7e2344be192394c475110b9d51c8e2b0b50951d63dd12f94b3b080599146c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/value_format.h": {
+      "bytes": 378,
+      "sha256": "d6e24d0fcd0906beb63687f73a2fa889ffbaebf66831959fe6b2bc3218d2469e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/annotate.h": {
+      "bytes": 4355,
+      "sha256": "eeb59924f7abb471c19d1270ecb9173e412d87b2081ea0d231d487a0f3a625d3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/text.h": {
+      "bytes": 2429,
+      "sha256": "c28a2261a4122594487cbd83b1b9a1fb02610f93b2df907df0d62bc4c1b03dfc"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/query.h": {
+      "bytes": 599,
+      "sha256": "8fe949944c31728e316c442c2d1068cce63adf3d44c6f410012a4dd3b11ce5e3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/map.h": {
+      "bytes": 2993,
+      "sha256": "b25fbb0bb7005453d4585e7503714a9a5763f225c6ee04b48fc7beeabea33e67"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/value_wire.h": {
+      "bytes": 4860,
+      "sha256": "314c3967fe30a96ab5fdfe8f5aa24b57a32bc4010d1aef5de74bafad0c5695f6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/record.h": {
+      "bytes": 3632,
+      "sha256": "13fbc12a499e46bf71dc7a8832519d0bf080259fa9dd4d32299aadc326595c00"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/schema.h": {
+      "bytes": 1407,
+      "sha256": "9c57da054ad9566302e43b477aed9e800d9b133a5269dd860078121589a59e17"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/value.h": {
+      "bytes": 3021,
+      "sha256": "ab1e219b28444bbb56672a5e432f0ddff91c90b74d22208e43314d3641a9c435"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/catalog.h": {
+      "bytes": 1126,
+      "sha256": "b0d1bee506bf01c0acaea4d19ab05f1cdfa14e1de9748b6419c27fff04fa1818"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/scalar.h": {
+      "bytes": 9230,
+      "sha256": "84388a1dcd2c2a5cd3751c13a809858d6e6302ddda6397fb3e2b9bf4196321fd"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/trace.h": {
+      "bytes": 1301,
+      "sha256": "df43b35bb84df557311103e78c1ebf8635e776577e85f82f036be26539b638f0"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/state_machine.h": {
+      "bytes": 287,
+      "sha256": "d4c47f6243a9ee865eccac9cf35dc9e8493ed828af54152c7402b1884698d81f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/array.h": {
+      "bytes": 8998,
+      "sha256": "8e534280a867a14cc27d3eef0e9780a383dd8f8aedfa00015b6d3bb48ab3c2cf"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/union.h": {
+      "bytes": 1209,
+      "sha256": "34b04024acd67e31a5fc124995e01460dd74ff913303e06d9b9d9530738d75b9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/pointer.h": {
+      "bytes": 1963,
+      "sha256": "4e8f50522a887fb32e302042f1df2f3bee0557a679d0130ebf691fc3cd86456f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/types/types/copy.h": {
+      "bytes": 2025,
+      "sha256": "d41cd69a2f7bdb7168004ae42af18764b59ff226d873a2e6aa4573ee46345d02"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_presentation/authoring/source_minimize.h": {
+      "bytes": 1519,
+      "sha256": "21b0cf29fd28a17fa3ac49f472f9c8d30110ee6bd13e348d6622e87a1336e509"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_presentation/authoring/presentation_schema.h": {
+      "bytes": 641,
+      "sha256": "25478161c67643c47b93be155fc3fcec4679803bf23fa4c2b85a0fcfc9266ee7"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_presentation/authoring/source_edit.h": {
+      "bytes": 3956,
+      "sha256": "ddf4a031bba95c614702b1df932fd285d08b602e17dbef6e0d8b423596143c07"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_presentation/authoring/graph_expression.h": {
+      "bytes": 792,
+      "sha256": "5a52435cc1732bf4ed253cafdf23079cf7b423deacd136dc6f346cb0c858e6c3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/source_presentation/authoring/source_presentation.h": {
+      "bytes": 4542,
+      "sha256": "ee85cce9a7b31624bda6078bf5e2c411aa25f5a0adea144a55bed706fab89785"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/tasks/runtime/tasks.h": {
+      "bytes": 665,
+      "sha256": "7e612cdbdbde18730443efba87fbc122735dd832b64515257f87f589ea238ac7"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/shader_runtime/runtime/shaders/source_debug.h": {
+      "bytes": 4326,
+      "sha256": "52b395827dad2cee32428b4d4dd994e6a4a9546f3a0589976d97c52fe0d85553"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/shader_runtime/runtime/shaders/detail.h": {
+      "bytes": 1188,
+      "sha256": "31293081002b0848a4e2dce852e146323ab2106ae7787de4d05ddf4a4dae9735"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/shader_runtime/runtime/shaders/prepared.h": {
+      "bytes": 1575,
+      "sha256": "fec527802c03aa2268c76bc0b25ec6fe8e2ed93496c7d79a6850fb0e41a0645a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/shader_runtime/runtime/shaders/effects.h": {
+      "bytes": 440,
+      "sha256": "9ba6c0908adca7fd908b9cee924131336151ac6c988d5eaa65d3a2f37c795426"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/shader_runtime/runtime/shaders/volume.h": {
+      "bytes": 986,
+      "sha256": "a71f7ffc8338fba8472de7ea6c348aa6eae769a83527e2f6e204bf5ad7aa819a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/shader_runtime/runtime/shaders/program.h": {
+      "bytes": 9718,
+      "sha256": "10a9900a9c66b57376237628b32be04e01af6617b49d74b29113d5799df6fc0a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/shader_runtime/runtime/shaders/inspection.h": {
+      "bytes": 457,
+      "sha256": "903bfbb2a40faf4859b194f154999ca825089471959ac4b011b6ca8617e4fabd"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/shader_runtime/runtime/shaders/image.h": {
+      "bytes": 401,
+      "sha256": "b850f00a1e418c3cd41601002d67f91b57704c67b05c10b8e1b2cea8b97b5bc3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/shader_runtime/runtime/shaders/bake.h": {
+      "bytes": 3024,
+      "sha256": "a427f241541aa98dfb52037fbb482461acc0a4d07d120af61e2b02c8a04bab9b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/behavior_runtime/runtime/event_catalog.h": {
+      "bytes": 2044,
+      "sha256": "9f950415396a519cb7ef1af23c1bb1675dddf128d937cfcb58b4797de385521d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/behavior_runtime/runtime/behaviors/module_set.h": {
+      "bytes": 735,
+      "sha256": "c2af33b3d11470fccf489638e76dfc8da38bb3162cd712d895e70f2915a2b0d3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/behavior_runtime/runtime/behaviors/source.h": {
+      "bytes": 10725,
+      "sha256": "5712bb051971bae91cad7447974a2680d6e12b465922d5918dbf8994436ba79b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/behavior_runtime/runtime/behaviors/package.h": {
+      "bytes": 3288,
+      "sha256": "d490bf4e62c4b806b6e34c09cb5f88eec4d9a8d665096356e4663f3d396469e6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/field_capabilities/runtime/fields/definition.h": {
+      "bytes": 9161,
+      "sha256": "6261cfa7ead6fd559d2692419aaa0fb7963f202184f261e5e28988b219e38adb"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/field_capabilities/runtime/fields/native.h": {
+      "bytes": 3240,
+      "sha256": "4c633865d14a49395d635202d523fb010742405cf38ac7e5c6f882c80380a511"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/mesh_runtime/runtime/geometry/mesh_prepared.h": {
+      "bytes": 1180,
+      "sha256": "345c387ed75eaae6351471c0baf2d773ff41fa1252941aab6b021c35ecb356ca"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/mesh_runtime/runtime/geometry/mesh_asset.h": {
+      "bytes": 3136,
+      "sha256": "dced2383eca6da3a49870b2bea025df78e7b31071d3f9b67889f1731ad728d55"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/mesh_runtime/runtime/geometry/mesh_pick.h": {
+      "bytes": 1291,
+      "sha256": "706f7ee3e29031ba4067489768fa49de8f0926877b5c109307329430abb83815"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/text_capabilities/runtime/text_definition.h": {
+      "bytes": 6979,
+      "sha256": "04b4eeec89770be5c0c2cdb78aba809d5c75009ae09e3217eea057e71d7a965c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/text_capabilities/runtime/text_format.h": {
+      "bytes": 1345,
+      "sha256": "3f2beea2881439300897bb30ff91c83a217bbc19a4aa1355f9df85d006665d13"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/public/native_prepared/runtime/native_prepared.h": {
+      "bytes": 653,
+      "sha256": "78612a4cccb02014ffd38dcc71a12c62753676c24d5130d75417c580b67f30b6"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/constant_proof.h": {
+      "bytes": 697,
+      "sha256": "0b8701dc6fa1e261186392b6fca1368340e603eb1b0a567f30cbd69fc3efd4ea"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/numeric.h": {
+      "bytes": 3549,
+      "sha256": "52bebc07cceea532d1e7f8379c467b33cfcc2479d05679f11376fcc70b2c16dc"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/union_members.h": {
+      "bytes": 1844,
+      "sha256": "8a8c58e9c7151f9b273a74dc95ae4eda0487e7a15feb26288468b398f4e5591a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/nominal_binding.h": {
+      "bytes": 1986,
+      "sha256": "4a7e0d7c4f1247f5ebbc017130f90304e55309a2a1d98d0b7903479238a5eb1b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/effect_analysis.h": {
+      "bytes": 1623,
+      "sha256": "ec9cacde3d40892eb2abcca5412ca83cc802213e666c6c2955aa9e649e68ab35"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/unit_analysis.h": {
+      "bytes": 1209,
+      "sha256": "84d0b71631c184b1e65e2e49dfccad3becb387a4122e82f537f47e3d8001ba31"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/unit_algebra.h": {
+      "bytes": 1796,
+      "sha256": "98870b0a00a91e36a1ddea23427b9e8069973108ec8c4451b91f8a26943d789f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/callable_headers.h": {
+      "bytes": 3186,
+      "sha256": "9459054f4da9029ddb41bffed77fca57bb3a1c4434034607f38e97b43c80bfb9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/lexical_binding.h": {
+      "bytes": 1583,
+      "sha256": "f91e022ea3649c34c9f50cf9ce7769a6421ce4c0dc3d61d658aea57805217817"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/named_binding.h": {
+      "bytes": 1479,
+      "sha256": "47a997f3a0db2f2049ca6e8cb0b93da3d6b41ece0de28453d863c2db8c3201b4"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/scalar_constant.h": {
+      "bytes": 2292,
+      "sha256": "be1510fb9a82142bccb7077d9125d64d08f1921362e062fb2d5ea4b026dfeeec"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/signature_reader.h": {
+      "bytes": 1917,
+      "sha256": "b89ecf96e66f0898d7bab80b1f05b92d2fa579ab945531a6d4359b785cf02c55"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/type_constructors.h": {
+      "bytes": 3404,
+      "sha256": "a0982da595cd145bfc2e45c3001f464a49ea524dec8b087b478b96e80532091d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/semantic_internal.h": {
+      "bytes": 16450,
+      "sha256": "c6adc0edf4312ad2b16c545e3f76ad8890ed410669ac20d96e4d204fcf02e3f8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/language/private/language/record_members.h": {
+      "bytes": 2193,
+      "sha256": "2ad99c3a54cf1724ff60af55c9268ba2d58482087baf38579d7fe33adf7b9883"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/CMakeFiles/Export/9f18f0f014f8e94da5150280e6fa8c21/ChibiTargets-release.cmake": {
+      "bytes": 34919,
+      "sha256": "b6a8fb3c9de9faaa1660971f75755bcc24ae7895b1a704d889d6cd6adcd293ca"
+    },
+    ".chibi/math-main/runtimea253-validation/build/sdk/CMakeFiles/Export/9f18f0f014f8e94da5150280e6fa8c21/ChibiTargets.cmake": {
+      "bytes": 28958,
+      "sha256": "732bdb3ab2d14c4da57bdf97a09b335c9ff10a30e23a7f1961a6edafea30ce43"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/signature_reader_chibi_source.h": {
+      "bytes": 242907,
+      "sha256": "0cd2c44d6b6d3fc086106987c0753fcc621234f448eac906298ebde009bc26b3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/package_snapshot_chibi_source.h": {
+      "bytes": 87228,
+      "sha256": "275716710b3209a0e95c680e99388f0b413a7664240e1e7dca361c4e486ea404"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/package_routes_chibi_source.h": {
+      "bytes": 38843,
+      "sha256": "a2c231db6f770ad1255aefb3824ae98ea18b2b3395a16732c5028b7552f8a317"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/syntax_chibi_source.h": {
+      "bytes": 11549,
+      "sha256": "d5b5a1b15c1f37094db027097964662e64917b9d27d877cde8269ebc22ce339a"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/prepared_writer_chibi_source.h": {
+      "bytes": 202388,
+      "sha256": "102002af73572fcdb54e75bb918f2a183c3ecc8bb7e812c4c3bef3938edc484f"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/package_core_source.h": {
+      "bytes": 82159,
+      "sha256": "a0950c8ab0d51a3db8c83cfc144eb1372599ffe82cb7166e39f4b03df964eab2"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/package_graph_chibi_source.h": {
+      "bytes": 66515,
+      "sha256": "2308ff209fb82ee6e3eb3ebfa1da20a0ecee0e78dfdd1f53a4bcd899bdf73c69"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/lexical_binding_chibi_source.h": {
+      "bytes": 43531,
+      "sha256": "b0ab8f420ad5a790931cad678d54191b737e9cd043b6348da82fb933ecc2656b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/unit_algebra_chibi_source.h": {
+      "bytes": 44322,
+      "sha256": "a74a6cb0a2489e5128ab2af44f3020ae7dc69bcc4143365030ec73651759fd5e"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/package_syntax_chibi_source.h": {
+      "bytes": 21543,
+      "sha256": "795e2cc136416296e0b5968bfebef0945f3298981aa67dc07a80e45fdf3ffdb5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/asset_packaging_chibi_source.h": {
+      "bytes": 88278,
+      "sha256": "c221f91201a3abd58326cfd21e33e8412b8190013d184d697539eeed1ab966d8"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/constant_proof_chibi_source.h": {
+      "bytes": 33193,
+      "sha256": "c83a52dbaf05dedd2865b906b85d61e5767ae3f0feb3419f990516a3e9d87836"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/shader_source_chibi_source.h": {
+      "bytes": 174954,
+      "sha256": "71ffe7703f95404aa1bec43c13c821e714a66b53c9bc15facb8dfc53d322eda3"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/named_binding_chibi_source.h": {
+      "bytes": 81360,
+      "sha256": "dabc7056ad877edc0b90ff99e454337d0aed1c232026882f7b1492af38b6dcdd"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/build_workflow_source.h": {
+      "bytes": 503,
+      "sha256": "5aaf5926ca7242b554d44de1cc5418be26f84357a16c9d9accc7cba9215a6907"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/source_tokenizer_chibi_source.h": {
+      "bytes": 139669,
+      "sha256": "2d2a5edc6e5dd8760fbb21bf211d31713995c4000ffe12ca86e5546fb1fe57e9"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/type_constructors_chibi_source.h": {
+      "bytes": 85347,
+      "sha256": "1e8d4b73679a5a18f6be24690a23b90d974db6d26e2f512de2d009993697ac57"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/package_compiler_chibi_source.h": {
+      "bytes": 7547392,
+      "sha256": "03a3d869f1e8fb01d618cd6489fb356168fb6f4138f82d8c1d6223f5cae231d1"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/core_strings_tests_source.h": {
+      "bytes": 126878,
+      "sha256": "d3f706a131a491ce76827a7721bf2a1f4fb3a0a1d678216ef0d96e2268556a3c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/type_relations_chibi_source.h": {
+      "bytes": 56183,
+      "sha256": "a5d0298708f82409bfe0efdfdb954044b9435507c3b98737ea34f33054f34319"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/docs_markdown_source.h": {
+      "bytes": 283406,
+      "sha256": "98b93d3b3ca7f46da6d093c410464709d7de086ae2a59a86d9b7ad666eb04c41"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/nominal_binding_chibi_source.h": {
+      "bytes": 20981,
+      "sha256": "feff99af8f474ef08ff1fa7599664f230b4c38a9c50c793328f930559aa020ce"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/union_members_chibi_source.h": {
+      "bytes": 167150,
+      "sha256": "9879577d31359f932eafd6fae378e30a7363476c605b77cd75d5c8234618e05b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/package_paths_chibi_source.h": {
+      "bytes": 11530,
+      "sha256": "68271368ab2a5f0a9e97287c2ef73ad76d427dfe86213d2ad0a9643d5f494f7b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/bounded_compiler_chibi_source.h": {
+      "bytes": 179938,
+      "sha256": "1e65ce72746af4fa615d5e9ec71d7e6284b6f57ede0e3e2164dd864fea979938"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/callable_headers_chibi_source.h": {
+      "bytes": 227924,
+      "sha256": "bd2ce8a276bb40d3e7e4822e2b1de4f3b72a4ad39805b2ebacae37425da5b02b"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/scalar_lowering_chibi_source.h": {
+      "bytes": 118786,
+      "sha256": "354d3028132676eb913199a15f6f09e6dca30c09e99b9a88c22ec056e26b7681"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/record_members_chibi_source.h": {
+      "bytes": 28498,
+      "sha256": "f0f8ff66542380433d64d83385e8c3ace02dbfb55960f49861d1a892f2a7ef1c"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/unit_analysis_chibi_source.h": {
+      "bytes": 182665,
+      "sha256": "d8f52c9452b954cad85934d47fe6152ac76f9a1d7aadea416b7b52e7261153ed"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/constant_scalar_chibi_source.h": {
+      "bytes": 198425,
+      "sha256": "fe0a71fad341e21ba849c871d62641786b1be985a1b4295cd54a7b2abb2c400d"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/effect_analysis_chibi_source.h": {
+      "bytes": 178826,
+      "sha256": "ced13cf7fddec4f4de6ae817fd3111a6f93a394389625716628b58cc42efdacd"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/test/prepared_fixture.h": {
+      "bytes": 5846,
+      "sha256": "becf3ff24eb85edcc9ea7a982281780fc8bb544684b1111f5728c25b68657407"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/test/parallel.h": {
+      "bytes": 474,
+      "sha256": "54c4a2f4dab05a40112b6f7f59b24a0545a91f0e3f9dcd1689425213de43c2af"
+    },
+    ".chibi/math-main/runtimea253-validation/build/testing/include/third_party/pico_headers/pico_unit.h": {
+      "bytes": 16947,
+      "sha256": "80daf08a9a05914a793c0127d138dd07e972f1f6346a0f01a47450a5a2eedaf5"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeFiles/4.4.3/CMakeCCompiler.cmake": {
+      "bytes": 3330,
+      "sha256": "6564aaf53b04549973328b6126aebbbfddb7c2aae81e2715a73e83f6ea4eda04"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeFiles/4.4.3/CMakeSystem.cmake": {
+      "bytes": 360,
+      "sha256": "a4b33b7b37999a9f693561dc97d4b941fb135975b61ff71451409c490feb41ff"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeFiles/4.4.3/CompilerIdC/CMakeCCompilerId.c": {
+      "bytes": 29029,
+      "sha256": "6ccdb729a0b1d02ba3d9b57e617d311fbac288d9c0d32416c048ef044157f041"
+    },
+    ".chibi/math-main/runtimea253-validation/build/CMakeFiles/4.4.3/CompilerIdC/apple-sdk.c": {
+      "bytes": 32,
+      "sha256": "93336ad6605d000eb7c898c7bde4f94b689ae0dce329a1187119608d55e74ac0"
+    }
+  },
+  "scope": "accepted803 plus existing Math and exact shared WRITE-only patch; no full801 metadata/nativeABI import",
+  "heavy_producer_runs": 0
+}

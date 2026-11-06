@@ -1,0 +1,12 @@
+// Apply damage, emit hit feedback, and release the hull when health reaches
+// zero.
+HullDamage :: behavior {
+    on Damage :: (Amount: int) {
+        self.Health.Current -= Amount
+        await WeaponActions.Spawn_Prototype_At(HitEmitter, self.Transform)
+        if f64(self.Health.Current) <= 0 {
+            await WeaponActions.Spawn_Prototype_At(DeathEmitter, self.Transform)
+            release_material(self)
+        }
+    }
+}

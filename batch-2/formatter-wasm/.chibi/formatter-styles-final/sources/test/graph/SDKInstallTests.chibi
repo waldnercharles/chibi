@@ -1,0 +1,620 @@
+package graph_sdk_install_tests
+
+import json "core:encoding/json"
+import files "graph:install"
+import engine "graph:engine"
+import os "core:os"
+import strings "core:strings"
+
+// tools/toolchain/SDK.chibi's CompilerTools entry: what it refuses before
+// staging, the staging it owns, and an installed prefix that still runs after
+// it moves. Run takes the native compiler, its graph build and the LLVM
+// directory. The distribution contains no private VM hosts or seed artifacts.
+
+Path :: (parts: string[]) -> string {
+    return strings.Join(parts, "");
+}
+Read :: (path: string) -> string {
+    read := os.ReadText(path);
+    assert(!read.error, "the file reads");
+    return read.text;
+}
+Write :: (path: string, text: string) {
+    failure := os.WriteText(path, text);
+    assert(failure == nil, "the file writes");
+}
+Make :: (path: string) {
+    failure := os.MakeDirectory(path);
+    assert(failure == nil, "the directory");
+}
+// Whether anything, a dangling link included, has that name.
+Exists :: (path: string) -> bool {
+    return os.Kind(path) != os.KindNone;
+}
+// The number of names in a directory, -1 when it is not one.
+Entries :: (path: string) -> int {
+    listed := os.List(path);
+    if (listed.error) {
+        return -1;
+    }
+    return length(listed.names);
+}
+// A file's SHA-256, "" when it cannot be read.
+Digest :: (path: string) -> string {
+    hashed := os.HashFile(path);
+    if (hashed.error) {
+        return "";
+    }
+    return hashed.digest;
+}
+Names :: (path: string) -> string[] {
+    listed := os.List(path);
+    assert(!listed.error, "the directory lists");
+    return listed.names;
+}
+Link :: (target: string, path: string) {
+    status := os.Run(["ln", "-s", target, path]);
+    assert(status == 0, "the link");
+}
+Target :: (link: string) -> string {
+    result := os.Capture(["readlink", link]);
+    assert(result.status == 0, "the link reads");
+    return strings.TrimSuffix(result.stdout, "\n");
+}
+Clone :: (source: string, destination: string) {
+    copy := ["cp", "-R", "--reflink=auto", source, destination];
+    if (os.Platform() == "Darwin") {
+        copy = ["cp", "-cR", source, destination];
+    }
+    status := os.Run(copy);
+    assert(status == 0, "the clone");
+}
+
+// Both trees have the same names, kinds and file bytes. Counting both sides
+// makes a missing or unexpected file fail.
+SameTree :: (ours: string, theirs: string) -> bool {
+    kind := os.Kind(ours);
+    if (kind != os.Kind(theirs)) {
+        os.Print(Path(["SDK resource differs: ", ours, ", source ", theirs]));
+        return false;
+    }
+    if (kind == os.KindFile) {
+        same := Digest(ours) != "" && Digest(ours) == Digest(theirs);
+        if (!same) {
+            os.Print(Path(["installed file differs: ", ours, ", source ", theirs]));
+        }
+        return same;
+    }
+    if (kind != os.KindDirectory || Entries(ours) != Entries(theirs)) {
+        os.Print(Path(["SDK resource inventory differs: ", ours]));
+        return false;
+    }
+    for (name in Names(theirs)) {
+        if (!SameTree(Path([ours, "/", name]), Path([theirs, "/", name]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+Fixture :: struct {
+    host: string;
+    // The checkout, whose compiler compiles SDK.chibi and whose cache every run shares.
+    checkout: string;
+    build_dir: string;
+    archive: string;
+    llvm: string;
+    verification_llvm: string;
+    suite: string;
+}
+
+Install :: (fixture: Fixture, root: string, build_dir: string, output: string) -> os.Result {
+    checkout := fixture.checkout;
+    return os.Capture([fixture.host, "run", "--core", Path([checkout, "/packages/core"]),
+                       "--llvm", fixture.llvm, "--root", checkout,
+                       "--collection", Path(["graph=", checkout, "/tools/graph"]), "--entry", "CompilerTools",
+                       Path([checkout, "/tools/toolchain/SDK.chibi"]), "--",
+                       "--build", build_dir, "--output", output, "--third-party", fixture.archive,
+                       "--source-root", root, "--llvm", fixture.verification_llvm]);
+}
+Says :: (result: os.Result, text: string) -> bool {
+    return strings.Contains(Path([result.stdout, result.stderr]), text);
+}
+Contained :: () -> string {
+    return "sdk: output or staging lies inside a distribution input";
+}
+
+// A source root with only what CompilerTools reads, the compiler and core
+// copied from the build so its resources are current.
+DistributionSource :: (fixture: Fixture) -> string {
+    root := Path([fixture.suite, "/containment source"]);
+    for (directory in ["tools", "docs"]) {
+        Make(Path([root, "/", directory]));
+    }
+    Make(Path([root, "/packages"]));
+    Clone(Path([fixture.build_dir, "/share/chibi/compiler"]), Path([root, "/tools/compiler"]));
+    Clone(Path([fixture.build_dir, "/share/chibi/core"]), Path([root, "/packages/core"]));
+    for (input in ["tools/graph", "tools/toolchain",
+                   "LICENSE.md", "COPYING", "COPYING.LESSER", "COPYING.EXAMPLES", "docs/distribution-licensing.md"]) {
+        Clone(Path([fixture.checkout, "/", input]), Path([root, "/", input]));
+    }
+    return root;
+}
+
+Refused :: (fixture: Fixture, source: string, output: string) {
+    stage := Path([output, ".chibi-stage"]);
+    assert(!Exists(output) && !Exists(stage), "a fresh output");
+    result := Install(fixture, source, fixture.build_dir, output);
+    assert(result.status == 2 && Says(result, Contained()), "an output inside an input is refused");
+    assert(!Exists(output) && !Exists(stage), "a refused output leaves nothing");
+}
+
+DistributionInputsCannotContainOutputOrStaging :: (fixture: Fixture) {
+    source := DistributionSource(fixture);
+    tools := Path([source, "/tools"]);
+    graph := Path([tools, "/graph"]);
+    sentinel := Path([graph, "/containment-sentinel"]);
+    Write(sentinel, "preserve the source input\n");
+    Link(graph, Path([source, "/graph-alias"]));
+
+    // Without containment, valid inputs reach the already reserved stage and
+    // fail there, before any copying.
+    output := Path([graph, "/reserved-output"]);
+    stage := Path([graph, "/reserved-output.chibi-stage"]);
+    Make(stage);
+    Write(Path([stage, "/sentinel"]), "preserve the caller's stage\n");
+    graph_entries := Entries(graph);
+    tool_entries := Entries(tools);
+    source_entries := Entries(source);
+    result := Install(fixture, source, fixture.build_dir, output);
+    assert(result.status == 2 && Says(result, Contained()) && !Exists(output) && Entries(stage) == 1, "a reserved stage inside an input");
+    assert(Read(Path([stage, "/sentinel"])) == "preserve the caller's stage\n" && Entries(graph) == graph_entries, "the caller's stage is kept");
+
+    for (path in ["tools/graph/direct-output", "tools/graph/missing/nested/output", "graph-alias/alias-output",
+                  "tools/graph/../graph/dot-output", "tools/never-created/../graph/dot-missing-output"]) {
+        Refused(fixture, source, Path([source, "/", path]));
+    }
+    assert(!Exists(Path([graph, "/missing"])) && !Exists(Path([tools, "/never-created"])), "refusals create no directories");
+
+    // The same guard covers the graph-built compiler and core. The child name
+    // is never created in these real build inputs.
+    unique := strings.BaseName(fixture.suite);
+    for (resource in ["share/chibi/compiler", "share/chibi/core"]) {
+        input := Path([fixture.build_dir, "/", resource]);
+        before := Entries(input);
+        assert(before > 0, "a built resource");
+        Refused(fixture, source, Path([input, "/", unique]));
+        assert(Entries(input) == before, "the built resource is untouched");
+    }
+
+    // A case-insensitive filesystem names the same input with another case.
+    alias := Path([source, "/TOOLS/GRAPH"]);
+    if (Exists(alias)) {
+        assert(files.Identity(alias) == files.Identity(graph), "the case alias is the graph");
+        Refused(fixture, source, Path([alias, "/case-output"]));
+    }
+
+    // Only staging resolves inside the input. The caller's link keeps its target.
+    output = Path([fixture.suite, "/stage-alias-output"]);
+    stage = Path([fixture.suite, "/stage-alias-output.chibi-stage"]);
+    Link(graph, stage);
+    result = Install(fixture, source, fixture.build_dir, output);
+    assert(result.status == 2 && Says(result, Contained()) && !Exists(output), "staging through a link into an input");
+    assert(os.Kind(stage) == os.KindLink && Target(stage) == graph, "the caller's link is kept");
+
+    // A later '..' cannot turn a file or an unresolved link into a directory.
+    ancestors := Path([fixture.suite, "/invalid ancestors"]);
+    Make(ancestors);
+    regular := Path([ancestors, "/file"]);
+    dangling := Path([ancestors, "/dangling"]);
+    Write(regular, "preserve the regular file\n");
+    Link("missing-target", dangling);
+    identity := files.Identity(regular);
+    paths := ["file/../outside-output", "dangling/../other-output"];
+    outputs := ["outside-output", "other-output"];
+    for (index in 0..<length(paths)) {
+        outside := Path([ancestors, "/", outputs[index]]);
+        assert(!Exists(outside) && !Exists(Path([outside, ".chibi-stage"])), "a fresh outside path");
+        result = Install(fixture, source, fixture.build_dir, Path([ancestors, "/", paths[index]]));
+        assert(result.status == 2 && Says(result, "sdk: output has an invalid directory ancestor"), "an invalid ancestor");
+        assert(!Exists(outside) && !Exists(Path([outside, ".chibi-stage"])), "an invalid ancestor leaves nothing");
+    }
+    assert(files.Identity(regular) == identity && Read(regular) == "preserve the regular file\n", "the regular file is kept");
+    assert(os.Kind(dangling) == os.KindLink && Target(dangling) == "missing-target" && Entries(ancestors) == 2, "the dangling link is kept");
+
+    // Sharing a directory-name prefix does not make a sibling an input; an
+    // empty build stops this control at resource validation.
+    output = Path([tools, "/graph-extra/output"]);
+    missing_build := Path([fixture.suite, "/containment missing build"]);
+    Make(missing_build);
+    result = Install(fixture, source, missing_build, output);
+    assert(result.status == 1 && Says(result, "sdk: graph compiler/core resources are missing or stale") && !Says(result, Contained()), "a sibling with a shared prefix");
+    assert(!Exists(output) && !Exists(Path([output, ".chibi-stage"])) && Entries(missing_build) == 0 && !Exists(Path([tools, "/graph-extra"])), "the sibling control leaves nothing");
+
+    assert(Read(sentinel) == "preserve the source input\n", "the source input is kept");
+    assert(Entries(graph) == graph_entries && Entries(tools) == tool_entries && Entries(source) == source_entries, "the source tree is unchanged");
+}
+
+MissingGraphOutputsFailBeforeCreatingStaging :: (fixture: Fixture) {
+    empty := Path([fixture.suite, "/missing build"]);
+    output := Path([fixture.suite, "/missing output"]);
+    Make(empty);
+    result := Install(fixture, fixture.checkout, empty, output);
+    assert(result.status == 1, "an empty build fails");
+    assert(!Exists(output) && !Exists(Path([output, ".chibi-stage"])) && Entries(empty) == 0, "it leaves nothing");
+}
+
+MissingSourcesPreserveStagedResources :: (fixture: Fixture) {
+    staged := Path([fixture.suite, "/preserved compiler resources"]);
+    Make(staged);
+    sentinel := Path([staged, "/Main.chibi"]);
+    Write(sentinel, "keep staged source\n");
+    copied := engine.NativeSources(Path([fixture.suite, "/missing source tree"]), staged);
+    assert(!copied && Read(sentinel) == "keep staged source\n", "a missing source tree cannot prune the stage");
+    outside := Path([fixture.suite, "/outside resource"]);
+    Make(outside);
+    Write(Path([outside, "/sentinel"]), "keep external file\n");
+    link := Path([fixture.suite, "/obsolete SDK link"]);
+    Link(outside, link);
+    removed := files.RemoveTree(link);
+    assert(removed && !Exists(link) && Read(Path([outside, "/sentinel"])) == "keep external file\n", "removing an owned link preserves its target");
+}
+
+ExistingPrefixIsNeverOverwritten :: (fixture: Fixture) {
+    output := Path([fixture.suite, "/existing output"]);
+    stage := Path([output, ".chibi-stage"]);
+    Make(output);
+    result := Install(fixture, fixture.checkout, fixture.build_dir, output);
+    assert(result.status == 2, "an empty prefix is refused");
+    assert(Entries(output) == 0 && !Exists(stage), "the empty prefix is kept");
+    Write(Path([output, "/sentinel"]), "retain the existing prefix\n");
+    result = Install(fixture, fixture.checkout, fixture.build_dir, output);
+    assert(result.status == 2, "a prefix is refused");
+    assert(Read(Path([output, "/sentinel"])) == "retain the existing prefix\n" && Entries(output) == 1 && !Exists(stage), "the prefix is kept");
+}
+
+ExistingStagingDirectoryIsNeverClaimed :: (fixture: Fixture) {
+    output := Path([fixture.suite, "/reserved output"]);
+    stage := Path([output, ".chibi-stage"]);
+    Make(stage);
+    Write(Path([stage, "/sentinel"]), "retain someone else's staging directory\n");
+    result := Install(fixture, fixture.checkout, fixture.build_dir, output);
+    assert(result.status == 1, "another stage is not claimed");
+    assert(Read(Path([stage, "/sentinel"])) == "retain someone else's staging directory\n" && Entries(stage) == 1 && !Exists(output), "the stage is kept");
+}
+
+// A build directory with only what CompilerTools packages.
+CloneGraph :: (fixture: Fixture, name: string) -> string {
+    clone := Path([fixture.suite, "/", name]);
+    Make(Path([clone, "/sdk"]));
+    Make(Path([clone, "/share/chibi/tools"]));
+    Make(Path([clone, "/lib"]));
+    for (input in ["sdk/chibi", "sdk/chibi-asset-compiler", "share/chibi/compiler", "share/chibi/core",
+                   "share/chibi/apps", "share/chibi/engine.json", "lib/chibi-vendor"]) {
+        Clone(Path([fixture.build_dir, "/", input]), Path([clone, "/", input]));
+    }
+    return clone;
+}
+
+// A wrong native compiler is rejected after staging, which is then removed.
+FailedStagedCompilerValidationRemovesOwnedStaging :: (fixture: Fixture) {
+    clone := CloneGraph(fixture, "corrupt build");
+    output := Path([fixture.suite, "/corrupt output"]);
+    compiler := Path([clone, "/sdk/chibi"]);
+    removed := os.Remove(compiler);
+    assert(removed == nil, "the compiler removed");
+    Clone(Path([fixture.build_dir, "/sdk/chibi-asset-compiler"]), compiler);
+    result := Install(fixture, fixture.checkout, clone, output);
+    assert(result.status == 1 && Says(result, "sdk: staged native compiler failed identity verification"), "the staged compiler fails validation");
+    assert(!Exists(output) && !Exists(Path([output, ".chibi-stage"])), "the owned stage is removed");
+}
+
+FailedStagedCapabilityVerificationRemovesOwnedStaging :: (fixture: Fixture) {
+    output := Path([fixture.suite, "/unsupported output"]);
+    bad := fixture;
+    bad.verification_llvm = Path([fixture.suite, "/missing LLVM tools"]);
+    Make(bad.verification_llvm);
+    result := Install(bad, fixture.checkout, fixture.build_dir, output);
+    assert(result.status == 1 && Says(result, "sdk: staged native compiler failed capability verification"), "a broken native toolchain fails verification");
+    assert(!Exists(output) && !Exists(Path([output, ".chibi-stage"])), "the owned stage is removed");
+}
+
+FailedStagedAssetVerificationRemovesOwnedStaging :: (fixture: Fixture) {
+    clone := CloneGraph(fixture, "wrong asset compiler");
+    asset := Path([clone, "/sdk/chibi-asset-compiler"]);
+    removed := os.Remove(asset);
+    assert(removed == nil, "the asset compiler removed");
+    Clone(Path([fixture.build_dir, "/sdk/chibi"]), asset);
+    output := Path([fixture.suite, "/wrong asset output"]);
+    result := Install(fixture, fixture.checkout, clone, output);
+    assert(result.status == 1 && Says(result, "sdk: staged native asset compiler failed verification"), "a wrong asset compiler is refused");
+    assert(!Exists(output) && !Exists(Path([output, ".chibi-stage"])), "the owned stage is removed");
+}
+
+StaleCompilerResourcesFailBeforeStaging :: (fixture: Fixture) {
+    clone := CloneGraph(fixture, "stale compiler resources");
+    Write(Path([clone, "/share/chibi/compiler/native_driver/Main.chibi"]), "package invalid\n");
+    output := Path([fixture.suite, "/stale output"]);
+    result := Install(fixture, fixture.checkout, clone, output);
+    assert(result.status == 1 && Says(result, "sdk: graph compiler/core resources are missing or stale"), "stale authored sources are refused");
+    assert(!Exists(output) && !Exists(Path([output, ".chibi-stage"])), "it leaves nothing");
+}
+
+ManifestName :: () -> string {
+    return "share/chibi/compiler-tools.tsv";
+}
+
+// A relative path with no empty, '.' or '..' component.
+RelativeFile :: (path: string) -> bool {
+    if (path == "" || strings.HasPrefix(path, "/") || strings.Contains(path, "\\")) {
+        return false;
+    }
+    for (part in strings.Split(path, "/")) {
+        if (part == "" || part == "." || part == "..") {
+            return false;
+        }
+    }
+    return true;
+}
+// The files below path, the manifest aside, or -1 when one is unlisted or not
+// a regular file or directory. The walk ignores the manifest's order.
+InstalledFiles :: (path: string, prefix: string, listed: [string: bool]) -> int {
+    kind := os.Kind(path);
+    if (kind == os.KindFile) {
+        relative := strings.TrimPrefix(path, Path([prefix, "/"]));
+        if (relative == ManifestName()) {
+            return 0;
+        }
+        if (relative in listed) {
+            return 1;
+        }
+        return -1;
+    }
+    if (kind != os.KindDirectory) {
+        return -1;
+    }
+    count := 0;
+    for (name in Names(path)) {
+        below := InstalledFiles(Path([path, "/", name]), prefix, listed);
+        if (below < 0) {
+            return -1;
+        }
+        count += below;
+    }
+    return count;
+}
+
+// Every record names a distinct regular file with its hash, and every
+// installed file has a record; equal counts also reject aliases on a
+// case-insensitive filesystem.
+ManifestMatches :: (prefix: string) {
+    manifest := Read(Path([prefix, "/", ManifestName()]));
+    assert(strings.HasPrefix(manifest, "1\n") && strings.HasSuffix(manifest, "\n"), "the manifest's version");
+    listed: [string: bool] = [:];
+    count := 0;
+    for (line in strings.Split(strings.TrimSuffix(strings.TrimPrefix(manifest, "1\n"), "\n"), "\n")) {
+        fields := strings.Split(line, "\t");
+        assert(length(fields) == 2 && RelativeFile(fields[0]) && fields[0] != ManifestName(), "a manifest record");
+        digest := fields[1];
+        assert(strings.ByteLength(digest) == 64 && strings.Trim(digest, "0123456789abcdef") == "", "a SHA-256 digest");
+        assert(fields[0] not in listed, "a distinct record");
+        path := Path([prefix, "/", fields[0]]);
+        assert(os.Kind(path) == os.KindFile && Digest(path) == digest, "the record's file and hash");
+        listed[fields[0]] = true;
+        count += 1;
+    }
+    assert(count > 0 && InstalledFiles(prefix, prefix, listed) == count, "every installed file has a record");
+}
+
+Copied :: (prefix: string, installed: string, root: string, source: string) {
+    assert(SameTree(Path([prefix, "/", installed]), Path([root, "/", source])), "an installed copy");
+}
+
+// Runs without a toolchain: an empty PATH and failing compilers.
+Bare :: (command: string[]) -> os.Result {
+    full := ["/usr/bin/env", "-u", "CHIBI_CORE", "PATH=", "CC=/usr/bin/false", "CXX=/usr/bin/false"];
+    full.extend(command);
+    return os.Capture(full);
+}
+
+// Canonical metadata preserves strings and integer limits while refusing
+// duplicate keys, invalid escapes and non-integer versions.
+IdentityContracts :: (prefix: string) {
+    inputs := [" {\"z\":2,\"a\":1} ", "[true,null,-9223372036854775808]", "\"\\uD83D\\uDE00\"", "{\"a\":1,\"a\":2}", "01", "9223372036854775808", "\"\\uD800\"", "[1,]"];
+    expected := ["{\"a\":1,\"z\":2}", "[true,null,-9223372036854775808]", "\"\\ud83d\\ude00\"", "", "", "", "", ""];
+    for (index in 0..<length(inputs)) {
+        assert(json.JsonCanonical(inputs[index]) == expected[index], "canonical JSON and malformed input");
+    }
+    path := Path([prefix, "/share/chibi/engine.json"]);
+    original := Read(path);
+    host := Path([prefix, "/bin/chibi"]);
+    formats := "\"artifact_formats\":{\"player\":{\"version\":3},\"execution\":{\"version\":15}}";
+    base := Path(["{\"sdk_version\":\"9.8.7\",\"project_version\":25,", formats]);
+    Write(path, Path([base, "}"]));
+    result := Bare([host, "version"]);
+    assert(result.status == 0 && result.stdout == Path(["chibi 9.8.7\nbuild: unpackaged\ncompiler: ", prefix,
+           "/bin/chibi-compile\nproject format: 25\nartifact formats: execution 15, player 3\n"]), "the installed version contract");
+    Write(path, Path([base, ",\"build_id\":\"fixture-build\"}"]));
+    result = Bare([host, "version"]);
+    assert(result.status == 0 && Says(result, "build: fixture-build"), "a packaged build identity");
+    for (invalid in ["{}", "{\"sdk_version\":\"1\",\"project_version\":\"25\",\"artifact_formats\":{\"execution\":{\"version\":15}}}",
+                     "{\"sdk_version\":\"1\",\"project_version\":25,\"artifact_formats\":{\"execution\":{}}}"]) {
+        Write(path, invalid);
+        result = Bare([host, "version"]);
+        assert(result.status == 1 && Says(result, "Invalid build identity"), "invalid version metadata fails");
+    }
+    removed := os.Remove(path);
+    assert(removed == nil, "the metadata file is removed");
+    result = Bare([host, "version"]);
+    assert(result.status == 1 && Says(result, "Invalid build identity"), "an SDK with missing metadata fails");
+    Write(path, Path([base, ",\"system\":\"Plan9\",\"processors\":[\"unknown\"],\"backends\":[\"native\"]}"]));
+    result = Bare([host, "doctor"]);
+    assert(result.status == 0 && Says(result, "platform: unavailable (built for Plan9 "), "an unavailable platform is not broken");
+    Write(path, Path([base, ",\"backends\":[\"native\"]}"]));
+    result = Bare([host, "doctor"]);
+    assert(result.status == 1 && Says(result, "platform: broken (the build identity names no platform)"), "missing platform metadata");
+    Write(path, json.JsonWithout(original, "backends"));
+    result = Bare([host, "doctor"]);
+    assert(result.status == 1 && Says(result, "native backend: broken (the build identity names no backends)"), "missing backend metadata");
+    Write(path, original);
+    companion := Path([prefix, "/bin/chibi-compile"]);
+    saved := Path([companion, ".saved"]);
+    renamed := os.Rename(companion, saved);
+    assert(renamed == nil, "the compiler companion is moved");
+    result = Bare([host, "doctor"]);
+    assert(result.status == 1 && Says(result, "compiler: broken (missing "), "a missing compiler companion");
+    renamed = os.Rename(saved, companion);
+    assert(renamed == nil, "the companion is restored");
+}
+
+CompilerToolsPackageAndRunAfterRelocation :: (fixture: Fixture) {
+    original := Path([fixture.suite, "/compiler tools"]);
+    relocated := Path([fixture.suite, "/relocated compiler tools"]);
+    result := Install(fixture, fixture.checkout, fixture.build_dir, original);
+    if (result.status != 0) {
+        os.Print(Path([result.stdout, result.stderr]));
+    }
+    assert(result.status == 0 && Exists(original) && !Exists(Path([original, ".chibi-stage"])), "the compiler tools install");
+    for (binary in ["bin/chibi", "bin/chibi-compile"]) {
+        Copied(original, binary, fixture.build_dir, "sdk/chibi");
+    }
+    Copied(original, "libexec/chibi/chibi-asset-compiler", fixture.build_dir, "sdk/chibi-asset-compiler");
+    for (resource in ["share/chibi/compiler", "share/chibi/core", "share/chibi/apps/host"]) {
+        Copied(original, resource, fixture.build_dir, resource);
+    }
+    Copied(original, "share/chibi/graph", fixture.checkout, "tools/graph");
+    Copied(original, "share/chibi/tools/toolchain", fixture.checkout, "tools/toolchain");
+    for (license in ["LICENSE.md", "COPYING", "COPYING.LESSER", "COPYING.EXAMPLES", "docs/distribution-licensing.md"]) {
+        Copied(original, Path(["share/chibi/licenses/chibi/", license]), fixture.checkout, license);
+    }
+    Copied(original, "share/chibi/licenses/vendor/freetype", fixture.archive, "share/chibi/licenses/vendor/freetype");
+    moved := os.Rename(original, relocated);
+    assert(moved == nil && !Exists(original), "the prefix moves");
+    ManifestMatches(relocated);
+    IdentityContracts(relocated);
+    assert(!Exists(Path([relocated, "/libexec/chibi/chibi-build-host"])) &&
+           !Exists(Path([relocated, "/libexec/chibi/chibi-compiler-host"])) &&
+           !Exists(Path([relocated, "/share/chibi/compiler/bootstrap/compiler.chibip"])), "no legacy hosts or bootstrap bytecode");
+
+    consumer := Path([fixture.suite, "/unrelated consumer"]);
+    Make(consumer);
+    Write(Path([consumer, "/Consumer.chibi"]), "package consumer\nimport strings \"core:strings\"\nimport os \"core:os\"\nMain :: () -> int {\n    value := strings.Join([\"installed\", \"compiler\"], \" \");\n    args := os.Arguments();\n    if (os.WriteText(args[0], value)) { return 2; }\n    return 0;\n}\n");
+    host := Path([relocated, "/bin/chibi"]);
+    result = Bare([host, "version"]);
+    assert(result.status == 0 && Says(result, "artifact formats:"), "the relocated identity");
+    result = Bare([host, "doctor"]);
+    assert(result.status == 0 && Says(result, "native backend: supported (LLVM)"), "the relocated doctor");
+    destination := Path([consumer, "/result.txt"]);
+    result = Bare([host, "run", "--llvm", fixture.llvm, Path([consumer, "/Consumer.chibi"]), "--", destination]);
+    assert(result.status == 0 && Read(destination) == "installed compiler", "a program runs with the installed core");
+    Write(Path([consumer, "/Consumer.chibi"]), "package consumer\nMain :: () -> int { return Missing(); }\n");
+    result = Bare([host, "run", "--llvm", fixture.llvm, Path([consumer, "/Consumer.chibi"])]);
+    assert(result.status == 1 && Says(result, "Consumer.chibi:") && Says(result, "Unknown function 'Missing'"), "the installed compiler reports source errors");
+    tests := Path([fixture.suite, "/consumer tests"]);
+    Make(tests);
+    Write(Path([tests, "/Tests.chibi"]), "package consumer_tests\n@test\nPasses :: () { value := 21; assert(value * 2 == 42); }\n");
+    result = Bare([host, "test", "--llvm", fixture.llvm, tests]);
+    assert(result.status == 0 && Says(result, "1 tests, 0 failed"), "the relocated test command");
+    Write(Path([consumer, "/Build.chibi"]), "package build\nimport os \"core:os\"\nimport files \"graph:files\"\nMain :: () -> int {\n args := os.Arguments();\n if (os.WriteText(args[0], \"native build\")) { return 1; }\n if (files.Text(args[0]) != \"native build\") { return 2; }\n return 0;\n}\n");
+    built := Path([consumer, "/built.txt"]);
+    build_command := ["/usr/bin/env", Path(["CHIBI_LLVM_BIN=", fixture.llvm]), "/bin/sh", "-c",
+                      "cd \"$1\"; shift; exec \"$@\"", "build-proof", consumer, host, "build", built];
+    result = Bare(build_command);
+    assert(result.status == 0 && Read(built) == "native build", "the installed CLI runs a project Build.chibi");
+
+    // The installed graph writes commands with an explicit profile and no toolchain.
+    graph_build := Path([fixture.suite, "/installed graph commands"]);
+    head := [host, "run", "--llvm", fixture.llvm, "--root", fixture.checkout,
+             "--collection", Path(["graph=", relocated, "/share/chibi/graph"]), "--entry", "Libraries",
+             Path([relocated, "/share/chibi/tools/toolchain/Graph.chibi"]), "--"];
+    profile := ["--target", "chibi_support", "--commands-only", "on", "--profile", "explicit", "--compiler", "/usr/bin/false",
+                "--cxx-compiler", "/usr/bin/false", "--compiler-id", "Clang", "--build-type", "Release", "--warnings", "off",
+                "--architecture", "", "--sysroot", "", "--sanitizers", "", "--debug-compilation-dir", "",
+                "--ranlib", "/usr/bin/false", "--third-party", fixture.archive, "--libclang-include", "", "--libclang-library", ""];
+    commands := slice(head, 0, length(head));
+    commands.extend(["--build", graph_build, "--launcher", "", "--archiver", "/usr/bin/false"]);
+    commands.extend(profile);
+    result = Bare(commands);
+    assert(result.status == 0, "the installed graph writes commands");
+    assert(length(json.JsonItems(Read(Path([graph_build, "/compile_commands.json"])))) == 3, "chibi_support's three compiles");
+
+    // An explicit profile rejects an omitted archiver even when PATH has an ar:
+    // no machine default enters it.
+    search := Path([fixture.suite, "/discovery tools"]);
+    Make(search);
+    Link("/usr/bin/false", Path([search, "/ar"]));
+    missing_build := Path([fixture.suite, "/missing explicit archiver"]);
+    omitted := ["/usr/bin/env", Path(["PATH=", search]), "CHIBI_CORE="];
+    omitted.extend(head);
+    omitted.extend(["--build", missing_build]);
+    omitted.extend(profile);
+    result = os.Capture(omitted);
+    assert(result.status == 2 && !Exists(missing_build), "an omitted archiver is refused");
+}
+
+OverlayRetiresOnlyOwnedPaths :: (fixture: Fixture) {
+    prefix := Path([fixture.suite, "/overlay prefix"]);
+    Make(Path([prefix, "/bin"]));
+    Make(Path([prefix, "/share/chibi/compiler/bootstrap"]));
+    Make(Path([prefix, "/share/chibi/tools/native_aot"]));
+    Make(Path([prefix, "/libexec/chibi"]));
+    Write(Path([prefix, "/bin/chibi"]), "keep the old CLI until preflight succeeds\n");
+    for (path in ["libexec/chibi/chibi-build-host", "libexec/chibi/chibi-compiler-host", "share/chibi/compiler/bootstrap/compiler.chibip"]) {
+        Write(Path([prefix, "/", path]), "obsolete VM product\n");
+    }
+    outside := Path([fixture.suite, "/external compiler source"]);
+    Make(outside);
+    Write(Path([outside, "/sentinel"]), "keep external source\n");
+    link := Path([prefix, "/share/chibi/compiler/native_driver"]);
+    Link(outside, link);
+    command := [fixture.host, "run", "--core", Path([fixture.checkout, "/packages/core"]),
+                "--llvm", fixture.llvm, "--root", fixture.checkout,
+                "--collection", Path(["graph=", fixture.checkout, "/tools/graph"]), "--entry", "Install",
+                Path([fixture.checkout, "/tools/toolchain/SDK.chibi"]), "--", "--build", fixture.build_dir, "--prefix", prefix];
+    result := os.Capture(command);
+    assert(result.status == 2 && Says(result, "invalid install destination"), "an overlay refuses a resource symlink before writing");
+    assert(Read(Path([prefix, "/bin/chibi"])) == "keep the old CLI until preflight succeeds\n" &&
+           Read(Path([outside, "/sentinel"])) == "keep external source\n", "a refused overlay preserves all products and external files");
+    removed := os.Remove(link);
+    assert(removed == nil, "the resource link is removed");
+    result = os.Capture(command);
+    assert(result.status == 0, "the native overlay installs");
+    for (path in ["libexec/chibi/chibi-build-host", "libexec/chibi/chibi-compiler-host", "share/chibi/compiler/bootstrap/compiler.chibip", "share/chibi/tools/native_aot"]) {
+        assert(!Exists(Path([prefix, "/", path])), "retired SDK tools are removed");
+    }
+    assert(Read(Path([outside, "/sentinel"])) == "keep external source\n", "the overlay keeps external files");
+    Copied(prefix, "bin/chibi", fixture.build_dir, "sdk/chibi");
+    Copied(prefix, "bin/chibi-compile", fixture.build_dir, "sdk/chibi");
+}
+
+// The native compiler and graph products are supplied by the selector.
+pub Run :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 3, "the native compiler, graph build and LLVM directory");
+    build_dir := os.RealPath(arguments[1]);
+    suite := Path([os.Root(), "/.chibi/graph-sdk-install"]);
+    if (Exists(suite)) { removed := files.RemoveTree(suite); assert(removed, "the scratch cleanup"); }
+    Make(suite);
+    fixture: Fixture = {host: os.RealPath(arguments[0]), checkout: os.Root(), build_dir: build_dir,
+                        archive: engine.ThirdParty(os.Root(), "", ""), llvm: os.RealPath(arguments[2]),
+                        verification_llvm: os.RealPath(arguments[2]), suite: os.RealPath(suite)};
+    standalone := Path([fixture.suite, "/standalone/bin"]);
+    Make(standalone);
+    Clone(Path([build_dir, "/sdk/chibi"]), Path([standalone, "/chibi"]));
+    version := Bare([Path([standalone, "/chibi"]), "version"]);
+    assert(version.status == 0 && strings.HasPrefix(version.stdout, "chibi native\n"), "a standalone compiler in bin keeps its development identity");
+    DistributionInputsCannotContainOutputOrStaging(fixture);
+    MissingGraphOutputsFailBeforeCreatingStaging(fixture);
+    MissingSourcesPreserveStagedResources(fixture);
+    ExistingPrefixIsNeverOverwritten(fixture);
+    ExistingStagingDirectoryIsNeverClaimed(fixture);
+    FailedStagedCompilerValidationRemovesOwnedStaging(fixture);
+    FailedStagedCapabilityVerificationRemovesOwnedStaging(fixture);
+    FailedStagedAssetVerificationRemovesOwnedStaging(fixture);
+    StaleCompilerResourcesFailBeforeStaging(fixture);
+    CompilerToolsPackageAndRunAfterRelocation(fixture);
+    OverlayRetiresOnlyOwnedPaths(fixture);
+    cleaned := files.RemoveTree(suite);
+    assert(cleaned, "the scratch cleanup");
+    return 0;
+}

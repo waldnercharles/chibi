@@ -1,0 +1,31 @@
+{
+  "state": "immutable clean source preparation complete; awaiting coordinator producer grant",
+  "head": "3200134a8b7e35c22695c7f7e3527a85893da37f",
+  "tree": "bf72e3ee89918a030f5e5f11d305dbe1e41a01f3",
+  "accepted_base": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+  "independent_source_review": {
+    "reviewer": "/root/bits_hash",
+    "result": "Approved source-only exacthead/tree; no findings"
+  },
+  "public_api_count": 34,
+  "adjacent_test_count": 23,
+  "compiler_bytes": 20792064,
+  "compiler_sha256": "27d8f3d0568e442e1a70b167c04ba97c671ea0d0b1e85e3a7493d88fc59bb912",
+  "verified_compiler_sources": 27,
+  "private_target_unchanged": true,
+  "public_private_text_operations": [
+    7,
+    6
+  ],
+  "validation_plan": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/final-integration-validation-plan.json",
+  "validation_plan_sha256": "4e8b92be9b153417dffe32d7b951f5e6ea5c0112e33df676ea2ac3d2e478577c",
+  "source_verification": "reachability-merge-verification.json",
+  "source_candidate_manifest": "reachability-accepted-candidate.json",
+  "execution": "No build, test, artifact regeneration or push performed for this boundary; historical receipts retain their identities.",
+  "holds": [
+    "Producer slot while integer completes itsboundary",
+    "803acceptancebeforecallbackpatchandnewheadfreeze",
+    "801ABI/effectsandpublicationholds",
+    "freshmatching795native/Wasm/SAN/SDKandordinaryCI/finalaudit"
+  ]
+}

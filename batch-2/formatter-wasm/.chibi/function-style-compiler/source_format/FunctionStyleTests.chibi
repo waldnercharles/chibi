@@ -1,0 +1,166 @@
+package source_format
+
+import syntax "project:compiler_syntax"
+import strings "core:strings"
+
+FunctionReprint :: (source: string, body: int, keyword: int, arrow: int) -> string {
+    switch syntax.Parse(source) {
+        case .Rejected(diagnostic):
+            assert(false, "function style fixture parses");
+            return "";
+        case .Parsed(rows, fields, named, extras, root):
+            edited := FunctionSyntax(source, rows, fields, named, Tokens(rows, fields, root), body, keyword, arrow);
+            switch syntax.Parse(edited.text) {
+                case .Rejected(diagnostic):
+                    assert(false, "function style output parses");
+                    return "";
+                case .Parsed(next_rows, next_fields, next_named, next_extras, next_root):
+                    assert(SameFunctionTree(source, rows, fields, named, edited.text,
+                                           next_rows, next_fields, next_named), "only the intended function spelling changes");
+            }
+            switch Format(edited.text, Defaults()) {
+                case .Rejected(message):
+                    assert(false, "function style output lays out");
+                    return "";
+                case .Formatted(text, notes):
+                    return text;
+            }
+    }
+}
+
+FunctionStyleCase :: (source: string, expected: string, body: int, keyword: int, arrow: int) {
+    actual := FunctionReprint(source, body, keyword, arrow);
+    if (actual != expected) { print_string(actual); }
+    assert(actual == expected, "function style has the expected output");
+    assert(FunctionReprint(actual, body, keyword, arrow) == actual, "function style is a fixed point");
+}
+
+@test
+FunctionKeywordsAreOptionalDefinitions :: () {
+    FunctionStyleCase("package p\nDouble :: (value: int) -> int { return value * 2; }\n",
+                      "package p\nDouble :: fn(value: int) -> int {\n    return value * 2;\n}\n", 0, 2, 0);
+    FunctionStyleCase("package p\nDouble :: fn(value: int) int { return value * 2; }\n",
+                      "package p\nDouble :: (value: int) int {\n    return value * 2;\n}\n", 0, 1, 0);
+}
+
+@test
+FunctionReturnArrowsKeepTheirType :: () {
+    FunctionStyleCase("package p\nDouble :: (value: int) ->\nint { return value * 2; }\n",
+                      "package p\nDouble :: (value: int) int {\n    return value * 2;\n}\n", 0, 0, 1);
+    FunctionStyleCase("package p\nDouble :: (value: int) int { return value * 2; }\n",
+                      "package p\nDouble :: (value: int) -> int {\n    return value * 2;\n}\n", 0, 0, 2);
+}
+
+@test
+SingleReturnsBecomeExpressionBodies :: () {
+    FunctionStyleCase("package p\nDouble :: (value: int) -> int { return value * 2; }\n",
+                      "package p\nDouble :: fn(value: int) int => value * 2;\n", 2, 2, 1);
+    FunctionStyleCase("package p\nDouble :: fn(value: int) int => value * 2;\n",
+                      "package p\nDouble :: (value: int) -> int {\n    return value * 2;\n}\n", 1, 1, 2);
+    FunctionStyleCase("package p\nDouble :: (value: int) -> int => { return value * 2; }\n",
+                      "package p\nDouble :: (value: int) -> int {\n    return value * 2;\n}\n", 1, 0, 0);
+}
+
+@test
+FunctionBodiesProtectCommentsAndMultipleStatements :: () {
+    FunctionStyleCase("package p\nF :: () -> int {\n    // explanation\n    return 1;\n}\nG :: () -> int { value := 2; return value; }\n",
+                      "package p\nF :: () -> int {\n    // explanation\n    return 1;\n}\nG :: () -> int {\n    value := 2;\n    return value;\n}\n", 2, 0, 0);
+    FunctionStyleCase("package p\n// chibi fmt: off\nF :: () -> int { return 1; }\n// chibi fmt: on\nG :: () -> int { return 2; }\n",
+                      "package p\n// chibi fmt: off\nF :: () -> int { return 1; }\n// chibi fmt: on\nG :: fn() int => 2;\n", 2, 2, 1);
+}
+
+@test
+FunctionStylesKeepCallableTypesAndFnIdentifiers :: () {
+    FunctionStyleCase("package p\nF :: (callback: fn(value: int) -> int) -> int { return callback(2); }\n",
+                      "package p\nF :: fn(callback: fn(value: int) -> int) int => callback(2);\n", 2, 2, 1);
+    FunctionStyleCase("package p\nfn :: () -> int { return 1; }\n",
+                      "package p\nfn :: fn() int => 1;\n", 2, 2, 1);
+}
+
+@test
+VoidExpressionConversionRequestsTypedProof :: () {
+    source := "package p\nLog :: () { print_string(\"hello\"); }\n";
+    switch syntax.Parse(source) {
+        case .Rejected(diagnostic): assert(false, "void fixture parses");
+        case .Parsed(rows, fields, named, extras, root):
+            edited := FunctionSyntax(source, rows, fields, named, Tokens(rows, fields, root), 2, 0, 0);
+            assert(edited.needs_semantics, "an ignored result must not silently become a public result");
+            assert(strings.Contains(edited.text, "=> print_string"), "the candidate uses expression syntax");
+    }
+}
+
+@test
+LambdaBodiesKeepOnlyGrammarRequiredKeywords :: () {
+    FunctionStyleCase("package p\nMain :: () { Apply((value) => value + 1); }\n",
+                      "package p\nMain :: () {\n    Apply(fn(value) {\n        return value + 1;\n    });\n}\n", 1, 1, 0);
+    FunctionStyleCase("package p\nMain :: () { Apply(fn(value) { return value + 1; }); }\n",
+                      "package p\nMain :: () {\n    Apply((value) => value + 1);\n}\n", 2, 1, 0);
+}
+
+@test
+SignaturePoliciesCoverForeignAndNamedResults :: () {
+    FunctionStyleCase("package p\nforeign { Count :: () -> int; }\n",
+                      "package p\nforeign {\nCount :: fn() int;\n}\n", 0, 2, 1);
+    FunctionStyleCase("package p\nPair :: () -> (first: int, second: bool) { return (1, true); }\n",
+                      "package p\nPair :: () (first: int, second: bool) {\n    return (1, true);\n}\n", 0, 0, 1);
+}
+
+@test
+FunctionPoliciesPreserveGenericsOverloadsAndSignatureComments :: () {
+    FunctionStyleCase("package p\nIdentity :: (value: $T) -> T { return value; }\nChoose :: (value: int) -> int { return value + 1; }\nChoose :: (value: bool) -> bool { return !value; }\n",
+                      "package p\nIdentity :: fn(value: $T) T => value;\nChoose :: fn(value: int) int => value + 1;\nChoose :: fn(value: bool) bool => !value;\n", 2, 2, 1);
+    FunctionStyleCase("package p\nArea :: () -> int m^2 { return 1; }\n",
+                      "package p\nArea :: () int m^2 => 1;\n", 2, 0, 1);
+    FunctionStyleCase("package p\nF :: () -> /* result */ int { return 1; }\n",
+                      "package p\nF :: () -> /* result */ int => 1;\n", 2, 0, 1);
+}
+
+@test
+FunctionSyntaxProofRejectsOtherProgramChanges :: () {
+    original := "package p\nF :: () -> int { return Read(1); }\n";
+    switch syntax.Parse(original) {
+        case .Rejected(diagnostic): assert(false, "proof fixture parses");
+        case .Parsed(rows, fields, named, extras, root):
+            for (changed in ["package p\nF :: fn() int => Read(2);\n",
+                             "package p\nF :: fn() int => Other(1);\n",
+                             "package p\nF :: fn() bool => Read(1);\n"]) {
+                switch syntax.Parse(changed) {
+                    case .Rejected(diagnostic): assert(false, "proof candidate parses");
+                    case .Parsed(next_rows, next_fields, next_named, next_extras, next_root):
+                        assert(!SameFunctionTree(original, rows, fields, named, changed,
+                                                next_rows, next_fields, next_named),
+                               "function syntax proof rejects changed values, calls, and result types");
+                }
+            }
+    }
+}
+
+@test
+FunctionFallbackKeepsIndependentStyles :: () {
+    source := "package p\nReader :: () -> int { return 7; }\nSafeReturn :: () -> int { return Reader(); }\nIgnored :: () { Reader(); }\n";
+    expected := "package p\nReader :: fn() int => 7;\nSafeReturn :: fn() int => Reader();\nIgnored :: fn() {\n    Reader();\n}\n";
+    switch syntax.Parse(source) {
+        case .Rejected(diagnostic): assert(false, "mixed function fixture parses");
+        case .Parsed(rows, fields, named, extras, root):
+            tokens := Tokens(rows, fields, root);
+            candidate := FunctionSyntax(source, rows, fields, named, tokens, 2, 2, 1);
+            assert(candidate.needs_semantics, "returning an ignored int call requires typed proof");
+            safe := FunctionSafeSyntax(source, rows, fields, named, tokens, 2, 2, 1);
+            assert(!safe.needs_semantics, "the fallback changes only function spelling");
+            switch syntax.Parse(safe.text) {
+                case .Rejected(diagnostic): assert(false, "fallback function output parses");
+                case .Parsed(next_rows, next_fields, next_named, next_extras, next_root):
+                    assert(SameFunctionTree(source, rows, fields, named, safe.text,
+                                           next_rows, next_fields, next_named), "fallback preserves program structure");
+                    again := FunctionSafeSyntax(safe.text, next_rows, next_fields, next_named,
+                                                Tokens(next_rows, next_fields, next_root), 2, 2, 1);
+                    assert(again.text == safe.text && !again.needs_semantics, "fallback is a fixed point");
+            }
+            switch Format(safe.text, Defaults()) {
+                case .Rejected(message): assert(false, "fallback output lays out");
+                case .Formatted(text, notes):
+                    if (text != expected) { print_string(text); }
+                    assert(text == expected, "safe returns and signature styles survive an unsafe ignored call");
+            }
+    }
+}

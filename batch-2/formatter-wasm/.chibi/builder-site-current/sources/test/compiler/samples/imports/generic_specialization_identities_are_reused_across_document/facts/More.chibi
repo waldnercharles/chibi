@@ -1,0 +1,4 @@
+package facts
+import tool "project:generic_specialization_identities_are_reused_across_document/lib"
+Again :: (values: int[]) -> int { return tool.First(values); }
+NestedAgain :: (rows: int[][]) -> int[] { return tool.First(rows); }

@@ -1,0 +1,7 @@
+package facts
+
+// number conversion of f64 rounds an odd halfway value up to even
+@test
+Calls :: () {
+    assert(Fold(16777219) == 16777220.0, "16777219 rounds up to 16777220");
+}

@@ -1,0 +1,26 @@
+package comment_gap_probe
+import format "project:source_format"
+Main :: () -> int {
+    source := "package p\nA :: () {\n    First();\n    // This paragraph explains how the formatter keeps the important words together and wraps prose into bounded lines.\n    Call();\n}\n";
+    expected := "package p\nA :: () {\n    First();\n\n    // This paragraph explains how the\n    // formatter keeps the important\n    // words together and wraps prose\n    // into bounded lines.\n    Call();\n}\n";
+    for (mode in [int(1), 3]) {
+        o := format.Defaults();
+        o.comment_reflow = mode;
+        o.comment_width = 40;
+        o.blank_lines_before_comments = 1;
+        o.max_blank_lines = 0;
+        switch format.Format(source, o) {
+            case .Rejected(message): print_string(message); assert(false, "source must format");
+            case .Formatted(text, notes):
+                if (text != expected) { print_string(text); }
+                assert(text == expected, "comment group has expected spacing");
+                switch format.Format(text, o) {
+                    case .Rejected(message): print_string(message); assert(false, "source must format");
+                    case .Formatted(again, more): if (again != expected) { print_string(again); }
+                        assert(again == expected, "comment group is a fixed point");
+                }
+        }
+    }
+    print_string("comment gap fixed points passed");
+    return 0;
+}

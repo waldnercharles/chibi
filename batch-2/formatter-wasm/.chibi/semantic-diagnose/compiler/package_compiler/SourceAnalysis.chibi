@@ -1,0 +1,178 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import routes "project:package_routes"
+import graph "project:package_graph"
+import syntax "project:syntax_diagnostics"
+import strings "core:strings"
+
+// A binding's byte ranges in its original document and the actual type the
+// compiler gave it after contextual typing and conversion. Empty spelling
+// means that no safe source name is available. Generic definitions stay generic.
+pub TypeSite :: struct {
+    document: int;
+    start: int;
+    name_end: int;
+    value_start: int;
+    type_start: int;
+    type_end: int;
+    line: int;
+    column: int;
+    constant: bool;
+    declared: bool;
+    can_omit: bool;
+    spelling: string;
+}
+// Kept opaque to formatting callers. Equality checks every typed operation and
+// lifetime table, never a hash of source or a successful-compilation flag.
+SourceBody :: struct {
+    slots: Slot[];
+    locals: Slot[];
+    cells: Cell[];
+    code: Code[];
+    calls: Invocation[];
+    hosts: Host[];
+    roots: Root[];
+    effects: int;
+    direct_write: int;
+    facts: SemanticFact[];
+}
+pub SemanticSignature :: struct {
+    callables: Callable[];
+    params: Param[];
+    types: TypeDecl[];
+    members: TypeMember[];
+    constants: ConstDecl[];
+    bodies: SourceBody[];
+    retained: StateDecl[];
+    owners: int[];
+}
+pub SourceAnalysis :: union {
+    Rejected(diagnostic: syntax.Diagnostic)
+    | Analyzed(sites: TypeSite[], signature: SemanticSignature)
+}
+
+// A printable type for a binding in `package`. Imported nominal types need a
+// file-local alias. Anonymous results and generic applications are left alone
+// until the compiler can print their source-level type without guessing.
+SourceTypeName :: (types: TypeDecl[], links: graph.Binding[], document: int, package: int,
+                   value: ValueType, depth: int) -> string {
+    if (depth > 64 || value.storage <= 0) { return ""; }
+    if (value.container == ArrayContainer || value.container == ViewContainer) {
+        element := value;
+        element.container = 0;
+        if (value.record >= 0 && types[value.record].kind == CollectionDecl) {
+            declared := types[value.record];
+            element = {storage: declared.value_storage, container: declared.value_container,
+                       record: declared.value_record};
+        }
+        inner := SourceTypeName(types, links, document, package, element, depth + 1);
+        if (inner == "") { return ""; }
+        if (value.container == ViewContainer) { return strings.Concatenate(["@view ", inner, "[]"]); }
+        return strings.Concatenate([inner, "[]"]);
+    }
+    if (value.record >= 0) {
+        declared := types[value.record];
+        if (declared.kind == OptionalDecl || declared.kind == PointerDecl) {
+            inner := SourceTypeName(types, links, document, package,
+                                    {storage: declared.value_storage, container: declared.value_container,
+                                     record: declared.value_record}, depth + 1);
+            if (inner == "") { return ""; }
+            if (declared.kind == OptionalDecl) { return strings.Concatenate(["(", inner, ")?"]); }
+            if (declared.key != 0) { return strings.Concatenate(["^(", inner, ")?"]); }
+            return strings.Concatenate(["^(", inner, ")"]);
+        }
+        if (declared.kind == BuiltinScalarDecl && declared.name == "char") { return "char"; }
+        if (declared.name == "" || declared.kind == MapDecl || declared.kind == TemplateDecl ||
+            declared.kind == CollectionDecl || strings.IndexByte(declared.name, 40) >= 0 ||
+            strings.IndexByte(declared.name, 60) >= 0) { return ""; }
+        if (declared.package == package) { return declared.name; }
+        for (link in links) {
+            if (link.file == document && link.target == declared.package) {
+                return strings.Concatenate([link.name, ".", declared.name]);
+            }
+        }
+        return "";
+    }
+    if (value.container != 0) { return ""; }
+    if (value.storage == BoolStorage) { return "bool"; }
+    if (value.storage == FloatStorage) { return "f32"; }
+    if (value.storage == DoubleStorage) { return "f64"; }
+    if (value.storage == TextStorage) { return "string"; }
+    return TypeName(value.storage);
+}
+
+SourceSites :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], file_packages: int[],
+                links: graph.Binding[], callables: Callable[], types: TypeDecl[], constants: ConstDecl[],
+                bodies: Body[]) -> TypeSite[] {
+    // Three flat arrays index facts directly by their name node. A pass over the
+    // syntax rows then emits sites in document/source order, never hash order.
+    storages := resize([int(0)], length(forest));
+    containers := resize([int(0)], length(forest));
+    records := resize([int(0)], length(forest));
+    omittable := resize([false], length(forest));
+    for (body in bodies) {
+        switch body {
+            case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
+                for (fact in facts) {
+                    if (fact.kind == BindingStorageFact) { storages[fact.node] = fact.target; }
+                    else if (fact.kind == BindingContainerFact) { containers[fact.node] = fact.target; }
+                    else if (fact.kind == BindingRecordFact) { records[fact.node] = fact.target + 1; }
+                    else if (fact.kind == BindingOmittableFact) { omittable[fact.node] = true; }
+                }
+            case:
+                continue;
+        }
+    }
+    for (constant in constants) {
+        declaration := forest[constant.node].parent;
+        name := Field(forest, declaration, syntax.FieldName);
+        if (name >= 0) { storages[name] = constant.storage; omittable[name] = constant.storage == IntStorage; }
+    }
+    sites: TypeSite[] = [];
+    for (document in 0..<length(documents)) {
+        first := documents[document].node_start;
+        last := first + documents[document].node_count;
+        for (node in first..<last) {
+            local := Is(forest, node, syntax.LocalDeclaration);
+            constant := Is(forest, node, syntax.ConstantDeclaration);
+            if (!local && !constant) { continue; }
+            name := Field(forest, node, syntax.FieldName);
+            value := Field(forest, node, syntax.FieldValue);
+            if (name < 0 || value < 0) { continue; }
+            declared := Field(forest, node, syntax.FieldType);
+            type_start: int = -1;
+            type_end: int = -1;
+            if (declared >= 0) { type_start = forest[declared].start; type_end = forest[declared].end; }
+            sites.append({document: document, start: forest[name].start, name_end: forest[name].end,
+                          value_start: forest[value].start, type_start: type_start, type_end: type_end,
+                          line: forest[name].row + 1, column: forest[name].column + 1, constant: constant,
+                          declared: declared >= 0, can_omit: omittable[name],
+                          spelling: SourceTypeName(types, links, document, file_packages[document],
+                              {storage: storages[name], container: containers[name], record: records[name] - 1}, 0)});
+        }
+    }
+    return sites;
+}
+
+SourcePrepared :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
+                   files_of: int[], file_packages: int[], active: int[], edges: graph.Edge[], links: graph.Binding[],
+                   input_callables: Callable[], input_params: Param[], input_types: TypeDecl[], members: TypeMember[],
+                   constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[],
+                   effects: int[], ops: Ops, target: Target) -> SourceAnalysis { return SourceAnalysis.Rejected({start: 0, end: 0, line: 1, column: 1, document: -1, message: "stub"}); }
+
+// The ordinary compiler's front end through prepared typed bodies, without
+// LLVM, bytecode serialization, execution, filesystem access or global state.
+// Inputs and native catalog have the same ownership and order as Compile.
+pub AnalyzeSources :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                       sources: string[], target: Target, names: string[], native_input: Native[], port_input: Port[],
+                       identity_input: u64[]) -> SourceAnalysis { return SourceAnalysis.Rejected({start: 0, end: 0, line: 1, column: 1, document: -1, message: "stub"}); }
+
+SameSourceCode :: (a: Code, b: Code) -> bool { return false; }
+SameSourceBody :: (a: SourceBody, b: SourceBody) -> bool { return false; }
+
+// Conservative exact equivalence of the compiler's typed representation.
+// Source locations and debug occurrence IDs are deliberately excluded. Extra
+// conversions, changed dispatch, temporary/ownership changes or a changed public
+// signature reject a rewrite even when both versions happen to compile.
+pub SameSemantics :: (a: SemanticSignature, b: SemanticSignature) -> bool { return false; }

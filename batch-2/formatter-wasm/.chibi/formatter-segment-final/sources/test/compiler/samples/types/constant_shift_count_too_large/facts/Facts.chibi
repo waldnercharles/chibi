@@ -1,0 +1,4 @@
+package facts
+Bad: int : 1 >> 4097;
+
+// error: 2:17: Constant shift count is too large

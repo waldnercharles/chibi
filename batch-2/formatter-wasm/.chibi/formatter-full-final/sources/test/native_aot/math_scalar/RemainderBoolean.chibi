@@ -1,0 +1,2 @@
+package scalar_remainder_boolean
+Main :: () -> int { return int(fmod(true, 2.0)); }

@@ -1,0 +1,22 @@
+package loop
+
+foreign import libc "system:c"
+foreign libc {
+    fopen :: (path: cstring, mode: cstring) -> rawptr
+    fclose :: (stream: rawptr) -> i32
+}
+
+Main :: () -> int { return 0; }
+
+Frame :: () -> int {
+    count: retain int = 0;
+    big: retain i64 = 5000000000;
+    count += 1;
+    if count == 3 { Ready(); }
+    return 0;
+}
+
+Ready :: () {
+    stream := fopen("generation-ready", "wb");
+    closed := fclose(stream);
+}

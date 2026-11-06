@@ -1,0 +1,19 @@
+// An authored wave announcement expands a thin red band through floor cells and
+// expires after 0.8 seconds.
+WavePulseBehavior :: behavior {
+    // The last frame step, for actions and functions.
+    Step: number = 0
+    // State
+    Age := 0.0
+    on Tick :: (dt: number s) {
+        Step = dt
+        Age = Age + Step
+        if number(divide(Age, B: plain f64 = 0.8)) >= 1.0 {
+            destroy_entity(self)
+        } else {
+            self.SurfaceInfluence.radius = number(24.0 + 336.0 * divide(Age, B: plain f64 = 0.8))
+            self.SurfaceInfluence.inner_radius = number(max(0.0, 24.0 + 336.0 * divide(Age, B: plain f64 = 0.8) - 28.0))
+            self.SurfaceInfluence.strength = number(0.65 * (1.0 - divide(Age, B: plain f64 = 0.8)))
+        }
+    }
+}

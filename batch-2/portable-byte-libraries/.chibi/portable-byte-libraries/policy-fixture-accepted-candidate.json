@@ -1,0 +1,15 @@
+{
+  "state": "clean local checkpoint after accepted799 fixture-only merge; source verification only",
+  "head": "4413d960d1fe43cfcab6dd15cb8041378ade5a05",
+  "tree": "c3433e9ae64379526b518b9a616a5fa396ec6cce",
+  "accepted_base": "bdfb401e8da7f3dbf219b7e24aa5af522d938b5d",
+  "previous": "eb2a5cfdc53d2ef140b72974cf4df6be2d68ab3d",
+  "feature_paths": 42,
+  "feature_patch_sha256": "734284259b4f5ffe8071466c301227c60dd1481e90e460e0e16dad260e0fe3d9",
+  "feature_patch_identical_to": "runtime-accepted-candidate.patch",
+  "runtime_and_artifacts_unchanged_by_this_merge": true,
+  "matching_rebuild_requirement": "Existing pre797 binaries remain historical; await assigned matching build before fresh runtime proof.",
+  "no_broad_build_test_or_artifact_regeneration": true,
+  "verification": "policy-fixture-merge-verification.json",
+  "holds": "Body/artifact,801capability-effect,privatebank803,SDKandfeaturepublication remain unchanged."
+}

@@ -1,0 +1,1 @@
+{"build_id": "old", "kind": "runtime", "manifest_format": 1, "files": {"include/é/😀.h": {"sha256": "x", "bytes": 123}}, "requirements": {"project_format": 7}, "products": {"chibi-player": "bin/chibi-player"}}

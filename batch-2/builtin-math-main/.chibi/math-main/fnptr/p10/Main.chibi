@@ -1,0 +1,27 @@
+package scalar
+Slot :: struct { kind: int; value: int; }
+Cursor :: struct { pos: int; final: int; failed: bool; }
+Main :: () -> int {
+    out: u8[] = [];
+    slots: Slot[] = [{kind: 0, value: 0}, {kind: 0, value: 0}];
+    c: Cursor = {pos: 0, final: 2, failed: false};
+    Put(&out, 7);
+    Put(&out, 9);
+    SetKind(&slots, 1, 5);
+    Advance(&c);
+    return Count(&out) * 1000 + slots[1].kind * 100 + c.pos * 10 + int(out[1]);
+}
+Put :: (out: ^(u8[]), x: u8) {
+    out.append(x);
+}
+Count :: (out: ^(u8[])) -> int {
+    return length(out^);
+}
+SetKind :: (slots: ^(Slot[]), index: int, kind: int) {
+    slots^[index].kind = kind;
+    slots^[index] = {kind: kind, value: 1};
+}
+Advance :: (c: ^Cursor) {
+    c.pos += 1;
+    c.failed = c.pos > c.final;
+}

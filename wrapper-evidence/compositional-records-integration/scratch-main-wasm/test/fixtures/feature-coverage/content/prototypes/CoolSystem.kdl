@@ -1,0 +1,4 @@
+name "CoolSystem"
+components {
+    EngineSystem asset="Cool"
+}

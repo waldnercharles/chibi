@@ -1,0 +1,55 @@
+package task_timing_clock
+
+foreign import test_clock "system:c"
+foreign test_clock {
+    TestTime :: (now: f64) -> int
+    TestNaN :: () -> f64
+}
+
+Main :: () -> int {
+    Advance(10);
+    early := Worker();
+    Advance(10.75);
+    cancel early after 1
+    cancel early after 2
+    Advance(11);
+    yield
+    await early
+    if (Count(false) != 0) { return 1; }
+
+    complete := Worker();
+    Advance(12);
+    yield
+    await complete
+    if (Count(false) != 1) { return 2; }
+
+    Advance(-2);
+    negative_domain := Worker();
+    Advance(-1);
+    yield
+    await negative_domain
+    if (Count(false) != 2) { return 3; }
+
+    if (Advance(NotANumber()) != 1) { return 5; }
+    cancelled := Worker();
+    cancel cancelled after NotANumber()
+    await Delay(NotANumber())
+    await cancelled
+    if (Count(false) != 2) { return 4; }
+    return 0;
+}
+
+Advance :: (now: f64) -> int { return TestTime(now); }
+NotANumber :: () -> f64 { return TestNaN(); }
+
+Worker :: () -> int {
+    await Delay(1)
+    Count(true);
+    return 0;
+}
+
+Count :: (increment: bool) -> int {
+    count: retain int = 0;
+    if (increment) { count += 1; }
+    return count;
+}

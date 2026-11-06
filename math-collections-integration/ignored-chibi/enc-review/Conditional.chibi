@@ -1,0 +1,9 @@
+package conditional_record_review
+Inner :: struct { text: string; }
+Outer :: struct { inner: Inner; flag: bool; }
+Make :: (i: int) -> Inner { return {text: text_from_bytes([u8(65), 0, u8(i)])}; }
+Check :: (value: Outer) -> bool { return value.flag; }
+Main :: () -> int {
+    for (i in 0..<20) { assert(i % 2 == 1 || Check({inner: Make(i), flag: true})); }
+    return 0;
+}

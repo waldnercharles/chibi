@@ -1,0 +1,18 @@
+package facts
+
+// managed pointer compound float widening
+@test
+Calls :: () {
+    r1: f64 = Local();
+    e1: f64 = 3.0;
+    assert(r1 == e1, "Local call 1");
+    r2: f64 = Through();
+    e2: f64 = 3.0;
+    assert(r2 == e2, "Through call 2");
+    r3: f64 = Addressed();
+    e3: f64 = 3.0;
+    assert(r3 == e3, "Addressed call 3");
+    r4: f64 = Member();
+    e4: f64 = 3.0;
+    assert(r4 == e4, "Member call 4");
+}

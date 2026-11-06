@@ -1,0 +1,115 @@
+package managed_backing
+
+Box :: struct { numbers: int[]; words: string[]; }
+Wrapped :: struct { value: Box; title: string; }
+Batch :: struct { values: Box[]; }
+Choice :: union { None | Text(value: string) | Values(value: Box) | Numbers(values: int[]) }
+Tree :: union { Empty | Branch(text: string, children: Tree[]) }
+
+Main :: () -> int {
+    value := Make(1);
+    snapshot := value;
+    value.numbers[0] = 7;
+    value.words[0] = Text(7);
+    value.numbers.append(8);
+    assert(snapshot.numbers[0] == 1 && length(snapshot.numbers) == 2);
+    assert(text_byte_at(snapshot.words[0], 2) == 1);
+    changed := Addressed(snapshot);
+    assert(changed.numbers[0] == 9 && snapshot.numbers[0] == 1);
+    assert(text_byte_at(changed.words[0], 2) == 9 && text_byte_at(snapshot.words[0], 2) == 1);
+    changed = Identity(snapshot);
+    changed.numbers.extend(changed.numbers);
+    assert(length(changed.numbers) == 4 && length(snapshot.numbers) == 2);
+    changed.numbers.resize(1);
+    changed.numbers.resize(4);
+    assert(changed.numbers[0] == 1 && changed.numbers[3] == 0 && length(snapshot.numbers) == 2);
+    changed.words.remove_index(0);
+    assert(length(changed.words) == 1 && length(snapshot.words) == 2);
+    wrapped: Wrapped = {title: Text(3), value: Make(3)};
+    wrapped_copy := wrapped;
+    wrapped.value = Make(4);
+    assert(wrapped_copy.value.numbers[0] == 3 && text_byte_at(wrapped_copy.title, 2) == 3);
+    escaped := Make(5).words;
+    assert(text_byte_at(escaped[0], 2) == 5);
+    boxes := [Make(1), Make(2)];
+    boxes_copy := boxes;
+    boxes[0] = Make(7);
+    assert(boxes_copy[0].numbers[0] == 1 && text_byte_at(boxes_copy[0].words[0], 2) == 1);
+    boxes[0] = boxes[0];
+    boxes.append(Make(3));
+    clipped := slice(boxes, 1, 2);
+    expanded := resize(clipped, 5);
+    assert(expanded[0].numbers[0] == 2 && length(expanded[4].numbers) == 0);
+    boxes.remove_index(1);
+    assert(boxes[1].numbers[0] == 3);
+    batch: Batch = {values: [Make(1), Make(2)]};
+    batch_copy := batch;
+    batch.values[0] = Make(8);
+    batch_copy.values[0] = batch_copy.values[0];
+    batch.values.append(Make(3));
+    assert(batch_copy.values[0].numbers[0] == 1 && text_byte_at(batch_copy.values[0].words[0], 2) == 1);
+    assert(length(batch_copy.values) == 2 && length(batch.values) == 3);
+    batch.values.resize(4);
+    assert(length(batch.values[3].numbers) == 0 && length(batch_copy.values) == 2);
+    for i in 0..<24 {
+        assert(i % 2 == 1 || Check({numbers: [i], words: [Text(i)]}, i));
+        assert(i % 2 == 0 || Check({words: [Text(i)], numbers: [i]}, i));
+        transient := Make(i);
+        if i == 6 { continue; }
+        if i == 9 { break; }
+        transient.numbers.append(i);
+    }
+    union_value := Choice.Values(Make(6));
+    union_copy := union_value;
+    union_value = Choice.Text(Text(8));
+    switch union_copy {
+        case .Values(box): assert(box.numbers[0] == 6 && text_byte_at(box.words[0], 2) == 6);
+        case .None: assert(false);
+        case .Text(text): assert(false);
+        case .Numbers(numbers): assert(false);
+    }
+    union_value = Choice.Numbers([int(4), 5]);
+    switch union_value {
+        case .Numbers(numbers): assert(numbers[0] + numbers[1] == 9);
+        case .None: assert(false);
+        case .Text(text): assert(false);
+        case .Values(box): assert(false);
+    }
+    callback := Make(1);
+    callback.numbers.append(Reset(&callback));
+    assert(length(callback.numbers) == 3 && callback.numbers[0] == 7 && callback.numbers[2] == 9);
+    assert(text_byte_at(callback.words[0], 2) == 7);
+    callback.numbers[ResetIndex(&callback)] = 99;
+    assert(callback.numbers[0] == 7 && callback.numbers[1] == 99 && text_byte_at(callback.words[0], 2) == 7);
+    optional := Maybe(true);
+    kept := ReadKept(optional!, Clear(&optional));
+    assert(kept == 12 && optional == nil);
+    escaped_numbers := Maybe(true)!.numbers;
+    assert(escaped_numbers[0] == 6);
+    // Type recursion is a value graph of prior snapshots. Its destruction
+    // must use bounded native stack space and release every backing/text.
+    tree := Tree.Branch(Text(0), []);
+    for i in 1..<10001 { tree = Tree.Branch(Text(i % 128), [tree]); }
+    switch tree {
+        case .Branch(text, children): assert(length(children) == 1 && text_byte_at(text, 2) == 16);
+        case .Empty: assert(false);
+    }
+    tree = Tree.Empty;
+    return 0;
+}
+Text :: (i: int) -> string { return text_from_bytes([u8(65), 0, u8(i)]); }
+Make :: (i: int) -> Box { return {numbers: [i, i + 1], words: [Text(i), Text(i + 1)]}; }
+Identity :: (value: Box) -> Box { return value; }
+Replace :: (value: ^Box) { value.numbers[0] = 9; value.words[0] = Text(9); }
+Addressed :: (value: Box) -> Box { Replace(&value); return value; }
+Check :: (value: Box, i: int) -> bool { return value.numbers[0] == i && text_byte_at(value.words[0], 2) == i; }
+
+Maybe :: (present: bool) -> Box? {
+    if (present) { return Make(6); }
+    return nil;
+}
+Clear :: (value: ^(Box?)) -> int { value^ = nil; return 0; }
+ReadKept :: (value: Box, ignored: int) -> int { return value.numbers[0] + text_byte_at(value.words[0], 2); }
+
+Reset :: (value: ^Box) -> int { value^ = Make(7); return 9; }
+ResetIndex :: (value: ^Box) -> int { value^ = Make(7); return 1; }

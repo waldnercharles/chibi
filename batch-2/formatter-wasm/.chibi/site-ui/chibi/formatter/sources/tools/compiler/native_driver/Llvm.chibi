@@ -1,0 +1,57 @@
+package native_driver
+
+import link "project:native_link"
+import host "project:native_link_host"
+import os "core:os"
+import strings "core:strings"
+
+MinimumLlvm: int : 22;
+
+// LLVM and LLD print their major after these labels, with an optional vendor
+// prefix. An unrecognized response cannot establish the required version.
+LlvmMajor :: (text: string, label: string) -> int {
+    start := strings.Index(text, label);
+    if (start < 0) {
+        return 0;
+    }
+    start += strings.ByteLength(label);
+    major := 0;
+    count := 0;
+    while (start < strings.ByteLength(text)) {
+        byte := strings.ByteAt(text, start);
+        if (byte < 48 || byte > 57) {
+            break;
+        }
+        if (count >= 4) {
+            return 0;
+        }
+        major = major * 10 + byte - 48;
+        count += 1;
+        start += 1;
+    }
+    return major;
+}
+
+// Run before compiling a new output. Cache hits already verify the exact tool
+// bytes recorded by a compiler that performed this check, so they need no
+// version subprocesses.
+LlvmProblem :: (llvm: string, triple: string) -> string {
+    target := link.TargetOf(triple);
+    if (target < 0) {
+        return strings.Concatenate(["unknown target ", triple]);
+    }
+    names := ["opt", "llc", link.Linker(target)];
+    labels := ["LLVM version ", "LLVM version ", "LLD "];
+    for (index in 0..<length(names)) {
+        tool := host.Tool(llvm, names[index]);
+        if (tool == "") {
+            return format_text("LLVM {} or newer is required; missing {}/{}", MinimumLlvm, llvm, names[index]);
+        }
+        reported := os.Capture([tool, "--version"]);
+        text := strings.TrimSpace(strings.Concatenate([reported.stdout, "\n", reported.stderr]));
+        if (reported.status != 0 || LlvmMajor(text, labels[index]) < MinimumLlvm) {
+            return format_text("LLVM {} or newer is required; cannot use {}: {}", MinimumLlvm, tool, text);
+        }
+    }
+    return "";
+}

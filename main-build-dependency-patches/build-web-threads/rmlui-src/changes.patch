@@ -1,0 +1,437 @@
+diff --git a/Include/RmlUi/Core/Core.h b/Include/RmlUi/Core/Core.h
+index 3a74c6c4..0e1495a0 100644
+--- a/Include/RmlUi/Core/Core.h
++++ b/Include/RmlUi/Core/Core.h
+@@ -171,4 +171,11 @@ RMLUICORE_API void ReleaseFontResources();
+ /// @note Also releases font resources, which invalidates all existing FontFaceHandles returned from the font engine.
+ RMLUICORE_API void ReleaseRenderManagers();
+ 
++/// Handles a data-if binding's change of whether its element shows, in place of the binding setting or removing
++/// 'display: none', so an application can keep a leaving element shown while its exit transitions run. 'first' marks
++/// the binding's first evaluation. Returns false to leave the change to the binding.
++using DataIfHandler = bool (*)(Element* element, bool show, bool first);
++/// Sets the handler for every data-if binding, or none with nullptr.
++RMLUICORE_API void SetDataIfHandler(DataIfHandler handler);
++
+ } // namespace Rml
+diff --git a/Source/Core/DataControllerDefault.cpp b/Source/Core/DataControllerDefault.cpp
+index 69953ae2..6ebc8ee0 100644
+--- a/Source/Core/DataControllerDefault.cpp
++++ b/Source/Core/DataControllerDefault.cpp
+@@ -1,5 +1,6 @@
+ #include "DataControllerDefault.h"
+ #include "../../Include/RmlUi/Core/Element.h"
++#include "../../Include/RmlUi/Core/Elements/ElementFormControl.h"
+ #include "DataController.h"
+ #include "DataExpression.h"
+ #include "DataModel.h"
+@@ -12,10 +13,14 @@ DataControllerValue::DataControllerValue(Element* element) : DataController(elem
+ DataControllerValue::~DataControllerValue()
+ {
+ 	if (Element* element = GetElement())
++	{
+ 		element->RemoveEventListener(EventId::Change, this);
++		if (lazy)
++			element->RemoveEventListener(EventId::Blur, this);
++	}
+ }
+ 
+-bool DataControllerValue::Initialize(DataModel& model, Element* element, const String& variable_name, const String& /*modifier*/)
++bool DataControllerValue::Initialize(DataModel& model, Element* element, const String& variable_name, const String& modifier)
+ {
+ 	RMLUI_ASSERT(element);
+ 
+@@ -27,6 +32,9 @@ bool DataControllerValue::Initialize(DataModel& model, Element* element, const S
+ 		address = std::move(variable_address);
+ 
+ 	element->AddEventListener(EventId::Change, this);
++	lazy = modifier == "lazy";
++	if (lazy)
++		element->AddEventListener(EventId::Blur, this);
+ 
+ 	return true;
+ }
+@@ -37,11 +45,19 @@ void DataControllerValue::ProcessEvent(Event& event)
+ 	if (!element || event.GetTargetElement() != element)
+ 		return;
+ 
++	if (lazy && event == EventId::Change && !event.GetParameter("linebreak", false))
++		return;
++
+ 	Variant value_to_set;
+ 	const auto& parameters = event.GetParameters();
+ 	const auto override_value_it = parameters.find("data-binding-override-value");
+ 	const auto value_it = parameters.find("value");
+-	if (override_value_it != parameters.cend())
++	if (event == EventId::Blur)
++	{
++		if (auto* control = rmlui_dynamic_cast<ElementFormControl*>(element))
++			value_to_set = control->GetValue();
++	}
++	else if (override_value_it != parameters.cend())
+ 		value_to_set = override_value_it->second;
+ 	else if (value_it != parameters.cend())
+ 		value_to_set = value_it->second;
+diff --git a/Source/Core/DataControllerDefault.h b/Source/Core/DataControllerDefault.h
+index b6de1bb9..ce321729 100644
+--- a/Source/Core/DataControllerDefault.h
++++ b/Source/Core/DataControllerDefault.h
+@@ -21,13 +21,16 @@ public:
+ 	bool Initialize(DataModel& model, Element* element, const String& expression, const String& modifier) override;
+ 
+ private:
+-	// Responds to 'Change' events.
++	// Responds to 'Change' events, and 'Blur' events when lazy.
+ 	void ProcessEvent(Event& event) override;
+ 
+ 	// Delete this.
+ 	void Release() override;
+ 
+ 	DataAddress address;
++	// With the 'lazy' modifier (data-value-lazy), as Vue's v-model.lazy, a text input sets the value when it is
++	// committed with Enter or loses focus, rather than on every edit.
++	bool lazy = false;
+ };
+ 
+ class DataControllerEvent final : public DataController, private EventListener {
+diff --git a/Source/Core/DataViewDefault.cpp b/Source/Core/DataViewDefault.cpp
+index e54fb41a..18da1a04 100644
+--- a/Source/Core/DataViewDefault.cpp
++++ b/Source/Core/DataViewDefault.cpp
+@@ -1,4 +1,5 @@
+ #include "DataViewDefault.h"
++#include "../../Include/RmlUi/Core/Context.h"
+ #include "../../Include/RmlUi/Core/Core.h"
+ #include "../../Include/RmlUi/Core/DataVariable.h"
+ #include "../../Include/RmlUi/Core/Element.h"
+@@ -113,6 +114,27 @@ bool DataViewAttributeIf::Update(DataModel& model)
+ 
+ DataViewValue::DataViewValue(Element* element) : DataViewAttribute(element, "value", SortOffset_DataValue) {}
+ 
++bool DataViewValue::Update(DataModel& model)
++{
++	Variant variant;
++	Element* element = GetElement();
++	DataExpressionInterface expr_interface(&model, element);
++	if (!element || !GetExpression().Run(expr_interface, variant))
++		return false;
++
++	// As Vue's v-model does, leave the text of an input being edited alone until the value it shows changes.
++	const String value = variant.Get<String>();
++	const bool unchanged = shown && value == previous;
++	previous = value;
++	shown = true;
++	Context* context = element->GetContext();
++	if ((unchanged && context && context->GetFocusElement() == element) || element->GetAttribute<String>("value", "") == value)
++		return false;
++
++	element->SetAttribute("value", value);
++	return true;
++}
++
+ DataViewChecked::DataViewChecked(Element* element) : DataViewCommon(element, String(), SortOffset_DataChecked) {}
+ 
+ bool DataViewChecked::Update(DataModel& model)
+@@ -165,6 +187,13 @@ bool DataViewStyle::Update(DataModel& model)
+ 	{
+ 		const String value = variant.Get<String>();
+ 		const Property* p = element->GetLocalProperty(property_name);
++		// As Vue does for an undefined style value, an empty one leaves the property unset.
++		if (value.empty())
++		{
++			if (p)
++				element->RemoveProperty(property_name);
++			return p != nullptr;
++		}
+ 		if (!p || p->Get<String>() != value)
+ 		{
+ 			element->SetProperty(property_name, value);
+@@ -219,6 +248,13 @@ bool DataViewRml::Update(DataModel& model)
+ 	return result;
+ }
+ 
++static DataIfHandler data_if_handler = nullptr;
++
++void SetDataIfHandler(DataIfHandler handler)
++{
++	data_if_handler = handler;
++}
++
+ DataViewIf::DataViewIf(Element* element) : DataViewCommon(element) {}
+ 
+ bool DataViewIf::Update(DataModel& model)
+@@ -231,9 +267,13 @@ bool DataViewIf::Update(DataModel& model)
+ 	if (element && GetExpression().Run(expr_interface, variant))
+ 	{
+ 		const bool value = variant.Get<bool>();
++		const bool first = !evaluated;
++		evaluated = true;
+ 		const bool is_visible = (element->GetLocalStyleProperties().count(PropertyId::Display) == 0);
+ 		if (is_visible != value)
+ 		{
++			if (data_if_handler && data_if_handler(element, value, first))
++				return true;
+ 			if (value)
+ 				element->RemoveProperty(PropertyId::Display);
+ 			else
+diff --git a/Source/Core/DataViewDefault.h b/Source/Core/DataViewDefault.h
+index 1dcefacd..0ddcbbad 100644
+--- a/Source/Core/DataViewDefault.h
++++ b/Source/Core/DataViewDefault.h
+@@ -48,6 +48,13 @@ public:
+ class DataViewValue final : public DataViewAttribute {
+ public:
+ 	DataViewValue(Element* element);
++
++	bool Update(DataModel& model) override;
++
++private:
++	// The value last shown, so a focused input keeps its text until the value changes.
++	String previous;
++	bool shown = false;
+ };
+ 
+ class DataViewChecked final : public DataViewCommon {
+@@ -86,6 +93,10 @@ public:
+ 	DataViewIf(Element* element);
+ 
+ 	bool Update(DataModel& model) override;
++
++private:
++	// Whether the binding has run, so the data-if handler can tell its first evaluation.
++	bool evaluated = false;
+ };
+ 
+ class DataViewVisible final : public DataViewCommon {
+diff --git a/Source/Core/ElementStyle.cpp b/Source/Core/ElementStyle.cpp
+index 412f9ba2..ed3aa848 100644
+--- a/Source/Core/ElementStyle.cpp
++++ b/Source/Core/ElementStyle.cpp
+@@ -311,6 +311,7 @@ const Property* ElementStyle::ResolveVariables(const PropertySources& sources, c
+ 			substitution_result.c_str());
+ 		return nullptr;
+ 	}
++	property_storage.source = property->source;
+ 	return &property_storage;
+ }
+ 
+@@ -611,6 +612,11 @@ bool ElementStyle::SetProperty(PropertyId id, const Property& property)
+ 	if (!new_property.definition)
+ 		return false;
+ 
++	// As in browsers, setting a property to the value it holds changes nothing, so it lays nothing out again.
++	const Property* existing = inline_properties.GetProperty(id);
++	if (existing && *existing == new_property)
++		return true;
++
+ 	inline_properties.SetProperty(id, new_property);
+ 	DirtyProperty(id);
+ 
+diff --git a/Source/Core/Elements/InputTypeRadio.cpp b/Source/Core/Elements/InputTypeRadio.cpp
+index 19290ba2..a14044fb 100644
+--- a/Source/Core/Elements/InputTypeRadio.cpp
++++ b/Source/Core/Elements/InputTypeRadio.cpp
+@@ -71,6 +71,10 @@ bool InputTypeRadio::GetIntrinsicDimensions(Vector2f& dimensions, float& ratio)
+ 
+ void InputTypeRadio::PopRadioSet()
+ {
++	// As in HTML, only radio buttons with a name form a group.
++	if (element->GetName().empty())
++		return;
++
+ 	// Uncheck all other radio buttons with our name in the form.
+ 	String stop_tag;
+ 	Element* parent = element->GetParentNode();
+diff --git a/Source/Core/Layout/BlockFormattingContext.cpp b/Source/Core/Layout/BlockFormattingContext.cpp
+index 526da4bb..43753946 100644
+--- a/Source/Core/Layout/BlockFormattingContext.cpp
++++ b/Source/Core/Layout/BlockFormattingContext.cpp
+@@ -1,6 +1,7 @@
+ #include "BlockFormattingContext.h"
+ #include "../../../Include/RmlUi/Core/ComputedValues.h"
+ #include "../../../Include/RmlUi/Core/Element.h"
++#include "../../../Include/RmlUi/Core/ElementText.h"
+ #include "../../../Include/RmlUi/Core/Profiling.h"
+ #include "../../../Include/RmlUi/Core/PropertyDefinition.h"
+ #include "../../../Include/RmlUi/Core/StyleSheetSpecification.h"
+@@ -116,6 +117,12 @@ UniquePtr<LayoutBox> BlockFormattingContext::Format(ContainerBox* parent_contain
+ 	for (int layout_iteration = 0; layout_iteration < 3; layout_iteration++)
+ 	{
+ 		bool all_children_formatted = true;
++
++		// Text formatted on its own, as text directly inside a flex container is, lays out as the inline content of
++		// an anonymous block, as in CSS.
++		if (rmlui_dynamic_cast<ElementText*>(element))
++			all_children_formatted = FormatInlineBox(container.get(), element);
++
+ 		for (int i = 0; i < element->GetNumChildren() && all_children_formatted; i++)
+ 		{
+ 			if (!FormatBlockContainerChild(container.get(), element->GetChild(i)))
+diff --git a/Source/Core/Layout/FlexFormattingContext.cpp b/Source/Core/Layout/FlexFormattingContext.cpp
+index 68ec692a..8647f4e2 100644
+--- a/Source/Core/Layout/FlexFormattingContext.cpp
++++ b/Source/Core/Layout/FlexFormattingContext.cpp
+@@ -2,6 +2,7 @@
+ #include "../../../Include/RmlUi/Core/ComputedValues.h"
+ #include "../../../Include/RmlUi/Core/Element.h"
+ #include "../../../Include/RmlUi/Core/ElementScroll.h"
++#include "../../../Include/RmlUi/Core/ElementText.h"
+ #include "../../../Include/RmlUi/Core/Profiling.h"
+ #include "../../../Include/RmlUi/Core/Types.h"
+ #include "ContainerBox.h"
+@@ -955,8 +956,12 @@ void FlexFormattingContext::Format(Vector2f& flex_resulting_content_size, Vector
+ 			UniquePtr<LayoutBox> item_layout_box =
+ 				FormattingContext::FormatIndependent(flex_container_box, item.element, &item.box, FormattingContextType::Block);
+ 
+-			// Set the position of the element within the flex container
+-			item.element->SetOffset(flex_content_offset + item_offset, element_flex);
++			// Set the position of the element within the flex container. Text keeps the offset its anonymous block gave
++			// its first line.
++			Vector2f item_position = flex_content_offset + item_offset;
++			if (rmlui_dynamic_cast<ElementText*>(item.element))
++				item_position += item.element->GetRelativeOffset(BoxArea::Border);
++			item.element->SetOffset(item_position, element_flex);
+ 
+ 			// The flex container baseline is simply set to the first flex item that has a baseline.
+ 			if (!baseline_set && item_layout_box->GetBaselineOfLastLine(flex_baseline))
+diff --git a/Source/Core/PropertyParserColour.cpp b/Source/Core/PropertyParserColour.cpp
+index 30c0328a..93edeb15 100644
+--- a/Source/Core/PropertyParserColour.cpp
++++ b/Source/Core/PropertyParserColour.cpp
+@@ -112,6 +112,124 @@ static void OklabToRGBA(Array<float, 4>& values)
+ 	values[2] = Math::Clamp(InverseSRGBNonlinearTransfer(b), 0.0f, 1.0f);
+ }
+ 
++// Reference: https://en.wikipedia.org/wiki/SRGB#Definition
++static float SRGBNonlinearTransfer(float channel)
++{
++	return channel > 0.04045f ? std::pow((channel + 0.055f) / 1.055f, 2.4f) : channel / 12.92f;
++}
++
++// Reference: https://bottosson.github.io/posts/oklab/
++static void RGBAToOklab(Array<float, 4>& values)
++{
++	float r = SRGBNonlinearTransfer(values[0]);
++	float g = SRGBNonlinearTransfer(values[1]);
++	float b = SRGBNonlinearTransfer(values[2]);
++
++	float l = std::cbrt(0.4122214708f * r + 0.5363325363f * g + 0.0514459929f * b);
++	float m = std::cbrt(0.2119034982f * r + 0.6806995451f * g + 0.1073969566f * b);
++	float s = std::cbrt(0.0883024619f * r + 0.2817188376f * g + 0.6299787005f * b);
++
++	values[0] = 0.2104542553f * l + 0.7936177850f * m - 0.0040720468f * s;
++	values[1] = 1.9779984951f * l - 2.4285922050f * m + 0.4505937099f * s;
++	values[2] = 0.0259040371f * l + 0.7827717662f * m - 0.8086757660f * s;
++}
++
++// Splits at `separator` outside parentheses; `separator` ' ' splits at any whitespace.
++static StringList SplitOutsideParentheses(const String& value, char separator)
++{
++	StringList parts;
++	String part;
++	int depth = 0;
++	for (char c : value)
++	{
++		depth += (c == '(') - (c == ')' && depth > 0);
++		const bool split = depth == 0 && (separator == ' ' ? StringUtilities::IsWhitespace(c) : c == separator);
++		if (!split)
++		{
++			part += c;
++			continue;
++		}
++		part = StringUtilities::StripWhitespace(part);
++		if (!part.empty() || separator != ' ')
++			parts.push_back(part);
++		part.clear();
++	}
++	part = StringUtilities::StripWhitespace(part);
++	if (!part.empty() || separator != ' ')
++		parts.push_back(part);
++	return parts;
++}
++
++// A color-mix() argument: a colour with an optional percentage before or after it; -1 when absent.
++static bool ParseMixArgument(const String& argument, Colourb& colour, float& percentage)
++{
++	StringList tokens = SplitOutsideParentheses(argument, ' ');
++	percentage = -1.0f;
++	if (tokens.size() == 2)
++	{
++		const size_t at = tokens[0].back() == '%' ? 0 : 1;
++		if (tokens[at].back() != '%')
++			return false;
++		percentage = (float)atof(tokens[at].c_str());
++		tokens.erase(tokens.begin() + at);
++	}
++	return tokens.size() == 1 && PropertyParserColour::ParseColour(colour, tokens[0]);
++}
++
++// CSS Color 5 color-mix(in srgb | oklab, <colour> [<percentage>], <colour> [<percentage>]): premultiplied interpolation, with
++// the alpha scaled down when the percentages sum below 100%.
++static bool ParseColourMix(Colourb& colour, const String& value)
++{
++	const size_t open = value.find('(');
++	const size_t close = value.rfind(')');
++	if (open == String::npos || close == String::npos || close < open)
++		return false;
++	StringList parts = SplitOutsideParentheses(value.substr(open + 1, close - open - 1), ',');
++	if (parts.size() != 3)
++		return false;
++	const bool oklab = parts[0] == "in oklab";
++	if (!oklab && parts[0] != "in srgb")
++		return false;
++
++	Colourb colours[2];
++	float percentages[2];
++	for (int i = 0; i < 2; i++)
++		if (!ParseMixArgument(parts[i + 1], colours[i], percentages[i]))
++			return false;
++	if (percentages[0] < 0 && percentages[1] < 0)
++		percentages[0] = percentages[1] = 50.0f;
++	else if (percentages[0] < 0)
++		percentages[0] = 100.0f - percentages[1];
++	else if (percentages[1] < 0)
++		percentages[1] = 100.0f - percentages[0];
++	const float sum = percentages[0] + percentages[1];
++	if (percentages[0] < 0 || percentages[1] < 0 || percentages[0] > 100 || percentages[1] > 100 || sum <= 0)
++		return false;
++
++	Array<float, 4> mixed = {};
++	for (int i = 0; i < 2; i++)
++	{
++		Array<float, 4> c;
++		for (int channel = 0; channel < 4; channel++)
++			c[channel] = colours[i][channel] * (1.0f / 255.0f);
++		if (oklab)
++			RGBAToOklab(c);
++		const float weight = percentages[i] / sum;
++		for (int channel = 0; channel < 3; channel++)
++			mixed[channel] += c[channel] * c[3] * weight;
++		mixed[3] += c[3] * weight;
++	}
++	if (mixed[3] > 0)
++		for (int channel = 0; channel < 3; channel++)
++			mixed[channel] /= mixed[3];
++	if (oklab)
++		OklabToRGBA(mixed);
++	mixed[3] *= std::min(sum, 100.0f) / 100.0f;
++	for (int channel = 0; channel < 4; channel++)
++		colour[channel] = (byte)Math::Clamp((int)std::lround(mixed[channel] * 255.0f), 0, 255);
++	return true;
++}
++
+ struct PropertyParserColourData {
+ 	const UnorderedMap<String, Colourb> html_colours = {
+ 		{"black", Colourb(0, 0, 0)},
+@@ -175,6 +293,11 @@ bool PropertyParserColour::ParseColour(Colourb& colour, const String& value)
+ 		if (!ParseHexColour(colour, value))
+ 			return false;
+ 	}
++	else if (value.substr(0, 9) == "color-mix")
++	{
++		if (!ParseColourMix(colour, value))
++			return false;
++	}
+ 	else if (value.substr(0, 3) == "rgb")
+ 	{
+ 		if (!ParseRGBColour(colour, value))

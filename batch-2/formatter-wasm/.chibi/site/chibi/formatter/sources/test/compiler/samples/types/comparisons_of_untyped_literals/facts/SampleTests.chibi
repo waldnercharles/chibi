@@ -1,0 +1,21 @@
+package facts
+
+// comparisons of untyped literals
+@test
+Calls :: () {
+    r1: int = Guard();
+    e1: int = 2;
+    assert(r1 == e1, "Guard call 1");
+    r2: bool = Wide();
+    e2: bool = true;
+    assert(r2 == e2, "Wide call 2");
+    r3: bool = Mixed();
+    e3: bool = true;
+    assert(r3 == e3, "Mixed call 3");
+    r4: bool = Negative();
+    e4: bool = true;
+    assert(r4 == e4, "Negative call 4");
+    r5: bool = Same();
+    e5: bool = true;
+    assert(r5 == e5, "Same call 5");
+}

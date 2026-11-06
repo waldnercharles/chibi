@@ -1,0 +1,22 @@
+package facts
+Entry :: struct { flag: bool; id: u64; small: u8; count: int; delta: i64; name: string; }
+Make :: (n: int) -> Entry {
+    e: Entry = {flag: n > 0, id: u64(n) * 1000000007, small: u8(wrap: n), count: n, delta: i64(n) - 5000000000, name: "e"};
+    return e;
+}
+Mix :: (e: Entry) -> u64 { return (e.id ^ u64(e.small)) + u64(e.count); }
+Bump :: (e: Entry) -> Entry {
+    out := e;
+    out.id += 1;
+    out.small = 7;
+    out.delta *= 2;
+    return out;
+}
+Total :: (n: int) -> i64 {
+    es: Entry[] = [];
+    i: int = 0;
+    while (i < n) { es = append(es, Make(i)); i += 1; }
+    total: i64 = 0;
+    for (e in es) { total += e.delta + i64(e.small); }
+    return total;
+}

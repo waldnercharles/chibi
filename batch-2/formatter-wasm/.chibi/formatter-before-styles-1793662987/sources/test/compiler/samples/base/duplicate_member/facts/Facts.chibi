@@ -1,0 +1,5 @@
+package facts
+Pair :: struct { a: int; b: int; }
+One :: () -> Pair { return {a: 1, a: 2}; }
+
+// error: 3:35: Duplicate literal member 'a'

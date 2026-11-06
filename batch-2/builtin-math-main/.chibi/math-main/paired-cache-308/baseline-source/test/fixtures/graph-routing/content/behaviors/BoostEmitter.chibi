@@ -1,0 +1,3 @@
+BoostEmitter :: behavior {
+    bind self.ParticleEmitter.Active = input.Boost.held
+}

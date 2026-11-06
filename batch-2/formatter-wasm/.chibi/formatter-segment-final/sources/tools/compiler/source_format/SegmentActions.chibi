@@ -1,0 +1,217 @@
+package source_format
+
+// SEGMENT phases I-II. Recognition and scan-order completions are recorded
+// in docs/formatter-segment-algorithm.md alongside the recovered rules.
+SegmentDependency :: struct { unit: int; definition: int; }
+SegmentAction :: struct { first: int; last: int; }
+
+SegmentSimple :: (unit: SegmentUnit) -> bool {
+    return unit.category != SegmentOther && unit.additional == SegmentNoAdditional;
+}
+
+SegmentPreambleDefinition :: (unit: SegmentUnit) -> bool {
+    return unit.category == SegmentInit || unit.category == SegmentDeclare ||
+           (unit.category == SegmentAssign && unit.receiver == 0);
+}
+
+// Edges are input references, never an all-pairs statement graph. Sorted
+// dependencies permit contiguous backward closure by union of earlier
+// precomputed ranges. O(references log references), O(references + units) space.
+SegmentPreambles :: (facts: SegmentFacts) -> int[] {
+    dependencies: SegmentDependency[] = [];
+    definitions := resize([int(0)], length(facts.bindings) + 1);
+    for (index in 0..<length(facts.units)) {
+        unit := facts.units[index];
+        for (at in unit.refs_first..<unit.refs_first + unit.refs_count) {
+            definition := definitions[facts.refs[at]] - 1;
+            if (definition >= 0 && facts.units[definition].sequence == unit.sequence &&
+                SegmentPreambleDefinition(facts.units[definition])) {
+                dependencies.append({unit: index, definition: definition});
+            }
+        }
+        for (at in unit.defs_first..<unit.defs_first + unit.defs_count) { definitions[facts.defs[at]] = index + 1; }
+    }
+    scratch := dependencies;
+    width: int = 1;
+    while (width < length(dependencies)) {
+        begin: int = 0;
+        while (begin < length(dependencies)) {
+            middle := begin + width; end := begin + width * 2;
+            if (middle > length(dependencies)) { middle = length(dependencies); }
+            if (end > length(dependencies)) { end = length(dependencies); }
+            left := begin; right := middle;
+            for (at in begin..<end) {
+                take_left := right >= end;
+                if (left < middle && right < end) {
+                    a := dependencies[left]; b := dependencies[right];
+                    take_left = a.unit < b.unit || (a.unit == b.unit && a.definition >= b.definition);
+                }
+                if (take_left) { scratch[at] = dependencies[left]; left += 1; }
+                else { scratch[at] = dependencies[right]; right += 1; }
+            }
+            begin = end;
+        }
+        previous := dependencies; dependencies = scratch; scratch = previous;
+        width *= 2;
+    }
+    starts := resize([int(0)], length(facts.units));
+    at: int = 0;
+    for (index in 0..<length(facts.units)) {
+        start := index;
+        while (at < length(dependencies) && dependencies[at].unit == index) {
+            definition := dependencies[at].definition;
+            if (definition + 1 >= start && starts[definition] < start) { start = starts[definition]; }
+            at += 1;
+        }
+        starts[index] = start;
+    }
+    return starts;
+}
+
+SegmentAppendAction :: (actions: ^(SegmentAction[]), preambles: int[], first: int, last: int) {
+    if (first >= last) { return; }
+    start := preambles[first];
+    if (preambles[last] <= first && preambles[last] < start) { start = preambles[last]; }
+    actions^.append({first: start, last: last});
+}
+
+// Consecutive resolved definition/use chains, including contiguous dependency
+// preambles, recognize nonstructured actions. One interval per occurrence run
+// bounds growth by the reference count, without an eight-name truncation.
+SegmentObjectActions :: (facts: SegmentFacts, preambles: int[]) -> SegmentAction[] {
+    actions: SegmentAction[] = [];
+    for (binding in 1..length(facts.bindings)) {
+        if (facts.bindings[binding - 1].kind != SegmentVariableBinding) { continue; }
+        first: int = -1; last: int = -1;
+        begin := facts.occurrence_first[binding]; end := begin + facts.occurrence_count[binding];
+        for (at in begin..<end) {
+            owner := facts.occurrences[at].owner - 1;
+            if (owner == last) { continue; }
+            if (owner < 0 || !SegmentSimple(facts.units[owner])) {
+                SegmentAppendAction(&actions, preambles, first, last);
+                first = -1; last = -1;
+                continue;
+            }
+            if (last >= 0 && owner == last + 1 && facts.units[owner].sequence == facts.units[last].sequence) { last = owner; }
+            else {
+                SegmentAppendAction(&actions, preambles, first, last);
+                first = owner; last = owner;
+            }
+        }
+        SegmentAppendAction(&actions, preambles, first, last);
+    }
+    // Source order, longer interval first at an equal start.
+    scratch := actions;
+    width: int = 1;
+    while (width < length(actions)) {
+        begin: int = 0;
+        while (begin < length(actions)) {
+            middle := begin + width; end := begin + width * 2;
+            if (middle > length(actions)) { middle = length(actions); }
+            if (end > length(actions)) { end = length(actions); }
+            left := begin; right := middle;
+            for (at in begin..<end) {
+                take_left := right >= end;
+                if (left < middle && right < end) {
+                    a := actions[left]; b := actions[right];
+                    take_left = a.first < b.first || (a.first == b.first && a.last >= b.last);
+                }
+                if (take_left) { scratch[at] = actions[left]; left += 1; }
+                else { scratch[at] = actions[right]; right += 1; }
+            }
+            begin = end;
+        }
+        previous := actions; actions = scratch; scratch = previous;
+        width *= 2;
+    }
+    resolved: SegmentAction[] = [];
+    for (candidate in actions) {
+        if (length(resolved) == 0 || candidate.first > resolved[length(resolved) - 1].last) { resolved.append(candidate); continue; }
+        previous := length(resolved) - 1;
+        if (candidate.last <= resolved[previous].last) { continue; }
+        if (facts.units[candidate.first].category == SegmentInit) {
+            resolved[previous].last = candidate.first - 1;
+            resolved.append(candidate);
+        } else { resolved[previous].last = candidate.last; }
+    }
+    return resolved;
+}
+
+SegmentFeatures :: (facts: SegmentFacts) -> SegmentFeature[] {
+    features: SegmentFeature[] = [];
+    for (unit in facts.units) {
+        receiver: int = 0;
+        if (unit.receiver > 0) { receiver = facts.bindings[unit.receiver - 1].name; }
+        features.append({category: unit.category, type_name: unit.type_name, name: unit.name,
+                         receiver: receiver, method: unit.rhs_function,
+                         rhs_kind: unit.rhs_category, rhs_method: unit.rhs_function});
+    }
+    return features;
+}
+
+SegmentActions :: (facts: SegmentFacts, names: SegmentNameWords, features: SegmentFeature[]) -> SegmentPart[] {
+    count := length(facts.units);
+    owners := resize([int(0)], count); syntax := resize([int(0)], count);
+    identified: SegmentPart[] = [];
+    // Maximal same-category SynS runs. Returns are always their own blocks.
+    for (statements in facts.sequences) {
+        begin := statements.first - 1; end := begin + statements.count; at := begin;
+        while (at < end) {
+            first := at; unit := facts.units[at]; kind := SegmentIsolatedPart;
+            if (unit.additional == SegmentReturn) { kind = SegmentReturnPart; }
+            else if (unit.additional == SegmentControl) { kind = SegmentControlPart; }
+            else if (SegmentSimple(unit)) {
+                kind = SegmentSyntaxPart;
+                while (at + 1 < end && SegmentSimple(facts.units[at + 1]) && facts.units[at + 1].category == unit.category) { at += 1; }
+            }
+            identified.append({first: first, last: at, kind: kind}); id := length(identified);
+            for (index in first..at) { owners[index] = id; syntax[index] = id; }
+            at += 1;
+        }
+    }
+    preambles := SegmentPreambles(facts);
+    objects := SegmentObjectActions(facts, preambles);
+    object_owner := resize([int(0)], count);
+    for (candidate in objects) {
+        identified.append({first: candidate.first, last: candidate.last, kind: SegmentObjectPart}); id := length(identified);
+        for (index in candidate.first..candidate.last) { owners[index] = id; object_owner[index] = id; }
+    }
+    // E-SWIFT groups a control statement with its dependency preamble.
+    // An existing object candidate wins overlap with that preamble.
+    for (index in 0..<count) {
+        if (facts.units[index].additional != SegmentControl) { continue; }
+        start := preambles[index]; at := index - 1;
+        while (at >= start) {
+            if (object_owner[at] > 0) { start = at + 1; break; }
+            at -= 1;
+        }
+        identified.append({first: start, last: index, kind: SegmentControlPart}); id := length(identified);
+        for (slot in start..index) { owners[slot] = id; }
+    }
+    // A highly similar SynS neighbour may retain the overlapping boundary
+    // statement. The leading case is necessary for published Listing 6.1.
+    for (id in 1..length(identified)) {
+        part := identified[id - 1];
+        if (part.kind != SegmentObjectPart && part.kind != SegmentControlPart) { continue; }
+        first := part.first; last := part.last; original := identified[syntax[first] - 1];
+        if (owners[first] == id && original.kind == SegmentSyntaxPart && original.first < first && original.last < last &&
+            SegmentHighlySimilar(features[first].category, SegmentPairSimilarity(names, features[first - 1], features[first]))) {
+            owners[first] = syntax[first];
+        }
+        original = identified[syntax[last] - 1];
+        if (owners[last] == id && original.kind == SegmentSyntaxPart && original.last > last && original.first > first &&
+            SegmentHighlySimilar(features[last].category, SegmentPairSimilarity(names, features[last], features[last + 1]))) {
+            owners[last] = syntax[last];
+        }
+    }
+    result: SegmentPart[] = [];
+    for (statements in facts.sequences) {
+        at := statements.first - 1; end := at + statements.count;
+        while (at < end) {
+            first := at; id := owners[at];
+            while (at + 1 < end && owners[at + 1] == id) { at += 1; }
+            result.append({first: first, last: at, kind: identified[id - 1].kind}); at += 1;
+        }
+    }
+    return result;
+}

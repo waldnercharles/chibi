@@ -1,0 +1,2 @@
+package source_format
+pub Result :: union { Formatted(text: string, notes: string) | Rejected(message: string) }

@@ -1,0 +1,1 @@
+EMSCRIPTEN_ROOT:45:/opt/homebrew/Cellar/emscripten/6.0.9/libexecEM_CONFIG:57:/opt/homebrew/Cellar/emscripten/6.0.9/libexec/.emscriptenLLVM_ROOT:45:/opt/homebrew/opt/emscripten/libexec/llvm/binBINARYEN_ROOT:45:/opt/homebrew/opt/emscripten/libexec/binaryenNODE_JS:35:['/opt/homebrew/opt/node/bin/node']COMPILER_WRAPPER:4:None

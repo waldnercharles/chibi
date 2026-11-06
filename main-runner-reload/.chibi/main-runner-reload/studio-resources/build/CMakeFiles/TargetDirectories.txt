@@ -1,0 +1,5 @@
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/build/CMakeFiles/edit_cache.dir
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/build/CMakeFiles/rebuild_cache.dir
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/build/CMakeFiles/list_install_components.dir
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/build/CMakeFiles/install.dir
+/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-resources/build/CMakeFiles/install/local.dir

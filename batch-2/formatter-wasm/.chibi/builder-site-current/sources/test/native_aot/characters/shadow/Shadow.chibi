@@ -1,0 +1,4 @@
+package shadow
+char :: (value: int) -> int { return value + 10; }
+@test
+AuthoredCharacterName :: () { assert(char(7) == 17); }

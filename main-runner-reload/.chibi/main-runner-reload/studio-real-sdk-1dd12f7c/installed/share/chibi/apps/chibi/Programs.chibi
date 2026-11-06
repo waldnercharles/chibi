@@ -1,0 +1,85 @@
+package chibi_cli
+
+import strings "core:strings"
+
+Run :: (options: Options, tail: string[]) -> int {
+    requested := options.path
+    if requested == "" {
+        requested = Default(NearestProject(), ".")
+    }
+    path := files.resolve(requested)
+    if path == "" {
+        Error(format_text("{}: cannot resolve source target", requested))
+        return 2
+    }
+    directory := files.kind(path) == 2
+    game := strings.HasSuffix(path, "/project.kdl")
+    if directory {
+        game = files.kind(Join([path, "/project.kdl"])) != 0
+    }
+    if game {
+        if options.watch {
+            Error("--watch requires a standalone .chibi program or package directory")
+            return 2
+        }
+        return Game(path, tail, true)
+    }
+    if !directory && !strings.HasSuffix(path, ".chibi") {
+        Error("A program requires a .chibi file or package directory")
+        return 2
+    }
+    arguments := Concat([path], tail)
+    handle := program.open(path, "Main", arguments)
+    loaded := false
+    result := 1
+    while !application.stopped() {
+        update := program.update(handle)
+        if application.stopped() {
+            program.close(handle)
+            if options.watch {
+                return 0
+            }
+            return application.interrupt_status()
+        }
+        if update < 0 {
+            Error(program.diagnostic(handle))
+            if !loaded {
+                program.close(handle)
+                return 1
+            }
+        } else if update > 0 {
+            loaded = true
+            called := program.call(handle)
+            if application.stopped() {
+                program.close(handle)
+                if options.watch {
+                    return 0
+                }
+                return application.interrupt_status()
+            }
+            if called.status != 0 {
+                Error(program.diagnostic(handle))
+                result = 1
+            } else {
+                result = called.result
+                if result < 0 || result > 255 {
+                    Error("Main returned an exit status outside 0..255")
+                    result = 1
+                }
+            }
+        }
+        if !options.watch {
+            program.close(handle)
+            return result
+        }
+        if !application.wait(250) {
+            program.close(handle)
+            return 0
+        }
+    }
+    program.close(handle)
+    if options.watch {
+        return 0
+    }
+    return application.interrupt_status()
+}

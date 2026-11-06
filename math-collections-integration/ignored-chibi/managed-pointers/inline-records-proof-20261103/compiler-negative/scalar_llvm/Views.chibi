@@ -1,0 +1,43 @@
+package scalar_llvm
+
+import facts "project:scalar_facts"
+
+ViewOperands :: (row: facts.Row) -> int {
+    switch facts.ViewOperation(row.value) {
+        case facts.ViewMake: return 3;
+        case facts.ViewLength: return 1;
+        case facts.ViewGet: return 2;
+        case facts.ViewSet: return 3;
+        case facts.ViewClone: return 1;
+        case facts.ViewSlice: return 3;
+        case: return -1;
+    }
+}
+ValidView :: (rows: facts.Row[], records: int[], row: facts.Row, stack: int[], base: int) -> bool {
+    op := facts.ViewOperation(row.value);
+    element := facts.ViewElement(row.value);
+    count := ViewOperands(row);
+    if ((!Scalar(element) && element != facts.StringType) || count < 0 || row.count != count || row.name != "" ||
+        base < 0 || base > length(stack) - count) { return false; }
+    first := facts.ViewType;
+    if (op == facts.ViewMake) { first = facts.PointerType; }
+    if (stack[base] != first) { return false; }
+    if (count >= 2 && stack[base + 1] != facts.IntType) { return false; }
+    if (count == 3) {
+        last := facts.IntType;
+        if (op == facts.ViewSet) { last = element; }
+        if (stack[base + 2] != last) { return false; }
+    }
+    if (op == facts.ViewMake) {
+        return row.literal != 0 && OptionalPayloadType(rows, records, row.type) == facts.ViewType;
+    }
+    if (op == facts.ViewGet || op == facts.ViewSet) {
+        type := element;
+        if (op == facts.ViewSet) { type = facts.IntType; }
+        return row.type == type && (row.literal == 0 || row.literal == 1);
+    }
+    if (row.literal != 0) { return false; }
+    if (op == facts.ViewLength) { return row.type == facts.IntType; }
+    if (op == facts.ViewClone) { return row.type == facts.ArrayType + element; }
+    return op == facts.ViewSlice && OptionalPayloadType(rows, records, row.type) == facts.ArrayType + element;
+}

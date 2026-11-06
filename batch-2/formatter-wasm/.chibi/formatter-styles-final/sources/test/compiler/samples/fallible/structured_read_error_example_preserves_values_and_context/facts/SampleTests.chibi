@@ -1,0 +1,15 @@
+package facts
+
+// structured read error example preserves values and context
+@test
+Calls :: () {
+    r1: u32 = Whole();
+    e1: u32 = 67305985;
+    assert(r1 == e1, "Whole call 1");
+    r2: int = Short();
+    e2: int = 1;
+    assert(r2 == e2, "Short call 2");
+    r3: int = Outside();
+    e3: int = 1;
+    assert(r3 == e3, "Outside call 3");
+}

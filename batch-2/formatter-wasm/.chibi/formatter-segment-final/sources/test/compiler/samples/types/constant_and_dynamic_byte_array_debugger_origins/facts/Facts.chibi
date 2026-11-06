@@ -1,0 +1,4 @@
+package facts
+Folded :: () -> u8[] { return [u8(1) + u8(2), u8(4)]; }
+Mixed :: (value: u8) -> u8[] { return [u8(3), value]; }
+Inferred :: () -> int { values := [u8(3), u8(4)]; return int(values[0]) + int(values[1]); }

@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { zero := normalize_or_zero(vec3(0)); unit := normalize_or_zero(vec3(3e30, 4e30, 0)); return zero == vec3(0) && unit.x > 0.599999 && unit.x < 0.600001 && unit.y > 0.799999 && unit.y < 0.800001 && unit.z == 0.0; }

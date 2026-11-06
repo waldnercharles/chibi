@@ -1,0 +1,5 @@
+{
+  "tools/compiler/bootstrap/bootstrap.json": "812635d0e2c0c5336071dda2394b881dfcd1ed8aef17999d92511a506f5d2485",
+  "tools/compiler/bootstrap/compiler.chibip": "bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a",
+  "tools/compiler/runtime.json": "ae4c16cd0935f9642ff194bab6ebfabfc49d33c407b0077500b21191bcdc555c"
+}

@@ -1,0 +1,161 @@
+name: Third-party archives
+
+# Builds every third-party archive (third_party/CMakeLists.txt), publishes them
+# as a new release and opens a pull request that pins them in
+# third_party/archives.tsv. Run it after changing a library's commit or patches.
+# Retry a failed publish job with its ORIGINAL build artifacts. Rebuilt archives
+# with different bytes require a fresh release tag; existing assets are never replaced.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release tag for the new archives, such as third-party-2026-10-20
+        required: true
+      source_pr:
+        description: Optional reviewed source PR for an atomic source-plus-pins integration
+        required: false
+      main_sha:
+        description: Exact current main SHA, required together with source_pr
+        required: false
+
+# Build jobs compile upstream code, so only the publish job can write.
+permissions:
+  contents: read
+
+env:
+  EMSDK_VERSION: 6.0.10
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    env:
+      RELEASE: ${{ inputs.release }}
+      SOURCE_PR: ${{ inputs.source_pr }}
+      SOURCE_MAIN_SHA: ${{ inputs.main_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: python3 tools/publish_third_party.py --validate-only
+
+  native:
+    needs: validate
+    name: ${{ matrix.target }} ${{ matrix.variant }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [macos-arm64, linux-x64]
+        variant: [release, address-undefined, thread]
+        include:
+          - target: macos-arm64
+            runner: macos-15
+          - target: linux-x64
+            runner: ubuntu-24.04
+          - variant: release
+            sanitizers: ''
+          - variant: address-undefined
+            sanitizers: address,undefined
+          - variant: thread
+            sanitizers: thread
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install the compilers the engine builds with
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then
+            brew install llvm
+            echo "CC=$(brew --prefix llvm)/bin/clang" >> "$GITHUB_ENV"
+            echo "CXX=$(brew --prefix llvm)/bin/clang++" >> "$GITHUB_ENV"
+          else
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ninja-build clang-18 libssl-dev \
+              libgl1-mesa-dev libx11-dev libxcursor-dev libxext-dev libxi-dev libxrandr-dev \
+              libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev libasound2-dev libpulse-dev
+            echo "CC=clang-18" >> "$GITHUB_ENV"
+            echo "CXX=clang++-18" >> "$GITHUB_ENV"
+          fi
+          python3 -m venv "$RUNNER_TEMP/cmake"
+          "$RUNNER_TEMP/cmake/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo "$RUNNER_TEMP/cmake/bin" >> "$GITHUB_PATH"
+      - name: Build the archive
+        shell: bash
+        run: |
+          cmake -S third_party -B "$RUNNER_TEMP/build" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCHIBI_SANITIZERS='${{ matrix.sanitizers }}'
+          cmake --build "$RUNNER_TEMP/build"
+          cmake --install "$RUNNER_TEMP/build" --prefix "$RUNNER_TEMP/archive"
+          tar -czf "third-party-${{ matrix.target }}-${{ matrix.variant }}.tar.gz" -C "$RUNNER_TEMP/archive" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: third-party-${{ matrix.target }}-${{ matrix.variant }}
+          path: third-party-${{ matrix.target }}-${{ matrix.variant }}.tar.gz
+
+  web:
+    needs: validate
+    name: ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: web
+            options: ''
+          - target: web-threads
+            options: -DCHIBI_WEB_THREADS=ON
+          - target: web-player
+            options: -DCHIBI_WEB_PLAYER=ON
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ env.EMSDK_VERSION }}
+      - name: Install CMake and Ninja
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cmake"
+          "$RUNNER_TEMP/cmake/bin/pip" install --only-binary=:all: --require-hashes -r .github/build-tools.txt
+          echo "$RUNNER_TEMP/cmake/bin" >> "$GITHUB_PATH"
+      - name: Build the archive
+        run: |
+          emcmake cmake -S third_party -B "$RUNNER_TEMP/build" -G Ninja -DCMAKE_BUILD_TYPE=Release ${{ matrix.options }}
+          cmake --build "$RUNNER_TEMP/build"
+          cmake --install "$RUNNER_TEMP/build" --prefix "$RUNNER_TEMP/archive"
+          tar -czf "third-party-${{ matrix.target }}-release.tar.gz" -C "$RUNNER_TEMP/archive" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: third-party-${{ matrix.target }}-release
+          path: third-party-${{ matrix.target }}-release.tar.gz
+
+  publish:
+    # Serialize publication of a tag; never cancel a publisher after partial writes.
+    concurrency:
+      group: third-party-publish-${{ inputs.release }}
+      cancel-in-progress: false
+    needs: [native, web]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      RELEASE: ${{ inputs.release }}
+      SOURCE_PR: ${{ inputs.source_pr }}
+      SOURCE_MAIN_SHA: ${{ inputs.main_sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: archives
+          merge-multiple: true
+      - name: Publish the release and pin it
+        run: python3 tools/publish_third_party.py

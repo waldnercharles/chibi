@@ -1,0 +1,10 @@
+package scalar
+Main :: () -> int {
+    x: u64 = 7;
+    r: rawptr = Id(x);
+    y: u64 = r;
+    return int(y) + 1;
+}
+Id :: (p: rawptr) -> rawptr {
+    return p;
+}

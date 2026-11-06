@@ -1,0 +1,8 @@
+{
+  "base": "3e2b28dc19fb21961ae06fe99aeb5a8dede35bf0",
+  "head": "49039a8f25d94e04d741af4d51d3e04e191297d0",
+  "path": "tools/graph/asset_compiler/Generate.chibi",
+  "patch": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/generator-source-role-prerequisite.patch",
+  "patch_sha256": "8e178bd570c8a0ff3d98cf2a3255777ae928ce1b2b112d2eaff42e769e9f18cf",
+  "qualification": "Exact existing #795 source-role change only; no new source edits or acceptance claim. Private compiler/facade compilation precedes complete public core resource capture."
+}

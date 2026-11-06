@@ -1,0 +1,36 @@
+{
+  "command": [
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-compiler-host",
+    "--target-json",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/target.json"
+  ],
+  "status": 0,
+  "wall_seconds": 0.24391812505200505,
+  "host_sha256": "813f3162e4ea1facf0854832c528a085f88f4f83e61be438afc85c52f0b89b67",
+  "producer_invoked": false,
+  "target_json_sha256": "da01568aa036f6307fe67a4f274ab253d91f00ebf6d080db85e2428383167767",
+  "target_values": 6,
+  "bootstrap_target_exact": true,
+  "seed_target_args_exact": true,
+  "target_canonical_sha256": "400d9618ec769a85bfe29e22e00004dc7d11985b4bc85b21ca2cc59a34b64cb0",
+  "generated_runtime_headers": {
+    "sdk/public/support/support/arena.h": {
+      "source": "src/support/arena.h",
+      "sha256": "e5b5dc6afee8ec5e8b4b5ec65f81b3eaf9e295c1930fc9864843ea28d1a214f1",
+      "matches_source": true
+    },
+    "sdk/private/execution/execution/function.h": {
+      "source": "src/execution/function.h",
+      "sha256": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817",
+      "matches_source": true
+    },
+    "sdk/public/execution_contract/execution/function.h": {
+      "source": "src/execution/function.h",
+      "sha256": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817",
+      "matches_source": true
+    }
+  },
+  "source_symlinks": {
+    "CLAUDE.md": "AGENTS.md"
+  }
+}

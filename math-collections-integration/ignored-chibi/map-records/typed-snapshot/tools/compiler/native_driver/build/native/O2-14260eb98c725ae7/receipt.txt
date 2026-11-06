@@ -1,0 +1,766 @@
+native-aot-driver 1
+output-kind executable
+input /Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.work/module.ll
+input-sha256 573d0ea5c1feb8edebe69dcac4ba9faf2b1442d90b2d50cc7f699180216f0765
+opt /opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+opt-sha256 2bd5eaa23de1e47480d02ac50d9376df0e071130d995e34f1fd3f2b76d1bb3d6
+llc /opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+llc-sha256 71ae3605805a8667d8875d11e9945be073baf6449a2468561a16086c90b03136
+mode 2
+module-sha256 954aeeedd121cf91acaa25d3859b7ecb083fda8de1a4cde718fdb3610e3cc74b
+object-sha256 914292464ee300088bb1bdef146715f17ca633e950f822f9923283272bc32802
+stage opt
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.ll
+end-stage
+stage llc
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.o
+end-stage
+piece 1 input-sha256 c97eae2d278370743d2d66dfba5f6b409b7fb3582a3941d7c3c1ed40f321d9cd module-sha256 395a535c143d23cd58cc4e403d374fa7ad1f5f51be8210c3219a9ae238d946e3 object-sha256 299ef5ff5c3f987d0a66d8415d39a99a529de8ee9a7590d3d79fa9682087b822
+stage opt-1
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.1.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.1.ll
+end-stage
+stage llc-1
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.1.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.1.o
+end-stage
+piece 2 input-sha256 ec0d73bffc73c6712e0a4193546b6ff34df775b924373696aa67d81178096156 module-sha256 8cf0fd4306fa2bfd96e6d3d5e945b214aee23b097e91f3982d13dae74dfd8c43 object-sha256 77aafc031e3b5a77d3a62eda1a1b7e5a89052fa7e396aba9d7244ab8a1cbb5de
+stage opt-2
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.2.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.2.ll
+end-stage
+stage llc-2
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.2.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.2.o
+end-stage
+piece 3 input-sha256 04a20c94cb64e348e41074d4f7b49303a26370e2a9dbe065f6ffea1e5479b40d module-sha256 219fa984db3cdc2351c0ee661912b80c8ee5edf3cb6374243d51ff57f71ac846 object-sha256 dd6fc67c73f01f201ded8c8bdf9f86eef7c12a45e0f70076f04c8691edae339f
+stage opt-3
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.3.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.3.ll
+end-stage
+stage llc-3
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.3.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.3.o
+end-stage
+piece 4 input-sha256 4ca5d46c97630173d2cfe227a3d9d5b754d8b21480f0b13d9bdc07b1d795467d module-sha256 60236d22961fde6fb976a6475349c7740775c13c8e8bf089e5c6f6c5e08947d1 object-sha256 9905839936a316a96905a07bbad04f94c996eab2a86466e1dc17434b5816d1a1
+stage opt-4
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.4.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.4.ll
+end-stage
+stage llc-4
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.4.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.4.o
+end-stage
+piece 5 input-sha256 bd58941e7325d8e919c4ac12524b2421b43c94ba92ced4e96ad36f546d0e1bb7 module-sha256 34cec2ec3710cc1ad5710416a068be5b6f1a009624354609afba1228da31e9d2 object-sha256 f43d4d33559ce94eaec7880838902e4a67ff5e0a7c4311137f71019c58314958
+stage opt-5
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.5.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.5.ll
+end-stage
+stage llc-5
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.5.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.5.o
+end-stage
+piece 6 input-sha256 a1a429651d973fa8a95227ec70ba4cdc90632e56d2dfd25013a04fa53ba9ec87 module-sha256 5e719b4f4c3b788170c08f52621f3fa6377a7a49fb5c73fa872939047326be97 object-sha256 bc9411cbe84e90674062a0b9a79ce97b5430201dfad4601fb0b420b5fcdd4ae6
+stage opt-6
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.6.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.6.ll
+end-stage
+stage llc-6
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.6.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.6.o
+end-stage
+piece 7 input-sha256 7ab18a3d659627f831a55bc06326b0495b41c178248d866f6a1b2a56a17fa868 module-sha256 9f9c5a63435d7991862a9e8d6858bebfc73dbcb4ae655e8f06a5e12a251cdb4c object-sha256 63d22c117f90c78ad19a2750e3862511b9e16f8d2f631714ba321c7480fabaf3
+stage opt-7
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.7.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.7.ll
+end-stage
+stage llc-7
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.7.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.7.o
+end-stage
+piece 8 input-sha256 9a9b19a8685cf1453f6d129dd09f221f6799ecb8561d75817934a34d7bc89863 module-sha256 02dc75914dcbde3ccf4e8285521cc7642e93418ee48131ac4be6ae82568af380 object-sha256 01d2421a38687db072e01bb1f6677827cc234c2db4fa6287f5459e9fd1adcc20
+stage opt-8
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.8.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.8.ll
+end-stage
+stage llc-8
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.8.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.8.o
+end-stage
+piece 9 input-sha256 57a34b13c690eac05c97ca5d13f16e98e9b67425b207c3b6c96a99b746ad4d71 module-sha256 908edd546e3bc18fe0ae3945c3f9e68d4ad4e116cd11d838bdb96a88d279d3bd object-sha256 511b2f68b9f25d47e518cb4159db30853454449612273ee31fe08c8c1de91212
+stage opt-9
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.9.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.9.ll
+end-stage
+stage llc-9
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.9.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.9.o
+end-stage
+piece 10 input-sha256 a64cdfd948e3581cf819c14997f5cd98bdcdcdb64bae8560f4a3f1a9e27b4925 module-sha256 d4e37f22e3181e736f0f0f0de84ad2392d3b72f88d35934167680a1e439f497b object-sha256 331747c597d18024ef78da6402313d095b3a05c72d62221de24cd8e1cdb34cff
+stage opt-10
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.10.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.10.ll
+end-stage
+stage llc-10
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.10.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.10.o
+end-stage
+piece 11 input-sha256 a947b5ca2395ecbab9810f91036980536a8c9ab937a1eea8aeef56557ce6dc19 module-sha256 4a3e3f1f1ec07e11a3b3ab8d00f927c0a78c35510f405f393562d85ed5ffa9f5 object-sha256 c24c3f9ab6d3c9d5ae7e1f2f93be3829493e7f788703e4023bc3e99a0d540c01
+stage opt-11
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.11.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.11.ll
+end-stage
+stage llc-11
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.11.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.11.o
+end-stage
+piece 12 input-sha256 2c4eb1614b866d7f58903cd961aa3cbd822478c3d62a2d19e9c14e9ea2cafeb5 module-sha256 476c204e3e744eaf52ac3c15f72d36ce100a57c426b7fde2b78ab84d797ede1a object-sha256 619cfdb7502f4ca0883df35f61fe55a9f4f0e836016cb401a632b71af24896e3
+stage opt-12
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.12.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.12.ll
+end-stage
+stage llc-12
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.12.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.12.o
+end-stage
+piece 13 input-sha256 0c64e82a7a20b46ed2d7fe3a5bb41a20dd2135139fd1c016d5f1d644d46ffec2 module-sha256 c80966449075a7303f350d19bbe0593742454e8839916062c115d98c66e33595 object-sha256 47a6e2b015ce4cf2653f293aa6849d1aac0eb74149a2eb28699403a19a521a18
+stage opt-13
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.13.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.13.ll
+end-stage
+stage llc-13
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.13.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.13.o
+end-stage
+piece 14 input-sha256 54de424dda2e8bc79d82b74acf2236bcd487022e4903012c5d45329d92d52895 module-sha256 1946e256a55ba6d369445953c3a45d0d643abcb0aa9a649b9ccc8575478f492d object-sha256 4adc9e9c0e7ceee706829cfc37c5157462ea254f077e1e1e51b0ee64c5d8fdeb
+stage opt-14
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.14.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.14.ll
+end-stage
+stage llc-14
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.14.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.14.o
+end-stage
+piece 15 input-sha256 9fb5d512ce540cc80f4a18f84649e875c8f55fa24998b5922bbfc0f97bfdb1df module-sha256 a9ef1e6c0952f16f27020ecd782de3cee472c7ab7dfdde1087d47783bbabadc1 object-sha256 3fa297ced2cfdf87d8b99973f273c36bd537daa1c1407cbf0d4ab08c1b4ab95b
+stage opt-15
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.15.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.15.ll
+end-stage
+stage llc-15
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.15.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.15.o
+end-stage
+piece 16 input-sha256 0f6d5040c96269a0db7cad8d4ed5f63580d92bbbd1a7dbbe99090a2304815642 module-sha256 800d0ea8e6aba7b89a5e1b9d913714cd21d91cf38603e7a2668187e2509a29ed object-sha256 8afd83d1e45bc3b55e2520ba27fea4ff45185ea498f522b68a1279e647f38d25
+stage opt-16
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.16.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.16.ll
+end-stage
+stage llc-16
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.16.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.16.o
+end-stage
+piece 17 input-sha256 65928fe65d912e2a2965e7cfbf0303b9a6fef09f39f4ec7e76e16adf2104e633 module-sha256 82d13a65c519f77799703207315fb5b21e9207208c75fde67238853cdb65ca61 object-sha256 f6cdcfb4bd1b58815a8a673f39d3a0aa8fffeb0e64001aa132fd318b7540be5c
+stage opt-17
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.17.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.17.ll
+end-stage
+stage llc-17
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.17.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.17.o
+end-stage
+piece 18 input-sha256 6fd5fd4a3961ea2a2745b408dcc3e2f982170bcaad561ee9b28dc94beea9f4a7 module-sha256 46b6cc6a07cd83f5dab70c482a607f8c7efd2027b17c7ce43138230be6f5e960 object-sha256 5f66e94f5dc7753259e3ec3483b8b6b9b942aa90eb38f8248e3d64e2bc1a19d4
+stage opt-18
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.18.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.18.ll
+end-stage
+stage llc-18
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.18.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.18.o
+end-stage
+piece 19 input-sha256 fb80ebcf466cc34138c6817716b9958ecf49cd0db69b9235b2c1a9cd96c1d511 module-sha256 cc3764afe354b73908e7aab2f935635a828852d3e7be8a55ed8392a4e69ac21e object-sha256 0cb84592c77ea374168f7b499986abf80f902d9cc43447d70644fb2e35a71a54
+stage opt-19
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.19.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.19.ll
+end-stage
+stage llc-19
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.19.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.19.o
+end-stage
+piece 20 input-sha256 c3ffdcd636eb2f3b6081d74f4cdd39b561b011ab8cfe67354bca0534638e1e19 module-sha256 baf8bb561686cdb2f58fb72bdf97b52b0279f96a0c93011f4362870bd5d70f20 object-sha256 881abc140b609986887989bd367d30aecef50209fca5fca1c6af1ff63969b196
+stage opt-20
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.20.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.20.ll
+end-stage
+stage llc-20
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.20.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.20.o
+end-stage
+piece 21 input-sha256 a89866c1f25be59de45b4d5ee465e93598912a8e9d24217830ab0f081eb49317 module-sha256 d3948489876f7c1a0b31f40806296ce170498b762fba4f03b7b6810524ce404e object-sha256 a0e60483464851134360c7e6a2c3b05fc0a9423740cdd2e96cfbe24d434b1efd
+stage opt-21
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.21.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.21.ll
+end-stage
+stage llc-21
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.21.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.21.o
+end-stage
+piece 22 input-sha256 f921d83300f5d28b6d4bbc517535ab4f1836a40cbdc895e3f16bdc7ceed4e664 module-sha256 35e3d7dd428fbc217406c149fa3db3443b6f8d7d85d479377bc8fa17085403cd object-sha256 78d65818a9ff8457ea1953ecc16ada1005afc7ad1c6248f1870cd2c595d3c7a6
+stage opt-22
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.22.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.22.ll
+end-stage
+stage llc-22
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.22.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.22.o
+end-stage
+piece 23 input-sha256 4eb6ab896d058b9f93e8f06775fc61d8554fac263fa0377fdfc141709b778086 module-sha256 e42eb87e278a3083f29eaf9b304d94d71edea6cb040c1f5aff3285fabddf9796 object-sha256 edb77472eff2089d196bd561bb1412b1cbbf2303ba393000693403c1fb36c629
+stage opt-23
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.23.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.23.ll
+end-stage
+stage llc-23
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.23.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.23.o
+end-stage
+piece 24 input-sha256 3e5759ec15e64a72c6d3b7def002ea864c2b9e9c91544747f759c2ef01231976 module-sha256 03a49032b6abf82f6e9c14bf28e535839a1b3676c1f09ce25d87a13bbdf7b9bc object-sha256 fa0ae163de9eb50aef532b809a708bc33d4364662db1fb952fce202ab11d5866
+stage opt-24
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.24.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.24.ll
+end-stage
+stage llc-24
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.24.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.24.o
+end-stage
+piece 25 input-sha256 853e0caee2b476141c7f101953c8efc695fb75ed3991a277a3f8c5fcc731c147 module-sha256 67d98401b997c20a4adba59b8dec1ff77a569927e7f9a149e48c566d230c5fa1 object-sha256 a4e3fbfb4113dee9d8ec498aaefadff291ef1d6bcb87efe104e92ce931c6875b
+stage opt-25
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.25.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.25.ll
+end-stage
+stage llc-25
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.25.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.25.o
+end-stage
+piece 26 input-sha256 36e3505014ae169fc433d2f6e7af6a5dcfed46a3501d8ac5d5edcc1c099a80b2 module-sha256 e9c63637a2f7764b234c42ee95d55dee7e647975e8409ba796904f5224164af4 object-sha256 f04b7c69c5f5af565568e82ab1ac78247662b4660305740b43745e28fce6f122
+stage opt-26
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.26.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.26.ll
+end-stage
+stage llc-26
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.26.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.26.o
+end-stage
+piece 27 input-sha256 c0e89e82bafb0a309b4891dd58642d512b83d919aa9a711bb7c03000b7b9665b module-sha256 a45efa554d17e1b7bb1c40df775a336e7aa9eb258c09d282a2f4a45eea4969f1 object-sha256 ea310790029fdc28b6e540d5199d1240b6b4147bc2ef0ae7b4ca3daad6b3b40e
+stage opt-27
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.27.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.27.ll
+end-stage
+stage llc-27
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.27.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.27.o
+end-stage
+piece 28 input-sha256 f1be229ec924764b009f84226062fc4bfd054d389d17cc1443b623ece31d73b2 module-sha256 190d3816f33c4397a107d5bbe90326cf007368cb847cd542a2f53b5c89ad4244 object-sha256 043c7e2f18f22a994929a17ac2bf617672b241bece7c2771ad7b09f84ae2db03
+stage opt-28
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.28.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.28.ll
+end-stage
+stage llc-28
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.28.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.28.o
+end-stage
+piece 29 input-sha256 2f4fc84e2a3f5320fd0558a5725ea16803f7bce6524e48823a7aeeb1bdfdbecb module-sha256 f5142a704e7b2a126e1b0abe842398bb9527f7a51bc755d63087aa3af6655376 object-sha256 09db15a76920f1ca3885a6c07d6eb0369a77a5a20b06f4dec41d078a7846f435
+stage opt-29
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.29.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.29.ll
+end-stage
+stage llc-29
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.29.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.29.o
+end-stage
+piece 30 input-sha256 9a6bb6f7c8e4cf411aa697ffbdb61b98f2807153f7813cfd59d8febfdd18959e module-sha256 38e28bc2332c17942e6099b15cf0688a5404d95de3244d59fe37af961cccc6be object-sha256 37cdfafe075a6f4fba082257093876c5b0cdf4b8dcff580762b40eeb2ea9037d
+stage opt-30
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.30.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.30.ll
+end-stage
+stage llc-30
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.30.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.30.o
+end-stage
+piece 31 input-sha256 760bfc025e16ed498aff327e7ad4906e420a1de979e0a486f27ce1070c430dff module-sha256 0274fb4a423b7d02c0f8b5f12485b11b9b756f4a4d357eccec6c6e737c8836e0 object-sha256 81b9729a18f121235d3cb7112829c0440093a1edc9a7c64bd8adbf91ef247429
+stage opt-31
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.31.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.31.ll
+end-stage
+stage llc-31
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.31.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.31.o
+end-stage
+piece 32 input-sha256 7d54bbf4b1d6036b338f8cdab819ecadf3c92fd8474ff6b585397e68ecebc3fd module-sha256 f2718981f2b3597a1c416c4bdc50109fd2cdc71a3ef074cfbbe35ac60ea4bc58 object-sha256 f2c270fc627963202480a9b28df0bf6b4d073ebbac09bab89aa5b6dc0565bfba
+stage opt-32
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.32.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.32.ll
+end-stage
+stage llc-32
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.32.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.32.o
+end-stage
+piece 33 input-sha256 06013bcfb49a2cd2a063f556b86f8e30dd1ca4ac81c169dba747b570e46c1624 module-sha256 13ffd4627753d95bd0a5410ffaccb07bb57498cf684a2b697239e1cb7c70545d object-sha256 65e4f442d34a142b74ed05c7a4b7c43a62f5e67a25f35eb6d9e1efdeaca20222
+stage opt-33
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.33.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.33.ll
+end-stage
+stage llc-33
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.33.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.33.o
+end-stage
+piece 34 input-sha256 d034eedd8d44c2e44af52544ba519e09912e9eca503d7de493561841245a05bd module-sha256 6a3facb927abea1d797c885abd0be2963c57cbf37170d1468df4761c3033f8d3 object-sha256 bccbc2ea59c5779b2e08444aa72ba11ab918195e0135fb1aae783afbaabedd58
+stage opt-34
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.34.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.34.ll
+end-stage
+stage llc-34
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.34.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.34.o
+end-stage
+piece 35 input-sha256 fdfdd1ffea5755c7496f3ea665f86b1214c225f6addf64d80accf137dbbe477a module-sha256 415e3f7dc4748758344fb31bb3f911b234093064e65f4e6d5c412b0c8887f282 object-sha256 a4a1f7d3f58ed995d7b3d5a76452a5f4b08a6391d657dca7a424182f9580dd70
+stage opt-35
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.35.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.35.ll
+end-stage
+stage llc-35
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.35.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.35.o
+end-stage
+piece 36 input-sha256 cd2a932af348a18ffade1fc4f310b7befafb49d474c3245edf5d2d8426b4399d module-sha256 96c8fe88b80a9a5691e9a005b4bc5672bcf047d92396ff501302413777b862bf object-sha256 48350bb610d3235faf1da8dd40b339af0a94025a0ba4d26ffe0ae4d20985c414
+stage opt-36
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.36.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.36.ll
+end-stage
+stage llc-36
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.36.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.36.o
+end-stage
+piece 37 input-sha256 65e48300340cf0f8c51b7bd43567b6c5801dacec6a128423de7b6c07cf5e7dcd module-sha256 87d103b50087f5afd969258730043179e468fc422e163f8c0ff1f166974d84e2 object-sha256 d1ada8162ae92e71a3407690db224f6d8c26e7db5d16fbc084eeba99c1bfbe90
+stage opt-37
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/opt
+-S
+-passes=verify,default<O2>,verify
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/source.37.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.37.ll
+end-stage
+stage llc-37
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/module.37.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.37.o
+end-stage
+linkage dynamic libSystem
+start-object-sha256 ca8f63addca81e5dd7808a8cc506843b9ae5c107c2871d9902d6027b59a536bb
+linker /opt/homebrew/Cellar/lld@22/22.1.8/bin/lld
+linker-sha256 b46796ecf50def5ccf45ffefafd29f83854fb2f7789c0d7f00ec1270b33eb1a8
+program-sha256 b410eca0fd389795963b58459bbcbce085dda088aa633593958e14d837511c18
+stage llc-start
+/opt/homebrew/Cellar/llvm@22/22.1.8/bin/llc
+-filetype=obj
+-O=2
+-relocation-model=pic
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/start.ll
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/start.o
+end-stage
+stage link
+/opt/homebrew/Cellar/lld@22/22.1.8/bin/lld
+-flavor
+darwin
+-arch
+arm64
+-platform_version
+macos
+11.0.0
+11.0.0
+-dead_strip
+-undefined
+dynamic_lookup
+-e
+_main
+-o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/a.out
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.1.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.2.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.3.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.4.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.5.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.6.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.7.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.8.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.9.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.10.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.11.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.12.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.13.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.14.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.15.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.16.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.17.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.18.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.19.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.20.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.21.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.22.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.23.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.24.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.25.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.26.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.27.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.28.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.29.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.30.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.31.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.32.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.33.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.34.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.35.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.36.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/object.37.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/start.o
+/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/compiler/native_driver/build/native/O2-14260eb98c725ae7.partial/System.tbd
+end-stage

@@ -1,0 +1,48 @@
+diff --git a/include/cute_graphics.h b/include/cute_graphics.h
+index 26587d47..462054a0 100644
+--- a/include/cute_graphics.h
++++ b/include/cute_graphics.h
+@@ -1952,6 +1952,15 @@ CF_API void CF_CALL cf_mesh_update_vertex_data(CF_Mesh mesh, void* data, int cou
+  */
+ CF_API void CF_CALL cf_mesh_update_index_data(CF_Mesh mesh, void* data, int count);
+ 
++/* Shared instance staging: upload before beginning the render pass, then bind
++ * ordered byte slices without another upload. The mesh must declare matching
++ * per-instance attributes and instance stride. Offsets are stride multiples.
++ * Set the override before cf_apply_shader; the next draw consumes it. */
++CF_API uint64_t CF_CALL cf_make_instance_buffer(int size_in_bytes, int stride);
++CF_API void CF_CALL cf_update_instance_buffer(uint64_t handle, void* data, int count);
++CF_API void CF_CALL cf_destroy_instance_buffer(uint64_t handle);
++CF_API void CF_CALL cf_apply_instance_buffer_override(uint64_t handle, int count, int offset_bytes);
++
+ /**
+  * @function cf_mesh_update_instance_data
+  * @category graphics
+diff --git a/src/internal/cute_graphics_internal.h b/src/internal/cute_graphics_internal.h
+index 16b1ba22..b241d94a 100644
+--- a/src/internal/cute_graphics_internal.h
++++ b/src/internal/cute_graphics_internal.h
+@@ -361,23 +361,11 @@ int cf_mesh_instance_stride(CF_Mesh mesh);
+ bool cf_mesh_draw3d_augmented(CF_Mesh mesh);
+ void cf_mesh_set_draw3d_augmented(CF_Mesh mesh);
+ 
+-// Standalone per-instance vertex buffers for the draw3d layer's baked draw lists: uploaded
+-// once at bake, then bound in place of the applied mesh's own instance buffer for exactly one
+-// draw via the override (set it before cf_apply_shader; it clears itself after the next
+-// cf_draw_elements). The mesh must still declare its per-instance attributes -- the override
+-// only swaps which buffer feeds them, so strides must match the mesh's instance stride.
+-uint64_t cf_make_instance_buffer(int size_in_bytes, int stride);
+-void cf_update_instance_buffer(uint64_t handle, void* data, int count);
+-
+ // Reflection queries for the draw layer's replay fusion: does `shader` declare a uniform
+ // member / sampler with this name, in either stage? `interned_name` must come from
+ // cf_sintern -- comparisons are by pointer.
+ bool cf_shader_consumes_uniform(CF_Shader shader, const char* interned_name);
+ bool cf_shader_consumes_texture(CF_Shader shader, const char* interned_name);
+-void cf_destroy_instance_buffer(uint64_t handle);
+-// `offset_bytes` positions the binding within the buffer, so many commands can share one
+-// per-flush staging buffer (each binds its own slice). Must be a multiple of the stride.
+-void cf_apply_instance_buffer_override(uint64_t handle, int count, int offset_bytes);
+ 
+ // What cf_canvas_copy_depth needs to know about each side; backends fill these in and share the
+ // misuse reporting. `format` is backend-native (an SDL or GL enum), compared only for equality.

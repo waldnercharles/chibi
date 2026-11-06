@@ -1,0 +1,7 @@
+package map_compound
+
+Main :: () -> int {
+    values: [int: int] = [1: 5];
+    values[1] += 2;
+    return values[1];
+}

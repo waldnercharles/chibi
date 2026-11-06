@@ -1,0 +1,145 @@
+package native_test_task_busy
+
+import os "core:os"
+foreign {
+    chibi_native_test_index :: () -> int
+    chibi_native_test_begin :: () -> int
+    chibi_native_test_end :: () -> int
+    chibi_native_test_expect :: (kind: int) -> int
+    chibi_native_scope_begin :: (steps: u64) -> int
+    chibi_native_scope_end :: () -> int
+}
+Mark :: (which: int) -> int {
+    if (which == 0) { os.Print("ready body"); }
+    if (which == 1) { os.Print("pending before yield"); }
+    if (which == 2) { os.Print("pending after yield"); }
+    if (which == 3) { os.Print("spawn argument"); }
+    if (which == 4) { os.Print("before ready await"); }
+    if (which == 5) { os.Print("after ready await"); }
+    if (which == 6) { os.Print("before yield"); }
+    if (which == 7) { os.Print("after rejected yield"); }
+    if (which == 8) { os.Print("after rejected inline await"); }
+    if (which == 9) { os.Print("after rejected spawn"); }
+    if (which == 10) { os.Print("after rejected finished handle"); }
+    if (which == 11) { os.Print("after rejected handle"); }
+    if (which == 12) { os.Print("before zero delay"); }
+    if (which == 13) { os.Print("after rejected zero delay"); }
+    if (which == 14) { os.Print("after rejected delay"); }
+    if (which == 15) { os.Print("after quota-scoped task"); }
+    if (which == 16) { os.Print("after rejected running test"); }
+    if (which == 17) { os.Print("after rejected cancellation"); }
+    if (which == 18) { os.Print("after rejected finished result"); }
+    return 0;
+}
+Index :: () -> int { return chibi_native_test_index(); }
+Begin :: (expected: bool) -> int {
+    result := chibi_native_test_begin();
+    if (expected) { return chibi_native_test_expect(4); }
+    return result;
+}
+End :: () -> int { return chibi_native_test_end(); }
+ScopeBegin :: () -> int { return chibi_native_scope_begin(1000000); }
+ScopeEnd :: () -> int { return chibi_native_scope_end(); }
+Ready :: () -> int {
+    Mark(0);
+    if (false) { yield }
+    return 9;
+}
+Pending :: (value: int) -> int {
+    Mark(1);
+    yield
+    Mark(2);
+    return value;
+}
+Argument :: () -> int { Mark(3); return 7; }
+Main :: () -> int {
+    index := Index();
+    if (index == 0) {
+        Begin(false);
+        Mark(4);
+        value := await Ready();
+        if (value != 9) { return 1; }
+        Mark(5);
+        return End();
+    }
+    if (index == 1 || index == 4) {
+        Begin(index == 4);
+        Mark(6);
+        yield
+        Mark(7);
+        return End();
+    }
+    if (index == 2) {
+        Begin(false);
+        value := await Pending(7);
+        Mark(8);
+        return End();
+    }
+    if (index == 3) {
+        Begin(false);
+        Pending(Argument());
+        Mark(9);
+        return End();
+    }
+    if (index == 5) {
+        finished := Ready();
+        Begin(false);
+        await finished
+        value := await finished;
+        if (value is Cancelled) { return 2; }
+        else { if (value != 9) { return 3; } }
+        Mark(10);
+        return End();
+    }
+    if (index == 6 || index == 7) {
+        pending := Pending(7);
+        Begin(false);
+        if (index == 6) { await pending }
+        else { value := await pending; }
+        Mark(11);
+        return End();
+    }
+    if (index == 8) {
+        Begin(false);
+        Mark(12);
+        await Delay(0)
+        Mark(13);
+        return End();
+    }
+    if (index == 9) {
+        Begin(false);
+        await Delay(1)
+        Mark(14);
+        return End();
+    }
+    if (index == 10) {
+        ScopeBegin();
+        pending := Pending(7);
+        if (pending) { } else { return 5; }
+        cancel pending after 10
+        await pending
+        Mark(15);
+        return ScopeEnd();
+    }
+    if (index == 11 || index == 12 || index == 13) {
+        pending := Pending(7);
+        Begin(false);
+        if (index == 11) {
+            if (pending) { Mark(16); }
+        } else if (index == 12) {
+            cancel pending
+        } else {
+            cancel pending after 0
+        }
+        Mark(17);
+        return End();
+    }
+    if (index == 14) {
+        finished := Ready();
+        Begin(false);
+        value := await finished;
+        Mark(18);
+        return End();
+    }
+    return 4;
+}

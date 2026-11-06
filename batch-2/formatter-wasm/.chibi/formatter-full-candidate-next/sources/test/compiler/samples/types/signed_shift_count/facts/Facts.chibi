@@ -1,0 +1,4 @@
+package facts
+Shift :: (a: int, n: int) -> int { return a << n; }
+
+// error: 2:48: Shift count must be unsigned; convert it with u32(value)

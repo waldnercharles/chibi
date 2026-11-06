@@ -1,0 +1,503 @@
+package host
+
+import target "core:target"
+
+// The native Edit and Continue host loads live-0.so, calls Main once, and
+// calls Frame until its nonzero result ends the program. A next.so generation
+// replaces code between Frames. Named retained leaves migrate before the next
+// Frame; incompatible string/scalar changes reject the incoming generation.
+// Retired generations keep their code and state until their tasks finish.
+
+RetainedText: int : 12;
+RetainedArray: int : 13;
+RetainedChar: int : 14;
+RetainedSnapshot: int : 15;
+RtldNow: i32 : 2;
+DarwinRtldLocal: i32 : 4;
+DarwinRtldFirst: i32 : 256;
+InvalidFileAttributes: u32 : 4294967295;
+
+foreign import kernel32 "system:kernel32"
+foreign kernel32 { GetFileAttributesA :: (path: cstring) -> u32 }
+foreign import libc "system:c"
+foreign libc {
+    memchr :: (buffer: u8[], value: i32, count: u64) -> rawptr
+    dlopen :: (path: cstring, flags: i32) -> rawptr
+    dlsym :: (handle: rawptr, name: cstring) -> rawptr
+    dlclose :: (handle: rawptr) -> i32
+    rename :: (from: cstring, to: cstring) -> i32
+    unlink :: (path: cstring) -> i32
+    access :: (path: cstring, mode: i32) -> i32
+    usleep :: (microseconds: u32) -> i32
+}
+
+when target.Os == target.Windows {
+    import windows "core:sys/windows"
+    OpenGeneration :: (path: string) -> rawptr { return windows.OpenLibrary(path); }
+    Symbol :: (handle: rawptr, name: string) -> rawptr { return windows.LibrarySymbol(handle, name); }
+    CloseGeneration :: (handle: rawptr) -> bool { return windows.CloseLibrary(handle); }
+    MoveGeneration :: (from: string, to: string) -> bool { return windows.Rename(from, to); }
+    // All polling names are fixed ASCII protocol files. Avoid UTF conversion
+    // and allocation on every frame; dynamic image paths use LoadLibraryW.
+    HasNext :: () -> bool { return GetFileAttributesA("./next.so") != InvalidFileAttributes; }
+    PauseFrame :: () -> bool { return windows.Pause(5); }
+    LoadedFile :: (path: string) -> bool { return true; }
+    RetiredFile :: (path: string) -> bool { return windows.Remove(path); }
+    ProcessArguments :: () -> rawptr { return 0; }
+} else {
+    // Darwin defaults to global symbol visibility. Look only in this image
+    // and keep its symbols private from the other generations.
+    when target.Os == target.Darwin {
+        OpenGeneration :: (path: string) -> rawptr {
+            return dlopen(path, RtldNow | DarwinRtldLocal | DarwinRtldFirst);
+        }
+    } else {
+        OpenGeneration :: (path: string) -> rawptr { return dlopen(path, RtldNow); }
+    }
+    Symbol :: (handle: rawptr, name: string) -> rawptr { return dlsym(handle, name); }
+    CloseGeneration :: (handle: rawptr) -> bool { return dlclose(handle) == 0; }
+    MoveGeneration :: (from: string, to: string) -> bool { return rename(from, to) == 0; }
+    HasNext :: () -> bool { return access("./next.so", 0) == 0; }
+    PauseFrame :: () -> bool { return usleep(5000) == 0; }
+    LoadedFile :: (path: string) -> bool { return unlink(path) == 0; }
+    RetiredFile :: (path: string) -> bool { return true; }
+    ProcessArguments :: () -> rawptr { return chibi_process_argv(); }
+}
+
+foreign {
+    chibi_argument_count :: () -> i64
+    chibi_process_argv :: () -> rawptr
+    chibi_environment :: () -> rawptr
+    chibi_clock_host_init :: () -> rawptr
+}
+
+// A single byte owner keeps the execution-family heap stable until every
+// generation has released its roots and callback metadata. Its final drop
+// follows the final dlclose. Only native images with this ABI may adopt it.
+Family :: struct { storage: u8[]; address: rawptr; version: i64; }
+AdoptFamily :: (family: ^Family, handle: rawptr) -> bool {
+    version_address := Symbol(handle, "chibi_host_family_abi");
+    if version_address == 0 { return true; }
+    for name in ["chibi_host_family_size", "chibi_host_set_family", "chibi_host_cells_pending", "chibi_host_family_collect"] {
+        if Symbol(handle, name) == 0 { return false; }
+    }
+    version: fn() -> i64 = version_address;
+    size: fn() -> i64 = Symbol(handle, "chibi_host_family_size");
+    bytes := size();
+    incoming_version := version();
+    if incoming_version <= 0 || bytes <= 0 || bytes > 4096 {
+        print_string("Incompatible native collector family ABI");
+        return false;
+    }
+    if length(family.storage) == 0 {
+        storage := resize([u8(0)], int(bytes));
+        // The first byte is zero now. Move this same backing into Main's
+        // owner after borrowing its address, and never replace it afterward.
+        // The native array's eight-byte owner prefix preserves heap alignment.
+        address := memchr(storage, 0, 1);
+        family.storage = storage;
+        family.address = address;
+        family.version = incoming_version;
+    } else if family.version != incoming_version || length(family.storage) != int(bytes) {
+        print_string("Incompatible native collector family ABI or heap size");
+        return false;
+    }
+    adopt: fn(heap: rawptr) -> i32 = Symbol(handle, "chibi_host_set_family");
+    return adopt(family.address) == 0;
+}
+CellsPending :: (handle: rawptr) -> bool {
+    address := Symbol(handle, "chibi_host_cells_pending");
+    if address == 0 { return false; }
+    pending: fn() -> i64 = address;
+    return pending() != 0;
+}
+Collect :: (handle: rawptr) -> bool {
+    address := Symbol(handle, "chibi_host_family_collect");
+    if address == 0 { return false; }
+    collect: fn() -> i32 = address;
+    status := collect();
+    assert(status == 0 || status == 1, "an adopted family has a collector owner");
+    return status == 0;
+}
+
+// Windows keeps a mapped DLL's file until its loader reference is released.
+// A rejected image is renamed only after closing; accepted images are removed.
+Generation :: struct { handle: rawptr; path: string; destination: string; }
+Discard :: (generation: Generation) -> int {
+    closed := CloseGeneration(generation.handle);
+    if generation.destination != "" {
+        moved := MoveGeneration(generation.path, generation.destination);
+    } else { removed := RetiredFile(generation.path); }
+    return 0;
+}
+CollectFamily :: (active: rawptr, retired: Generation[], pinned: Generation[]) -> int {
+    if Collect(active) { return 0; }
+    for previous in retired { if Collect(previous.handle) { return 0; } }
+    for previous in pinned { if Collect(previous.handle) { return 0; } }
+    return 0;
+}
+ClosePinned :: (pinned: ^(Generation[])) -> int {
+    kept := 0;
+    for index in 0..<length(pinned^) {
+        if CellsPending(pinned^[index].handle) {
+            if kept != index { pinned^[kept] = pinned^[index]; }
+            kept += 1;
+        } else {
+            discarded := Discard(pinned^[index]);
+        }
+    }
+    if kept != length(pinned^) { pinned^ = resize(pinned^, kept); }
+    return 0;
+}
+
+Main :: () -> int {
+    // Keep one domain factory in the executable, never in a reloadable image.
+    // Merely creating the factory grants no image access to the clock.
+    clock_factory := chibi_clock_host_init();
+    assert(clock_factory != 0);
+    active: Generation = {handle: OpenGeneration("./live-0.so"), path: "./live-0.so", destination: ""};
+    if active.handle == 0 { return 2; }
+    if !Complete(active.handle) {
+        released := Release(active.handle);
+        return 2;
+    }
+    family: Family = {storage: [], address: 0, version: 0};
+    if !AdoptFamily(&family, active.handle) {
+        released := Release(active.handle);
+        return 2;
+    }
+    initialized := Process(active.handle);
+    frame: fn() -> i32 = Symbol(active.handle, "chibi_host_call_Frame");
+    entries := Entries(active.handle);
+    if entries < 0 || entries > 3 {
+        released := Release(active.handle);
+        return 2;
+    }
+    started := entries != 0;
+    framing := false;
+    status := 0;
+    if (entries & 1) != 0 { status = Enter(active.handle); }
+    else if entries == 0 { print_string("No runnable Main in the root package"); }
+    generation := 0;
+    retired: Generation[] = [];
+    pinned: Generation[] = [];
+    while status == 0 {
+        if (entries & 2) != 0 {
+            framing = true;
+            status = int(frame());
+        }
+        if Failed(active.handle) { status = 134; }
+        else if status == 0 {
+            polled_active := Poll(active.handle);
+            if Failed(active.handle) { status = 134; }
+        }
+        if status != 0 { break; }
+        changed := false;
+        index := 0;
+        kept := 0;
+        while index < length(retired) {
+            polled := Poll(retired[index].handle);
+            if Failed(retired[index].handle) { status = 134; break; }
+            if Pending(retired[index].handle) {
+                if kept != index { retired[kept] = retired[index]; }
+                kept += 1;
+            } else {
+                released_roots := ReleaseRoots(retired[index].handle);
+                pinned.append(retired[index]);
+                changed = true;
+            }
+            index += 1;
+        }
+        // A failure leaves the unpolled suffix owned for shutdown cleanup.
+        for unread in index..<length(retired) {
+            if kept != unread { retired[kept] = retired[unread]; }
+            kept += 1;
+        }
+        if kept != length(retired) { retired = resize(retired, kept); }
+        if status != 0 { break; }
+        if changed { collected := CollectFamily(active.handle, retired, pinned); }
+        closed := ClosePinned(&pinned);
+        slept := PauseFrame();
+        if !HasNext() { continue; }
+        generation += 1;
+        name := format_text("./generation-{}.so", generation);
+        moved := MoveGeneration("./next.so", name);
+        if !moved { continue; }
+        incoming := OpenGeneration(name);
+        if incoming == 0 {
+            set_aside := MoveGeneration(name, "./rejected.so");
+            continue;
+        }
+        incoming_entries := Entries(incoming);
+        if incoming_entries < 0 || incoming_entries > 3 || !Complete(incoming) || !AdoptFamily(&family, incoming) {
+            released := Release(incoming);
+            set_aside := MoveGeneration(name, "./rejected.so");
+            continue;
+        }
+        initialized_incoming := Process(incoming);
+        if !Migrate(active.handle, incoming) {
+            released_roots := ReleaseRoots(incoming);
+            pinned.append({handle: incoming, path: name, destination: "./rejected.so"});
+            collected := CollectFamily(active.handle, retired, pinned);
+            closed_rejected := ClosePinned(&pinned);
+            continue;
+        }
+        removed := LoadedFile(name);
+        next_frame: fn() -> i32 = Symbol(incoming, "chibi_host_call_Frame");
+        if Pending(active.handle) { retired.append(active); }
+        else {
+            released_roots := ReleaseRoots(active.handle);
+            pinned.append(active);
+        }
+        active = {handle: incoming, path: name, destination: ""};
+        frame = next_frame;
+        entries = incoming_entries;
+        collected := CollectFamily(active.handle, retired, pinned);
+        closed_retired := ClosePinned(&pinned);
+        if framing && (entries & 2) == 0 { print_string("No runnable Frame in the root package"); }
+        if !started {
+            if entries == 0 { print_string("No runnable Main in the root package"); }
+            else {
+                started = true;
+                if (entries & 1) != 0 { status = Enter(active.handle); }
+            }
+        }
+    }
+    // Clear every generation's roots before one final collection, while every
+    // trace/validate/drop callback is still mapped. Only then close the images.
+    released_active := ReleaseRoots(active.handle);
+    for previous in retired { released_previous := ReleaseRoots(previous.handle); }
+    collected := CollectFamily(active.handle, retired, pinned);
+    active_cells := CellsPending(active.handle);
+    assert(!active_cells, "active generation has no callback cells after shutdown");
+    closed_active := Discard(active);
+    for previous in retired {
+        cells := CellsPending(previous.handle);
+        assert(!cells, "retired generation has no callback cells after shutdown");
+        closed_previous := Discard(previous);
+    }
+    for previous in pinned {
+        cells := CellsPending(previous.handle);
+        assert(!cells, "pinned generation has no callback cells after shutdown");
+        closed_previous := Discard(previous);
+    }
+    return status;
+}
+
+// Older library images have no presence metadata and require both entries.
+// Current libraries and generations describe only their runnable entries.
+Entries :: (handle: rawptr) -> int {
+    address := Symbol(handle, "chibi_host_entries");
+    if address == 0 { return 3; }
+    read: fn() -> i32 = address;
+    return int(read());
+}
+Enter :: (handle: rawptr) -> int {
+    start: fn() -> i32 = Symbol(handle, "chibi_host_call_Main");
+    status := int(start());
+    if Failed(handle) { return 134; }
+    return status;
+}
+
+Process :: (handle: rawptr) -> int {
+    address := Symbol(handle, "chibi_host_set_process");
+    if address == 0 { return 0; }
+    initialize: fn(count: i64, arguments: rawptr, environment: rawptr) -> i32 = address;
+    return int(initialize(chibi_argument_count(), ProcessArguments(), chibi_environment()));
+}
+
+Complete :: (handle: rawptr) -> bool {
+    entries := Entries(handle);
+    if (entries & 1) != 0 && Symbol(handle, "chibi_host_call_Main") == 0 { return false; }
+    if (entries & 2) != 0 && Symbol(handle, "chibi_host_call_Frame") == 0 { return false; }
+    for symbol in ["chibi_host_retained_count",
+                   "chibi_host_retained_type", "chibi_host_retained_hash", "chibi_host_retained_get",
+                   "chibi_host_retained_set", "chibi_host_retained_set_as"] {
+        if Symbol(handle, symbol) == 0 {
+            return false;
+        }
+    }
+    return true;
+}
+
+Failed :: (handle: rawptr) -> bool {
+    address := Symbol(handle, "chibi_host_failed");
+    if address == 0 {
+        return false;
+    }
+    failed: fn() -> i32 = address;
+    return failed() != 0;
+}
+
+Pending :: (handle: rawptr) -> bool {
+    address := Symbol(handle, "chibi_host_tasks_pending");
+    if address == 0 {
+        return false;
+    }
+    count: fn() -> i64 = address;
+    return count() != 0;
+}
+
+Poll :: (handle: rawptr) -> int {
+    address := Symbol(handle, "chibi_host_tasks_poll");
+    if address != 0 {
+        poll: fn() -> i32 = address;
+        polled := poll();
+    }
+    return 0;
+}
+
+ReleaseRoots :: (handle: rawptr) -> int {
+    cancel_address := Symbol(handle, "chibi_host_tasks_cancel_all");
+    if cancel_address != 0 {
+        cancel_tasks: fn() -> i32 = cancel_address;
+        cancelled := cancel_tasks();
+    }
+    release_address := Symbol(handle, "chibi_host_retained_release");
+    if release_address != 0 {
+        release_states: fn() -> i32 = release_address;
+        released := release_states();
+    }
+    return 0;
+}
+// Before adoption/entry, an invalid image has created no roots or allocations.
+// Do not invoke cleanup from an image whose family ABI was just rejected.
+Release :: (handle: rawptr) -> int {
+    closed := CloseGeneration(handle);
+    return 0;
+}
+
+// Stable indices into the old state table, ordered by name hash. Migration
+// sorts once and uses binary search, rather than comparing every pair of states.
+Order :: (hashes: i64[]) -> int[] {
+    from: int[] = [];
+    for index in 0..<length(hashes) { from.append(index); }
+    to := from;
+    width := 1;
+    while width < length(from) {
+        start := 0;
+        while start < length(from) {
+            middle := start + width;
+            if middle > length(from) { middle = length(from); }
+            end := middle + width;
+            if end > length(from) { end = length(from); }
+            left := start;
+            right := middle;
+            for index in start..<end {
+                take_left := right == end || (left < middle && hashes[from[left]] <= hashes[from[right]]);
+                if take_left {
+                    to[index] = from[left];
+                    left += 1;
+                } else {
+                    to[index] = from[right];
+                    right += 1;
+                }
+            }
+            start = end;
+        }
+        from = to;
+        width *= 2;
+    }
+    return from;
+}
+
+// Validate every shared leaf before writing any incoming state. Scalar types
+// convert; strings require a string on both sides. Arrays require the same
+// scalar element schema. Setters copy incoming bytes before the old unloads.
+Migrate :: (old: rawptr, incoming: rawptr) -> bool {
+    old_count: fn() -> i32 = Symbol(old, "chibi_host_retained_count");
+    old_type: fn(index: i32) -> i32 = Symbol(old, "chibi_host_retained_type");
+    old_hash: fn(index: i32) -> i64 = Symbol(old, "chibi_host_retained_hash");
+    old_get: fn(index: i32) -> i64 = Symbol(old, "chibi_host_retained_get");
+    ready_address := Symbol(old, "chibi_host_retained_ready");
+    old_schema_address := Symbol(old, "chibi_host_retained_schema");
+    new_schema_address := Symbol(incoming, "chibi_host_retained_schema");
+    new_count: fn() -> i32 = Symbol(incoming, "chibi_host_retained_count");
+    new_type: fn(index: i32) -> i32 = Symbol(incoming, "chibi_host_retained_type");
+    new_hash: fn(index: i32) -> i64 = Symbol(incoming, "chibi_host_retained_hash");
+    new_set: fn(index: i32, word: i64) -> i32 = Symbol(incoming, "chibi_host_retained_set");
+    new_set_as: fn(index: i32, from: i32, word: i64) -> i32 = Symbol(incoming, "chibi_host_retained_set_as");
+    begin_address := Symbol(incoming, "chibi_host_retained_begin");
+    accept_address := Symbol(incoming, "chibi_host_retained_accept");
+    stage_address := Symbol(incoming, "chibi_host_retained_stage");
+    finish_address := Symbol(incoming, "chibi_host_retained_finish");
+    if begin_address != 0 && (accept_address == 0 || stage_address == 0 || finish_address == 0) { return false; }
+    hashes: i64[] = [];
+    for source in 0..<int(old_count()) { hashes.append(old_hash(i32(source))); }
+    order := Order(hashes);
+    sources: int[] = [];
+    for target in 0..<int(new_count()) {
+        wanted := new_hash(i32(target));
+        low := 0;
+        high := length(order);
+        while low < high {
+            middle := low + (high - low) / 2;
+            if hashes[order[middle]] < wanted { low = middle + 1; }
+            else { high = middle; }
+        }
+        source := -1;
+        if low < length(order) && hashes[order[low]] == wanted { source = order[low]; }
+        sources.append(source);
+        if new_type(i32(target)) == RetainedSnapshot && begin_address == 0 { return false; }
+        if source >= 0 && (old_type(i32(source)) == RetainedSnapshot || new_type(i32(target)) == RetainedSnapshot) {
+            if old_type(i32(source)) != new_type(i32(target)) || begin_address == 0 { return false; }
+        }
+        if source >= 0 && (old_type(i32(source)) == RetainedArray || new_type(i32(target)) == RetainedArray ||
+                          old_type(i32(source)) == RetainedChar || new_type(i32(target)) == RetainedChar) {
+            if old_type(i32(source)) != new_type(i32(target)) || old_schema_address == 0 || new_schema_address == 0 {
+                return false;
+            }
+            old_schema: fn(index: i32) -> i64 = old_schema_address;
+            new_schema: fn(index: i32) -> i64 = new_schema_address;
+            if old_schema(i32(source)) == 0 || old_schema(i32(source)) != new_schema(i32(target)) { return false; }
+        }
+        if source >= 0 && ((old_type(i32(source)) == RetainedText) != (new_type(i32(target)) == RetainedText)) {
+            return false;
+        }
+    }
+    // A snapshot transaction owns staged roots. Schema rejection occurs
+    // before value copying; no incoming binding is published until finish.
+    session: i64 = 0;
+    if begin_address != 0 {
+        begin: fn() -> i64 = begin_address;
+        session = begin();
+        if session == 0 { return false; }
+        accept: fn(handle: i64, index: i32, from: i32, word: i64) -> i32 = accept_address;
+        finish: fn(handle: i64, commit: i32) -> i32 = finish_address;
+        for target in 0..<length(sources) {
+            source := sources[target];
+            if source < 0 { continue; }
+            if accept(session, i32(target), old_type(i32(source)), old_get(i32(source))) != 1 {
+                aborted := finish(session, 0);
+                return false;
+            }
+        }
+    }
+    for target in 0..<length(sources) {
+        source := sources[target];
+        if source < 0 { continue; }
+        if ready_address != 0 {
+            initialized: fn(index: i32) -> i32 = ready_address;
+            if initialized(i32(source)) == 0 { continue; }
+        }
+        if session != 0 {
+            stage: fn(handle: i64, index: i32, from: i32, word: i64) -> i32 = stage_address;
+            if stage(session, i32(target), old_type(i32(source)), old_get(i32(source))) != 1 {
+                finish: fn(handle: i64, commit: i32) -> i32 = finish_address;
+                aborted := finish(session, 0);
+                return false;
+            }
+        } else if old_type(i32(source)) == new_type(i32(target)) {
+            carried := new_set(i32(target), old_get(i32(source)));
+            if carried != 1 { return false; }
+        } else {
+            converted := new_set_as(i32(target), old_type(i32(source)), old_get(i32(source)));
+            if converted != 1 { return false; }
+        }
+    }
+    if session != 0 {
+        finish: fn(handle: i64, commit: i32) -> i32 = finish_address;
+        return finish(session, 1) == 1;
+    }
+    return true;
+}

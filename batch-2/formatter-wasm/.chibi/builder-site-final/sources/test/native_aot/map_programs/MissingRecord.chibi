@@ -1,0 +1,6 @@
+package map_missing_record
+Point :: struct { x: int; y: int; }
+Main :: () -> int {
+    values: [int: Point] = [1: {x: 3, y: 4}];
+    return values[2].x;
+}

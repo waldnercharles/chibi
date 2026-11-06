@@ -1,0 +1,27 @@
+// Set movement velocity from local input and face the movement direction.
+InputBehavior :: behavior {
+    on Input :: (Direction: vec2) {
+        if self.Dash {
+            if 0.0 < self.Dash.remaining {
+            } else {
+                self.Velocity = MovementActions.Movement_Velocity(Direction, self.Movement)
+                await Face_Direction(Direction)
+            }
+        } else {
+            self.Velocity = MovementActions.Movement_Velocity(Direction, self.Movement)
+            await Face_Direction(Direction)
+        }
+    }
+    Face_Direction :: (Direction: vec2 = null) {
+        if self.Orientation {
+            if 0.0 >= abs(Direction.x) + abs(Direction.y) {
+                return
+            } else {
+                self.Orientation = DirectionMath.Direction_Orientation(Direction.x, Direction.y)
+                return
+            }
+        } else {
+            return
+        }
+    }
+}

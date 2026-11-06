@@ -1,0 +1,51 @@
+{
+  "sdk_source": {
+    "dirty": false,
+    "revision": "1dd12f7c1bc569bfac085fef14f322d2fc54d901",
+    "snapshot_sha256": "3f6f2b5084dc64eea70291d1b5bc81939573eb36d2bef2f194e7bfeaf4d29cec"
+  },
+  "studio_head": "30d76509a8502ef54be8ac33b30a0e3b150d016d",
+  "studio_cmake_sha256": "653990fc6856fc4be15363313fc5890ac43cc63bec50da927ddba474f14e6d4c",
+  "copied_resource_files": 155,
+  "engine_metadata_equal": true,
+  "cli_output": "Hello, Studio!\n",
+  "steps": [
+    {
+      "step": "configure",
+      "returncode": 0,
+      "wall_seconds": 0.491,
+      "command": [
+        "cmake",
+        "-S",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk-1dd12f7c",
+        "-B",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk-1dd12f7c/build"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk-1dd12f7c/configure.log"
+    },
+    {
+      "step": "install",
+      "returncode": 0,
+      "wall_seconds": 0.059,
+      "command": [
+        "cmake",
+        "--install",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk-1dd12f7c/build",
+        "--prefix",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk-1dd12f7c/installed"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk-1dd12f7c/install.log"
+    },
+    {
+      "step": "copied-cli",
+      "returncode": 0,
+      "wall_seconds": 0.411,
+      "command": [
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk-1dd12f7c/build/bin/chibi",
+        "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk-1dd12f7c/Hello.chibi"
+      ],
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/studio-real-sdk-1dd12f7c/copied-cli.log"
+    }
+  ],
+  "scope": "current Studio resource/tool copy and install block against actual SDK; no Studio compile or UI launch"
+}

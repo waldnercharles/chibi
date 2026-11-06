@@ -1,0 +1,3 @@
+package words
+pub Message :: () -> string { return "Local packages" }
+Main :: () -> int { return 31 }

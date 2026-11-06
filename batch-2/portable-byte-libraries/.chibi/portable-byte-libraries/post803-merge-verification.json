@@ -1,0 +1,12 @@
+{
+  "state": "source-only accepted803 normalmerge on separatepost803branch",
+  "accepted": "79743c5675e5a18eeea14193d729cc6e45bdf926",
+  "previous_frozen": "3200134a8b7e35c22695c7f7e3527a85893da37f",
+  "merged_tree": "0a5aaa4e934701df288c7f67b24bff512125db43",
+  "all16incomingpaths_exactexceptpreserved795docs": true,
+  "tree_equals_accepted803_plus_previous795featurepatch": true,
+  "compiler_runtime_publicABI_profiles_unchanged": true,
+  "private_protocol": 14,
+  "old795branch_unchanged": true,
+  "no_build_or_test": true
+}

@@ -1,0 +1,10 @@
+package asset_request_probe
+import request "project:asset_request"
+import os "core:os"
+Main :: () -> int {
+    arguments := os.Arguments();
+    input := os.ReadText(arguments[0]);
+    value := request.Parse(input.text);
+    if (value.valid) { return length(value.natives); }
+    return 2;
+}

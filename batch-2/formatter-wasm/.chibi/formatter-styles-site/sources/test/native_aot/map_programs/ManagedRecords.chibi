@@ -1,0 +1,107 @@
+package map_managed_records
+
+Inner :: struct { text: string; }
+Value :: struct { message: string; nested: Inner; number: int; }
+Text :: (i: int) -> string { return text_from_bytes([u8(65), 0, u8(i)]); }
+Make :: (i: int) -> Value {
+    return {message: Text(i), nested: {text: Text(i + 1)}, number: i};
+}
+Map :: () -> [int: Value] {
+    values: [int: Value] = [1: Make(1), 2: Make(2)];
+    return values;
+}
+First :: () -> Value {
+    for (key, value in Map()) { return value; }
+    return Make(0);
+}
+Mutate :: (values: [int: Value]) -> int {
+    values[1] = Make(7);
+    return values[1].number;
+}
+Reset :: (values: ^([int: Value])) -> int { values^ = [9: Make(9)]; return 0; }
+Captured :: (values: [int: Value], ignored: int) -> Value { return values[1]; }
+Check :: (value: Value) -> bool { return text_byte_at(value.nested.text, 2) == value.number + 1; }
+FromBorrowed :: (items: Value[]) -> [int: Value] {
+    values: [int: Value] = [1: items[0], 1: items[0]];
+    values[2] = items[0];
+    return values;
+}
+ChangeItem :: (items: ^(Value[])) -> int { items^[0] = Make(22); return 2; }
+ChangedInputs :: (items: ^(Value[])) -> [int: Value] {
+    values: [int: Value] = [1: items^[0], ChangeItem(items): Make(2)];
+    return values;
+}
+ChangeWord :: (words: ^(string[])) -> string { words^[0] = Text(24); return Text(25); }
+ChangedKeys :: (words: ^(string[])) -> [string: Value] {
+    values: [string: Value] = [words^[0]: Make(1), ChangeWord(words): Make(2)];
+    return values;
+}
+Main :: () -> int {
+    borrowed := [Make(11)];
+    retained := FromBorrowed(borrowed);
+    borrowed[0] = Make(12);
+    assert(text_byte_at(retained[1].message, 2) == 11);
+    assert(text_byte_at(retained[2].nested.text, 2) == 12);
+    changed_items := [Make(21)];
+    changed_values := ChangedInputs(&changed_items);
+    assert(text_byte_at(changed_values[1].message, 2) == 21);
+    assert(text_byte_at(changed_items[0].message, 2) == 22);
+    words := [Text(23)];
+    changed_keys := ChangedKeys(&words);
+    assert(changed_keys.has(Text(23)) && text_byte_at(words[0], 2) == 24);
+    repeated := Make(5);
+    texts: [string: Value] = [repeated.message: repeated, repeated.message: repeated];
+    copied_texts := texts;
+    repeated.message = Text(6);
+    delete texts[Text(5)];
+    assert(!texts.has(Text(5)) && text_byte_at(copied_texts[Text(5)].message, 2) == 5);
+    values := Map();
+    copy := values;
+    value := values[1];
+    value.message = Text(8);
+    value.nested = {text: Text(9)};
+    assert(text_byte_at(values[1].message, 2) == 1);
+    assert(text_byte_at(values[1].nested.text, 2) == 2);
+    values[1] = value;
+    values[1] = values[1];
+    assert(text_byte_at(values[1].message, 2) == 8);
+    assert(text_byte_at(copy[1].message, 2) == 1);
+    changed := Mutate(copy);
+    assert(changed == 7 && copy[1].number == 1);
+    returned := First();
+    assert(text_byte_at(returned.nested.text, 2) == 2);
+    escaped := Map()[1].message;
+    assert(text_byte_at(escaped, 2) == 1);
+    visited: int = 0;
+    for (key, item in copy) {
+        delete copy[key];
+        assert(text_byte_at(item.message, 2) == item.number);
+        held := item;
+        held.message = Text(10);
+        assert(text_byte_at(item.message, 2) == item.number);
+        visited += 1;
+    }
+    assert(visited == 2 && !copy.has(1));
+    for (key, item in Map()) { break; }
+    for (item in Map()) { continue; }
+    growing: [int: Value] = [:];
+    i: int = 0;
+    while (i < 192) { growing[i] = Make(i % 128); i += 1; }
+    kept_growth := growing;
+    i = 0;
+    while (i < 192) { delete growing[i]; i += 2; }
+    growing[0] = Make(99);
+    i = 1;
+    while (i < 191) { delete growing[i]; i += 2; }
+    assert(text_byte_at(kept_growth[0].message, 2) == 0);
+    assert(text_byte_at(growing[0].message, 2) == 99);
+    captured := Captured(values, Reset(&values));
+    assert(text_byte_at(captured.message, 2) == 8 && values.has(9));
+    i = 0;
+    while (i < 16) {
+        checked := i % 2 == 0 || Check(Map()[1]);
+        assert(checked);
+        i += 1;
+    }
+    return 0;
+}

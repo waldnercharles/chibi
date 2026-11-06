@@ -1,0 +1,4 @@
+package facts
+Mixed :: (a: i8, b: u8) -> int { return a + b; }
+
+// error: 2:41: Mismatched integer types i8 and u8; convert one operand

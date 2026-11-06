@@ -1,0 +1,3 @@
+Cool :: system(heat: ^Heat) {
+    heat.level -= heat.rate * dt
+}

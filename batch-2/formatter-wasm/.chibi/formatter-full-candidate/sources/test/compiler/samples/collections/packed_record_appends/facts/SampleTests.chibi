@@ -1,0 +1,28 @@
+package facts
+
+// packed record appends
+@test
+Calls :: () {
+    assert(Appended(1000), "Appended call 1");
+    r2: int = Shared();
+    e2: int = 20344;
+    assert(r2 == e2, "Shared call 2");
+    r3: int = SharedRows();
+    e3: int = 13494;
+    assert(r3 == e3, "SharedRows call 3");
+    r4: int = Held();
+    e4: int = 566;
+    assert(r4 == e4, "Held call 4");
+    r5: int = Extended();
+    e5: int = 6912;
+    assert(r5 == e5, "Extended call 5");
+    r6: int = Walked();
+    e6: int = 430;
+    assert(r6 == e6, "Walked call 6");
+    r7: int = Field();
+    e7: int = 133;
+    assert(r7 == e7, "Field call 7");
+    r8: int = Boxed();
+    e8: int = 2113;
+    assert(r8 == e8, "Boxed call 8");
+}

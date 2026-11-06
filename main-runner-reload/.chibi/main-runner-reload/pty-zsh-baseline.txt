@@ -1,0 +1,40 @@
+2026-10-28 independent interactive shell control
+
+Started /bin/zsh -f through exec_command with tty=true.
+Tool session: 98892
+
+> /bin/cat
+> BASELINE_FIRST
+BASELINE_FIRST
+BASELINE_FIRST
+> Ctrl-Z
+^Z
+zsh: suspended  /bin/cat
+> fg
+[1]  + continued  /bin/cat
+cat: stdin: Interrupted system call
+> exit
+
+No Chibi executable or production process wrapper was involved.
+This establishes the same host-level cat resume symptom in an ordinary shell.
+The exact kernel cause is not established by this control alone.
+
+Second independent interactive shell control
+
+Started /bin/bash --noprofile --norc -i through exec_command with tty=true.
+Tool session: 15921
+
+> /bin/cat
+> BASH_FIRST
+BASH_FIRST
+BASH_FIRST
+> Ctrl-Z
+^Z
+[1]+  Stopped                 /bin/cat
+> fg
+/bin/cat
+cat: stdin: Interrupted system call
+> exit
+exit
+
+Both /bin/zsh and /bin/bash reproduce the host cat resume symptom.

@@ -1,0 +1,8 @@
+{
+  "base": "3e2b28dc19fb21961ae06fe99aeb5a8dede35bf0",
+  "head": "49039a8f25d94e04d741af4d51d3e04e191297d0",
+  "path": "tools/native_aot/Driver.chibi",
+  "patch": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/portable-byte-libraries/emitter-source-role-prerequisite.patch",
+  "patch_sha256": "c7b3ba01131203df8be28ae777702d25b9feb531ab055c92b762e07632be6c68",
+  "qualification": "Exact existing #795 scalar emitter source/key boundary only; no new source edits. Its actual core dependency is strings/Strings.chibi. Complete public core packaging is unchanged."
+}

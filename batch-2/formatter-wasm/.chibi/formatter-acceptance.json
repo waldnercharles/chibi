@@ -1,0 +1,32 @@
+{
+  "source_parent": "db6b9f6c1e1b494b0206840d4ff43b3da0dc1168",
+  "url": "http://127.0.0.1:8766/chibi/formatter/",
+  "wasm_bytes": 202775,
+  "wasm_sha256": "333e78e91486838a90a1cd783c192a6cdbb832b18ea4dbff79cdbf5ea17776f9",
+  "native_formatter_tests": {
+    "passed": 39,
+    "seconds": 11.53
+  },
+  "native_highlighter_tests": {
+    "passed": 5,
+    "seconds": 8.79
+  },
+  "javascript_protocol_queue_tests": 9,
+  "real_wasm_formatter_tests": 5,
+  "exact_local_formatter_parity_cases": 10,
+  "asset_wasm_runtime_suite": {
+    "passed": true,
+    "seconds": 200.5
+  },
+  "browser_checks": [
+    "static-only hosting under URL prefix",
+    "tracked-source browse/read/format",
+    "Unicode scratch formatting",
+    "indentation options and reset",
+    "invalid source diagnostic and correction",
+    "latest rapid edit wins",
+    "worker module load failure and Retry recovery"
+  ],
+  "publication": "Not deployed",
+  "committed": false
+}

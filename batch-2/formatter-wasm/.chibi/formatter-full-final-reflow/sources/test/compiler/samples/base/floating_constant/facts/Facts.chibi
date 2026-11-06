@@ -1,0 +1,4 @@
+package facts
+Half :: 0.5;
+
+// error: 2:9: only integer constants are supported yet

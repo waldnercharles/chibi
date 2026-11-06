@@ -1,0 +1,222 @@
+package source_format
+
+import diag "project:syntax_diagnostics"
+
+// Wang 2017, chapter 6, sections 6.3.2.1-3 and tables 6.1-2.
+// These are syntactic categories, not inferred action/effect classifications.
+SegmentOther: int : 0;
+SegmentInit: int : 1;
+SegmentDeclare: int : 2;
+SegmentAssign: int : 3;
+SegmentObjectMethod: int : 4;
+SegmentMethod: int : 5;
+
+SegmentRhsNone: int : 0;
+SegmentRhsConstant: int : 1;
+SegmentRhsName: int : 2;
+SegmentRhsCreation: int : 3;
+SegmentRhsInfix: int : 4;
+SegmentRhsPrefix: int : 5;
+SegmentRhsPostfix: int : 6;
+SegmentRhsCast: int : 7;
+SegmentRhsMethod: int : 8;
+SegmentRhsObjectMethod: int : 9;
+SegmentRhsOther: int : 10;
+
+// Identifier handles are syntax row + 1; zero means absent. Equality ids are
+// prepared once so pair comparisons need no allocation, hashing or text work.
+SegmentNameWords :: struct {
+    first: int[];
+    counts: int[];
+    words: int[];
+}
+
+SegmentWordSpan :: struct {
+    first: int;
+    end: int;
+}
+
+// Seven i32 fields per statement. Names borrow handles into SegmentNameWords.
+SegmentFeature :: struct {
+    category: int;
+    type_name: int;
+    name: int;
+    receiver: int;
+    method: int;
+    rhs_kind: int;
+    rhs_method: int;
+}
+
+// The native compiler does not yet lower character literals in these tests.
+SegmentUpperFirst: int : 65;
+SegmentUpperLast: int : 90;
+SegmentLowerFirst: int : 97;
+SegmentLowerLast: int : 122;
+SegmentUpper :: (byte: int) -> bool { return byte >= SegmentUpperFirst && byte <= SegmentUpperLast; }
+SegmentLower :: (byte: int) -> bool { return byte >= SegmentLowerFirst && byte <= SegmentLowerLast; }
+SegmentLetter :: (byte: int) -> bool { return SegmentUpper(byte) || SegmentLower(byte) || byte >= 128; }
+
+SegmentWordCompare :: (bytes: int[], left: SegmentWordSpan, right: SegmentWordSpan) -> int {
+    a := left.first; b := right.first;
+    while (a < left.end && b < right.end) {
+        if (bytes[a] < bytes[b]) { return -1; }
+        if (bytes[a] > bytes[b]) { return 1; }
+        a += 1; b += 1;
+    }
+    if (a < left.end) { return 1; }
+    if (b < right.end) { return -1; }
+    return 0;
+}
+
+// The thesis does not specify acronym boundaries, case folding or whether
+// numeric delimiters survive. Here acronym runs stay whole, words retain
+// exact case, and digits/special characters delimit and are discarded.
+// UTF-8 bytes stay in their word; camel boundaries use ASCII case only.
+// Sorting costs O(identifier bytes * log(words)); pair scans then compare
+// integer ids. Thousands of identifiers should need milliseconds, not seconds.
+SegmentIndexNames :: (bytes: int[], rows: diag.Node[]) -> SegmentNameWords {
+    first := resize([int(0)], length(rows));
+    counts := resize([int(0)], length(rows));
+    spans: SegmentWordSpan[] = [];
+    for (node in 0..<length(rows)) {
+        if (rows[node].kind != diag.Identifier) { continue; }
+        first[node] = length(spans);
+        start := rows[node].start; end := rows[node].end; word := start;
+        at := start;
+        while (at < end) {
+            if (!SegmentLetter(bytes[at])) {
+                if (word < at) { spans.append({first: word, end: at}); }
+                at += 1; word = at;
+                continue;
+            }
+            if (at > word && SegmentUpper(bytes[at]) &&
+                (SegmentLower(bytes[at - 1]) ||
+                 (SegmentUpper(bytes[at - 1]) && at + 1 < end && SegmentLower(bytes[at + 1])))) {
+                spans.append({first: word, end: at}); word = at;
+            }
+            at += 1;
+        }
+        if (word < end) { spans.append({first: word, end: end}); }
+        counts[node] = length(spans) - first[node];
+    }
+    count := length(spans);
+    order := resize([int(0)], count); scratch := resize([int(0)], count);
+    for (index in 0..<count) { order[index] = index; }
+    width: int = 1;
+    while (width < count) {
+        begin: int = 0;
+        while (begin < count) {
+            middle := begin + width; if (middle > count) { middle = count; }
+            end := middle + width; if (end > count) { end = count; }
+            left := begin; right := middle; at := begin;
+            while (at < end) {
+                take_left := right == end;
+                if (left < middle && right < end) {
+                    take_left = SegmentWordCompare(bytes, spans[order[left]], spans[order[right]]) <= 0;
+                }
+                if (take_left) { scratch[at] = order[left]; left += 1; }
+                else { scratch[at] = order[right]; right += 1; }
+                at += 1;
+            }
+            begin = end;
+        }
+        previous := order; order = scratch; scratch = previous;
+        width *= 2;
+    }
+    words := resize([int(0)], count); word_id: int = 0;
+    for (index in 0..<count) {
+        if (index == 0 || SegmentWordCompare(bytes, spans[order[index - 1]], spans[order[index]]) != 0) {
+            word_id += 1;
+        }
+        words[order[index]] = word_id;
+    }
+    return {first: first, counts: counts, words: words};
+}
+
+SegmentNameSimilar :: (names: SegmentNameWords, left: int, right: int) -> bool {
+    if (left == 0 || right == 0) { return false; }
+    a := left - 1; b := right - 1;
+    a_count := names.counts[a]; b_count := names.counts[b];
+    if (a_count == 0 || b_count == 0) { return false; }
+    if (a_count == 1 && b_count == 1) { return true; }
+    a_first := names.first[a]; b_first := names.first[b];
+    if (a_count == b_count) {
+        for (word in 0..<a_count) {
+            if (names.words[a_first + word] == names.words[b_first + word]) { return true; }
+        }
+        return false;
+    }
+    if (a_count > 1 && b_count > 1 && (a_count + 1 == b_count || b_count + 1 == a_count)) {
+        return names.words[a_first] == names.words[b_first] ||
+               names.words[a_first + a_count - 1] == names.words[b_first + b_count - 1];
+    }
+    return false;
+}
+
+SegmentRhsSimilar :: (names: SegmentNameWords, left: SegmentFeature, right: SegmentFeature) -> bool {
+    a := left.rhs_kind; b := right.rhs_kind;
+    if (a == SegmentRhsNone || b == SegmentRhsNone || a == SegmentRhsOther || b == SegmentRhsOther) { return false; }
+    a_call := a == SegmentRhsMethod || a == SegmentRhsObjectMethod;
+    b_call := b == SegmentRhsMethod || b == SegmentRhsObjectMethod;
+    if (a_call && b_call) { return SegmentNameSimilar(names, left.rhs_method, right.rhs_method); }
+    return a == b;
+}
+
+SegmentPairSimilarity :: (names: SegmentNameWords, left: SegmentFeature, right: SegmentFeature) -> int {
+    if (left.category != right.category) { return 0; }
+    switch (left.category) {
+        case SegmentOther: return 0;
+        case SegmentInit:
+            same_type := SegmentNameSimilar(names, left.type_name, right.type_name);
+            same_name := SegmentNameSimilar(names, left.name, right.name);
+            same_rhs := SegmentRhsSimilar(names, left, right);
+            if (same_type && same_name && same_rhs) { return 3; }
+            if (same_type && (same_name || same_rhs)) { return 2; }
+            if (same_type || same_rhs) { return 1; }
+            return 0;
+        case SegmentDeclare:
+            if (SegmentNameSimilar(names, left.type_name, right.type_name)) { return 1; }
+            return 0;
+        case SegmentAssign:
+            same_name := SegmentNameSimilar(names, left.name, right.name);
+            same_rhs := SegmentRhsSimilar(names, left, right);
+            if (same_name && same_rhs) { return 2; }
+            if (same_name || same_rhs) { return 1; }
+            return 0;
+        case SegmentObjectMethod:
+            same_object := SegmentNameSimilar(names, left.receiver, right.receiver);
+            same_method := SegmentNameSimilar(names, left.method, right.method);
+            if (same_object && same_method) { return 2; }
+            if (same_object || same_method) { return 1; }
+            return 0;
+        case SegmentMethod:
+            if (SegmentNameSimilar(names, left.method, right.method)) { return 1; }
+            return 0;
+        case:
+            assert(false, "SEGMENT syntactic category is defined");
+            return 0;
+    }
+}
+
+SegmentHighlySimilar :: (category: int, level: int) -> bool {
+    if (category == SegmentDeclare || category == SegmentMethod) { return level >= 1; }
+    return level >= 2;
+}
+
+// Table 6.3 supplies these cross-category rules for merging a singleton.
+// It says "param similar" without defining a parameter comparison; the
+// syntax pass supplies that fact instead of inventing a second ID measure.
+SegmentSingletonCompatible :: (names: SegmentNameWords, left: SegmentFeature, right: SegmentFeature,
+                               parameters_similar: bool) -> bool {
+    a := left.category; b := right.category;
+    if ((a == SegmentInit && b == SegmentDeclare) || (a == SegmentDeclare && b == SegmentInit)) {
+        return SegmentNameSimilar(names, left.type_name, right.type_name);
+    }
+    if ((a == SegmentInit && b == SegmentAssign) || (a == SegmentAssign && b == SegmentInit)) {
+        return SegmentRhsSimilar(names, left, right) || SegmentNameSimilar(names, left.name, right.name);
+    }
+    if ((a == SegmentMethod && b == SegmentObjectMethod) || (a == SegmentObjectMethod && b == SegmentMethod)) {
+        return SegmentNameSimilar(names, left.method, right.method) || parameters_similar;
+    }
+    return false;
+}

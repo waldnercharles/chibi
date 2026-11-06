@@ -1,0 +1,41 @@
+{
+  "purpose": "task-only focused native Math diagnostic; not ordinary full/installed SDK build",
+  "head": "6990373667fc211faf828035ab9d4bb051f085bd",
+  "tree": "c4381974226adbf5291506e44548f18a3571bfcd",
+  "authoritative_tracked_status": "",
+  "snapshot_revision": "699037366-dirty",
+  "snapshot_status": " M test/language/CMakeLists.txt\n",
+  "tracked_files_compared": 3470,
+  "only_changed_tracked_paths": [
+    "test/language/CMakeLists.txt"
+  ],
+  "helper_diff_sha256": "69062a481869920fc8585c1531556f5dda7dee9d422abde4f9d3ee70f108e163",
+  "selected_files_unchanged": {
+    "test/language/package_math.c": "11da76c495693d9f0018983f96bcb95c8a7b145a3f51e022a6eed3d361c6a138",
+    "test/language/native_calls.c": "b6974a81a8da35a9b7746d2baf97f7c11f82de80c8225e50abb45f9fd60fb690",
+    "test/language/package_compiler_chibi.c": "c7bdd1f79cd5392685dc90c97c9b5819eef0b8268b84a47e6e8e1c4c9ba6f137",
+    "test/language/main.c": "bc13d3f31cb57e57b73ca22f90cc3b68a342b604bb51c6d62002ad0571264e00",
+    "test/language/compiler_fixture.c": "67685b1785a3fd0077edc6934b4a43d981e15c5215aa6594be590818a00d4d05",
+    "test/language/backend.h": "b83f8e968605a439907cda3f3571036b0f35a47863e7a8dc0f9f94255bc4c917",
+    "tools/graph/asset_compiler/Generate.chibi": "9ce5a959cd80aa6c4cf38f012eedaca0751cbd623de3f4df2cddc1f73e81336a",
+    "packages/core/math/MathTests.chibi": "1c9f59feda2c92a4de28c809a767e7930737937482c80a90a823fb396647b2f7",
+    "packages/core/math/Spring.chibi": "daf53c43e1a6a88ad42c1a0845d579472bd11503fbe2444fa233d7f7a3f20531",
+    "packages/core/math/Math.chibi": "afe0c72e8e10906688665b192a690905425988b200cb81ae4bd195a95ad1e249",
+    "packages/core/math/SpringTests.chibi": "a0b2a976dbdd7162de61764518b6a3d5df47291dfa558d636927965ff2ac4872",
+    "packages/core/math/ease/Ease.chibi": "7a79ea4d808bb49289e99cb59f7196c0b0469210b576bfd44620a2c700112680",
+    "packages/core/math/ease/EaseTests.chibi": "f2eb762274fa0303a52f86d968d80feee5b95eba2dc67507adc7022d870cec68"
+  },
+  "checked_bootstrap": {
+    "bootstrap.json": "812635d0e2c0c5336071dda2394b881dfcd1ed8aef17999d92511a506f5d2485",
+    "compiler.chibip": "bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a"
+  },
+  "no_bootstrap_substitution": true,
+  "no_production_changes": true,
+  "scratch_preserved": true,
+  "benchmark_opt_in": "explicit --package-math-benchmark selector; no enabling env flag",
+  "benchmark_default_settings": {
+    "loops": 128,
+    "invocations": 16,
+    "trials": 3
+  }
+}

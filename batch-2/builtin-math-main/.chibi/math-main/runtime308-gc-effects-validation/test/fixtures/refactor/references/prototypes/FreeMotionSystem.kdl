@@ -1,0 +1,4 @@
+name "FreeMotionSystem"
+components {
+    EngineSystem asset="FreeMotion"
+}

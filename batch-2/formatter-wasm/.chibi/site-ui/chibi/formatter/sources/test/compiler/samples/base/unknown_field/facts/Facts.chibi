@@ -1,0 +1,5 @@
+package facts
+Pair :: struct { a: int; }
+One :: (p: Pair) -> int { return p.b; }
+
+// error: 3:34: Unknown field 'b'

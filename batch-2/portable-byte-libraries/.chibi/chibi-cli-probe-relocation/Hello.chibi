@@ -1,0 +1,4 @@
+package hello
+Main :: () {
+    print_string("Hello, world!")
+}

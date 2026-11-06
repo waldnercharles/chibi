@@ -1,0 +1,73 @@
+{
+  "kind": "read-only deferred package contract audit; no source edits, builds, runs or acceptance",
+  "original_checkout": "/Users/cwaldner/Personal/chibi/.worktrees/portable-core-library/chibi",
+  "source_head": "286f69ddf8e118b099bdb50aa17767f24079e011",
+  "marker_packet": "/Users/cwaldner/Personal/chibi/.worktrees/portable-core-library/chibi/.chibi/portable-core/fallible-markers.json",
+  "marker_patch_sha256": "c55faa4a659667b3a38aac5ae1fc085c953edec4ca4d04a6a3711118a38ff488",
+  "all_five_source_hashes_match": true,
+  "remaining_public_marker_count": 25,
+  "contract": "Explicit @fallible opt-in; final package-owned optional error; sibling outputs preserve their API meanings; ordinary unmarked optionals stay ordinary.",
+  "existing_api": "All five already expose final package-owned Error? with explicit nil success. No signature or algorithm changes required by this convention.",
+  "char": "UTF8 already exposes nominal char. Real char and char-optional compiler parity remains required; no int alias. Endian/hex/Base64/slashpath have no direct char dependency.",
+  "named_results": "Codecs need named text/array results and optional record errors. Endian reads use named unsigned scalar results; writers return optional error only. Slashpath needs named string and imported optional record identity. These require eligible results integration.",
+  "defaults": "No direct slashpath default requirement. Do not infer a blanket package default blocker from an old compiler note; require owning-candidate evidence.",
+  "acknowledgment": "Existing hex and nine UTF8 test acknowledgment fixes are already in frozen source; do not reapply fallible-test-ack.patch.",
+  "future_validation": "After accepted prerequisite release, apply only25markers and validate exact native/Wasm compiler-target matrix plus new char-literal, nominal package identity and invalid dynamic scalar conversion cases.",
+  "reviewers": [
+    "/root/codecs",
+    "/root/utf8",
+    "/root/paths"
+  ],
+  "files": {
+    "packages/core/encoding/endian/Endian.chibi": {
+      "sha256": "23996a6deca1bd7144e38bc8068e7b9ab34e143ad5b9f0017c6e0e512e7da20c",
+      "functions": [
+        "ReadU16LE",
+        "ReadU16BE",
+        "ReadU32LE",
+        "ReadU32BE",
+        "ReadU64LE",
+        "ReadU64BE",
+        "WriteU16LE",
+        "WriteU16BE",
+        "WriteU32LE",
+        "WriteU32BE",
+        "WriteU64LE",
+        "WriteU64BE"
+      ]
+    },
+    "packages/core/encoding/hex/Hex.chibi": {
+      "sha256": "153c7886505916d25a0cd78512425f12f9959854fa9f2d3aa658e0cde1624caf",
+      "functions": [
+        "Decode",
+        "Encode",
+        "EncodeUpper"
+      ]
+    },
+    "packages/core/encoding/base64/Base64.chibi": {
+      "sha256": "7c7143a443c6b744a0af6ae525ce804672863b13d1f7f2a7c81bbdd4c54495eb",
+      "functions": [
+        "Encode",
+        "EncodeUrl",
+        "Decode",
+        "DecodeUrl"
+      ]
+    },
+    "packages/core/utf8/Utf8.chibi": {
+      "sha256": "8a39a4c8141e1b7680b4a1acd11f271f79ffcf16820164b9efb57addb227ca25",
+      "functions": [
+        "Decode",
+        "DecodeString",
+        "Validate",
+        "ValidateString",
+        "Count"
+      ]
+    },
+    "packages/core/path/slashpath/Paths.chibi": {
+      "sha256": "3afeac99085e7ae5dc3a99eef2ae6580f87b8099d74d9faf95fb9441da5d73ed",
+      "functions": [
+        "Join"
+      ]
+    }
+  }
+}

@@ -1,0 +1,14 @@
+package facts
+
+// loops
+@test
+Calls :: () {
+    a1_0: int = 10;
+    r1: int = Sum(a1_0);
+    e1: int = 45;
+    assert(r1 == e1, "Sum call 1");
+    a2_0: int = 0;
+    r2: int = Sum(a2_0);
+    e2: int = 0;
+    assert(r2 == e2, "Sum call 2");
+}

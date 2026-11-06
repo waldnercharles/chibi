@@ -1,0 +1,30 @@
+package facts
+
+// narrow integers
+@test
+Calls :: () {
+    a1_0: i8 = -5;
+    a1_1: u16 = 300;
+    a1_2: u32 = 9;
+    a1_3: i16 = -7;
+    r1: i64 = Narrow(a1_0, a1_1, a1_2, a1_3);
+    e1: i64 = 605;
+    assert(r1 == e1, "Narrow call 1");
+    a2_0: i8 = -3;
+    a2_1: u8 = 200;
+    r2: int = Mixed(a2_0, a2_1);
+    e2: int = 197;
+    assert(r2 == e2, "Mixed call 2");
+    a3_0: u32 = 4000000000;
+    a3_1: int = -1;
+    r3: i64 = Big(a3_0, a3_1);
+    e3: i64 = 3999999999;
+    assert(r3 == e3, "Big call 3");
+    r4: u16 = Store();
+    e4: u16 = 65535;
+    assert(r4 == e4, "Store call 4");
+    a5_0: i8 = -2;
+    r5: int = Make(a5_0);
+    e5: int = 5;
+    assert(r5 == e5, "Make call 5");
+}

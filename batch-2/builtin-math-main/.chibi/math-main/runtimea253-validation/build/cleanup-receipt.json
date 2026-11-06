@@ -1,0 +1,58 @@
+{
+  "cleanup_utc": "2026-10-29T01:19:59.454447+00:00",
+  "root": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation",
+  "reason": "Parent independently audited the passing validation receipt, actual binary hash and final doc-only admission; AGENTS requires scratch native outputs and project copies removed after success.",
+  "validation_receipt_remains_historical": true,
+  "protected_proof_hashes_unchanged": {
+    "validation-receipt.json": "c878af777337cf8fbf6d520950da8e4bae1559b6bf1cd167290f30ff6d89c9fa",
+    "final-source-admission.json": "f88e5fb0acd328e923e99162df778d5f5c83f7cdeda4487a629bab80131dab16"
+  },
+  "cleanup_inventory_sha256": "10d761d62106b52d9313444abc97fe71fa70a55f2fa049ceddea66f26c6633ea",
+  "replay_instructions_sha256": "658e788fbb0a4e6258195216014bcfd3e9d05d46006c8c100a3eeabb7f7f12ea",
+  "source_recovery_sha256": "203d340332b1083924213463e826634f39025ef47843e36b8b11bbc6aae5cf82",
+  "deleted_file_count": 4025,
+  "deleted_logical_bytes": 179116932,
+  "deleted_allocated_bytes": 189583360,
+  "deleted_categories": {
+    "copied_project_source": 3480,
+    "native_executable_or_compiler_probe": 3,
+    "native_object": 487,
+    "native_archive": 55
+  },
+  "retained_file_count_before_this_receipt": 542,
+  "retained_logical_bytes_before_this_receipt": 54209874,
+  "generated_input_bytes_retained": true,
+  "all_preserved_file_hashes_unchanged": true,
+  "old_runtime74a_proof_file_count": 4558,
+  "all_old_runtime74a_proof_hashes_unchanged": true,
+  "no_process_using_outputs": true,
+  "ps_matching_processes": [],
+  "lsof_exit_code": 1,
+  "authoritative_staged_tree_unchanged": "0abd96c6b800a596c24d23a6e6719b15fe5e75d6",
+  "authoritative_status_unchanged": true,
+  "tests_repeated": false,
+  "source_recovery": {
+    "repository": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi",
+    "base_commit": "a253ef4b5b91bfc8e6a52a03c31818231027eb6b",
+    "validated_source_ref": "refs/codex/builtin-math-accepteda253-sourceprep-20261028",
+    "validated_source_tree": "b4dbc77d99590a823361cddce8f81f08fddadb9e",
+    "final_documented_ref": "refs/codex/builtin-math-accepteda253-documented-20261028",
+    "final_documented_tree": "0abd96c6b800a596c24d23a6e6719b15fe5e75d6",
+    "canonical_source_patch": {
+      "path": "canonical-candidate.patch",
+      "sha256": "427de2b8d5a6459454ddd2377711ef15d61181a44d8f6d5e4bc4bff06f369825"
+    },
+    "full_index_source_patch": {
+      "path": "candidate.patch",
+      "sha256": "1c2474cc09a8af5de57eeb7350434683da2f6a21bc8e3dba0f058e2ee6d46dc8"
+    },
+    "final_documented_patch": {
+      "path": "final-documented-candidate.patch",
+      "sha256": "c4db1fe73d51dc02feef90688c2dccf77d47ffca686685a61b80fef709792c49"
+    },
+    "doc_only_patch": {
+      "path": "final-doc-only.diff",
+      "sha256": "fb8b18c1dc8c359706ec157cd97a440bea23e5f5438b2c241251db3f7970309f"
+    }
+  }
+}

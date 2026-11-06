@@ -1,0 +1,177 @@
+{
+  "purpose": "append-only row-map supplement to frozen Math validation plan; not implementation or execution proof",
+  "source_tree": "e0731ca621abf03d0632bac9ec2aa4485e88115f",
+  "source_receipt_sha256": "8fa50cd84448fc2e7d45c1dc69009924d9d46d266c38cc569d12d1ac92383725",
+  "frozen_plan": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime797-write-prep/validation-plan.json",
+  "frozen_plan_sha256": "dc3494eb96436974196d2ba0738e7195c17eae0864550e2d8c62a83f835ada43",
+  "original_owner": "coordinator stdlib_parallel_audit/Gibbs",
+  "owner_checkpoint": "6c0cee1c5604dfc8fc4f49c518235626e0a66ea4",
+  "owner_fixture": "test/language/argument_effects_chibi.c",
+  "owner_fixture_sha256": "43fc26f5fb7cf3407cb10107867d48de6c92c0e467eaad8487513534c9ca1d84",
+  "owner_fixture_blob": "cfc77f73a661e2d7dd776560789ef0e30b776df7",
+  "owner_row_lines": "183-210 at recorded checkpoint",
+  "existing_test": "package_argument_effects_match_across_compilers / --argument-effects-chibi",
+  "reusable_rows": [
+    {
+      "function": "StoreInt",
+      "effects": 2,
+      "effects_source_token": "SCRIPT_EFFECT_WRITE",
+      "parallel": false,
+      "compare": [
+        "source C prepared function effects",
+        "authored-compiler prepared function effects",
+        "source purity and behavior_function_hosts_pure conjunction"
+      ]
+    },
+    {
+      "function": "StoreRecord",
+      "effects": 2,
+      "effects_source_token": "SCRIPT_EFFECT_WRITE",
+      "parallel": false,
+      "compare": [
+        "source C prepared function effects",
+        "authored-compiler prepared function effects",
+        "source purity and behavior_function_hosts_pure conjunction"
+      ]
+    },
+    {
+      "function": "CallWriteInt",
+      "effects": 2,
+      "effects_source_token": "SCRIPT_EFFECT_WRITE",
+      "parallel": false,
+      "compare": [
+        "source C prepared function effects",
+        "authored-compiler prepared function effects",
+        "source purity and behavior_function_hosts_pure conjunction"
+      ]
+    },
+    {
+      "function": "CallWriteRecord",
+      "effects": 2,
+      "effects_source_token": "SCRIPT_EFFECT_WRITE",
+      "parallel": false,
+      "compare": [
+        "source C prepared function effects",
+        "authored-compiler prepared function effects",
+        "source purity and behavior_function_hosts_pure conjunction"
+      ]
+    },
+    {
+      "function": "OwnWriteInt",
+      "effects": 2,
+      "effects_source_token": "SCRIPT_EFFECT_WRITE",
+      "parallel": false,
+      "compare": [
+        "source C prepared function effects",
+        "authored-compiler prepared function effects",
+        "source purity and behavior_function_hosts_pure conjunction"
+      ]
+    },
+    {
+      "function": "OwnWriteRecord",
+      "effects": 2,
+      "effects_source_token": "SCRIPT_EFFECT_WRITE",
+      "parallel": false,
+      "compare": [
+        "source C prepared function effects",
+        "authored-compiler prepared function effects",
+        "source purity and behavior_function_hosts_pure conjunction"
+      ]
+    },
+    {
+      "function": "LocalBox",
+      "effects": 0,
+      "effects_source_token": "0",
+      "parallel": true,
+      "compare": [
+        "source C prepared function effects",
+        "authored-compiler prepared function effects",
+        "source purity and behavior_function_hosts_pure conjunction"
+      ]
+    },
+    {
+      "function": "ScopedRead",
+      "effects": 0,
+      "effects_source_token": "0",
+      "parallel": true,
+      "compare": [
+        "source C prepared function effects",
+        "authored-compiler prepared function effects",
+        "source purity and behavior_function_hosts_pure conjunction"
+      ]
+    },
+    {
+      "function": "CallRead",
+      "effects": 0,
+      "effects_source_token": "0",
+      "parallel": true,
+      "compare": [
+        "source C prepared function effects",
+        "authored-compiler prepared function effects",
+        "source purity and behavior_function_hosts_pure conjunction"
+      ]
+    },
+    {
+      "function": "Identity",
+      "effects": 0,
+      "effects_source_token": "0",
+      "parallel": true,
+      "compare": [
+        "source C prepared function effects",
+        "authored-compiler prepared function effects",
+        "source purity and behavior_function_hosts_pure conjunction"
+      ]
+    },
+    {
+      "function": "StoreView",
+      "effects": 0,
+      "effects_source_token": "0",
+      "parallel": true,
+      "compare": [
+        "source C prepared function effects",
+        "authored-compiler prepared function effects",
+        "source purity and behavior_function_hosts_pure conjunction"
+      ]
+    }
+  ],
+  "exclude_from_WRITE_only_claim": [
+    "Owned",
+    "Imported",
+    "View",
+    "ViewMethod",
+    "ViewSlice",
+    "ViewIndex",
+    "Deep",
+    "OptionalView",
+    "MapView",
+    "Dereference"
+  ],
+  "exclusion_reason": "These controls cover full #801 array/read effects. Whole fixture expectations require held array metadata; do not import those22 capability rows or call full selector a WRITE-only proof.",
+  "exact_existing_oracle": {
+    "source_reference": "compiler_fixture_package(&oracle, backend, project:facts)",
+    "both_bodies_required": true,
+    "effects_compare": "actual.effects == expected and original.effects == expected",
+    "parallel_compare": "source_function->pure && !actual.effects && behavior_function_hosts_pure(actual.body)",
+    "compiler_backends": [
+      "BYTECODE",
+      "SLJIT"
+    ],
+    "target_backends": [
+      "BYTECODE",
+      "SLJIT"
+    ],
+    "crossings": 4,
+    "preserve_exact_sources": "Use functions and existing native/source+compiled oracles from pinned owner fixture; do not substitute a weaker Math-only expectation."
+  },
+  "artifacts": {
+    "case_table": "scoped-write-case-table.txt",
+    "oracle_comparison": "scoped-write-oracle-comparison.txt"
+  },
+  "status": "row mapping verified by read-only inspection; no execution or build granted/performed",
+  "holds": [
+    "Math source and old receipts/plan remain frozen",
+    "no f1a/old compiled output reuse",
+    "no full801 array metadata import",
+    "combined execution/purity/GC/ABI/SDK/publication pending"
+  ]
+}

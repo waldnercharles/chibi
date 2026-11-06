@@ -1,0 +1,4 @@
+package facts
+One :: (xs: int[]) -> int { return xs[true]; }
+
+// error: 2:39: index needs an int

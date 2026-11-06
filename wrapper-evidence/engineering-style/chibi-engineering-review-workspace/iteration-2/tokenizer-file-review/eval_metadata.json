@@ -1,0 +1,14 @@
+{
+  "eval_name": "tokenizer-file-review",
+  "prompt": "Give tools/compiler/source_tokenizer/Tokenizer.chibi in the Chibi checkout at /Users/cwaldner/Personal/chibi/.worktrees/review-eval/chibi a deep architecture and performance review. Read only; save the review as review.md.",
+  "assertions": [
+    "The review states the input scale (bytes or tokens of real Chibi source) and estimates the per-byte or per-token work, with numbers.",
+    "The review identifies at least one concrete source of per-byte or per-token waste in Tokenizer.chibi with a path:line and a count or estimate of its cost.",
+    "The review sketches a concrete target shape for the hot scanning path (for example a data layout, a table or switch keyed by byte, or a loop structure).",
+    "The review addresses the hand-numbered token-kind constants and the parallel KindNames table as a representation issue, taking into account that stage one lacks enums.",
+    "The review checks how the tokenizer is called (its consumers or call sites) and says whether it is on a hot path.",
+    "The review does not recommend SIMD or threading before the identified waste is removed, and makes no micro-optimization suggestion without a measurement.",
+    "Every finding includes concrete evidence (a count, estimate, measurement or named consumer).",
+    "The review does not recommend splitting functions for length or adding defensive checks."
+  ]
+}

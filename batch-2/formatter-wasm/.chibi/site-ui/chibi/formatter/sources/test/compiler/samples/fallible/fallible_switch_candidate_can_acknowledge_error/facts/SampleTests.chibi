@@ -1,0 +1,14 @@
+package facts
+
+// fallible switch candidate can acknowledge error
+@test
+Calls :: () {
+    a1_0: int = 0;
+    r1: int = Use(a1_0);
+    e1: int = 2;
+    assert(r1 == e1, "Use call 1");
+    a2_0: int = 3;
+    r2: int = Use(a2_0);
+    e2: int = 1;
+    assert(r2 == e2, "Use call 2");
+}

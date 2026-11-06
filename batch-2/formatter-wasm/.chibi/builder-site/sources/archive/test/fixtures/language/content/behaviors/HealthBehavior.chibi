@@ -1,0 +1,70 @@
+// Applies accepted damage and reports actual health loss. Died handlers run
+// before destruction; active dashes reject Damage.
+HealthBehavior :: behavior {
+
+    macro HealthChanged(Current: f64, RemainingHealth: f64) -> () {
+        exit True;
+        exit False;
+        if (Current > RemainingHealth) {
+            goto True;
+        } else {
+            goto False;
+        }
+    }
+    on Damage :: (Amount: int, Source: entity) {
+        if (To_Real(Amount) > 0) {
+            await Apply_Damage(Current: self.Health.current, Maximum: self.Health.maximum, Amount: Amount, Source: Source);
+        } else {
+        }
+    }
+    on Died :: () {
+        if (f64(self.Health.current) <= 0) {
+            await Notify_Encounter();
+            destroy_entity(Entity: self);
+        } else {
+        }
+    }
+    Apply_Damage :: (Current: int = 0, Maximum: int = 0, Amount: int = 0, Source: entity = 0) -> () {
+
+        action current_remaininghealth = HealthChanged(Current: plain f64 = To_Real(Current), RemainingHealth: plain f64 = f64(clamp(To_Real(Current) - clamp(To_Real(Amount), 0, To_Real(Current)), 0, To_Real(Maximum))));
+        if (To_Real(Current) > 0) {
+            if (self.Dash != nil) {
+                if (f64(self.Dash.remaining) > 0) {
+                    return ();
+                } else {
+                    current_remaininghealth();
+                }
+            } else {
+                current_remaininghealth();
+            }
+        } else {
+            return ();
+        }
+        after current_remaininghealth.True {
+            current := Current
+            RemainingHealth := f64(clamp(To_Real(current) - clamp(To_Real(Amount), 0, To_Real(current)), 0, To_Real(Maximum)))
+            self.Health.current = To_Integer(RemainingHealth);
+            await emit self.Damaged(Amount: int = subtract(A: int = current, B: int = To_Integer(RemainingHealth)), Source: Source);
+            if (f64(clamp(To_Real(current) - clamp(To_Real(Amount), 0, To_Real(current)), 0, To_Real(Maximum))) <= 0) {
+                await emit self.Died(Source: Source);
+                return ();
+            } else {
+                return ();
+            }
+        }
+        after current_remaininghealth.False {
+            return ();
+        }
+    }
+    Notify_Encounter :: () -> () {
+
+        if (self.EncounterMember != nil) {
+            for (foreach_2 in find_entities_with_component(Component: Encounter)) {
+                emit foreach_2.RefreshEncounter();
+            }
+            return ();
+        } else {
+            return ();
+        }
+    }
+}

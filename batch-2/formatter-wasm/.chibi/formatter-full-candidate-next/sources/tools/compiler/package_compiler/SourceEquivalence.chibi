@@ -1,0 +1,261 @@
+package package_compiler
+
+import strings "core:strings"
+
+// Stable mergesort of indices, shared by descriptor and generated-command
+// correspondence. It allocates two flat buffers, never a per-row lookup.
+SourceOrder :: (keys: u64[]) -> int[] {
+    count := length(keys);
+    order := resize([int(0)], count);
+    scratch := resize([int(0)], count);
+    for (index in 0..<count) { order[index] = index; }
+    width: int = 1;
+    while (width < count) {
+        begin: int = 0;
+        while (begin < count) {
+            middle := begin + width; if (middle > count) { middle = count; }
+            end := middle + width; if (end > count) { end = count; }
+            left := begin; right := middle; at := begin;
+            while (at < end) {
+                take_left := right == end;
+                if (left < middle && right < end) { take_left = keys[order[left]] <= keys[order[right]]; }
+                if (take_left) { scratch[at] = order[left]; left += 1; }
+                else { scratch[at] = order[right]; right += 1; }
+                at += 1;
+            }
+            begin = end;
+        }
+        previous := order; order = scratch; scratch = previous;
+        width *= 2;
+    }
+    return order;
+}
+
+SourceRecord :: (record: int, storage: int, correspondence: int[]) -> int {
+    // These pseudo-values refer to a callable or native, not the type table.
+    if (record < 0 || storage == TaskStorage || storage == GenericFunctionStorage ||
+        storage == FunctionResultsStorage || storage == ResultsStorage) { return record; }
+    assert(record < length(correspondence), "source type reference is in the prepared table");
+    assert(correspondence[record] >= 0, "source type reference participates in equivalence");
+    return correspondence[record];
+}
+
+SourceTypeRoot :: (record: int, storage: int, live: ^(bool[]), pending: ^(int[])) {
+    if (record < 0 || storage == TaskStorage || storage == GenericFunctionStorage ||
+        storage == FunctionResultsStorage || storage == ResultsStorage || live^[record]) { return; }
+    live^[record] = true; pending.append(record);
+}
+
+SourceLiveTypes :: (signature: SemanticSignature) -> bool[] {
+    live := resize([false], length(signature.types)); pending: int[] = [];
+    // Authored/native nominal declarations remain observable even unused.
+    // Compiler-created pointer/optional/container closure rows are relevant
+    // only when a signature, member, retained value or operation refers to them.
+    for (index in 0..<length(signature.types)) {
+        kind := signature.types[index].kind;
+        if (kind != PointerDecl && kind != OptionalDecl && kind != CollectionDecl && kind != MapDecl) {
+            SourceTypeRoot(index, StructStorage, &live, &pending);
+        }
+    }
+    for (item in signature.callables) { SourceTypeRoot(item.result_record, item.result, &live, &pending); }
+    for (item in signature.params) { SourceTypeRoot(item.record, item.storage, &live, &pending); }
+    for (item in signature.members) { SourceTypeRoot(item.record, item.storage, &live, &pending); }
+    for (item in signature.retained) { SourceTypeRoot(item.record, item.storage, &live, &pending); }
+    for (item in signature.ports) { SourceTypeRoot(item.record, item.storage, &live, &pending); }
+    for (body in signature.bodies) {
+        for (item in body.cells) {
+            SourceTypeRoot(item.record, item.storage, &live, &pending);
+            SourceTypeRoot(item.variant, StructStorage, &live, &pending);
+        }
+        for (item in body.code) { SourceTypeRoot(item.value_record, item.value_storage, &live, &pending); }
+        for (item in body.roots) { SourceTypeRoot(item.record, item.storage, &live, &pending); }
+        storage: int = 0;
+        for (fact in body.facts) {
+            if (fact.kind == BindingStorageFact) { storage = fact.target; }
+            if (fact.kind == BindingRecordFact) { SourceTypeRoot(fact.target, storage, &live, &pending); }
+        }
+    }
+    at: int = 0;
+    while (at < length(pending)) {
+        declared := signature.types[pending[at]]; at += 1;
+        if (declared.kind != TaskResultDecl) { SourceTypeRoot(declared.parent, StructStorage, &live, &pending); }
+        SourceTypeRoot(declared.value_record, declared.value_storage, &live, &pending);
+        if (declared.kind == UnionDecl || declared.kind == TaskResultDecl) {
+            for (variant in declared.first..<declared.first + declared.count) { SourceTypeRoot(variant, StructStorage, &live, &pending); }
+        }
+    }
+    return live;
+}
+
+SameSourceCode :: (a: Code, b: Code, types: int[], command: bool) -> bool {
+    return a.op == b.op && a.type == b.type && a.output == b.output && a.left == b.left && a.right == b.right &&
+           a.target == b.target && a.offset == b.offset && a.value_storage == b.value_storage &&
+           a.value_container == b.value_container && SourceRecord(a.value_record, a.value_storage, types) == b.value_record &&
+           (command || a.payload == b.payload) && a.text == b.text && a.has_text == b.has_text &&
+           a.message == b.message && a.has_message == b.has_message;
+}
+
+SameSourceCommands :: (commands: u64[], others: u64[], order: int[]) -> bool {
+    for (at in 1..<length(order)) {
+        left := order[at - 1]; right := order[at];
+        if ((commands[left] == commands[right]) != (others[left] == others[right])) { return false; }
+    }
+    return true;
+}
+
+SameSourceBody :: (a: SourceBody, b: SourceBody, types: int[], command_begin: int, suspend: int) -> bool {
+    if (length(a.slots) != length(b.slots) || length(a.locals) != length(b.locals) ||
+        length(a.cells) != length(b.cells) || length(a.code) != length(b.code) ||
+        length(a.calls) != length(b.calls) || length(a.hosts) != length(b.hosts) ||
+        length(a.roots) != length(b.roots) || a.effects != b.effects || a.direct_write != b.direct_write) { return false; }
+    for (index in 0..<length(a.slots)) {
+        if (a.slots[index].storage != b.slots[index].storage || a.slots[index].kind != b.slots[index].kind) { return false; }
+    }
+    for (index in 0..<length(a.locals)) {
+        if (a.locals[index].storage != b.locals[index].storage || a.locals[index].kind != b.locals[index].kind) { return false; }
+    }
+    for (index in 0..<length(a.cells)) {
+        x := a.cells[index]; y := b.cells[index];
+        if (x.storage != y.storage || x.container != y.container || SourceRecord(x.record, x.storage, types) != y.record ||
+            x.constant != y.constant || SourceRecord(x.variant, StructStorage, types) != y.variant || x.kind != y.kind) { return false; }
+    }
+    commands: u64[] = []; other_commands: u64[] = [];
+    for (index in 0..<length(a.code)) {
+        x := a.code[index]; y := b.code[index];
+        command := x.op == command_begin || x.op == suspend;
+        if (!SameSourceCode(x, y, types, command)) { return false; }
+        if (command) { commands.append(x.payload); other_commands.append(y.payload); }
+    }
+    // Generated task occurrences may move with source bytes. Their one-to-one
+    // correspondence preserves repeated command IDs and cannot merge commands.
+    if (!SameSourceCommands(commands, other_commands, SourceOrder(commands)) ||
+        !SameSourceCommands(commands, other_commands, SourceOrder(other_commands))) { return false; }
+    for (index in 0..<length(a.calls)) {
+        x := a.calls[index]; y := b.calls[index];
+        if (x.owned_arguments != y.owned_arguments || x.callee != y.callee || x.first != y.first ||
+            x.count != y.count || x.result_first != y.result_first || x.result_count != y.result_count || x.task != y.task) { return false; }
+    }
+    for (index in 0..<length(a.hosts)) {
+        x := a.hosts[index]; y := b.hosts[index];
+        if (x.owned_arguments != y.owned_arguments || x.intrinsic != y.intrinsic || x.command != y.command ||
+            x.linked != y.linked || x.first != y.first || x.result_first != y.result_first ||
+            x.result_count != y.result_count || x.written != y.written) { return false; }
+    }
+    for (index in 0..<length(a.roots)) {
+        x := a.roots[index]; y := b.roots[index];
+        if (x.slot != y.slot || x.storage != y.storage || x.container != y.container || SourceRecord(x.record, x.storage, types) != y.record) { return false; }
+    }
+    // Eligibility hints are not program behavior. Keep all binding types,
+    // dispatch and write facts; UpdateFact's target is another syntax node.
+    left: int = 0; right: int = 0; storage: int = 0;
+    while (true) {
+        while (left < length(a.facts) && (a.facts[left].kind == BindingOmittableFact || a.facts[left].kind == ReturnRequiredFact)) { left += 1; }
+        while (right < length(b.facts) && (b.facts[right].kind == BindingOmittableFact || b.facts[right].kind == ReturnRequiredFact)) { right += 1; }
+        if (left == length(a.facts) || right == length(b.facts)) { return left == length(a.facts) && right == length(b.facts); }
+        x := a.facts[left]; y := b.facts[right];
+        if (x.kind != y.kind) { return false; }
+        if (x.kind == BindingStorageFact) { storage = x.target; }
+        target := x.target;
+        if (x.kind == BindingRecordFact) { target = SourceRecord(target, storage, types); }
+        if (x.kind != UpdateFact && target != y.target) { return false; }
+        left += 1; right += 1;
+    }
+}
+
+// Exact typed equivalence permits only a bijection of descriptor indices and
+// generated occurrences. Every operation, conversion, signature, dispatch,
+// lifetime and nominal/foreign identity remains part of the proof.
+pub SameSemantics :: (a: SemanticSignature, b: SemanticSignature) -> bool {
+    if (length(a.callables) != length(b.callables) || length(a.params) != length(b.params) ||
+        length(a.members) != length(b.members) ||
+        length(a.constants) != length(b.constants) || length(a.bodies) != length(b.bodies) ||
+        length(a.retained) != length(b.retained) || length(a.owners) != length(b.owners) ||
+        length(a.natives) != length(b.natives) || length(a.ports) != length(b.ports) ||
+        length(a.identities) != length(b.identities) || length(a.exports) != length(b.exports) || length(a.templates) != length(b.templates) ||
+        a.command_begin != b.command_begin || a.suspend != b.suspend) { return false; }
+    live := SourceLiveTypes(a); other_live := SourceLiveTypes(b);
+    keys: u64[] = []; other_keys: u64[] = []; indices: int[] = []; other_indices: int[] = [];
+    for (index in 0..<length(a.types)) { if (live[index]) { keys.append(a.types[index].id); indices.append(index); } }
+    for (index in 0..<length(b.types)) { if (other_live[index]) { other_keys.append(b.types[index].id); other_indices.append(index); } }
+    if (length(keys) != length(other_keys)) { return false; }
+    order := SourceOrder(keys); other_order := SourceOrder(other_keys);
+    types := resize([int(0)], length(a.types));
+    for (index in 0..<length(types)) { types[index] = -1; }
+    for (index in 0..<length(order)) {
+        if (keys[order[index]] != other_keys[other_order[index]]) { return false; }
+        types[indices[order[index]]] = other_indices[other_order[index]];
+    }
+    for (index in 0..<length(a.callables)) {
+        x := a.callables[index]; y := b.callables[index];
+        generated := x.identity != 0 && y.identity != 0;
+        same_name := x.name == y.name;
+        if (generated) {
+            same_name = same_name || (strings.HasPrefix(x.name, "__lambda_") && strings.HasPrefix(y.name, "__lambda_")) ||
+                        (strings.HasPrefix(x.name, "__generic_") && strings.HasPrefix(y.name, "__generic_"));
+        }
+        if (!same_name || x.package != y.package || x.first != y.first || x.count != y.count ||
+            x.result != y.result || x.result_container != y.result_container || SourceRecord(x.result_record, x.result, types) != y.result_record ||
+            x.results != y.results || x.waits != y.waits || (!generated && x.identity != y.identity) || x.owner_package != y.owner_package) { return false; }
+    }
+    for (index in 0..<length(a.params)) {
+        x := a.params[index]; y := b.params[index];
+        if (x.name != y.name || x.storage != y.storage || x.container != y.container || SourceRecord(x.record, x.storage, types) != y.record ||
+            x.has_default != y.has_default || x.default_bits != y.default_bits || x.default_text != y.default_text ||
+            x.reference != y.reference || x.written != y.written) { return false; }
+    }
+    for (index in 0..<length(a.types)) {
+        if (!live[index]) { continue; }
+        x := a.types[index]; y := b.types[types[index]];
+        first := x.first;
+        is_union := x.kind == UnionDecl || x.kind == TaskResultDecl;
+        if (is_union && x.count > 0) { first = types[first]; }
+        parent := x.parent;
+        if (x.kind != TaskResultDecl) { parent = SourceRecord(parent, StructStorage, types); }
+        if (x.name != y.name || x.type_name != y.type_name || x.package != y.package || x.kind != y.kind ||
+            first != y.first || x.count != y.count || x.size != y.size || parent != y.parent || x.storage != y.storage ||
+            x.id != y.id || x.layout != y.layout || x.component != y.component || x.key != y.key ||
+            x.value_storage != y.value_storage || x.value_container != y.value_container || SourceRecord(x.value_record, x.value_storage, types) != y.value_record ||
+            x.error != y.error) { return false; }
+        if (is_union) {
+            for (ordinal in 0..<x.count) { if (types[x.first + ordinal] != y.first + ordinal) { return false; } }
+        }
+    }
+    for (index in 0..<length(a.members)) {
+        x := a.members[index]; y := b.members[index];
+        if (x.name != y.name || x.storage != y.storage || x.container != y.container || SourceRecord(x.record, x.storage, types) != y.record ||
+            x.offset != y.offset || x.writable != y.writable || x.c_string != y.c_string || x.constant != y.constant ||
+            x.read != y.read || x.read_key != y.read_key || x.fixed != y.fixed) { return false; }
+    }
+    for (index in 0..<length(a.constants)) {
+        x := a.constants[index]; y := b.constants[index];
+        if (x.name != y.name || x.package != y.package || x.storage != y.storage || x.bits != y.bits || x.folded != y.folded) { return false; }
+    }
+    for (index in 0..<length(a.retained)) {
+        x := a.retained[index]; y := b.retained[index];
+        if (x.name != y.name || x.id != y.id || x.storage != y.storage || SourceRecord(x.record, x.storage, types) != y.record ||
+            x.bits != y.bits || x.text != y.text) { return false; }
+    }
+    for (index in 0..<length(a.natives)) {
+        x := a.natives[index]; y := b.natives[index];
+        if (x.name != y.name || x.first != y.first || x.parameters != y.parameters || x.results != y.results ||
+            x.variadic != y.variadic || x.direct != y.direct || x.qualified_name != y.qualified_name || x.kind != y.kind ||
+            x.intrinsic != y.intrinsic || x.effects != y.effects || x.source != y.source) { return false; }
+    }
+    for (index in 0..<length(a.ports)) {
+        x := a.ports[index]; y := b.ports[index];
+        if (x.name != y.name || x.storage != y.storage || x.container != y.container || x.c_string != y.c_string ||
+            SourceRecord(x.record, x.storage, types) != y.record || x.has_default != y.has_default || x.default_owner != y.default_owner ||
+            x.default_supported != y.default_supported || x.default_bits != y.default_bits || x.default_text != y.default_text) { return false; }
+    }
+    for (index in 0..<length(a.identities)) { if (a.identities[index] != b.identities[index]) { return false; } }
+    for (index in 0..<length(a.exports)) { if (a.exports[index] != b.exports[index]) { return false; } }
+    for (index in 0..<length(a.templates)) {
+        x := a.templates[index]; y := b.templates[index];
+        if (x.kind != y.kind || x.field != y.field || x.parent != y.parent || x.text != y.text) { return false; }
+    }
+    for (index in 0..<length(a.owners)) { if (a.owners[index] != b.owners[index]) { return false; } }
+    for (index in 0..<length(a.bodies)) {
+        if (!SameSourceBody(a.bodies[index], b.bodies[index], types, a.command_begin, a.suspend)) { return false; }
+    }
+    return true;
+}

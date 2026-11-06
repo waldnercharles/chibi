@@ -1,0 +1,68 @@
+package package_compiler
+
+// Result inference needs a written anchor in recursive call groups. Identify
+// those groups once, in O(functions + calls), so they do not reject unrelated
+// declaration edits in the formatter's single validation batch.
+SourceCallCycles :: (bodies: Body[]) -> bool[] {
+    count := length(bodies);
+    heads := resize([int(0)], count); reverse_heads := resize([int(0)], count);
+    targets: int[] = []; next: int[] = []; callers: int[] = []; reverse_next: int[] = [];
+    for (caller in 0..<count) {
+        switch bodies[caller] {
+            case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
+                for (call in calls) {
+                    edge := length(targets);
+                    targets.append(call.callee); callers.append(caller);
+                    next.append(heads[caller]); heads[caller] = edge + 1;
+                    reverse_next.append(reverse_heads[call.callee]); reverse_heads[call.callee] = edge + 1;
+                }
+            case: assert(false, "source cycles inspect prepared bodies");
+        }
+    }
+    seen := resize([false], count); order: int[] = [];
+    pending: int[] = []; cursors: int[] = [];
+    for (root in 0..<count) {
+        if (seen[root]) { continue; }
+        seen[root] = true;
+        if (length(pending) == 0) { pending.append(root); cursors.append(heads[root]); }
+        else { pending[0] = root; cursors[0] = heads[root]; }
+        top: int = 1;
+        while (top > 0) {
+            at := top - 1; edge := cursors[at] - 1;
+            if (edge < 0) { order.append(pending[at]); top -= 1; continue; }
+            cursors[at] = next[edge]; target := targets[edge];
+            if (seen[target]) { continue; }
+            seen[target] = true;
+            if (top == length(pending)) { pending.append(target); cursors.append(heads[target]); }
+            else { pending[top] = target; cursors[top] = heads[target]; }
+            top += 1;
+        }
+    }
+    groups := resize([int(0)], count); sizes := [int(0)];
+    index := length(order) - 1;
+    while (index >= 0) {
+        root := order[index]; index -= 1;
+        if (groups[root] != 0) { continue; }
+        group := length(sizes); size: int = 0; sizes.append(0);
+        groups[root] = group; pending[0] = root; top: int = 1;
+        while (top > 0) {
+            top -= 1; node := pending[top]; size += 1;
+            edge := reverse_heads[node] - 1;
+            while (edge >= 0) {
+                caller := callers[edge];
+                if (groups[caller] == 0) {
+                    groups[caller] = group;
+                    if (top == length(pending)) { pending.append(caller); }
+                    else { pending[top] = caller; }
+                    top += 1;
+                }
+                edge = reverse_next[edge] - 1;
+            }
+        }
+        sizes[group] = size;
+    }
+    cyclic := resize([false], count);
+    for (node in 0..<count) { cyclic[node] = sizes[groups[node]] > 1; }
+    for (edge in 0..<length(targets)) { if (callers[edge] == targets[edge]) { cyclic[targets[edge]] = true; } }
+    return cyclic;
+}

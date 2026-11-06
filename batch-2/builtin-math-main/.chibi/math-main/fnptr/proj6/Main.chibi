@@ -1,0 +1,6 @@
+package scalar
+Main :: () -> int {
+    assert(true, "fine");
+    assert(false, "broken");
+    return 7;
+}

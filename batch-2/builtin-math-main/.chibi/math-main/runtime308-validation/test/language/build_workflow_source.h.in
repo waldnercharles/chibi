@@ -1,0 +1,2 @@
+/* Generated from the reviewed Chibi fixture; do not edit this copy. */
+static const char build_workflow_source[] = "@CHIBI_BUILD_WORKFLOW_SOURCE@";

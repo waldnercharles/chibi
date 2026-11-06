@@ -1,0 +1,1 @@
+{"sdk_version": "survivor-fixture", "build_id": "native-fixture", "system": "Darwin", "processors": ["arm64"], "backends": ["native"], "project_version": 39, "artifact_formats": {"execution": {"version": 15}}}

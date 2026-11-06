@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_ui_documents.a "CMakeFiles/chibi_ui_documents.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/ui/documents.c.o" "CMakeFiles/chibi_ui_documents.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/ui/font.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_ui_documents.a

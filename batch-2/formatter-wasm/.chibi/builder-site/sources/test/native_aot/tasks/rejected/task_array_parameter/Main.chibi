@@ -1,0 +1,3 @@
+package task_array_parameter_rejection
+Main :: () -> int { return 0; }
+Read :: (pending: task(int)[]) -> int { return length(pending); }

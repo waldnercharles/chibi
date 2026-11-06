@@ -1,0 +1,3 @@
+package lib
+pub UnnamedContract :: (function: fn() -> int) -> int { return function(); }
+pub NamedContract :: (function: fn() -> (expected: int)) -> int { return function(); }

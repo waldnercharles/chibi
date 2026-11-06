@@ -1,0 +1,11 @@
+package facts
+Count :: (n: int) -> int {
+    found: int = 0;
+    i: int = 0;
+    while (true) {
+        i += 1;
+        if (i > n) { break; }
+        if (i % 3 == 0 || i % 5 == 0) { continue; } else { found += 1; }
+    }
+    return found;
+}

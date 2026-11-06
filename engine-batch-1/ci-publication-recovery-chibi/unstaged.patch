@@ -1,0 +1,253 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 96199f7fd..1e147dc5b 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -2,6 +2,11 @@ name: CI
+ 
+ on:
+   workflow_dispatch:
++    inputs:
++      studio_sha:
++        description: 'Optional exact Studio SHA for additional native/Web SDK verification'
++        required: false
++        type: string
+   pull_request:
+     branches: [main]
+     paths-ignore:
+@@ -71,6 +76,8 @@ jobs:
+       - name: Project selectors
+         run: make test-projects LIBCLANG_ROOT=/usr/lib/llvm-18
+       - name: Language selectors
++        env:
++          UBSAN_OPTIONS: halt_on_error=1
+         run: make test-language-all LIBCLANG_ROOT=/usr/lib/llvm-18
+ 
+   native-macos:
+@@ -194,13 +201,36 @@ jobs:
+     # Studio is public; the read-only workflow token can check it out for every PR.
+     runs-on: ubuntu-24.04
+     timeout-minutes: 30
++    defaults:
++      run:
++        working-directory: engine
+     steps:
+       - uses: actions/checkout@v4
++        with:
++          ref: ${{ github.sha }}
++          path: engine
++          persist-credentials: false
+       - uses: actions/checkout@v4
+         with:
+           repository: waldnercharles/chibi-studio
+-          path: chibi-studio
++          path: studio
+           persist-credentials: false
++      - name: Record clean engine and Studio sources
++        run: |
++          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
++          test -z "$(git status --porcelain --untracked-files=normal)"
++          test -z "$(git -C "$GITHUB_WORKSPACE/studio" status --porcelain --untracked-files=normal)"
++          mkdir -p "$RUNNER_TEMP/studio-sdk-evidence"
++          python3 - <<'PY_SOURCE'
++          import json, os, subprocess
++          from pathlib import Path
++          def source(path):
++              def git(*args):
++                  return subprocess.check_output(['git', '-C', str(path), *args], text=True).strip()
++              return {'revision': git('rev-parse', 'HEAD'), 'tree': git('rev-parse', 'HEAD^{tree}'), 'dirty': False}
++          record = {'engine': source(Path.cwd()), 'studio': source(Path(os.environ['GITHUB_WORKSPACE']) / 'studio')}
++          (Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-evidence/sources.json').write_text(json.dumps(record, indent=2) + '\n')
++          PY_SOURCE
+       - name: Install build dependencies
+         run: |
+           sudo apt-get update
+@@ -214,14 +244,73 @@ jobs:
+           mkdir -m 700 -p "$XDG_RUNTIME_DIR"
+       - name: Package the SDK
+         run: make package-sdk SDK_PREFIX=dist/sdk LIBCLANG_ROOT=/usr/lib/llvm-18
++      - name: Verify clean packaged SDK identity
++        run: |
++          python3 - <<'PY_SDK'
++          import os, shutil
++          from pathlib import Path
++          from tools.package_sdk import previous_package
++          prefix = Path('dist/sdk')
++          package = previous_package(prefix, 'sdk')
++          if package['source']['revision'] != os.environ['GITHUB_SHA'] or package['source']['dirty']:
++              raise SystemExit('SDK does not identify the clean engine candidate')
++          shutil.copyfile(prefix / 'share/chibi/package.json', Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-evidence/package.json')
++          PY_SDK
+       - name: Build Studio against the packaged SDK
+-        run: make studio-build STUDIO_SOURCE="$PWD/chibi-studio" STUDIO_SDK_PREFIX=dist/sdk
++        run: make studio-build STUDIO_SOURCE="$GITHUB_WORKSPACE/studio" STUDIO_SDK_PREFIX=dist/sdk
+       - name: Two hidden Studio frames
+         shell: bash
+         run: |
++          cp -a --reflink=auto "$GITHUB_WORKSPACE/studio/projects/starter" "$RUNNER_TEMP/studio-sdk-project"
+           xvfb-run -a build-studio/bin/chibi-dev \
+-            --project-root chibi-studio/projects/starter --headless --frames 2 --fixed-dt 0.0166667 2>&1 | tee studio.log
+-          ! grep -E 'Studio UI:|runtime frame failed|Could not initialize' studio.log
++            --project-root "$RUNNER_TEMP/studio-sdk-project" --headless --frames 2 --fixed-dt 0.0166667 2>&1 | tee "$RUNNER_TEMP/studio-sdk-evidence/studio.log"
++          ! grep -E 'Studio UI:|runtime frame failed|Could not initialize' "$RUNNER_TEMP/studio-sdk-evidence/studio.log"
++
++      - name: Verify Studio consumed the packaged SDK
++        run: |
++          python3 - <<'PY_BINDING'
++          import hashlib, json, os, subprocess
++          from pathlib import Path
++          from tools.package_sdk import previous_package
++          evidence = Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-evidence'
++          sources = json.loads((evidence / 'sources.json').read_text())
++          for name, path in [('engine', Path.cwd()), ('studio', Path(os.environ['GITHUB_WORKSPACE']) / 'studio')]:
++              def git(*args):
++                  return subprocess.check_output(['git', '-C', str(path), *args], text=True).strip()
++              if (git('rev-parse', 'HEAD') != sources[name]['revision']
++                      or git('rev-parse', 'HEAD^{tree}') != sources[name]['tree']
++                      or git('status', '--porcelain', '--untracked-files=normal')):
++                  raise SystemExit(f'Source changed: {name}')
++          prefix = Path('dist/sdk').resolve()
++          package = previous_package(prefix, 'sdk')
++          manifest = prefix / 'share/chibi/package.json'
++          manifest_hash = hashlib.sha256(manifest.read_bytes()).hexdigest()
++          cache = {}
++          for line in Path('build-studio/CMakeCache.txt').read_text().splitlines():
++              if ':' in line and '=' in line and not line.startswith(('#', '//')):
++                  key, value = line.split('=', 1)
++                  cache[key.split(':', 1)[0]] = value
++          expected = {'Chibi_DIR': str(prefix / 'lib/cmake/Chibi'),
++                      'CHIBI_STUDIO_SDK_BUILD_ID': package['build_id'],
++                      'CHIBI_STUDIO_SDK_MANIFEST_SHA256': manifest_hash}
++          if any(cache.get(key) != value for key, value in expected.items()):
++              raise SystemExit('Studio consumed a different SDK')
++          def digest(path):
++              return hashlib.sha256(path.read_bytes()).hexdigest()
++          startup_project = {
++              'source': 'studio/projects/starter',
++              'copy': str(Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-project'),
++              'source_manifest_sha256': digest(Path(os.environ['GITHUB_WORKSPACE']) / 'studio/projects/starter/project.kdl'),
++              'opened_manifest_sha256': digest(Path(os.environ['RUNNER_TEMP']) / 'studio-sdk-project/project.kdl')}
++          receipt = dict(expected, startup_project=startup_project)
++          (evidence / 'consumer.json').write_text(json.dumps(receipt, indent=2) + '\n')
++          PY_BINDING
++      - uses: actions/upload-artifact@v4
++        if: always()
++        with:
++          name: studio-sdk-evidence-${{ github.run_id }}-${{ github.run_attempt }}
++          path: ${{ runner.temp }}/studio-sdk-evidence
++          if-no-files-found: ignore
+ 
+   format:
+     name: clang-format
+@@ -236,3 +325,10 @@ jobs:
+           echo '/tmp/clang-format/bin' >> "$GITHUB_PATH"
+       - name: Check format
+         run: sh tools/clang-format.sh --check
++
++  paired-studio:
++    if: github.event_name == 'workflow_dispatch' && inputs.studio_sha != ''
++    name: Paired Studio SDK verification
++    uses: ./.github/workflows/paired-studio.yml
++    with:
++      studio_sha: ${{ inputs.studio_sha }}
+diff --git a/docs/testing.md b/docs/testing.md
+index 47c3ea8e8..b60a294e6 100644
+--- a/docs/testing.md
++++ b/docs/testing.md
+@@ -3157,3 +3157,30 @@ after source integration. Prepared-mode no-op recovery never uploads missing
+ assets without a live source binding. Rebuilt archives require a new release
+ tag, including after source, main or PR changes. The original artifacts and
+ release digests remain the authority for an original-job retry.
++
++## Paired Studio SDK verification
++
++The registered CI workflow accepts an optional `studio_sha` dispatch input. Use
++a reviewed full lowercase 40-character commit SHA from the public
++`waldnercharles/chibi-studio` repository. This adds the distinct paired Studio
++native/Web verification job; the normal CI jobs keep their existing conditions
++and still run. Dispatch the reviewed engine branch at its frozen commit and
++retain the resulting run's engine and Studio source identities.
++
++The paired job packages a native Linux Debug SDK and a serial Emscripten 6.0.10
++Release SDK from that engine, compiles the exact Studio revision against each,
++and opens an external copy of the starter project for two hidden native frames.
++Sibling source checkouts stay clean while startup upgrades the disposable copy.
++SDK inventories, manifest identities, consumed CMake SDK bindings, source/format
++agreement and nonempty native/Web products are checked. The retained artifact
++records source revisions/trees, SDK manifests, compiler version, startup log and
++product hashes; failures retain evidence collected before the failed step.
++
++The default Studio CI job also uses sibling checkouts and an external starter
++copy, and retains clean SDK identity and consumer binding evidence. Its Studio
++revision follows that repository's default branch; use the paired job for an
++exact cross-repository candidate.
++
++The two hidden frames cover starter project startup. Web compilation does not
++establish browser execution, Studio UI interaction or visual acceptance. These
++checks do not publish packages or clear renderer, deployment or PR holds.
+diff --git a/src/assets/project_migrate.c b/src/assets/project_migrate.c
+index 0461a2019..f90671535 100644
+--- a/src/assets/project_migrate.c
++++ b/src/assets/project_migrate.c
+@@ -5704,6 +5704,9 @@ typedef struct
+ } entry_body_rewrite;
+ static void move_literal(entry_body_rewrite *out, const char *text, int length)
+ {
++    if (!length) {
++        return;
++    }
+     int offset = acount(out->moved);
+     asetlen(out->moved, offset + length);
+     memcpy(out->moved + offset, text, (size_t)length);
+diff --git a/test/language/format.c b/test/language/format.c
+index a0988c353..41b657d2f 100644
+--- a/test/language/format.c
++++ b/test/language/format.c
+@@ -123,6 +123,7 @@ TEST_CASE(source_format_keeps_named_payload_fields)
+ {
+     REQUIRE(format("Demo :: behavior {\non Tick ::(dt:s){}\non Begin::(){}\n}\n"));
+     REQUIRE(strstr(text, "on Tick :: (dt: s) {") && strstr(text, "on Begin :: () {"));
++    cleanup();
+     REQUIRE(format("Motion :: system(p: Position) on Tick ::(dt:s) {\np.x += dt\n}\n"));
+     REQUIRE(strstr(text, "system(p: Position) on Tick :: (dt: s) {"));
+     return true;
+diff --git a/test/language/program.c b/test/language/program.c
+index ba22da0d2..a3bcbf9e7 100644
+--- a/test/language/program.c
++++ b/test/language/program.c
+@@ -8366,6 +8366,19 @@ TEST_CASE(program_migration_rerun_leaves_scripts_later_steps_migrated)
+ TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
+ {
+     const char *source = "Moves :: library {\n"
++                         "Unindented :: () -> int {\n"
++                         "after entry { return 7 }\n"
++                         "}\n"
++                         "Blank :: () -> int {\n"
++                         "after entry {\n"
++                         "    return 7\n"
++                         "\n"
++                         "    // preserved\n"
++                         "}\n"
++                         "}\n"
++                         "Empty :: () {\n"
++                         "after entry { }\n"
++                         "}\n"
+                          "Step :: (Speed: float) -> float {\n"
+                          "    scale := 2.0\n"
+                          "    after entry {\n"
+@@ -8392,6 +8405,16 @@ TEST_CASE(program_version_28_after_entry_moves_into_function_bodies)
+                          "Value } }\n"
+                          "}";
+     const char *expected = "Moves :: library {\n"
++                           "Unindented :: () -> int {\n"
++                           "return 7\n"
++                           "}\n"
++                           "Blank :: () -> int {\n"
++                           "return 7\n"
++                           "\n"
++                           "// preserved\n"
++                           "}\n"
++                           "Empty :: () {\n"
++                           "}\n"
+                            "Step :: (Speed: float) -> float {\n"
+                            "    scale := 2.0\n"
+                            "    // Doubles the speed.\n"

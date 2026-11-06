@@ -1,0 +1,7 @@
+package lib
+pub Identity :: (value: $T) -> T { local: T = value; return local; }
+pub Repeated :: (value: $T) -> T { return Hidden(Identity(value)); }
+Hidden :: (value: $T) -> T { return value + value; }
+pub First :: (values: $T[]) -> T { return values[0]; }
+pub Scale :: (value: $T, $N: int) -> T { return value * N; }
+pub Maybe :: (value: int, $Enabled: bool) -> int { if Enabled { return value; } return 0; }

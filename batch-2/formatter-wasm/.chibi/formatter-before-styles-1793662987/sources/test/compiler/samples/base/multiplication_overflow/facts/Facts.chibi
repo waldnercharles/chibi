@@ -1,0 +1,4 @@
+package facts
+A: i64 : -1 * -9223372036854775808;
+
+// error: 2:10: Constant value is outside the range of i64

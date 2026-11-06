@@ -1,0 +1,8 @@
+name "Pilot"
+components {
+    (object)Aim
+    (object)Dash
+    (object)Input
+    (object)Movement
+    (object)Transform
+}

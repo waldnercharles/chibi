@@ -1,0 +1,8 @@
+package helper
+import testing "core:testing"
+pub Arm :: () { testing.ExpectFailure(testing.Failure.AssertionFailed); }
+pub ArmNil :: () { testing.ExpectFailure(testing.Failure.UnwrappedNil); }
+pub Optional :: (present: bool) -> int? {
+    if (present) { return 42; }
+    return nil;
+}

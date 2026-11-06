@@ -1,0 +1,3 @@
+package optional_string_cells
+@test
+Cells :: () { result:=Main(); assert(result==0); }

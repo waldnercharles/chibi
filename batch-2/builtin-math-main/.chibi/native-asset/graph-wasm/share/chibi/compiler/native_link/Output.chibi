@@ -1,0 +1,50 @@
+package native_link
+
+import strings "core:strings"
+
+// The standalone output service borrows bytes for the call and adds one
+// newline. Direct OS writes preserve embedded NUL and make readiness output
+// visible before the next language instruction, with no allocation or copy.
+OutputRuntime :: (windows: bool, wasm: bool) -> string {
+    call := "";
+    if (windows) {
+        call = Join([
+            "declare dllimport ptr @GetStdHandle(i32)\n",
+            "declare dllimport i32 @WriteFile(ptr, ptr, i32, ptr, ptr)\n",
+            "define internal void @chibi_stdout(ptr %bytes, i32 %length) {\nentry:\n",
+            "  %handle = call ptr @GetStdHandle(i32 -11)\n  %written = alloca i32\n  br label %loop\n",
+            "loop:\n  %at = phi i32 [ 0, %entry ], [ %next, %write ]\n",
+            "  %more = icmp ult i32 %at, %length\n  br i1 %more, label %write, label %done\n",
+            "write:\n  %offset = zext i32 %at to i64\n  %start = getelementptr i8, ptr %bytes, i64 %offset\n",
+            "  %remaining = sub i32 %length, %at\n  store i32 0, ptr %written\n",
+            "  %ok = call i32 @WriteFile(ptr %handle, ptr %start, i32 %remaining, ptr %written, ptr null)\n",
+            "  %count = load i32, ptr %written\n  %advanced = icmp ugt i32 %count, 0\n",
+            "  %accepted = icmp ne i32 %ok, 0\n  %valid = and i1 %accepted, %advanced\n",
+            "  %next = add i32 %at, %count\n  br i1 %valid, label %loop, label %done\ndone:\n  ret void\n}\n"
+        ]);
+    } else {
+        call = Join([
+            "define internal void @chibi_stdout(ptr %bytes, i32 %length) {\nentry:\n",
+            "  %wide = zext i32 %length to i64\n  br label %loop\n",
+            "loop:\n  %at = phi i64 [ 0, %entry ], [ %next, %write ]\n",
+            "  %more = icmp ult i64 %at, %wide\n  br i1 %more, label %write, label %done\n",
+            "write:\n  %start = getelementptr i8, ptr %bytes, i64 %at\n",
+            "  %remaining = sub i64 %wide, %at\n  %count = call i64 @write(i32 1, ptr %start, i64 %remaining)\n",
+            "  %advanced = icmp sgt i64 %count, 0\n  %next = add i64 %at, %count\n",
+            "  br i1 %advanced, label %loop, label %done\ndone:\n  ret void\n}\n"
+        ]);
+        // The desktop failure runtime owns the write declaration.
+        if (wasm) {
+            // Emscripten's ssize_t/size_t and pointer offsets are 32 bits.
+            call = strings.ReplaceAll(call, "i64", "i32");
+            call = Join(["declare i32 @write(i32, ptr, i32)\n", call]);
+            call = strings.Replace(call, "%wide = zext i32 %length to i32", "%wide = add i32 %length, 0", 1);
+        }
+    }
+    return Join([call,
+        "@chibi_output_newline = private constant [1 x i8] c\"\\0A\"\n",
+        "define void @chibi_print_string(ptr %ctx, ptr %bytes, i32 %length) {\n",
+        "  call void @chibi_stdout(ptr %bytes, i32 %length)\n",
+        "  call void @chibi_stdout(ptr @chibi_output_newline, i32 1)\n  ret void\n}\n"
+    ]);
+}

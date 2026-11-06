@@ -1,0 +1,826 @@
+package callable_headers
+
+import reader "project:signature_reader"
+import named "project:named_binding"
+import binding "project:lexical_binding"
+import constructors "project:type_constructors"
+import syntax "project:syntax_diagnostics"
+
+pub Symbol :: struct {
+    name: string;
+    unit: string;
+    has_unit: bool;
+    kind: int;
+    scope: int;
+    initializer: int;
+    function: int;
+    writable: bool;
+    outcome: bool;
+    type_index: int;
+    id_slot: int;
+    capability_slot: int;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+}
+pub Function :: struct {
+    kind: int;
+    symbol: int;
+    scope: int;
+    body: int;
+    receiver: int;
+    parent: int;
+    depth_limit: int;
+    pure: bool;
+    inferred: bool;
+    entry_name: string;
+    has_entry: bool;
+    start: int;
+    end: int;
+    line: int;
+    column: int;
+    document: int;
+    parameter_start: int;
+    parameter_count: int;
+    result_start: int;
+    result_count: int;
+    generic_start: int;
+    generic_count: int;
+}
+pub Environment :: union {
+    Tables(signature: reader.Environment, symbols: Symbol[], functions: Function[],
+           parameters: int[], results: int[], generics: int[])
+}
+pub Context :: struct {
+    scope: int;
+    function: int;
+    document: int;
+}
+Change :: struct {
+    index: int;
+    fields: int;
+}
+FunctionChange :: struct {
+    index: int;
+    append: bool;
+}
+Reference :: struct {
+    index: int;
+    document: int;
+    node: int;
+}
+pub Header :: union {
+    Registered(symbol: int, function: int, environment: Environment, changes: Change[],
+               function_changes: FunctionChange[], scope_start: int,
+               initializers: Reference[], bodies: Reference[], diagnostics: syntax.Diagnostic[],
+               uses: named.Use[], publications: constructors.Plan[])
+}
+Work :: union {
+    State(environment: Environment, masks: int[], dirty: bool[], scope_start: int, function_start: int,
+          initializers: Reference[], bodies: Reference[], diagnostics: syntax.Diagnostic[],
+          uses: named.Use[], publications: constructors.Plan[])
+}
+Admission :: union {
+    Declared(work: Work, index: int)
+}
+Read :: union {
+    Typed(work: Work, value: named.Value, has_unit: bool, unit: string)
+}
+Decoded :: union {
+    Name(work: Work, value: string)
+}
+
+// Rebuild only the raw views that sequential lexical admissions have changed.
+// Catalog/type/use pools already extended by the signature reader stay intact.
+Refresh :: (environment: Environment) -> Environment {
+    switch environment {
+        case .Tables(signature, symbols, functions, parameters, results, generics):
+            switch signature {
+                case .Tables(names, constructor_tables, pointer_size):
+                    updated_names := names;
+                    lexical_ids: u64[] = [];
+                    switch names {
+                        case .Tables(lexical, types, ids, merged, own, native, old_symbol_types, imports, exports, uses,
+                                     identity, package_scope, has_native, has_documents, entity_id):
+                            switch lexical {
+                                case .Tables(scopes, old_symbols, old_functions, source_ids, keys):
+                                    lexical_ids = source_ids;
+                                    lexical_symbols: binding.Symbol[] = [];
+                                    lexical_functions: binding.Function[] = [];
+                                    symbol_types: int[] = [];
+                                    for (symbol in symbols) {
+                                        row: binding.Symbol = {name: symbol.name, kind: symbol.kind, scope: symbol.scope,
+                                                               id_slot: symbol.id_slot, start: symbol.start, end: symbol.end, line: symbol.line,
+                                                               column: symbol.column, document: symbol.document};
+                                        lexical_symbols.append(row);
+                                        symbol_types.append(symbol.type_index);
+                                    }
+                                    for (function in functions) {
+                                        row: binding.Function = {symbol: function.symbol, scope: function.scope};
+                                        lexical_functions.append(row);
+                                    }
+                                    updated_lexical := binding.Environment.Tables(scopes, lexical_symbols, lexical_functions, source_ids, keys);
+                                    updated_names = named.Environment.Tables(updated_lexical, types, ids, merged, own, native,
+                                                                             symbol_types, imports, exports, uses, identity, package_scope, has_native, has_documents, entity_id);
+                            }
+                    }
+                    switch constructor_tables {
+                        case .Tables(types, source_ids, definitions, variants, capabilities, old_functions, old_symbols, old_results):
+                            ids := source_ids;
+                            constructor_symbols: constructors.Symbol[] = [];
+                            constructor_functions: constructors.Function[] = [];
+                            for (symbol in symbols) {
+                                slot := length(ids);
+                                ids.append(named.IDAt(lexical_ids, symbol.id_slot));
+                                row: constructors.Symbol = {id_slot: slot};
+                                constructor_symbols.append(row);
+                            }
+                            for (function in functions) {
+                                row: constructors.Function = {symbol: function.symbol, result_start: function.result_start,
+                                                              result_count: function.result_count};
+                                constructor_functions.append(row);
+                            }
+                            updated_constructors := constructors.Environment.Tables(types, ids, definitions, variants, capabilities,
+                                                                                    constructor_functions, constructor_symbols, results);
+                            return Environment.Tables(reader.Environment.Tables(updated_names, updated_constructors, pointer_size),
+                                                      symbols, functions, parameters, results, generics);
+                    }
+            }
+    }
+}
+Start :: (environment: Environment) -> Work {
+    masks: int[] = [];
+    dirty: bool[] = [];
+    scope_start: int = 0;
+    function_start: int = 0;
+    switch environment {
+        case .Tables(signature, symbols, functions, parameters, results, generics):
+            for (symbol in symbols) {
+                masks.append(int(0));
+            }
+            for (function in functions) {
+                dirty.append(false);
+            }
+            function_start = length(functions);
+            switch signature {
+                case .Tables(names, constructor_tables, pointer_size):
+                    switch names {
+                        case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, uses,
+                                     identity, package_scope, has_native, has_documents, entity_id):
+                            switch lexical {
+                                case .Tables(scopes, source_symbols, source_functions, source_ids, keys):
+                                    scope_start = length(scopes);
+                            }
+                    }
+            }
+    }
+    initializers: Reference[] = [];
+    bodies: Reference[] = [];
+    diagnostics: syntax.Diagnostic[] = [];
+    uses: named.Use[] = [];
+    publications: constructors.Plan[] = [];
+    return Work.State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
+}
+Diagnostic :: (work: Work, diagnostic: syntax.Diagnostic) -> Work {
+    switch work {
+        case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, source_diagnostics, uses, publications):
+            diagnostics := append(source_diagnostics, diagnostic);
+            return Work.State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
+    }
+}
+Name :: (work: Work, tree: reader.Tree, node: int, document: int) -> Decoded {
+    switch reader.Name(tree, node, document) {
+        case .Name(value, diagnostics):
+            updated := work;
+            for (diagnostic in diagnostics) {
+                updated = Diagnostic(updated, diagnostic);
+            }
+            return Decoded.Name(updated, value);
+    }
+}
+Annotation :: (work: Work, tree: reader.Tree, node: int, context: Context, signature_mode: bool) -> Read {
+    switch work {
+        case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, old_diagnostics, old_uses, old_publications):
+            current := Refresh(environment);
+            switch current {
+                case .Tables(signature, symbols, functions, parameters, results, generics):
+                    reading := reader.Empty(signature, named.Value.Typed(0, 0, 0, 0, 0));
+                    if (signature_mode) {
+                        reading = reader.Signature(signature, tree, node, context.scope, context.document);
+                    } else {
+                        reading = reader.Type(signature, tree, node, context.scope, context.document);
+                    }
+                    switch reading {
+                        case .Read(value, has_unit, unit, updated_signature, diagnostics, uses, publications, collection):
+                            all_diagnostics := old_diagnostics;
+                            all_uses := old_uses;
+                            all_publications := old_publications;
+                            for (item in diagnostics) {
+                                all_diagnostics.append(item);
+                            }
+                            for (item in uses) {
+                                all_uses.append(item);
+                            }
+                            for (item in publications) {
+                                all_publications.append(item);
+                            }
+                            updated := Environment.Tables(updated_signature, symbols, functions, parameters, results, generics);
+                            next := Work.State(updated, masks, dirty, scope_start, function_start, initializers, bodies,
+                                               all_diagnostics, all_uses, all_publications);
+                            return Read.Typed(next, value, has_unit, unit);
+                    }
+            }
+    }
+}
+// Append or reuse exactly the lexical decision; existing row types are retained.
+Declare :: (work: Work, tree: reader.Tree, node: int, context: Context,
+            name: string, kind: int, value: named.Value, writable: bool) -> Admission {
+    switch work {
+        case .State(environment, source_masks, dirty, scope_start, function_start, initializers, bodies, old_diagnostics, uses, publications):
+            current := Refresh(environment);
+            switch current {
+                case .Tables(signature, source_symbols, functions, parameters, results, generics):
+                    switch signature {
+                        case .Tables(names, constructor_tables, pointer_size):
+                            switch names {
+                                case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, named_uses,
+                                             identity, package_scope, has_native, has_documents, entity_id):
+                                    request := reader.Request(tree, node, context.scope, context.document, name);
+                                    lexical_request: binding.Request = {name: name, kind: kind, start: request.start, end: request.end,
+                                                                        line: request.line, column: request.column, document: request.document};
+                                    lexical_context: binding.Context = {identity: identity, scope: context.scope, function: context.function,
+                                                                        package_scope: package_scope, has_identity: true, has_documents: has_documents};
+                                    existing: int = -1;
+                                    id: u64 = 0;
+                                    diagnostics := old_diagnostics;
+                                    switch binding.Declare(lexical, lexical_context, lexical_request) {
+                                        case .Appended(symbol_id, errors):
+                                            id = symbol_id;
+                                            for (error in errors) {
+                                                diagnostics.append(error);
+                                            }
+                                        case .Existing(index, errors):
+                                            existing = index;
+                                            for (error in errors) {
+                                                diagnostics.append(error);
+                                            }
+                                    }
+                                    if (existing >= 0) {
+                                        return Admission.Declared(Work.State(current, source_masks, dirty, scope_start, function_start,
+                                                                             initializers, bodies, diagnostics, uses, publications), existing);
+                                    }
+                                    switch reader.AddType(types, ids, value) {
+                                        case .Added(new_types, new_ids, type_index):
+                                            switch lexical {
+                                                case .Tables(scopes, old_symbols, lexical_functions, source_ids, keys):
+                                                    slot := length(source_ids);
+                                                    lexical_ids := append(source_ids, id);
+                                                    updated_lexical := binding.Environment.Tables(scopes, old_symbols, lexical_functions, lexical_ids, keys);
+                                                    updated_names := named.Environment.Tables(updated_lexical, new_types, new_ids, merged, own, native,
+                                                                                              symbol_types, imports, exports, named_uses, identity, package_scope, has_native, has_documents, entity_id);
+                                                    row: Symbol = {name: name, unit: "", has_unit: false, kind: kind, scope: context.scope,
+                                                                   initializer: -1, function: -1, writable: writable, outcome: false, type_index: type_index,
+                                                                   id_slot: slot, capability_slot: -1, start: request.start, end: request.end,
+                                                                   line: request.line, column: request.column, document: request.document};
+                                                    symbols := append(source_symbols, row);
+                                                    masks := append(source_masks, int(64));
+                                                    updated := Environment.Tables(reader.Environment.Tables(updated_names, constructor_tables, pointer_size),
+                                                                                  symbols, functions, parameters, results, generics);
+                                                    return Admission.Declared(Work.State(updated, masks, dirty, scope_start, function_start,
+                                                                                         initializers, bodies, diagnostics, uses, publications), length(symbols) - 1);
+                                            }
+                                    }
+                            }
+                    }
+            }
+    }
+}
+SymbolAt :: (work: Work, index: int) -> Symbol {
+    switch work {
+        case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+            switch environment {
+                case .Tables(signature, symbols, functions, parameters, results, generics):
+                    return symbols[index];
+            }
+    }
+}
+FunctionAt :: (work: Work, index: int) -> Function {
+    switch work {
+        case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+            switch environment {
+                case .Tables(signature, symbols, functions, parameters, results, generics):
+                    return functions[index];
+            }
+    }
+}
+SymbolValue :: (work: Work, index: int) -> named.Value {
+    switch work {
+        case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+            switch environment {
+                case .Tables(signature, symbols, functions, parameters, results, generics):
+                    switch signature {
+                        case .Tables(names, constructor_tables, pointer_size):
+                            switch names {
+                                case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, named_uses,
+                                             identity, package_scope, has_native, has_documents, entity_id):
+                                    return named.TypeAt(types, ids, symbols[index].type_index);
+                            }
+                    }
+            }
+    }
+}
+SymbolID :: (work: Work, index: int) -> u64 {
+    switch work {
+        case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+            switch environment {
+                case .Tables(signature, symbols, functions, parameters, results, generics):
+                    switch signature {
+                        case .Tables(names, constructor_tables, pointer_size):
+                            switch names {
+                                case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, named_uses,
+                                             identity, package_scope, has_native, has_documents, entity_id):
+                                    switch lexical {
+                                        case .Tables(scopes, lexical_symbols, lexical_functions, source_ids, keys):
+                                            return named.IDAt(source_ids, symbols[index].id_slot);
+                                    }
+                            }
+                    }
+            }
+    }
+}
+SetSymbol :: (work: Work, index: int, value: Symbol, fields: int) -> Work {
+    switch work {
+        case .State(environment, source_masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+            switch environment {
+                case .Tables(signature, source_symbols, functions, parameters, results, generics):
+                    symbols := source_symbols;
+                    masks := source_masks;
+                    symbols[index] = value;
+                    masks[index] = masks[index] | fields;
+                    return Work.State(Environment.Tables(signature, symbols, functions, parameters, results, generics), masks, dirty,
+                                      scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
+            }
+    }
+}
+SetType :: (work: Work, index: int, value: named.Value) -> Work {
+    switch work {
+        case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+            switch environment {
+                case .Tables(signature, source_symbols, functions, parameters, results, generics):
+                    switch signature {
+                        case .Tables(names, constructor_tables, pointer_size):
+                            switch names {
+                                case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, named_uses,
+                                             identity, package_scope, has_native, has_documents, entity_id):
+                                    switch reader.AddType(types, ids, value) {
+                                        case .Added(new_types, new_ids, type_index):
+                                            updated_names := named.Environment.Tables(lexical, new_types, new_ids, merged, own, native, symbol_types,
+                                                                                      imports, exports, named_uses, identity, package_scope, has_native, has_documents, entity_id);
+                                            updated := Environment.Tables(reader.Environment.Tables(updated_names, constructor_tables, pointer_size),
+                                                                          source_symbols, functions, parameters, results, generics);
+                                            current := Work.State(updated, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
+                                            symbol := source_symbols[index];
+                                            symbol.type_index = type_index;
+                                            return SetSymbol(current, index, symbol, 1);
+                                    }
+                            }
+                    }
+            }
+    }
+}
+SetFunction :: (work: Work, index: int, value: Function) -> Work {
+    switch work {
+        case .State(environment, masks, source_dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+            switch environment {
+                case .Tables(signature, symbols, source_functions, parameters, results, generics):
+                    functions := source_functions;
+                    dirty := source_dirty;
+                    functions[index] = value;
+                    dirty[index] = true;
+                    return Work.State(Environment.Tables(signature, symbols, functions, parameters, results, generics), masks, dirty,
+                                      scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
+            }
+    }
+}
+AddMember :: (work: Work, function: int, symbol: int, kind: int) -> Work {
+    switch work {
+        case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+            switch environment {
+                case .Tables(signature, symbols, functions, source_parameters, source_results, source_generics):
+                    parameters := source_parameters;
+                    results := source_results;
+                    generics := source_generics;
+                    row := functions[function];
+                    start := row.parameter_start;
+                    count := row.parameter_count;
+                    if (kind == 1) {
+                        start = row.result_start;
+                        count = row.result_count;
+                    }
+                    if (kind == 2) {
+                        start = row.generic_start;
+                        count = row.generic_count;
+                    }
+                    new_start := length(parameters);
+                    if (kind == 1) {
+                        new_start = length(results);
+                    }
+                    if (kind == 2) {
+                        new_start = length(generics);
+                    }
+                    index: int = 0;
+                    while (index < count) {
+                        if (kind == 0) {
+                            parameters.append(source_parameters[start + index]);
+                        }
+                        if (kind == 1) {
+                            results.append(source_results[start + index]);
+                        }
+                        if (kind == 2) {
+                            generics.append(source_generics[start + index]);
+                        }
+                        index += 1;
+                    }
+                    if (kind == 0) {
+                        parameters.append(symbol);
+                        row.parameter_start = new_start;
+                        row.parameter_count = count + 1;
+                    }
+                    if (kind == 1) {
+                        results.append(symbol);
+                        row.result_start = new_start;
+                        row.result_count = count + 1;
+                    }
+                    if (kind == 2) {
+                        generics.append(symbol);
+                        row.generic_start = new_start;
+                        row.generic_count = count + 1;
+                    }
+                    updated := Environment.Tables(signature, symbols, functions, parameters, results, generics);
+                    return SetFunction(Work.State(updated, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications), function, row);
+            }
+    }
+}
+AddInitializer :: (work: Work, symbol: int, document: int, node: int) -> Work {
+    switch work {
+        case .State(environment, masks, dirty, scope_start, function_start, source_initializers, bodies, diagnostics, uses, publications):
+            row: Reference = {index: symbol, document: document, node: node};
+            initializers := append(source_initializers, row);
+            return Work.State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
+    }
+}
+Parameters :: (work: Work, tree: reader.Tree, node: int, context: Context, results: bool) -> Work {
+    current := work;
+    if (results && node >= 0 && !reader.Kind(tree, node, "parameter_list")) {
+        switch Annotation(current, tree, node, context, true) {
+            case .Typed(next, value, has_unit, unit):
+                switch Declare(next, tree, node, context, "Result", 7, value, true) {
+                    case .Declared(admitted, symbol_index):
+                        symbol := SymbolAt(admitted, symbol_index);
+                        symbol.start = -1;
+                        symbol.end = -1;
+                        symbol.line = 0;
+                        symbol.column = 0;
+                        symbol.document = 0;
+                        symbol.unit = unit;
+                        symbol.has_unit = has_unit;
+                        current = SetSymbol(admitted, symbol_index, symbol, 6);
+                        return AddMember(current, context.function, symbol_index, 1);
+                }
+        }
+    }
+    if (node < 0) {
+        return current;
+    }
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, text):
+            child := nodes[node].first_child;
+            while (child >= 0) {
+                if (named_flags[child] && !extra_flags[child]) {
+                    switch Annotation(current, tree, reader.Field(tree, child, "type"), context, true) {
+                        case .Typed(next, source_value, has_unit, unit):
+                            updated := next;
+                            value := source_value;
+                            switch value {
+                                case .Typed(storage, container, flags, nominal, parameter):
+                                    if ((flags & 16) != 0) {
+                                        updated = Diagnostic(updated, reader.Diagnostic(tree, child, context.document, "Callable parameters and results require a type"));
+                                        value = named.Value.Typed(0, 0, 1, 0, 0);
+                                    }
+                            }
+                            token := reader.Field(tree, child, "name");
+                            switch Name(updated, tree, token, context.document) {
+                                case .Name(decoded, name):
+                                    kind: int = 6;
+                                    membership: int = 0;
+                                    if (results) {
+                                        kind = 7;
+                                        membership = 1;
+                                    }
+                                    switch Declare(decoded, tree, token, context, name, kind, value, true) {
+                                        case .Declared(admitted, symbol_index):
+                                            symbol := SymbolAt(admitted, symbol_index);
+                                            symbol.unit = unit;
+                                            symbol.has_unit = has_unit;
+                                            current = SetSymbol(admitted, symbol_index, symbol, 2);
+                                            current = AddMember(current, context.function, symbol_index, membership);
+                                            default_node := reader.Field(tree, child, "value");
+                                            if (default_node >= 0) {
+                                                current = AddInitializer(current, symbol_index, context.document, default_node);
+                                            }
+                                    }
+                            }
+                    }
+                }
+                child = nodes[child].next_sibling;
+            }
+    }
+    return current;
+}
+Token :: (tree: reader.Tree, node: int, text: string) -> bool {
+    if (node < 0) {
+        return false;
+    }
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, source):
+            child := nodes[node].first_child;
+            while (child >= 0) {
+                if (reader.Text(tree, child) == text) {
+                    return true;
+                }
+                child = nodes[child].next_sibling;
+            }
+    }
+    return false;
+}
+NewFunction :: (work: Work, tree: reader.Tree, node: int, context: Context, kind: int, symbol: int) -> Admission {
+    switch work {
+        case .State(environment, masks, source_dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+            switch environment {
+                case .Tables(signature, symbols, source_functions, parameters, results, generics):
+                    depth: int = 64;
+                    if (context.function >= 0) {
+                        depth = source_functions[context.function].depth_limit;
+                    }
+                    request := reader.Request(tree, node, context.scope, context.document, "");
+                    row: Function = {kind: kind, symbol: symbol, scope: -1, body: -1, receiver: -1, parent: context.function,
+                                     depth_limit: depth, pure: Token(tree, node, "pure"), inferred: false, entry_name: "", has_entry: false,
+                                     start: request.start, end: request.end, line: request.line, column: request.column, document: request.document,
+                                     parameter_start: 0, parameter_count: 0, result_start: 0, result_count: 0, generic_start: 0, generic_count: 0};
+                    functions := append(source_functions, row);
+                    dirty := append(source_dirty, true);
+                    updated := Environment.Tables(signature, symbols, functions, parameters, results, generics);
+                    return Admission.Declared(Work.State(updated, masks, dirty, scope_start, function_start,
+                                                         initializers, bodies, diagnostics, uses, publications), length(functions) - 1);
+            }
+    }
+}
+NewScope :: (work: Work, tree: reader.Tree, node: int, context: Context) -> Admission {
+    switch work {
+        case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+            switch environment {
+                case .Tables(signature, symbols, functions, parameters, results, generics):
+                    switch signature {
+                        case .Tables(names, constructor_tables, pointer_size):
+                            switch names {
+                                case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, named_uses,
+                                             identity, package_scope, has_native, has_documents, entity_id):
+                                    switch lexical {
+                                        case .Tables(source_scopes, lexical_symbols, lexical_functions, source_ids, keys):
+                                            request := reader.Request(tree, node, context.scope, context.document, "");
+                                            row: binding.Scope = {parent: context.scope, function: context.function, start: request.start,
+                                                                  end: request.end, line: request.line, column: request.column, document: request.document};
+                                            scopes := append(source_scopes, row);
+                                            updated_lexical := binding.Environment.Tables(scopes, lexical_symbols, lexical_functions, source_ids, keys);
+                                            updated_names := named.Environment.Tables(updated_lexical, types, ids, merged, own, native, symbol_types,
+                                                                                      imports, exports, named_uses, identity, package_scope, has_native, has_documents, entity_id);
+                                            updated := Environment.Tables(reader.Environment.Tables(updated_names, constructor_tables, pointer_size),
+                                                                          symbols, functions, parameters, results, generics);
+                                            return Admission.Declared(Work.State(updated, masks, dirty, scope_start, function_start,
+                                                                                 initializers, bodies, diagnostics, uses, publications), length(scopes) - 1);
+                                    }
+                            }
+                    }
+            }
+    }
+}
+ReturnsValue :: (tree: reader.Tree, root: int) -> bool {
+    if (root < 0) {
+        return false;
+    }
+    switch tree {
+        case .Raw(nodes, fields, named_flags, extra_flags, text):
+            cursor := root;
+            while (cursor >= 0) {
+                prune := cursor != root && (nodes[cursor].kind == "function_declaration" || nodes[cursor].kind == "macro_declaration");
+                if (nodes[cursor].kind == "return_statement") {
+                    if (reader.Field(tree, cursor, "value") >= 0) {
+                        return true;
+                    }
+                    prune = true;
+                }
+                child := nodes[cursor].first_child;
+                if (prune) {
+                    child = -1;
+                }
+                while (child >= 0 && !named_flags[child]) {
+                    child = nodes[child].next_sibling;
+                }
+                if (child >= 0) {
+                    cursor = child;
+                    continue;
+                }
+                while (cursor != root) {
+                    sibling := nodes[cursor].next_sibling;
+                    while (sibling >= 0 && !named_flags[sibling]) {
+                        sibling = nodes[sibling].next_sibling;
+                    }
+                    if (sibling >= 0) {
+                        cursor = sibling;
+                        break;
+                    }
+                    cursor = nodes[cursor].parent;
+                }
+                if (cursor == root) {
+                    return false;
+                }
+            }
+    }
+    return false;
+}
+Finish :: (work: Work, symbol: int, function: int) -> Header {
+    switch work {
+        case .State(environment, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+            changes: Change[] = [];
+            function_changes: FunctionChange[] = [];
+            index: int = 0;
+            while (index < length(masks)) {
+                if (masks[index] != 0) {
+                    row: Change = {index: index, fields: masks[index]};
+                    changes.append(row);
+                }
+                index += 1;
+            }
+            index = 0;
+            while (index < length(dirty)) {
+                if (dirty[index]) {
+                    row: FunctionChange = {index: index, append: index >= function_start};
+                    function_changes.append(row);
+                }
+                index += 1;
+            }
+            return Header.Registered(symbol, function, Refresh(environment), changes, function_changes, scope_start,
+                                     initializers, bodies, diagnostics, uses, publications);
+    }
+}
+pub Register :: (environment: Environment, tree: reader.Tree, node: int, context: Context) -> Header {
+    work := Start(environment);
+    is_macro := reader.Kind(tree, node, "macro_declaration");
+    token := reader.Field(tree, node, "name");
+    symbol_index: int = -1;
+    function_index: int = -1;
+    name := "";
+    kind: int = 1;
+    if (is_macro) {
+        kind = 2;
+    }
+    switch Name(work, tree, token, context.document) {
+        case .Name(decoded, text):
+            name = text;
+            switch Declare(decoded, tree, token, context, name, kind, named.Value.Typed(0, 0, 0, 0, 0), false) {
+                case .Declared(admitted, index):
+                    work = admitted;
+                    symbol_index = index;
+            }
+    }
+    symbol := SymbolAt(work, symbol_index);
+    request := reader.Request(tree, token, context.scope, context.document, name);
+    switch environment {
+        case .Tables(signature, symbols, functions, parameters, results, generics):
+            switch signature {
+                case .Tables(names, constructor_tables, pointer_size):
+                    switch names {
+                        case .Tables(lexical, types, ids, merged, own, native, symbol_types, imports, exports, named_uses,
+                                     identity, package_scope, has_native, has_documents, entity_id):
+                            if (has_documents && (symbol.document != request.document || symbol.start != request.start || symbol.kind != kind)) {
+                                return Finish(work, symbol_index, -1);
+                            }
+                    }
+            }
+    }
+    switch NewFunction(work, tree, node, context, 0, symbol_index) {
+        case .Declared(updated, index):
+            work = updated;
+            function_index = index;
+    }
+    symbol.function = function_index;
+    symbol.capability_slot = symbol.id_slot;
+    work = SetSymbol(work, symbol_index, symbol, 24);
+    active := context;
+    active.function = function_index;
+    body := reader.Field(tree, node, "body");
+    switch NewScope(work, tree, body, active) {
+        case .Declared(updated, index):
+            work = updated;
+            active.scope = index;
+    }
+    function := FunctionAt(work, function_index);
+    function.scope = active.scope;
+    work = SetFunction(work, function_index, function);
+    generic_node := reader.Field(tree, node, "type_parameters");
+    if (generic_node >= 0) {
+        switch tree {
+            case .Raw(nodes, fields, named_flags, extra_flags, text):
+                child := nodes[generic_node].first_child;
+                while (child >= 0) {
+                    if (named_flags[child] && !extra_flags[child]) {
+                        switch Annotation(work, tree, reader.Field(tree, child, "type"), active, false) {
+                            case .Typed(read, value, has_unit, unit):
+                                generic_name := reader.Field(tree, child, "name");
+                                switch Name(read, tree, generic_name, active.document) {
+                                    case .Name(decoded, text):
+                                        switch Declare(decoded, tree, generic_name, active, text, 12, value, false) {
+                                            case .Declared(admitted, index):
+                                                work = admitted;
+                                                prior := SymbolValue(work, index);
+                                                switch prior {
+                                                    case .Typed(storage, container, flags, nominal, parameter):
+                                                        work = SetType(work, index, named.Value.Typed(storage, container, flags | 32, nominal, SymbolID(work, index)));
+                                                }
+                                                work = AddMember(work, function_index, index, 2);
+                                        }
+                                }
+                        }
+                    }
+                    child = nodes[child].next_sibling;
+                }
+        }
+    }
+    work = Parameters(work, tree, reader.Field(tree, node, "parameters"), active, false);
+    result_node := reader.Field(tree, node, "results");
+    work = Parameters(work, tree, result_node, active, true);
+    function = FunctionAt(work, function_index);
+    function.inferred = !is_macro && result_node < 0 && ReturnsValue(tree, body);
+    work = SetFunction(work, function_index, function);
+    value := named.Value.Typed(0, 0, 0, 0, 0);
+    if (function.result_count > 0) {
+        if (function.result_count == 1) {
+            switch work {
+                case .State(current, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications):
+                    switch current {
+                        case .Tables(signature, symbols, functions, parameters, results, generics):
+                            value = SymbolValue(work, results[function.result_start]);
+                    }
+            }
+        } else {
+            value = named.Value.Typed(15, 0, 8, SymbolID(work, symbol_index), 0);
+        }
+    }
+    work = SetType(work, symbol_index, value);
+    switch work {
+        case .State(current, masks, dirty, scope_start, function_start, initializers, source_bodies, diagnostics, uses, publications):
+            pending: Reference = {index: function_index, document: active.document, node: body};
+            bodies := append(source_bodies, pending);
+            work = Work.State(current, masks, dirty, scope_start, function_start, initializers, bodies, diagnostics, uses, publications);
+    }
+    if (body >= 0) {
+        switch tree {
+            case .Raw(nodes, fields, named_flags, extra_flags, text):
+                child := nodes[body].first_child;
+                while (child >= 0) {
+                    if (named_flags[child] && reader.Kind(tree, child, "entry_declaration")) {
+                        entry_index: int = -1;
+                        switch NewFunction(work, tree, child, active, 4, -1) {
+                            case .Declared(updated, index):
+                                work = updated;
+                                entry_index = index;
+                        }
+                        switch Name(work, tree, reader.Field(tree, child, "name"), active.document) {
+                            case .Name(decoded, text):
+                                work = decoded;
+                                entry_function := FunctionAt(work, entry_index);
+                                entry_function.scope = active.scope;
+                                entry_function.entry_name = text;
+                                entry_function.has_entry = true;
+                                work = SetFunction(work, entry_index, entry_function);
+                        }
+                    } else if (named_flags[child] && reader.Kind(tree, child, "exit_declaration")) {
+                        exit_node := reader.Field(tree, child, "name");
+                        switch Name(work, tree, exit_node, active.document) {
+                            case .Name(decoded, text):
+                                switch Declare(decoded, tree, exit_node, active, text, 11, named.Value.Typed(0, 0, 0, 0, 0), false) {
+                                    case .Declared(admitted, index):
+                                        outcome := SymbolAt(admitted, index);
+                                        outcome.outcome = true;
+                                        work = SetSymbol(admitted, index, outcome, 32);
+                                }
+                        }
+                    }
+                    child = nodes[child].next_sibling;
+                }
+        }
+    }
+    return Finish(work, symbol_index, function_index);
+}

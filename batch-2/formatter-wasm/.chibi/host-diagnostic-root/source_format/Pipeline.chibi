@@ -1,0 +1,305 @@
+package source_format
+
+import strings "core:strings"
+import syntax "project:compiler_syntax"
+import diag "project:syntax_diagnostics"
+import type_style "project:source_type_style"
+
+// Each edited text owns its matching parse. An unchanged stage borrows that
+// parse; another parse is needed only after an actual token/comment edit.
+StyleState :: struct {
+    text: string;
+    rows: diag.Node[];
+    fields: int[];
+    named: bool[];
+    root: int;
+    notes: string[];
+    semantic_edits: bool;
+}
+StyleStep :: union { Ready(parsed_state: StyleState) | Failed(message: string) }
+
+AdoptStyle :: (parsed_state: StyleState, text: string, notes: string) -> StyleStep {
+    next := parsed_state;
+    if (notes != "") { next.notes.append(notes); }
+    if (text == parsed_state.text) { return StyleStep.Ready(next); }
+    switch syntax.Parse(text) {
+        case .Rejected(diagnostic): return StyleStep.Failed(Unparsed(diagnostic));
+        case .Parsed(rows, fields, named, extras, root):
+            next.text = text; next.rows = rows; next.fields = fields; next.named = named; next.root = root;
+            return StyleStep.Ready(next);
+    }
+}
+
+TypePreferences :: (options: Options) -> type_style.Preferences {
+    return {bindings: options.binding_types, locals: options.local_types, constants: options.constant_types,
+            parameters: options.parameter_types, results: options.return_types, members: options.member_types,
+            public_types: options.public_types, spelling: options.type_spelling, analysis_target: options.analysis_target};
+}
+
+TypeStyles :: (options: Options) -> bool {
+    return options.binding_types != Keep || options.local_types > Keep || options.constant_types > Keep ||
+           options.parameter_types > Keep || options.return_types > Keep || options.member_types > Keep ||
+           options.public_types > Keep || options.type_spelling != Keep;
+}
+
+// Highlighting callers need a new tree when these settings can change leaves.
+pub ChangesTokens :: (options: Options) -> bool {
+    return TypeStyles(options) || options.branch_braces != Keep || options.function_body != Keep ||
+           options.function_keyword != Keep || options.return_arrow != Keep || options.control_parens != Keep ||
+           options.if_parens > Keep || options.while_parens > Keep || options.for_parens > Keep ||
+           options.switch_parens > Keep || options.when_parens > Keep || options.expression_parens != Keep ||
+           options.flatten_parens || options.semicolons != Keep || AnyCommaStyle(PunctuationPreferences(options)) || options.imports != Keep ||
+           options.comment_reflow != Keep || options.numeric_separators != Keep || options.hex_case != Keep ||
+           options.exponent_case != Keep || options.numeric_base != Keep || options.string_escapes != Keep || options.char_escapes != Keep;
+}
+
+ControlPolicy :: (specific: int, general: int) -> int {
+    if (specific >= 0) { return specific; }
+    return general;
+}
+PunctuationPreferences :: (options: Options) -> PunctuationPolicies {
+    return {if_parens: ControlPolicy(options.if_parens, options.control_parens),
+            while_parens: ControlPolicy(options.while_parens, options.control_parens),
+            for_parens: ControlPolicy(options.for_parens, options.control_parens),
+            switch_parens: ControlPolicy(options.switch_parens, options.control_parens),
+            when_parens: ControlPolicy(options.when_parens, options.control_parens),
+            expression_parens: options.expression_parens, flatten_parens: options.flatten_parens,
+            trailing_commas: options.trailing_commas,
+            trailing_commas_arguments: options.trailing_commas_arguments,
+            trailing_commas_parameters: options.trailing_commas_parameters,
+            trailing_commas_arrays: options.trailing_commas_arrays,
+            trailing_commas_records: options.trailing_commas_records,
+            trailing_commas_tuples: options.trailing_commas_tuples,
+            trailing_commas_bindings: options.trailing_commas_bindings,
+            readability_mixed_operators: options.readability_mixed_operators};
+}
+
+StyleTypes :: (parsed_state: StyleState, options: Options, context: Context) -> StyleStep {
+    if (!TypeStyles(options)) { return StyleStep.Ready(parsed_state); }
+    preferences := TypePreferences(options);
+    rewritten := type_style.Result.Rewritten(parsed_state.text, 0, 0, "");
+    if (length(context.paths) == 0) {
+        rewritten = type_style.RewriteWith(parsed_state.text, preferences);
+    } else {
+        rewritten = type_style.RewriteProjectWith(parsed_state.text, preferences, context.project, context.collection_names,
+                                                   context.collection_paths, context.paths, context.sources);
+    }
+    switch rewritten {
+        case .Rejected(message): return AdoptStyle(parsed_state, parsed_state.text, message);
+        case .Rewritten(text, changed, skipped, notes):
+            if (text != parsed_state.text) {
+                portable := ProveOtherTargets(parsed_state.text, text, context, options);
+                if (!portable.same) {
+                    return AdoptStyle(parsed_state, parsed_state.text,
+                        strings.Concatenate(["Type changes were not applied: ", portable.notes]));
+                }
+            }
+            typed := parsed_state;
+            typed.semantic_edits = typed.semantic_edits || text != typed.text;
+            return AdoptStyle(typed, text, notes);
+    }
+}
+
+StyleFunctions :: (parsed_state: StyleState, options: Options, context: Context) -> StyleStep {
+    if (options.function_body == Keep && options.function_keyword == Keep && options.return_arrow == Keep) {
+        return StyleStep.Ready(parsed_state);
+    }
+    tokens := Tokens(parsed_state.rows, parsed_state.fields, parsed_state.root);
+    candidate := FunctionSyntax(parsed_state.text, parsed_state.rows, parsed_state.fields, parsed_state.named, tokens,
+                                 options.function_body, options.function_keyword, options.return_arrow);
+    notes := candidate.notes;
+    requires_proof := candidate.needs_semantics;
+    if (candidate.needs_semantics) {
+        proof := ProveStyle(parsed_state.text, candidate.text, context, options);
+        if (!proof.same) {
+            safe := FunctionSafeSyntax(parsed_state.text, parsed_state.rows, parsed_state.fields, parsed_state.named, tokens,
+                                         options.function_body, options.function_keyword, options.return_arrow);
+            candidate.text = safe.text;
+            requires_proof = false;
+            notes = strings.Concatenate([notes, "\nExpression-statement bodies stayed as blocks: ", proof.notes, "\n", safe.notes]);
+        }
+    }
+    edited := parsed_state;
+    edited.semantic_edits = edited.semantic_edits || (requires_proof && candidate.text != edited.text);
+    switch AdoptStyle(edited, candidate.text, notes) {
+        case .Failed(message): return StyleStep.Failed(message);
+        case .Ready(next):
+            if (parsed_state.text != next.text && !SameFunctionTree(parsed_state.text, parsed_state.rows, parsed_state.fields, parsed_state.named,
+                                                            next.text, next.rows, next.fields, next.named)) {
+                return StyleStep.Failed("Function style would change the function's syntax or scope");
+            }
+            return StyleStep.Ready(next);
+    }
+}
+
+StyleImports :: (parsed_state: StyleState, options: Options, context: Context) -> StyleStep {
+    if (options.imports == Keep) { return StyleStep.Ready(parsed_state); }
+    candidate := ImportSyntax(parsed_state.text, parsed_state.rows, parsed_state.fields, parsed_state.named, parsed_state.root, options.imports);
+    if (candidate.text == parsed_state.text) { return AdoptStyle(parsed_state, parsed_state.text, candidate.notes); }
+    proof := ProveStyle(parsed_state.text, candidate.text, context, options);
+    if (!proof.same) {
+        return AdoptStyle(parsed_state, parsed_state.text, strings.Concatenate(["Import organization was not applied: ", proof.notes, "\n", candidate.notes]));
+    }
+    edited := parsed_state;
+    edited.semantic_edits = true;
+    return AdoptStyle(edited, candidate.text, candidate.notes);
+}
+
+StyleComments :: (parsed_state: StyleState, options: Options) -> StyleStep {
+    if (options.comment_reflow == Keep) { return StyleStep.Ready(parsed_state); }
+    width := options.tab_width;
+    if (width == 0) { width = options.indent_width; }
+    policy: CommentPolicies = {comment_reflow: options.comment_reflow, comment_width: options.comment_width,
+                               reflow_block_comments: options.reflow_block_comments, tab_width: width};
+    switch CommentStyle(parsed_state.text, policy) {
+        case .Rejected(message): return StyleStep.Failed(message);
+        case .Formatted(text, notes): return AdoptStyle(parsed_state, text, notes);
+    }
+}
+
+StyleLiterals :: (parsed_state: StyleState, options: Options, context: Context) -> StyleStep {
+    if (options.numeric_separators == Keep && options.hex_case == Keep && options.exponent_case == Keep &&
+        options.numeric_base == Keep && options.string_escapes == Keep && options.char_escapes == Keep) {
+        return StyleStep.Ready(parsed_state);
+    }
+    policy: LiteralPolicies = {numeric_separators: options.numeric_separators, decimal_group: options.decimal_group,
+                               hex_group: options.hex_group, fraction_group: options.fraction_group,
+                               exponent_group: options.exponent_group, numeric_min_digits: options.numeric_min_digits,
+                               hex_case: options.hex_case, exponent_case: options.exponent_case,
+                               numeric_base: options.numeric_base, string_escapes: options.string_escapes, char_escapes: options.char_escapes};
+    switch LiteralStyle(parsed_state.text, policy) {
+        case .Rejected(message): return StyleStep.Failed(message);
+        case .Formatted(text, notes):
+            if (text != parsed_state.text && options.numeric_base != Keep) {
+                proof := ProveStyle(parsed_state.text, text, context, options);
+                if (!proof.same) {
+                    // Case, grouping and escape changes remain available even
+                    // when a context-sensitive base conversion cannot be proved.
+                    policy.numeric_base = Keep;
+                    switch LiteralStyle(parsed_state.text, policy) {
+                        case .Rejected(message): return StyleStep.Failed(message);
+                        case .Formatted(safe, detail):
+                            return AdoptStyle(parsed_state, safe, strings.Concatenate([notes, "\nInteger base changes were not applied: ", proof.notes, "\n", detail]));
+                    }
+                }
+            }
+            edited := parsed_state;
+            edited.semantic_edits = edited.semantic_edits || (text != edited.text && options.numeric_base != Keep);
+            return AdoptStyle(edited, text, notes);
+    }
+}
+
+StyleParens :: (parsed_state: StyleState, options: Options) -> StyleStep {
+    switch PunctuationParens(parsed_state.text, parsed_state.rows, parsed_state.fields, parsed_state.named, parsed_state.root, PunctuationPreferences(options)) {
+        case .Rejected(message): return StyleStep.Failed(message);
+        case .Formatted(text, notes): return AdoptStyle(parsed_state, text, notes);
+    }
+}
+
+StyleLayout :: (parsed_state: StyleState, options: Options) -> StyleStep {
+    switch LayoutParsed(parsed_state.text, parsed_state.rows, parsed_state.fields, parsed_state.named, parsed_state.root, options) {
+        case .Rejected(message): return StyleStep.Failed(message);
+        case .Formatted(text, notes): return AdoptStyle(parsed_state, text, notes);
+    }
+}
+
+pub FormatProject :: (text: string, options: Options, context: Context) -> Result {
+    if (strings.ByteLength(text) > MaxBytes) { return Result.Rejected("Source exceeds the formatter's byte limit"); }
+    if (strings.TrimSpace(text) == "") { return Result.Formatted(text, ""); }
+    switch syntax.Parse(text) {
+        case .Rejected(diagnostic): return Result.Rejected(Unparsed(diagnostic));
+        case .Parsed(rows, fields, named, extras, root):
+            return FormatParsedProject(text, rows, fields, named, root, options, context);
+    }
+}
+
+pub FormatParsed :: (text: string, rows: diag.Node[], fields: int[], named: bool[], root: int,
+                     options: Options) -> Result {
+    return FormatParsedProject(text, rows, fields, named, root, options, EmptyContext());
+}
+
+// Defined ordering makes comma-triggered wrapping and paragraph boundaries
+// agree on their final token spelling. This is a pipeline, not a repeat-until-
+// stable loop that could conceal oscillating style rules.
+pub FormatParsedProject :: (text: string, rows: diag.Node[], fields: int[], named: bool[], root: int,
+                            options: Options, context: Context) -> Result {
+    invalid := Validate(options);
+    if (invalid != "") { return Result.Rejected(invalid); }
+    invalid = ContextProblem(context);
+    if (invalid != "") { return Result.Rejected(invalid); }
+    if (strings.ByteLength(text) > MaxBytes) { return Result.Rejected("Source exceeds the formatter's byte limit"); }
+    parsed_state: StyleState = {text: text, rows: rows, fields: fields, named: named, root: root, notes: [], semantic_edits: false};
+
+    // Compiler-backed changes precede syntax-only choices and whitespace.
+    switch StyleTypes(parsed_state, options, context) {
+        case .Failed(message): return Result.Rejected(message);
+        case .Ready(next): parsed_state = next;
+    }
+    switch StyleFunctions(parsed_state, options, context) {
+        case .Failed(message): return Result.Rejected(message);
+        case .Ready(next): parsed_state = next;
+    }
+    switch StyleImports(parsed_state, options, context) {
+        case .Failed(message): return Result.Rejected(message);
+        case .Ready(next): parsed_state = next;
+    }
+    switch StyleComments(parsed_state, options) {
+        case .Failed(message): return Result.Rejected(message);
+        case .Ready(next): parsed_state = next;
+    }
+    switch StyleLiterals(parsed_state, options, context) {
+        case .Failed(message): return Result.Rejected(message);
+        case .Ready(next): parsed_state = next;
+    }
+    switch StyleParens(parsed_state, options) {
+        case .Failed(message): return Result.Rejected(message);
+        case .Ready(next): parsed_state = next;
+    }
+
+    layout := options;
+    punctuation := PunctuationPreferences(options);
+    if (AnyCommaStyle(punctuation)) {
+        preliminary := layout;
+        preliminary.statement_paragraphs = Keep;
+        switch StyleLayout(parsed_state, preliminary) {
+            case .Failed(message): return Result.Rejected(message);
+            case .Ready(next): parsed_state = next;
+        }
+        switch PunctuationCommas(parsed_state.text, parsed_state.rows, parsed_state.fields, parsed_state.named, parsed_state.root, punctuation) {
+            case .Rejected(message): return Result.Rejected(message);
+            case .Formatted(rewritten, notes):
+                switch AdoptStyle(parsed_state, rewritten, notes) {
+                    case .Failed(message): return Result.Rejected(message);
+                    case .Ready(next): parsed_state = next;
+                }
+        }
+    }
+    // Layout validates token/tree equivalence itself. No later stage needs
+    // its parsed rows, so keep the default whitespace path free of a reparse.
+    switch LayoutParsed(parsed_state.text, parsed_state.rows, parsed_state.fields, parsed_state.named, parsed_state.root, layout) {
+        case .Rejected(message): return Result.Rejected(message);
+        case .Formatted(formatted, notes):
+            parsed_state.text = formatted;
+            if (notes != "") { parsed_state.notes.append(notes); }
+    }
+    if (options.start_line > 0 || options.end_line > 0) {
+        switch SelectFormatted(text, parsed_state.text, options) {
+            case .Rejected(message): return Result.Rejected(message);
+            case .Formatted(selected, notes):
+                if (selected != parsed_state.text && selected != text && parsed_state.semantic_edits) {
+                    proof := ProveStyle(text, selected, context, options);
+                    if (!proof.same) {
+                        details := parsed_state.notes;
+                        details.append(strings.Concatenate(["Selected semantic edits were not applied: ", proof.notes]));
+                        return Result.Formatted(text, strings.Join(details, "\n"));
+                    }
+                }
+                parsed_state.text = selected;
+                if (notes != "") { parsed_state.notes.append(notes); }
+        }
+    }
+    if (parsed_state.semantic_edits && options.semantic_targets == 1) {
+        parsed_state.notes.append(strings.Concatenate(["Semantic edits were validated for ", TargetName(options.analysis_target), " only."]));
+    }
+    return Result.Formatted(parsed_state.text, strings.TrimSpace(strings.Join(parsed_state.notes, "\n")));
+}

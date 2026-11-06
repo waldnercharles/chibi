@@ -1,0 +1,51 @@
+{
+  "accepted_at": "2026-11-03T02:47:26.803096+00:00",
+  "url": "http://127.0.0.1:8766/chibi/formatter/",
+  "site": "/Users/cwaldner/Personal/chibi/.worktrees/formatter-wasm/chibi/.chibi/formatter-full-final-reflow",
+  "previous_site": "/Users/cwaldner/Personal/chibi/.worktrees/formatter-wasm/chibi/.chibi/formatter-styles-final",
+  "build": {
+    "format": 1,
+    "target": "wasm32-unknown-emscripten",
+    "source_revision": "db6b9f6c1e1b494b0206840d4ff43b3da0dc1168",
+    "inputs_sha256": "3ceeeb55cca3181e488677ac40e9beac24b2626887d55c5e6cdc0f26fb9adb5b",
+    "compiler_sha256": "e1125b19a49cfab3f5e9ec3ab0e34b30bbb70a18854dbe713fc02624ce5be79f",
+    "files_sha256": "64271b6343dd3f32e644d34985893aaf1f48ac4a0b191c0c31289aef1b4d1688",
+    "context_files_sha256": "b613d7c98fd4dda079f9d952e007818ee08833596e0a363c9b4ef0ec7c0e23a5",
+    "javascript_sha256": "1dd3094093006bb01e4f21c14e9923e9b40e08dd1593bd1b1350e967f5129dd6",
+    "wasm_sha256": "d0781fa04e3be993dd8c99656fcf4ee69b1b2f4b6300ddd003e466b329172bcd"
+  },
+  "settings": 174,
+  "profiles": 4,
+  "wasm_bytes": 4389641,
+  "validation": {
+    "native_public_current": 211,
+    "native_public_seconds": 31.1,
+    "native_private_preceding": 12,
+    "compiler_preceding": 718,
+    "compiler_preceding_seconds": 173.26,
+    "wasm_current": 24,
+    "wasm_seconds": 1.4969,
+    "javascript_current": 44,
+    "javascript_seconds": 0.094,
+    "native_execution": "O0/O2 functions, control bodies, numeric literals, grouped record expressions and managed optional values passed",
+    "browser_current": [
+      "function keyword and return arrow styles",
+      "compiler-backed inferred bindings",
+      "logical statement paragraphs",
+      "comment reflow at final indentation",
+      "searchable 174-option catalog",
+      "no console warnings or errors",
+      "Fresh main URL tab loads Bytes and reports Already formatted"
+    ],
+    "browser_preceding_frontend": [
+      "Bytes and Host project dependency loading",
+      "edited file retains its project context",
+      "EditorConfig valid import, atomic rejection and filename matching"
+    ]
+  },
+  "screenshot": "/Users/cwaldner/Personal/chibi/.worktrees/formatter-wasm/chibi/.chibi/formatter-full-browser.png",
+  "local_uncommitted": true,
+  "github_pages_published": false,
+  "main_http_verified": true,
+  "main_browser_verified": true
+}

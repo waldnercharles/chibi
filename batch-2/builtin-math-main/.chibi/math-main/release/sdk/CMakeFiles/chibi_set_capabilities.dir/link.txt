@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_set_capabilities.a "CMakeFiles/chibi_set_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/sets.c.o" "CMakeFiles/chibi_set_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/sets_definition.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_set_capabilities.a

@@ -1,0 +1,27 @@
+{
+  "command": [
+    "/Users/cwaldner/Personal/chibi/.worktrees/cmake-retirement/chibi/build-sdk-reflect/host/chibi-build-host",
+    "--root",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi",
+    "--source",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/.chibi/runtime-sdk/install/program/Build.chibi",
+    "--core",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/packages/core",
+    "--collection",
+    "graph=/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/tools/graph",
+    "--entry",
+    "Build",
+    "--timeout-ms",
+    "120000",
+    "--",
+    "/Users/cwaldner/Personal/chibi/.worktrees/runtime-sdk-construction/chibi/.chibi/runtime-sdk/install/work"
+  ],
+  "status": 1,
+  "elapsed_seconds": 1.6900886250659823,
+  "source_hashes": {
+    "tools/toolchain/RuntimeSDK.chibi": "8dc04ec140e23ca04926aa80b3cde01c2294104a33cf3bc35be759ead7daae14",
+    "tools/graph/sdk/Evidence.chibi": "ae0374a439d34333a4b44c4d725fbb07a816b37b46d2bf7a22719fba0911e32f",
+    "tools/graph/sdk/JSON.chibi": "90fcd3d4878d3b112b651d730ccd94a0c34c70b78966a71d088e2766994bdfb9",
+    "test/tools/RuntimeSDKInstall.chibi": "7881120a7b5c6ef71a0761706ae80a7c6e94ccc88e656690a2da9c8fe904cd5a"
+  }
+}

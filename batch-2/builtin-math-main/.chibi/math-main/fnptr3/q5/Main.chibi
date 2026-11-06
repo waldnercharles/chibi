@@ -1,0 +1,37 @@
+package scalar
+Node :: struct { kind: string; parent: int; first: int; last: int; next: int; token: int; }
+Cursor :: struct { pos: int; final: int; token: int; failed: bool; message: string; }
+Main :: () -> int {
+    n: Node[] = [];
+    c: Cursor = {pos: 0, final: 2, token: 7, failed: false, message: ""};
+    root := New(&n, "root");
+    t0 := New(&n, "a");
+    t1 := New(&n, "b");
+    taken := Take(&c, &n, root);
+    taken2 := Take(&c, &n, root);
+    Fail(&c, &n, "boom");
+    Fail(&c, &n, "again");
+    ok: int = 0;
+    if (c.failed) { ok = 1; }
+    return n[root].last * 1000 + n[root].first * 100 + taken * 10 + taken2 + ok * 10000 + text_byte_length(c.message) * 100000;
+}
+New :: (n: ^(Node[]), kind: string) -> int {
+    node: Node = {kind: kind, parent: -1, first: -1, last: -1, next: -1, token: 0};
+    n.append(node);
+    return length(n^) - 1;
+}
+Add :: (n: ^(Node[]), parent: int, child: int) {
+    n^[child].parent = parent;
+    if (n^[parent].last < 0) { n^[parent].first = child; } else { n^[n^[parent].last].next = child; }
+    n^[parent].last = child;
+}
+Take :: (c: ^Cursor, n: ^(Node[]), parent: int) -> int {
+    at := c.pos;
+    if (at < c.final) { c.pos += 1; c.token = c.token + 1; }
+    if (parent >= 0) { Add(n, parent, at + 1); }
+    return at;
+}
+Fail :: (c: ^Cursor, n: ^(Node[]), message: string) {
+    if (!c.failed) { c.failed = true; c.message = message; }
+    c.pos = c.final;
+}

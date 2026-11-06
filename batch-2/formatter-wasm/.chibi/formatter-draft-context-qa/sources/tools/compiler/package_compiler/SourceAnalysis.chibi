@@ -1,0 +1,665 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import routes "project:package_routes"
+import graph "project:package_graph"
+import syntax "project:syntax_diagnostics"
+import strings "core:strings"
+import directives "project:source_directives"
+import tk "project:source_tokenizer"
+import json "project:json_string"
+import binding "project:lexical_binding"
+
+// A binding's byte ranges in its original document and the actual type the
+// compiler gave it after contextual typing and conversion. Empty spelling
+// means that no safe source name is available. Generic definitions stay generic.
+pub TypeSite :: struct {
+    context: int;
+    public_type: bool;
+    document: int;
+    start: int;
+    name_end: int;
+    value_start: int;
+    type_start: int;
+    type_end: int;
+    line: int;
+    column: int;
+    constant: bool;
+    declared: bool;
+    can_omit: bool;
+    protected: bool;
+    evident: bool;
+    spelling: string;
+    shortest: string;
+}
+pub LocalTypeSite: int : 0;
+pub ConstantTypeSite: int : 1;
+pub ParameterTypeSite: int : 2;
+pub ReturnTypeSite: int : 3;
+pub MemberTypeSite: int : 4;
+// Kept opaque to formatting callers. Equality checks every typed operation and
+// lifetime table, never a hash of source or a successful-compilation flag.
+SourceBody :: struct {
+    slots: Slot[];
+    locals: Slot[];
+    cells: Cell[];
+    code: Code[];
+    calls: Invocation[];
+    hosts: Host[];
+    roots: Root[];
+    effects: int;
+    direct_write: int;
+    facts: SemanticFact[];
+}
+SourceTemplateFact :: struct {
+    kind: int;
+    field: int;
+    parent: int;
+    text: string;
+}
+
+SourceTemplateLiteral :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> string {
+    spelling := Text(forest, text, node);
+    if (Is(forest, node, syntax.String)) {
+        decoded := json.Value(spelling);
+        if (decoded.valid) { return decoded.value; }
+    }
+    if (Is(forest, node, syntax.Number)) {
+        switch ParseNumber(forest, text, node) {
+            case .Number(negative, magnitude): return format_text("{}:{}", negative, magnitude);
+            case .Invalid: return strings.ReplaceAll(tk.NumericText(spelling), "E", "e");
+        }
+    }
+    return spelling;
+}
+pub SemanticSignature :: struct {
+    callables: Callable[];
+    params: Param[];
+    types: TypeDecl[];
+    members: TypeMember[];
+    constants: ConstDecl[];
+    bodies: SourceBody[];
+    retained: StateDecl[];
+    owners: int[];
+    natives: ResolvedNative[];
+    ports: ResolvedPort[];
+    identities: u64[];
+    exports: string[];
+    templates: SourceTemplateFact[];
+    command_begin: int;
+    suspend: int;
+}
+
+// Uninstantiated generic bodies have no emitted operations to compare. Keep
+// their syntax shape and leaf values, excluding comments and punctuation used
+// only for layout. The work buffers grow with the largest template, once.
+SourceTemplates :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], callables: Callable[]) -> SourceTemplateFact[] {
+    facts: SourceTemplateFact[] = [];
+    pending: int[] = []; parents: int[] = [];
+    for (callable in callables) {
+        if (callable.count >= 0) { continue; }
+        if (length(pending) == 0) { pending.append(callable.node); parents.append(-1); }
+        else { pending[0] = callable.node; parents[0] = -1; }
+        top: int = 1;
+        while (top > 0) {
+            top -= 1; at := pending[top]; parent := parents[top]; node := forest[at];
+            if (node.is_extra || node.kind == syntax.Comment) { continue; }
+            if (node.is_named || node.field == syntax.FieldOperator) {
+                text := "";
+                if (node.first_child < 0) { text = SourceTemplateLiteral(forest, documents[callable.document].text, at); }
+                own := length(facts);
+                facts.append({kind: node.kind, field: node.field, parent: parent, text: text});
+                parent = own;
+            }
+            child := node.first_child;
+            while (child >= 0) {
+                if (top == length(pending)) { pending.append(child); parents.append(parent); }
+                else { pending[top] = child; parents[top] = parent; }
+                top += 1; child = forest[child].next_sibling;
+            }
+        }
+    }
+    return facts;
+}
+pub SourceAnalysis :: union {
+    Rejected(diagnostic: syntax.Diagnostic)
+    | Analyzed(sites: TypeSite[], signature: SemanticSignature)
+}
+
+// The compiler's context-free expression queries, combined for source style.
+// This never changes the type table or guesses from identifier capitalization.
+SourceExpressionType :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], params: Param[],
+                         callable: Callable, names: Name[], types: TypeDecl[], members: TypeMember[],
+                         constants: ConstDecl[], operand: int, depth: int) -> ValueType {
+    empty: ValueType = {storage: 0, container: 0, record: -1};
+    if (operand < 0 || depth > 64) { return empty; }
+    node := Unparenthesized(forest, operand);
+    if (Is(forest, node, syntax.Identifier)) {
+        found := Lookup(names, Text(forest, text, node));
+        if (found >= 0) {
+            value := names[found];
+            return {storage: value.storage, container: value.container, record: value.record};
+        }
+    }
+    if (Is(forest, node, syntax.CallExpression)) {
+        target := CalledFunction(forest, text, callables, [], names, callable.package, node);
+        if (target >= 0) {
+            called := callables[target];
+            if (called.waits && !ImmediatelyAwaited(forest, node)) { return empty; }
+            if (called.results == 1) {
+                result := params[called.first + called.count];
+                return {storage: result.storage, container: result.container, record: result.record};
+            }
+            return {storage: called.result, container: called.result_container, record: called.result_record};
+        }
+    }
+    if (Is(forest, node, syntax.AddressExpression)) {
+        target := SourceExpressionType(forest, text, callables, params, callable, names, types, members,
+                                       constants, Field(forest, node, syntax.FieldOperand), depth + 1);
+        pointer := FindPointer(types, target, false);
+        if (pointer >= 0) { return {storage: PointerStorage, container: 0, record: pointer}; }
+        return empty;
+    }
+    if (Is(forest, node, syntax.DereferenceExpression)) {
+        pointer := SourceExpressionType(forest, text, callables, params, callable, names, types, members,
+                                        constants, Field(forest, node, syntax.FieldOperand), depth + 1);
+        if (pointer.storage == PointerStorage && pointer.record >= 0) {
+            held := types[pointer.record];
+            return {storage: held.value_storage, container: held.value_container, record: held.value_record};
+        }
+        return empty;
+    }
+    if (Is(forest, node, syntax.ForceUnwrapExpression)) {
+        return ScalarUnwrappedType(forest, text, callables, params, names, types, members, callable.package, node);
+    }
+    array := ScalarArrayShape(forest, text, callables, params, names, types, members, callable.package, node);
+    if (array.storage > 0) { return array; }
+    record := ScalarRecordOf(forest, text, callables, params, names, types, members, callable.package, node);
+    if (record >= 0) { return {storage: StructStorage, container: 0, record: record}; }
+    record = ScalarHeldUnion(forest, text, callables, params, names, types, members, callable.package, node);
+    if (record >= 0) { return {storage: UnionStorage, container: 0, record: record}; }
+    scalar := ScalarOperandStorage(forest, text, callables, params, callable, names, types, members, constants,
+                                  node, ConstantExpressionStorage(forest, text, node));
+    return {storage: scalar, container: 0, record: -1};
+}
+
+// A printable type for a binding in `package`. Imported nominal types need a
+// file-local alias. Anonymous results and generic applications are left alone
+// until the compiler can print their source-level type without guessing.
+SourceTypeAlias :: struct { key: u64; first: string; shortest: string; }
+SourceForeignSignature :: struct { key: u64; document: int; name: string; callable: int; }
+
+SourceForeignSignatures :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[]) -> SourceForeignSignature[] {
+    signatures: SourceForeignSignature[] = []; keys: u64[] = [];
+    for (document in 0..<length(documents)) {
+        first := documents[document].node_start;
+        for (node in first..<first + documents[document].node_count) {
+            if (forest[node].kind != syntax.ForeignFunction) { continue; }
+            callable := GenericCallableType(forest, Field(forest, node, syntax.FieldResults));
+            if (callable < 0) { continue; }
+            name := Text(forest, documents[document].text, Field(forest, node, syntax.FieldName));
+            key := binding.ID("source-foreign-callable", format_text("{}:{}", document, name));
+            signatures.append({key: key, document: document, name: name, callable: callable}); keys.append(key);
+        }
+    }
+    ordered: SourceForeignSignature[] = [];
+    for (index in SourceOrder(keys)) { ordered.append(signatures[index]); }
+    return ordered;
+}
+
+SourceForeignCallable :: (signatures: SourceForeignSignature[], document: int, name: string) -> int {
+    if (length(signatures) == 0) { return -1; }
+    key := binding.ID("source-foreign-callable", format_text("{}:{}", document, name));
+    begin: int = 0; end := length(signatures);
+    while (begin < end) {
+        middle := begin + (end - begin) / 2;
+        if (signatures[middle].key < key) { begin = middle + 1; }
+        else { end = middle; }
+    }
+    if (begin == length(signatures)) { return -1; }
+    found := signatures[begin];
+    // A hash is an index aid only. Ambiguous collisions stay unprinted,
+    // and every accepted lookup checks its full document/name identity.
+    if (found.key != key || found.document != document || found.name != name ||
+        (begin + 1 < length(signatures) && signatures[begin + 1].key == key)) { return -1; }
+    return found.callable;
+}
+SourceTypeAliases :: (links: graph.Binding[]) -> SourceTypeAlias[] {
+    keys: u64[] = [];
+    for (link in links) { keys.append((u64(link.file) << 32) | u64(link.target)); }
+    order := SourceOrder(keys); aliases: SourceTypeAlias[] = [];
+    for (index in order) {
+        link := links[index]; last := length(aliases) - 1;
+        if (last < 0 || aliases[last].key != keys[index]) {
+            aliases.append({key: keys[index], first: link.name, shortest: link.name});
+        } else {
+            name := aliases[last].shortest;
+            if (strings.ByteLength(link.name) < strings.ByteLength(name) ||
+                (strings.ByteLength(link.name) == strings.ByteLength(name) && strings.Compare(link.name, name) < 0)) {
+                aliases[last].shortest = link.name;
+            }
+        }
+    }
+    return aliases;
+}
+
+SourceVisibleAlias :: (aliases: SourceTypeAlias[], document: int, package: int, shortest: bool) -> string {
+    key := (u64(document) << 32) | u64(package); begin: int = 0; end := length(aliases);
+    while (begin < end) {
+        middle := begin + (end - begin) / 2;
+        if (aliases[middle].key < key) { begin = middle + 1; }
+        else { end = middle; }
+    }
+    if (begin == length(aliases) || aliases[begin].key != key) { return ""; }
+    if (shortest) { return aliases[begin].shortest; }
+    return aliases[begin].first;
+}
+
+SourceTypeName :: (types: TypeDecl[], aliases: SourceTypeAlias[], document: int, package: int,
+                   value: ValueType, depth: int, shortest: bool) -> string {
+    if (depth > 64 || value.storage <= 0 || value.storage == TaskStorage) { return ""; }
+    if (value.container == ArrayContainer || value.container == ViewContainer) {
+        element := value;
+        element.container = 0;
+        if (value.record >= 0 && types[value.record].kind == CollectionDecl) {
+            declared := types[value.record];
+            element = {storage: declared.value_storage, container: declared.value_container,
+                       record: declared.value_record};
+        }
+        inner := SourceTypeName(types, aliases, document, package, element, depth + 1, shortest);
+        if (inner == "") { return ""; }
+        if (value.container == ViewContainer) { return strings.Concatenate(["@view ", inner, "[]"]); }
+        return strings.Concatenate([inner, "[]"]);
+    }
+    if (value.record >= 0) {
+        declared := types[value.record];
+        if (declared.kind == OptionalDecl || declared.kind == PointerDecl) {
+            inner := SourceTypeName(types, aliases, document, package,
+                                    {storage: declared.value_storage, container: declared.value_container,
+                                     record: declared.value_record}, depth + 1, shortest);
+            if (inner == "") { return ""; }
+            if (declared.kind == OptionalDecl) { return strings.Concatenate(["(", inner, ")?"]); }
+            if (declared.key != 0) { return strings.Concatenate(["^(", inner, ")?"]); }
+            return strings.Concatenate(["^(", inner, ")"]);
+        }
+        if (declared.kind == BuiltinScalarDecl && declared.name == "char") { return "char"; }
+        if (declared.name == "" || declared.kind == MapDecl || declared.kind == TemplateDecl ||
+            declared.kind == CollectionDecl || strings.IndexByte(declared.name, 40) >= 0 ||
+            strings.IndexByte(declared.name, 60) >= 0) { return ""; }
+        if (declared.package == package) { return declared.name; }
+        alias := SourceVisibleAlias(aliases, document, declared.package, shortest);
+        if (alias != "") { return strings.Concatenate([alias, ".", declared.name]); }
+        return "";
+    }
+    if (value.container != 0) { return ""; }
+    if (value.storage == BoolStorage) { return "bool"; }
+    if (value.storage == FloatStorage) { return "f32"; }
+    if (value.storage == DoubleStorage) { return "f64"; }
+    if (value.storage == TextStorage) { return "string"; }
+    return TypeName(value.storage);
+}
+
+SourceTypeEvident :: (forest: snapshot.SnapshotNode[], text: string, value: int) -> bool {
+    node := Unparenthesized(forest, value);
+    if (Is(forest, node, syntax.Boolean) || Is(forest, node, syntax.String) || Is(forest, node, syntax.Character) ||
+        Is(forest, node, syntax.StructExpression)) { return true; }
+    if (Is(forest, node, syntax.CallExpression)) { return NumberConversionType(forest, text, node) > 0; }
+    if (Is(forest, node, syntax.ArrayExpression)) { return SourceTypeEvident(forest, text, FirstMember(forest, node)); }
+    return false;
+}
+
+SourceResultEvident :: (forest: snapshot.SnapshotNode[], text: string, body: int) -> bool {
+    pending := [body]; top: int = 1; found := false;
+    while (top > 0) {
+        top -= 1; node := pending[top];
+        if (node != body && (Is(forest, node, syntax.FunctionDeclaration) || Is(forest, node, syntax.MacroDeclaration) ||
+                             Is(forest, node, syntax.LambdaExpression))) { continue; }
+        if (Is(forest, node, syntax.ReturnStatement)) {
+            value := Field(forest, node, syntax.FieldValue);
+            if (value >= 0) {
+                if (!SourceTypeEvident(forest, text, value)) { return false; }
+                found = true;
+            }
+        }
+        child := forest[node].first_child;
+        while (child >= 0) {
+            if (top == length(pending)) { pending.append(child); }
+            else { pending[top] = child; }
+            top += 1; child = forest[child].next_sibling;
+        }
+    }
+    return found;
+}
+
+SourceSites :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], file_packages: int[],
+                links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
+                constants: ConstDecl[], bodies: Body[]) -> TypeSite[] {
+    aliases := SourceTypeAliases(links);
+    foreign_signatures := SourceForeignSignatures(forest, documents);
+    // Three flat arrays index facts directly by their name node. A pass over the
+    // syntax rows then emits sites in document/source order, never hash order.
+    storages := resize([int(0)], length(forest));
+    containers := resize([int(0)], length(forest));
+    records := resize([int(0)], length(forest));
+    omittable := resize([false], length(forest));
+    return_at := resize([int(0)], length(forest));
+    cyclic := SourceCallCycles(bodies);
+    public_types := resize([false], length(forest));
+    for (callable_index in 0..<length(callables)) {
+        callable := callables[callable_index];
+        if (callable.identity != 0 || callable.count < 0) { continue; }
+        public_type := Field(forest, callable.node, syntax.FieldVisibility) >= 0;
+        for (at in callable.first..<callable.first + callable.count) {
+            parameter := params[at];
+            if (parameter.node < 0) { continue; }
+            storages[parameter.node] = parameter.storage;
+            containers[parameter.node] = parameter.container;
+            records[parameter.node] = parameter.record + 1;
+            declaration := forest[parameter.node].parent;
+            natural := DefaultParameterType(forest, documents[callable.document].text,
+                                            Field(forest, declaration, syntax.FieldValue));
+            omittable[parameter.node] = !parameter.reference && parameter.has_default && natural.storage == parameter.storage &&
+                                        natural.container == parameter.container && natural.record == parameter.record;
+            public_types[parameter.node] = public_type;
+        }
+        body := Field(forest, callable.node, syntax.FieldBody);
+        if (body >= 0 && callable.result > 0 && callable.results == 0 && Is(forest, callable.node, syntax.FunctionDeclaration)) {
+            return_at[body] = callable_index + 1;
+            public_types[body] = public_type;
+        }
+    }
+    for (declared in types) {
+        if (declared.kind != RecordDecl || declared.node < 0) { continue; }
+        public_type := Field(forest, declared.node, syntax.FieldVisibility) >= 0;
+        field := FirstMember(forest, Field(forest, declared.node, syntax.FieldBody));
+        at := declared.first;
+        while (field >= 0 && at < declared.first + declared.count) {
+            name := Field(forest, field, syntax.FieldName);
+            if (name >= 0) {
+                member := members[at];
+                storages[name] = member.storage; containers[name] = member.container; records[name] = member.record + 1;
+                public_types[name] = public_type;
+            }
+            at += 1; field = NextMember(forest, field);
+        }
+    }
+    for (body in bodies) {
+        switch body {
+            case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
+                for (fact in facts) {
+                    if (fact.kind == BindingStorageFact) { storages[fact.node] = fact.target; }
+                    else if (fact.kind == BindingContainerFact) { containers[fact.node] = fact.target; }
+                    else if (fact.kind == BindingRecordFact) { records[fact.node] = fact.target + 1; }
+                    else if (fact.kind == BindingOmittableFact) { omittable[fact.node] = true; }
+                }
+            case:
+                continue;
+        }
+    }
+    for (constant in constants) {
+        declaration := forest[constant.node].parent;
+        name := Field(forest, declaration, syntax.FieldName);
+        if (name >= 0) { storages[name] = constant.storage; omittable[name] = constant.storage == IntStorage; }
+    }
+    sites: TypeSite[] = [];
+    for (document in 0..<length(documents)) {
+        first := documents[document].node_start;
+        last := first + documents[document].node_count;
+        verbatim := false;
+        for (node in first..<last) {
+            if (Is(forest, node, syntax.Comment)) {
+                verbatim = directives.Apply(Text(forest, documents[document].text, node), verbatim);
+                continue;
+            }
+            // Declaration parents precede attached leading comments in the
+            // forest. The name leaf follows those comments in source order.
+            declaration := forest[node].parent;
+            local := Is(forest, declaration, syntax.LocalDeclaration);
+            constant := Is(forest, declaration, syntax.ConstantDeclaration);
+            parameter := Is(forest, declaration, syntax.Parameter);
+            member := Is(forest, declaration, syntax.RecordField);
+            returning := return_at[node] > 0;
+            if (!returning && ((!local && !constant && !parameter && !member) || forest[node].field != syntax.FieldName)) { continue; }
+            name := node;
+            value := Field(forest, declaration, syntax.FieldValue);
+            if (value < 0 && !parameter && !member && !returning) { continue; }
+            declared := Field(forest, declaration, syntax.FieldType);
+            context := LocalTypeSite;
+            if (constant) { context = ConstantTypeSite; }
+            if (parameter) { context = ParameterTypeSite; }
+            if (member) { context = MemberTypeSite; }
+            name_end := forest[name].end;
+            value_start := name_end;
+            if (value >= 0) { value_start = forest[value].start; }
+            spelling := "";
+            shortest := "";
+            can_omit := omittable[name];
+            evident := SourceTypeEvident(forest, documents[document].text, value);
+            if (returning) {
+                context = ReturnTypeSite;
+                callable := callables[return_at[node] - 1];
+                declaration = callable.node;
+                declared = Field(forest, declaration, syntax.FieldResults);
+                name_end = forest[Field(forest, declaration, syntax.FieldParameters)].end;
+                value_start = forest[node].start;
+                semantic: ValueType = {storage: callable.result, container: callable.result_container, record: callable.result_record};
+                spelling = SourceTypeName(types, aliases, document, file_packages[document], semantic, 0, false);
+                shortest = SourceTypeName(types, aliases, document, file_packages[document], semantic, 0, true);
+                can_omit = !cyclic[return_at[node] - 1] && !callable.waits;
+                evident = SourceResultEvident(forest, documents[document].text, node);
+                switch bodies[return_at[node] - 1] {
+                    case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches, effects, direct_write, facts):
+                        for (fact in facts) { if (fact.kind == ReturnRequiredFact) { can_omit = false; } }
+                    case: can_omit = false;
+                }
+            } else {
+                semantic: ValueType = {storage: storages[name], container: containers[name], record: records[name] - 1};
+                spelling = SourceTypeName(types, aliases, document, file_packages[document], semantic, 0, false);
+                shortest = SourceTypeName(types, aliases, document, file_packages[document], semantic, 0, true);
+                // Runtime callable signatures are carried by their source
+                // type, although their value storage is the same as rawptr.
+                // Preserve a raw-address cast; a typed foreign result can
+                // instead supply the signature through ordinary ProcOf.
+                callable_type := GenericCallableType(forest, declared);
+                inferred_callable: int = -1;
+                expression := Unparenthesized(forest, value);
+                if (semantic.storage == WordStorage && semantic.container == 0 && Is(forest, expression, syntax.CallExpression)) {
+                    function := Field(forest, expression, syntax.FieldFunction);
+                    if (Is(forest, function, syntax.Identifier)) {
+                        inferred_callable = SourceForeignCallable(foreign_signatures, document, Text(forest, documents[document].text, function));
+                    }
+                }
+                if (callable_type >= 0) {
+                    spelling = Text(forest, documents[document].text, callable_type); shortest = spelling;
+                    can_omit = can_omit && inferred_callable >= 0 &&
+                               spelling == Text(forest, documents[document].text, inferred_callable);
+                } else if (inferred_callable >= 0) {
+                    spelling = Text(forest, documents[document].text, inferred_callable); shortest = spelling;
+                }
+                if (constant) { public_types[name] = Field(forest, declaration, syntax.FieldVisibility) >= 0; }
+            }
+            type_start: int = -1;
+            type_end: int = -1;
+            if (declared >= 0) { type_start = forest[declared].start; type_end = forest[declared].end; }
+            if (value < 0 && !returning && declared >= 0) { value_start = type_end; }
+            sites.append({context: context, public_type: public_types[name], document: document, start: forest[name].start, name_end: name_end,
+                          value_start: value_start, type_start: type_start, type_end: type_end,
+                          line: forest[name].row + 1, column: forest[name].column + 1, constant: constant,
+                          declared: declared >= 0, can_omit: can_omit, protected: verbatim,
+                          evident: evident, spelling: spelling, shortest: shortest});
+        }
+    }
+    return sites;
+}
+
+// A synchronous void RETURN immediately before END has the same completion
+// as falling through to END. No cleanup or other operation lies between them.
+// Keep every preceding PC unchanged, and only remove the redundant return
+// when no branch targets either tail instruction. SourceBody carries no debug
+// points/watches; its other tables refer to slots, types, callables or syntax.
+SourceVoidTail :: (code: Code[], callable: Callable, ops: Ops) -> Code[] {
+    count := length(code);
+    if (callable.waits || callable.result != 0 || callable.results != 0 || count < 2 ||
+        code[count - 2].op != ops.finish || code[count - 1].op != ops.end) { return code; }
+    tail := count - 2;
+    for (instruction in code) {
+        if ((instruction.op == ops.jump || instruction.op == ops.branch_if) && instruction.target >= tail) {
+            return code;
+        }
+    }
+    canonical := resize(code, count - 1);
+    canonical[tail] = code[count - 1];
+    return canonical;
+}
+
+SourcePrepared :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
+                   files_of: int[], file_packages: int[], active: int[], edges: graph.Edge[], links: graph.Binding[],
+                   input_callables: Callable[], input_params: Param[], input_types: TypeDecl[], members: TypeMember[],
+                   constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[], identities: u64[],
+                   effects: int[], ops: Ops, target: Target) -> SourceAnalysis {
+    callables := WaitingCallables(forest, input_callables);
+    params := input_params;
+    types := input_types;
+    package_names: string[] = [];
+    for (package in packages) { package_names.append(documents[files_of[package.member_start]].identity); }
+    exports: string[] = [];
+    templates := SourceTemplates(forest, documents, callables);
+    for (document in 0..<length(documents)) {
+        first := documents[document].node_start;
+        for (node in first..<first + documents[document].node_count) {
+            if (Field(forest, node, syntax.FieldVisibility) >= 0) {
+                name := Field(forest, node, syntax.FieldName);
+                if (name >= 0) {
+                    spelling := Text(forest, documents[document].text, name);
+                    exports.append(format_text("{}:{}:{}:{}", file_packages[document], forest[node].kind,
+                                               strings.ByteLength(spelling), spelling));
+                }
+            }
+        }
+    }
+    switch TaskResultDeclarations(callables, params, types, members) {
+        case .Collected(next_types, next_members): types = next_types; members = next_members;
+    }
+    bindings: GenericBinding[] = [];
+    context: BodyContext = BodyContext.Known(effects);
+    switch SpecializePackages(forest, documents, active, links, package_names, callables, params, &types, members,
+                              constants, natives, ports, identities, context, ops, target) {
+        case .Failed(diagnostic): return SourceAnalysis.Rejected(diagnostic);
+        case .Ready(concrete, concrete_params, concrete_bindings):
+            callables = concrete; params = concrete_params; bindings = concrete_bindings;
+    }
+    retained: StateDecl[] = [];
+    owners: int[] = [];
+    switch RetainedLocals(forest, documents, callables, package_names, &types, ops) {
+        case .Failed(diagnostic): return SourceAnalysis.Rejected(diagnostic);
+        case .Read(states, next_owners): retained = states; owners = next_owners;
+    }
+    switch PreparePackages(forest, documents, packages, files_of, active, edges, links, package_names,
+                           callables, params, &types, members, constants, natives, ports, identities,
+                           context, bindings, ops, target, retained, owners) {
+        case .Failed(diagnostic): return SourceAnalysis.Rejected(diagnostic);
+        case .Read(bodies):
+            switch GenericSynchronous(forest, callables, bodies, bindings, effects) {
+                case .Failed(diagnostic): return SourceAnalysis.Rejected(diagnostic);
+                case .Valid:
+                    typed_bodies: SourceBody[] = [];
+                    for (body, index in bodies) {
+                        switch body {
+                            case .Emitted(slots, locals, cells, code, calls, hosts, roots, points, watches,
+                                          effects, direct_write, facts):
+                                typed_bodies.append({slots: slots, locals: locals, cells: cells,
+                                                     code: SourceVoidTail(code, callables[index], ops), calls: calls,
+                                                     hosts: hosts, roots: roots, effects: effects, direct_write: direct_write,
+                                                     facts: facts});
+                            case:
+                                assert(false, "accepted source analysis has prepared bodies");
+                        }
+                    }
+                    return SourceAnalysis.Analyzed(SourceSites(forest, documents, file_packages, links, callables, params, types, members,
+                                                               constants, bodies),
+                               {callables: callables, params: params, types: types, members: members,
+                                constants: constants, bodies: typed_bodies, retained: retained, owners: owners,
+                                natives: natives, ports: ports, identities: identities, exports: exports, templates: templates,
+                                command_begin: ops.command_begin, suspend: ops.suspend});
+            }
+    }
+}
+
+// The ordinary compiler's front end through prepared typed bodies, without
+// LLVM, bytecode serialization, execution, filesystem access or global state.
+// Inputs and native catalog have the same ownership and order as Compile.
+pub AnalyzeSources :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                       sources: string[], target: Target, names: string[], native_input: Native[], port_input: Port[],
+                       identity_input: u64[]) -> SourceAnalysis {
+    return AnalyzeSourcesFor(project, collection_names, collection_paths, paths, sources, target, names, native_input,
+                              port_input, identity_input, 0, 0, 0);
+}
+
+// The platform uses the same core:target materialization as native compilation.
+// Zero os retains the caller's supplied source, for platform-neutral analyses.
+pub AnalyzeSourcesFor :: (project: string, collection_names: string[], collection_paths: string[], paths: string[],
+                          sources: string[], target: Target, names: string[], native_input: Native[], port_input: Port[],
+                          identity_input: u64[], os: int, arch: int, native: int) -> SourceAnalysis {
+    if (length(paths) == 0 || length(paths) != length(sources) ||
+        length(collection_names) != length(collection_paths)) {
+        return SourceAnalysis.Rejected({start: 0, end: 0, line: 1, column: 1, document: -1,
+                                        message: "Source analysis requires matching paths, sources and collections"});
+    }
+    ops := ResolveOps(names, false);
+    ops.source_types = true;
+    if (!Complete(ops)) {
+        return SourceAnalysis.Rejected({start: 0, end: 0, line: 1, column: 1, document: -1,
+                                        message: "Source analysis requires a complete instruction catalog"});
+    }
+    collections: routes.Collection[] = [];
+    for (index in 0..<length(collection_names)) {
+        collections.append({name: collection_names[index], path: collection_paths[index], has_name: true, has_path: true});
+    }
+    inputs: snapshot.Input[] = [];
+    sizes: u64[] = [];
+    for (index in 0..<length(paths)) {
+        source := sources[index];
+        if (os != 0 && TargetPackagePath(collection_names, collection_paths, paths[index])) {
+            source = TargetPackageText(os, arch, target.pointer_size * 8, native);
+        }
+        inputs.append({path: paths[index], text: source, has_path: true, has_text: true});
+        sizes.append(u64(strings.ByteLength(source)));
+    }
+    options: snapshot.Options = {project: project, has_project: true, has_options: true, has_files: true,
+                                 has_collections: length(collections) != 0, file_count: length(inputs),
+                                 collection_count: length(collections)};
+    switch snapshot.Build(options, collections, inputs, sizes) {
+        case .Rejected(diagnostic, related, graph_error, cycle, documents, nodes, imports):
+            return SourceAnalysis.Rejected(diagnostic);
+        case .Accepted(roots, documents, nodes, imports, built):
+            natives := LegacyNatives(native_input, names);
+            ports := LegacyPorts(port_input);
+            identities := identity_input;
+            if (!NativeInputValid(natives, ports, identities, resize([int(0)], length(natives)))) {
+                return SourceAnalysis.Rejected({start: 0, end: 0, line: 1, column: 1, document: -1,
+                                                message: "Source analysis requires a complete native catalog"});
+            }
+            ScalarMathCatalog(&natives, &ports, &identities);
+            ScalarPrintCatalog(&natives, &ports, &identities);
+            effects := resize([int(0)], length(natives));
+            for (index in 0..<length(natives)) { effects[index] = natives[index].effects; }
+            switch ForeignNatives(nodes, documents, natives, ports, identities, effects) {
+                case .Failed(diagnostic): return SourceAnalysis.Rejected(diagnostic);
+                case .Declared(next_natives, next_ports, next_identities, next_effects):
+                    natives = next_natives; ports = next_ports; identities = next_identities; effects = next_effects;
+            }
+            switch built {
+                case .Rejected(error, cycle):
+                    return SourceAnalysis.Rejected({start: 0, end: 0, line: 1, column: 1, document: -1,
+                                                    message: "Source analysis requires an accepted package graph"});
+                case .Accepted(packages, files_of, file_packages, order, edges, links):
+                    switch Declare(nodes, documents, packages, files_of, order, edges, file_packages[0], imports, links, target) {
+                        case .Failed(diagnostic): return SourceAnalysis.Rejected(diagnostic);
+                        case .Declared(callables, params, types, members, constants, active, bound, kept):
+                            return SourcePrepared(nodes, documents, packages, files_of, file_packages, active, kept, bound,
+                                                  callables, params, types, members, constants, natives, ports, identities,
+                                                  effects, ops, target);
+                    }
+            }
+    }
+}

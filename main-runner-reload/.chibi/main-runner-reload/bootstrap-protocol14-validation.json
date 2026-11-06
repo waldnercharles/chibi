@@ -1,0 +1,61 @@
+[
+  {
+    "step": "configure",
+    "returncode": 0,
+    "wall_seconds": 2.186,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/bootstrap-protocol14-configure.log",
+    "command": [
+      "cmake",
+      "-S",
+      "sdk",
+      "-B",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/bootstrap-protocol14",
+      "-G",
+      "Ninja",
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm/bin/clang",
+      "-DCMAKE_C_COMPILER_LAUNCHER=ccache",
+      "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+      "-DCHIBI_SDK_BUILD_COMPILER=ON",
+      "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+      "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+      "-DCHIBI_SDK_COMPILER_HOST_ONLY=OFF"
+    ],
+    "source": {
+      "head": "9acfa17d029dcb0fbeb744f9e60c0e3d6bcf6f76",
+      "merge_head": "79743c5675e5a18eeea14193d729cc6e45bdf926"
+    }
+  },
+  {
+    "step": "build-private-hosts",
+    "returncode": 0,
+    "wall_seconds": 3.127,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/bootstrap-protocol14-build-private-hosts.log",
+    "command": [
+      "cmake",
+      "--build",
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/bootstrap-protocol14",
+      "--target",
+      "chibi-build-host",
+      "chibi-compiler-host",
+      "--parallel",
+      "8"
+    ],
+    "source": {
+      "head": "9acfa17d029dcb0fbeb744f9e60c0e3d6bcf6f76",
+      "merge_head": "79743c5675e5a18eeea14193d729cc6e45bdf926"
+    }
+  },
+  {
+    "step": "verify-hosts",
+    "targets": {
+      "chibi-build-host": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/bootstrap-protocol14/bin/chibi-build-host",
+      "chibi-compiler-host": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/bootstrap-protocol14/bin/chibi-compiler-host"
+    },
+    "protocol": 14,
+    "source": {
+      "head": "9acfa17d029dcb0fbeb744f9e60c0e3d6bcf6f76",
+      "merge_head": "79743c5675e5a18eeea14193d729cc6e45bdf926"
+    }
+  }
+]

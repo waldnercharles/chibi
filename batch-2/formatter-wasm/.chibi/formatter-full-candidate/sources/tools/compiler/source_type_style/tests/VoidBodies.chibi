@@ -1,0 +1,38 @@
+package source_type_style_tests
+
+import style "project:source_type_style"
+
+@test
+VoidExpressionBodiesKeepPreparedCallsAndCompletion :: () {
+    original := "package p\nDone :: () {}\nInvoke :: () { Done(); }\n";
+    proposed := "package p\nDone :: fn() {}\nInvoke :: fn() => Done();\n";
+    proof := style.Prove(original, proposed);
+    if (!proof.same) { print_string(proof.notes); }
+    assert(proof.same, "a redundant void return does not change prepared execution");
+}
+
+@test
+VoidTailProofKeepsShortCircuitBranchTargetsAndManagedArguments :: () {
+    original := "package p\nSink :: (value: bool) {}\nInvoke :: (left: bool, right: bool) { Sink(left && right); }\n";
+    proposed := "package p\nSink :: (value: bool) {}\nInvoke :: (left: bool, right: bool) => Sink(left && right);\n";
+    proof := style.Prove(original, proposed);
+    if (!proof.same) { print_string(proof.notes); }
+    assert(proof.same, "branches within arguments retain every preceding instruction index");
+    managed := style.Prove("package p\nSink :: (value: string) {}\nInvoke :: (value: string) { Sink(value); }\n",
+                           "package p\nSink :: (value: string) {}\nInvoke :: (value: string) => Sink(value);\n");
+    if (!managed.same) { print_string(managed.notes); }
+    assert(managed.same, "managed argument and lifetime tables remain identical");
+}
+
+@test
+VoidTailProofCannotDiscardEffectsEarlyReturnsOrValueResults :: () {
+    early := style.Prove("package p\nSink :: () {}\nInvoke :: (flag: bool) { if flag { return; } Sink(); }\n",
+                         "package p\nSink :: () {}\nInvoke :: (flag: bool) { if flag {} Sink(); }\n");
+    assert(!early.same, "removing an early return changes whether a call executes");
+    call := style.Prove("package p\nSink :: () {}\nOther :: () {}\nInvoke :: () { Sink(); }\n",
+                        "package p\nSink :: () {}\nOther :: () {}\nInvoke :: () => Other();\n");
+    assert(!call.same, "void completion cannot authorize a different callable");
+    value := style.Prove("package p\nRead :: () -> int { return 3; }\nInvoke :: () { Read(); }\n",
+                         "package p\nRead :: () -> int { return 3; }\nInvoke :: () => Read();\n");
+    assert(!value.same, "returning an ignored integer changes the function signature");
+}

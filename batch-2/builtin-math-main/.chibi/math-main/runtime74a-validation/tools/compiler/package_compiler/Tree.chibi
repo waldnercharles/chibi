@@ -1,0 +1,75 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import syntax "project:syntax_diagnostics"
+import strings "core:strings"
+
+// Readers over the snapshot's syntax forest. Links are global node indices,
+// -1 when absent; offsets count bytes of the node's document text.
+
+// The first named, non-extra node at or after `link` among its siblings.
+Member :: (forest: snapshot.SnapshotNode[], link: int) -> int {
+    at := link;
+    while (at >= 0 && (!forest[at].is_named || forest[at].is_extra)) {
+        at = forest[at].next_sibling;
+    }
+    return at;
+}
+// The members of `parent`, in order.
+Members :: (forest: snapshot.SnapshotNode[], parent: int) -> int[] {
+    found: int[] = [];
+    member := FirstMember(forest, parent);
+    while (member >= 0) {
+        found.append(member);
+        member = NextMember(forest, member);
+    }
+    return found;
+}
+FirstMember :: (forest: snapshot.SnapshotNode[], parent: int) -> int {
+    if (parent < 0) {
+        return -1;
+    }
+    return Member(forest, forest[parent].first_child);
+}
+NextMember :: (forest: snapshot.SnapshotNode[], node: int) -> int {
+    return Member(forest, forest[node].next_sibling);
+}
+// The child holding field `name`, named or not.
+Field :: (forest: snapshot.SnapshotNode[], node: int, name: string) -> int {
+    if (node < 0) {
+        return -1;
+    }
+    child := forest[node].first_child;
+    while (child >= 0) {
+        if (forest[child].field == name) {
+            return child;
+        }
+        child = forest[child].next_sibling;
+    }
+    return -1;
+}
+Is :: (forest: snapshot.SnapshotNode[], node: int, kind: string) -> bool {
+    return node >= 0 && forest[node].kind == kind;
+}
+// Whether `parent` has a direct, non-extra token `token`, such as "?".
+HasToken :: (forest: snapshot.SnapshotNode[], parent: int, token: string) -> bool {
+    child := forest[parent].first_child;
+    while (child >= 0) {
+        if (!forest[child].is_extra && forest[child].kind == token) {
+            return true;
+        }
+        child = forest[child].next_sibling;
+    }
+    return false;
+}
+Text :: (forest: snapshot.SnapshotNode[], text: string, node: int) -> string {
+    if (node < 0) {
+        return "";
+    }
+    return strings.Slice(text, forest[node].start, forest[node].end - forest[node].start);
+}
+Diagnose :: (forest: snapshot.SnapshotNode[], node: int, document: int, message: string) -> syntax.Diagnostic {
+    item := forest[node];
+    return {start: item.start, end: item.end, line: item.row + 1, column: item.column + 1,
+            document: document, message: message};
+}

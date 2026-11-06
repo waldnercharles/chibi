@@ -1,0 +1,13 @@
+{
+  "name": "chibi-collab-room-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "check": "node --check server.mjs && node --check room-service.mjs && node --check protocol.mjs && node --check websocket.mjs"
+  }
+}

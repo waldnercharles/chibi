@@ -1,0 +1,20 @@
+[
+  {
+    "name": "published-docs",
+    "exit_code": 0,
+    "seconds": 9.634712625062093,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-cow-precommit-published-docs.log"
+  },
+  {
+    "name": "chibi-cli",
+    "exit_code": 0,
+    "seconds": 10.601678250124678,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-cow-precommit-chibi-cli.log"
+  },
+  {
+    "name": "native-aot-driver",
+    "exit_code": 0,
+    "seconds": 112.23619787511416,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/portable-byte-libraries/chibi/.chibi/logs/portable-five-cow-precommit-native-aot-driver.log"
+  }
+]

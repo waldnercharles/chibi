@@ -1,0 +1,637 @@
+diff --git a/apps/chibi/Inspect.chibi b/apps/chibi/Inspect.chibi
+index 636b8fbc1..1d51c9e25 100644
+--- a/apps/chibi/Inspect.chibi
++++ b/apps/chibi/Inspect.chibi
+@@ -49,7 +49,7 @@ Browser :: (player: string) -> bool {
+         return Report("browser export", "unavailable", "pass --web PLAYER; make package-web-player builds one")
+     }
+     for name in ["index.html", "chibi-player.js", "chibi-player.wasm", "compiler/chibi-compile.js", "compiler/chibi-compile.wasm"] {
+-        if files.kind(Join([player, "/", name])) == 0 {
++        if !files.readable(Join([player, "/", name])) {
+             return Report("browser export", "broken", format_text("{} lacks {}", player, name))
+         }
+     }
+diff --git a/sdk/CMakeLists.txt b/sdk/CMakeLists.txt
+index 848a503d7..050678438 100644
+--- a/sdk/CMakeLists.txt
++++ b/sdk/CMakeLists.txt
+@@ -778,6 +778,18 @@ if(TARGET chibi-compile AND TARGET chibi-player)
+     chibi_windows_manifest(chibi)
+     chibi_install_product(chibi)
+ endif()
++# A standalone SDK build uses the installed bin/share relationship. Keep
++# private driver companions beside the public tools in this build layout.
++# Embedded product builds and compiler-host-only bootstraps keep their paths.
++if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR AND
++   NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
++    foreach(target chibi chibi-compile chibi-player chibi-build-host chibi-compiler-host)
++        if(TARGET ${target})
++            set_target_properties(${target} PROPERTIES
++                RUNTIME_OUTPUT_DIRECTORY "$<1:${CMAKE_BINARY_DIR}/bin>")
++        endif()
++    endforeach()
++endif()
+ foreach(target IN LISTS CHIBI_SDK_TARGETS)
+     if(NOT target MATCHES "^(chibi_execution_contract|chibi_tasks|chibi_input_action|chibi_math|chibi_syntax_runtime|chibi_ui_syntax|chibi_json|chibi_fmt|chibi_box2d|chibi_box3d|chibi_task_scheduler|chibi_asset_kdl)$")
+         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror)
+diff --git a/src/authoring/program.c b/src/authoring/program.c
+index a8b55cc8f..d18599413 100644
+--- a/src/authoring/program.c
++++ b/src/authoring/program.c
+@@ -291,7 +291,8 @@ int authoring_program_call(
+                                                       ? NULL
+                                                       : program->options.cancelled,
+                                        .user = program->options.cancel_user,
+-                                       .prefer_compiled = true };
++                                       .prefer_compiled = true,
++                                       .inherit = true };
+     behavior_execution_scope_begin(&scope);
+     execution_instance *instance = execution_program_instance(program->runtime, PROGRAM_OWNER);
+     int status = execution_instance_call(instance, program->entry, result, 0, 0, UINT_MAX);
+diff --git a/src/authoring/program.h b/src/authoring/program.h
+index 485667c2a..13c7005f9 100644
+--- a/src/authoring/program.h
++++ b/src/authoring/program.h
+@@ -52,7 +52,8 @@ void authoring_program_discard(authoring_program *);
+  * interruptible native call. Authored callers must own a different runtime
+  * and managed heap. Calls reject active sessions and unpublished prepared
+  * replacements. Cooperative hosts explicitly opt out of instruction-level
+- * cancellation for this invocation only. */
++ * cancellation for this invocation only. An active enclosing scope always
++ * retains its shared budget, cancellation and pure/VM restrictions. */
+ int authoring_program_call(authoring_program *, const authoring_program_call_options *, int *result);
+ const authoring_program_diagnostic *authoring_program_error(const authoring_program *);
+ const execution_program *authoring_program_runtime(const authoring_program *);
+diff --git a/src/execution/function.h b/src/execution/function.h
+index c16efaaac..aacc9a182 100644
+--- a/src/execution/function.h
++++ b/src/execution/function.h
+@@ -57,6 +57,10 @@ typedef struct behavior_execution_scope
+     /* Trusted packaged code may request guarded native execution. Pure scopes
+      * always use the VM. Unsupported native targets fall back to the VM. */
+     bool prefer_compiled;
++    /* Nested scopes are exclusive by default. Inheriting also enforces the
++     * enclosing scope's budget, cancellation, purity and VM preference. Each
++     * operation checks every inherited budget before debiting any of them. */
++    bool inherit;
+     struct behavior_execution_scope *previous;
+     bool active;
+ } behavior_execution_scope;
+diff --git a/src/execution/runner.c b/src/execution/runner.c
+index e5b96d9fb..333cbdadb 100644
+--- a/src/execution/runner.c
++++ b/src/execution/runner.c
+@@ -38,14 +38,29 @@ bool behavior_execution_scope_active()
+ {
+     return execution_scope != NULL;
+ }
++static behavior_execution_scope *inherited_scope(behavior_execution_scope *scope)
++{
++    return scope->inherit ? scope->previous : NULL;
++}
+ bool behavior_execution_scope_pure()
+ {
+-    return execution_scope && execution_scope->pure;
++    for (behavior_execution_scope *scope = execution_scope; scope;
++         scope = inherited_scope(scope)) {
++        if (scope->pure) {
++            return true;
++        }
++    }
++    return false;
+ }
+ bool behavior_execution_scope_cancelled()
+ {
+-    return execution_scope && execution_scope->cancelled &&
+-           execution_scope->cancelled(execution_scope->user);
++    for (behavior_execution_scope *scope = execution_scope; scope;
++         scope = inherited_scope(scope)) {
++        if (scope->cancelled && scope->cancelled(scope->user)) {
++            return true;
++        }
++    }
++    return false;
+ }
+ const char *behavior_execution_scope_step()
+ {
+@@ -55,13 +70,30 @@ const char *behavior_execution_scope_step()
+     if (behavior_execution_scope_cancelled()) {
+         return "execution cancelled";
+     }
+-    if (!execution_scope->remaining) {
+-        return "shared instruction budget exhausted";
++    for (behavior_execution_scope *scope = execution_scope; scope;
++         scope = inherited_scope(scope)) {
++        if (!scope->remaining) {
++            return "shared instruction budget exhausted";
++        }
++    }
++    for (behavior_execution_scope *scope = execution_scope; scope;
++         scope = inherited_scope(scope)) {
++        scope->remaining--;
+     }
+-    execution_scope->remaining--;
+     return NULL;
+ }
+ 
++static bool scope_prefers_compiled()
++{
++    for (behavior_execution_scope *scope = execution_scope; scope;
++         scope = inherited_scope(scope)) {
++        if (!scope->prefer_compiled || scope->pure) {
++            return false;
++        }
++    }
++    return execution_scope != NULL;
++}
++
+ void behavior_run_scope_begin(behavior_run_scope *scope)
+ {
+     assert(scope && !scope->active);
+@@ -154,8 +186,7 @@ static int run_compiled(const behavior_function *f, behavior_function_context *c
+ 
+ int behavior_function_run_once(const behavior_function *f, behavior_function_context *ctx, bool compiled)
+ {
+-    bool scoped = execution_scope && execution_scope->prefer_compiled &&
+-                  !execution_scope->pure &&
++    bool scoped = scope_prefers_compiled() &&
+                   !behavior_function_inspection_required(f, ctx) &&
+                   behavior_function_compile_scoped(f);
+     compiled &= !behavior_execution_scope_active();
+diff --git a/src/host/application_io.c b/src/host/application_io.c
+index b68c11302..9463c1cb5 100644
+--- a/src/host/application_io.c
++++ b/src/host/application_io.c
+@@ -28,6 +28,7 @@
+ #include <unistd.h>
+ #ifdef _WIN32
+ #include <direct.h>
++#include <io.h>
+ #include <sys/utime.h>
+ #include <windows.h>
+ #else
+@@ -359,6 +360,18 @@ static const char *file_kind(void *service, const pin_value *arguments, pin_valu
+     return NULL;
+ }
+ 
++static const char *file_readable(void *service, const pin_value *arguments, pin_value *results)
++{
++    IO();
++    STRING(0, path);
++#ifdef _WIN32
++    results[0].b = !_access(path, 4);
++#else
++    results[0].b = !access(path, R_OK);
++#endif
++    return NULL;
++}
++
+ static const char *file_resolve(void *service, const pin_value *arguments, pin_value *results)
+ {
+     IO();
+@@ -768,6 +781,7 @@ static const char *network_close(void *service, const pin_value *arguments, pin_
+         .name = NAME, .type = {.storage = TYPE }                               \
+     }
+ static const script_catalog_parameter text_input[] = { PARAM("text", PIN_STR) };
++static const script_catalog_parameter path_input[] = { PARAM("path", PIN_STR) };
+ static const script_catalog_parameter integer_input[] = { PARAM("value", PIN_I32) };
+ static const script_catalog_parameter path_time_input[] = { PARAM("path", PIN_STR),
+                                                             PARAM("stamp", PIN_I64) };
+@@ -793,35 +807,36 @@ static const script_catalog_parameter capture_result[] = {
+ };
+ #undef PARAM
+ 
+-#define IO_FUNCTIONS(X)                                                                          \
+-    X(1, "application.arguments", NULL, 0, argv_result, 1, context, app_arguments)               \
+-    X(2, "application.bin", NULL, 0, text_result, 1, invoke, app_bin)                            \
+-    X(3, "application.stdout", text_input, 1, NULL, 0, invoke, app_stdout)                       \
+-    X(4, "application.stderr", text_input, 1, NULL, 0, invoke, app_stderr)                       \
+-    X(5, "application.environment", text_input, 1, text_result, 1, invoke, app_environment)      \
+-    X(6, "application.platform", NULL, 0, text_result, 1, invoke, app_platform)                  \
+-    X(7, "application.machine", NULL, 0, text_result, 1, invoke, app_machine)                    \
+-    X(8, "application.now", NULL, 0, time_result, 1, invoke, app_now)                            \
+-    X(9, "application.stopped", NULL, 0, bool_result, 1, invoke, app_stopped)                    \
+-    X(10, "application.wait", integer_input, 1, bool_result, 1, invoke, app_wait)                \
+-    X(11, "files.kind", text_input, 1, integer_result, 1, invoke, file_kind)                     \
+-    X(12, "files.resolve", text_input, 1, text_result, 1, invoke, file_resolve)                  \
+-    X(13, "files.modified", text_input, 1, time_result, 1, invoke, file_modified)                \
+-    X(14, "files.read", text_input, 1, text_result, 1, invoke, file_read)                        \
+-    X(15, "files.write", path_text_input, 2, bool_result, 1, invoke, file_write)                 \
+-    X(16, "files.mkdir", text_input, 1, bool_result, 1, invoke, file_mkdir)                      \
+-    X(17, "files.touch", path_time_input, 2, bool_result, 1, invoke, file_touch)                 \
+-    X(18, "files.remove", text_input, 1, bool_result, 1, invoke, file_remove)                    \
+-    X(19, "files.temporary", text_input, 1, text_result, 1, invoke, file_temporary)              \
+-    X(20, "files.find_executable", text_input, 1, text_result, 1, invoke, file_find_executable)  \
+-    X(21, "files.changed_since", path_time_input, 2, bool_result, 1, invoke, file_changed_since) \
+-    X(22, "process.run", argv_input, 1, integer_result, 1, invoke, process_run)                  \
+-    X(23, "process.capture", argv_input, 1, capture_result, 4, invoke, process_capture)          \
+-    X(24, "network.listen", integer_input, 1, integer_result, 1, invoke, network_listen)         \
+-    X(25, "network.port", integer_input, 1, integer_result, 1, invoke, network_port)             \
+-    X(26, "network.serve", server_path_input, 2, integer_result, 1, invoke, network_serve)       \
+-    X(27, "network.close", integer_input, 1, NULL, 0, invoke, network_close)                     \
+-    X(28, "application.interrupt_status", NULL, 0, integer_result, 1, invoke, app_interrupt_status)
++#define IO_FUNCTIONS(X)                                                                             \
++    X(1, "application.arguments", NULL, 0, argv_result, 1, context, app_arguments)                  \
++    X(2, "application.bin", NULL, 0, text_result, 1, invoke, app_bin)                               \
++    X(3, "application.stdout", text_input, 1, NULL, 0, invoke, app_stdout)                          \
++    X(4, "application.stderr", text_input, 1, NULL, 0, invoke, app_stderr)                          \
++    X(5, "application.environment", text_input, 1, text_result, 1, invoke, app_environment)         \
++    X(6, "application.platform", NULL, 0, text_result, 1, invoke, app_platform)                     \
++    X(7, "application.machine", NULL, 0, text_result, 1, invoke, app_machine)                       \
++    X(8, "application.now", NULL, 0, time_result, 1, invoke, app_now)                               \
++    X(9, "application.stopped", NULL, 0, bool_result, 1, invoke, app_stopped)                       \
++    X(10, "application.wait", integer_input, 1, bool_result, 1, invoke, app_wait)                   \
++    X(11, "files.kind", text_input, 1, integer_result, 1, invoke, file_kind)                        \
++    X(12, "files.resolve", text_input, 1, text_result, 1, invoke, file_resolve)                     \
++    X(13, "files.modified", text_input, 1, time_result, 1, invoke, file_modified)                   \
++    X(14, "files.read", text_input, 1, text_result, 1, invoke, file_read)                           \
++    X(15, "files.write", path_text_input, 2, bool_result, 1, invoke, file_write)                    \
++    X(16, "files.mkdir", text_input, 1, bool_result, 1, invoke, file_mkdir)                         \
++    X(17, "files.touch", path_time_input, 2, bool_result, 1, invoke, file_touch)                    \
++    X(18, "files.remove", text_input, 1, bool_result, 1, invoke, file_remove)                       \
++    X(19, "files.temporary", text_input, 1, text_result, 1, invoke, file_temporary)                 \
++    X(20, "files.find_executable", text_input, 1, text_result, 1, invoke, file_find_executable)     \
++    X(21, "files.changed_since", path_time_input, 2, bool_result, 1, invoke, file_changed_since)    \
++    X(22, "process.run", argv_input, 1, integer_result, 1, invoke, process_run)                     \
++    X(23, "process.capture", argv_input, 1, capture_result, 4, invoke, process_capture)             \
++    X(24, "network.listen", integer_input, 1, integer_result, 1, invoke, network_listen)            \
++    X(25, "network.port", integer_input, 1, integer_result, 1, invoke, network_port)                \
++    X(26, "network.serve", server_path_input, 2, integer_result, 1, invoke, network_serve)          \
++    X(27, "network.close", integer_input, 1, NULL, 0, invoke, network_close)                        \
++    X(28, "application.interrupt_status", NULL, 0, integer_result, 1, invoke, app_interrupt_status) \
++    X(29, "files.readable", path_input, 1, bool_result, 1, invoke, file_readable)
+ 
+ #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULTS, RESULT_COUNT, KIND, FUNCTION) \
+     { .id = IO_ID(ID),                                                                 \
+diff --git a/test/language/execution_scope.c b/test/language/execution_scope.c
+index b11a94d3d..985e41589 100644
+--- a/test/language/execution_scope.c
++++ b/test/language/execution_scope.c
+@@ -329,6 +329,50 @@ TEST_CASE(scoped_native_shared_budget_and_pure_fallback)
+     REQUIRE(value.status == FLOW_OK && outer.remaining == 9 && inner.remaining == 122);
+     return true;
+ }
++
++TEST_CASE(inherited_scopes_share_live_constraints_without_partial_budget_charges)
++{
++    REQUIRE(prepare());
++    behavior_execution_scope outer = { .remaining = 7,
++                                       .pure = true,
++                                       .prefer_compiled = true };
++    behavior_execution_scope inner = { .remaining = 128,
++                                       .prefer_compiled = true,
++                                       .inherit = true };
++    behavior_execution_scope_begin(&outer);
++    behavior_execution_scope_begin(&inner);
++    bool inherited_pure = behavior_execution_scope_pure();
++    behavior_execution_scope_end(&inner);
++    observation first = run(scalar, &inner);
++    uint64_t first_remaining = outer.remaining;
++    observation second = run(scalar, &inner);
++    uint64_t inner_remaining = inner.remaining;
++    observation third = run(scalar, &inner);
++    bool pure_restored = behavior_execution_scope_pure();
++    behavior_execution_scope_end(&outer);
++    REQUIRE(first.status == FLOW_OK && first.value == 42 && first_remaining == 1);
++    REQUIRE(first.counts.bytecode_entries && !first.counts.sljit_entries);
++    REQUIRE(second.status == FLOW_ERR_STEP_BUDGET && !outer.remaining && inner_remaining == 121);
++    REQUIRE(third.status == FLOW_ERR_STEP_BUDGET && inner.remaining == inner_remaining);
++    REQUIRE(inherited_pure && pure_restored && !behavior_execution_scope_active());
++
++    outer = (behavior_execution_scope){ .remaining = 128,
++                                        .prefer_compiled = true,
++                                        .cancelled = cancelled };
++    outer.user = &outer;
++    inner = (behavior_execution_scope){ .remaining = 128,
++                                        .prefer_compiled = true,
++                                        .inherit = true };
++    behavior_execution_scope_begin(&outer);
++    observation cancelled_call = run(scalar, &inner);
++    behavior_execution_scope_end(&outer);
++    REQUIRE(
++        cancelled_call.status == FLOW_ERR_STEP_BUDGET &&
++        outer.remaining == 125 && inner.remaining == 125
++    );
++    REQUIRE(cancelled_call.has_message && !strcmp(cancelled_call.message, "execution cancelled"));
++    return true;
++}
+ static bool package_value_body(behavior_function *body, behavior_function *callee)
+ {
+     execution_module_plan *plan = execution_module_plan_new();
+@@ -712,6 +756,7 @@ void test_language_execution_scope()
+     pu_setup(NULL, cleanup);
+     RUN_TEST_CASE(scoped_native_matches_canonical_vm);
+     RUN_TEST_CASE(scoped_native_shared_budget_and_pure_fallback);
++    RUN_TEST_CASE(inherited_scopes_share_live_constraints_without_partial_budget_charges);
+     RUN_TEST_CASE(values_host_rejects_nonpure_outer_without_side_effects);
+     RUN_TEST_CASE(values_host_preserves_pure_outer_budget_and_cancellation);
+     RUN_TEST_CASE(values_host_target_facts_and_entry_queries_match_profile);
+diff --git a/test/language/program_session.c b/test/language/program_session.c
+index 6ea1b7f2c..f25c291d8 100644
+--- a/test/language/program_session.c
++++ b/test/language/program_session.c
+@@ -374,6 +374,101 @@ TEST_CASE(session_nested_calls_use_separate_state_and_reject_active_mutations)
+     return true;
+ }
+ 
++/* Finite bodies make both the broken and corrected paths finish; instruction
++ * counts, rather than elapsed time, are the oracle. */
++static const char
++    *budgeted_loop = "package app\nMain :: () -> int {\n count := 0\n while "
++                     "count < 1000 {\n count += 1\n }\n return count\n}\n";
++
++TEST_CASE(session_calls_debit_the_caller_budget_and_keep_its_vm_policy)
++{
++    REQUIRE(catalog());
++    for (int compiled = 0; compiled < 2; compiled++) {
++        authoring_program_options configuration = options(TEST_COMPILED_BACKEND);
++        sessions[compiled] = authoring_program_new(&configuration);
++        REQUIRE(accept(sessions[compiled], budgeted_loop, NULL, false));
++        behavior_execution_scope caller = { .remaining = 32,
++                                            .prefer_compiled = compiled != 0 };
++        behavior_run_scope runs = { 0 };
++        behavior_run_scope_begin(&runs);
++        behavior_execution_scope_begin(&caller);
++        int result = 0;
++        int status = authoring_program_call(sessions[compiled], NULL, &result);
++        behavior_execution_scope_end(&caller);
++        behavior_run_scope_end(&runs);
++        REQUIRE(status == FLOW_ERR_STEP_BUDGET && !caller.remaining);
++        REQUIRE(
++            strstr(authoring_program_error(sessions[compiled])->message, "shared instruction budget exhausted")
++        );
++        REQUIRE(!behavior_execution_scope_active());
++        if (!compiled || !behavior_backend_available(BEHAVIOR_SLJIT)) {
++            REQUIRE(runs.counts.bytecode_entries && !runs.counts.sljit_entries);
++        } else {
++            REQUIRE(runs.counts.sljit_entries);
++        }
++        REQUIRE(
++            authoring_program_call(sessions[compiled], NULL, &result) == FLOW_OK &&
++            result == 1000
++        );
++    }
++    return true;
++}
++
++TEST_CASE(session_repeated_calls_cannot_reset_the_enclosing_budget)
++{
++    REQUIRE(catalog());
++    authoring_program_options configuration = options(TEST_COMPILED_BACKEND);
++    sessions[0] = authoring_program_new(&configuration);
++    REQUIRE(accept(sessions[0], "package app\nMain :: () -> int { return 7 }\n", NULL, false));
++    behavior_execution_scope caller = { .remaining = 32, .prefer_compiled = true };
++    behavior_execution_scope_begin(&caller);
++    int result = 0, status = FLOW_OK, completed = 0;
++    bool charged = true;
++    while (completed < 64) {
++        uint64_t before = caller.remaining;
++        status = authoring_program_call(sessions[0], NULL, &result);
++        if (status != FLOW_OK) {
++            break;
++        }
++        charged &= result == 7 && caller.remaining < before;
++        completed++;
++    }
++    behavior_execution_scope_end(&caller);
++    REQUIRE(completed > 1 && completed < 64 && charged);
++    REQUIRE(status == FLOW_ERR_STEP_BUDGET && !caller.remaining);
++    REQUIRE(
++        strstr(authoring_program_error(sessions[0])->message, "shared instruction budget exhausted")
++    );
++    return true;
++}
++
++static bool caller_cancelled(void *user)
++{
++    const behavior_execution_scope *caller = user;
++    return caller->remaining <= 16;
++}
++
++TEST_CASE(session_calls_honor_the_callers_live_cancellation_budget)
++{
++    REQUIRE(catalog());
++    authoring_program_options configuration = options(TEST_COMPILED_BACKEND);
++    sessions[0] = authoring_program_new(&configuration);
++    REQUIRE(accept(sessions[0], budgeted_loop, NULL, false));
++    behavior_execution_scope caller = { .remaining = 32,
++                                        .prefer_compiled = true,
++                                        .cancelled = caller_cancelled };
++    caller.user = &caller;
++    const authoring_program_call_options cooperative = { .cooperative = true };
++    behavior_execution_scope_begin(&caller);
++    int result = 0;
++    int status = authoring_program_call(sessions[0], &cooperative, &result);
++    behavior_execution_scope_end(&caller);
++    REQUIRE(status == FLOW_ERR_STEP_BUDGET && caller.remaining == 16);
++    REQUIRE(strstr(authoring_program_error(sessions[0])->message, "execution cancelled"));
++    REQUIRE(!behavior_execution_scope_active());
++    return true;
++}
++
+ static void write_source(const char *path, const char *text)
+ {
+     FILE *file = fopen(path, "wb");
+@@ -496,6 +591,9 @@ void test_language_program_session()
+     RUN_TEST_CASE(session_calls_observe_host_cancellation_and_recover);
+     RUN_TEST_CASE(session_cooperative_host_preserves_nested_cancellation);
+     RUN_TEST_CASE(session_nested_calls_use_separate_state_and_reject_active_mutations);
++    RUN_TEST_CASE(session_calls_debit_the_caller_budget_and_keep_its_vm_policy);
++    RUN_TEST_CASE(session_repeated_calls_cannot_reset_the_enclosing_budget);
++    RUN_TEST_CASE(session_calls_honor_the_callers_live_cancellation_budget);
+     RUN_TEST_CASE(program_handles_suppress_rejections_and_never_alias_other_sessions);
+     RUN_TEST_CASE(program_tests_bind_the_public_catalog_and_copy_transient_diagnostics);
+     pu_clear_setup();
+diff --git a/test/tools/chibi_cli.c b/test/tools/chibi_cli.c
+index 8d191c758..5d450dfbc 100644
+--- a/test/tools/chibi_cli.c
++++ b/test/tools/chibi_cli.c
+@@ -665,6 +665,32 @@ TEST_CASE(doctor_reports_each_capability)
+     REQUIRE(doctor("--web", web, programs) == 0);
+     snprintf(expected, sizeof expected, "browser export: supported (%s with %s/node)\n", web, bin);
+     REQUIRE(file_has("doctor.log", expected));
++    const char *payloads[] = { "index.html",
++                               "chibi-player.js",
++                               "chibi-player.wasm",
++                               "compiler/chibi-compile.js",
++                               "compiler/chibi-compile.wasm" };
++    bool unreadable = true;
++    for (size_t i = 0; i < sizeof payloads / sizeof *payloads; i++) {
++        int length = snprintf(file, sizeof file, "%s/%s", web, payloads[i]);
++        REQUIRE(length > 0 && length < (int)sizeof file);
++        struct stat info;
++        REQUIRE(!stat(file, &info));
++        REQUIRE(!chmod(file, 0));
++        int status = doctor("--web", web, programs);
++        bool broken = status == 1 &&
++                      file_has("doctor.log", "browser export: broken (") &&
++                      file_has("doctor.log", payloads[i]) &&
++                      !file_has("doctor.log", "browser export: supported (");
++        bool restored = !chmod(file, info.st_mode & 07777);
++        REQUIRE(restored);
++        if (!broken) {
++            fprintf(stderr, "unreadable browser payload %s: doctor status=%d\n", payloads[i], status);
++        }
++        unreadable &= broken;
++        REQUIRE(doctor("--web", web, programs) == 0);
++    }
++    REQUIRE(unreadable);
+     REQUIRE(doctor("--web", web, tools) == 1);
+     REQUIRE(file_has("doctor.log", "browser export: broken (node, which runs "));
+ 
+@@ -3428,6 +3454,63 @@ static void setup_installed(const char *binary)
+     path(log_path, "output.log");
+ }
+ 
++TEST_CASE(raw_sdk_build_finds_its_application_and_companions)
++{
++    char output[256];
++    path(output, "raw-sdk.log");
++    const char *help[] = { built, "--help", NULL };
++    REQUIRE(tool_run(help, root, output) == 0);
++    REQUIRE(file_has("raw-sdk.log", "Usage:"));
++    const char *slash = strrchr(built, '/');
++    REQUIRE(slash);
++    const char *companions[] = { "chibi-compile",
++                                 "chibi-player",
++                                 "chibi-build-host",
++                                 "chibi-compiler-host" };
++    for (size_t i = 0; i < sizeof companions / sizeof *companions; i++) {
++        char executable[1024];
++        int length = snprintf(
++            executable,
++            sizeof executable,
++            "%.*s/%s",
++            (int)(slash - built),
++            built,
++            companions[i]
++        );
++        REQUIRE(length > 0 && length < (int)sizeof executable);
++        REQUIRE(!access(executable, X_OK));
++    }
++    directory("raw-game");
++    directory("raw-llvm");
++    write_file("raw-game/Main.chibi", "Main :: () -> int { return 0 }\n");
++    char game[256], llvm[256];
++    path(game, "raw-game");
++    path(llvm, "raw-llvm");
++    const char *native[] = { built, "build", "--native", "--llvm",
++                             llvm,  game,    NULL };
++    REQUIRE(tool_run(native, root, output) == 2);
++    REQUIRE(file_has("raw-sdk.log", "must hold LLVM's opt, llc and ld.lld"));
++    REQUIRE(!file_has("raw-sdk.log", "Cannot run"));
++    return true;
++}
++
++void test_tool_chibi_cli_build(const char *binary)
++{
++    setup_installed(binary);
++    RUN_TEST_CASE(raw_sdk_build_finds_its_application_and_companions);
++    RUN_TEST_CASE(version_of_the_built_launcher);
++    RUN_TEST_CASE(doctor_of_the_built_launcher);
++    RUN_TEST_CASE(program_main_runs_from_files_and_directories);
++    tool_remove_tree(root);
++}
++
++void test_tool_chibi_cli_doctor(const char *binary)
++{
++    setup(binary);
++    RUN_TEST_CASE(doctor_reports_each_capability);
++    tool_remove_tree(root);
++}
++
+ void test_tool_chibi_cli_process(const char *binary, const char *self)
+ {
+     locate_driver(self);
+diff --git a/test/tools/main.c b/test/tools/main.c
+index 0c3781575..4b1eeddbd 100644
+--- a/test/tools/main.c
++++ b/test/tools/main.c
+@@ -77,6 +77,8 @@ void test_tool_record_c_export();
+ void test_tool_package();
+ void test_tool_chibi_cli(const char *binary, const char *self);
+ void test_tool_chibi_cli_process(const char *binary, const char *self);
++void test_tool_chibi_cli_build(const char *binary);
++void test_tool_chibi_cli_doctor(const char *binary);
+ void test_tool_chibi_cli_installed(const char *binary, const char *self);
+ void test_native_build(const char *binary);
+ void test_native_workload_benchmark(const char *binary);
+@@ -750,6 +752,18 @@ int main(int argc, char **argv)
+         pu_print_stats();
+         return pu_test_failed() ? 1 : 0;
+     }
++    if (argc == 3 && (!strcmp(argv[1], "--chibi-cli-build") ||
++                      !strcmp(argv[1], "--chibi-cli-doctor"))) {
++        tool_init();
++        pu_display_time(true);
++        if (!strcmp(argv[1], "--chibi-cli-build")) {
++            test_tool_chibi_cli_build(argv[2]);
++        } else {
++            test_tool_chibi_cli_doctor(argv[2]);
++        }
++        pu_print_stats();
++        return pu_test_failed() ? 1 : 0;
++    }
+     if (argc == 3 && !strcmp(argv[1], "--chibi-cli-process")) {
+         tool_init();
+         pu_display_time(true);
+diff --git a/test/tools/program_consumer.c b/test/tools/program_consumer.c
+index 3a2f913b6..3f50ef0e2 100644
+--- a/test/tools/program_consumer.c
++++ b/test/tools/program_consumer.c
+@@ -68,7 +68,42 @@ TEST_CASE(exported_program_sessions_keep_independent_retained_state)
+     return true;
+ }
+ 
++TEST_CASE(exported_program_calls_respect_the_host_instruction_budget)
++{
++    const native_definition_pack definition = CORE_DEFINITION_PACK;
++    char error[256];
++    native_capabilities *
++        native = native_capabilities_from_definition_packs(NULL, 0, &definition, 1, error, sizeof error);
++    REQUIRE(native);
++    const authoring_program_options options = {
++        .native = native,
++        .bindings = authoring_native_bindings(native),
++        .backend = behavior_default_backend()
++    };
++    authoring_program *program = authoring_program_new(&options);
++    REQUIRE(
++        accept(program, "package consumer\nMain :: () -> int {\n count := 0\n while count < 1000 {\n count += 1\n }\n return count\n}\n")
++    );
++    behavior_execution_scope host = { .remaining = 32, .prefer_compiled = true };
++    behavior_execution_scope_begin(&host);
++    int result = 0;
++    int status = authoring_program_call(program, NULL, &result);
++    behavior_execution_scope_end(&host);
++    bool exhausted = strstr(
++                         authoring_program_error(program)->message
++                             ? authoring_program_error(program)->message
++                             : "",
++                         "shared instruction budget exhausted"
++                     ) != NULL;
++    authoring_program_free(program);
++    native_capabilities_free(native);
++    REQUIRE(status == FLOW_ERR_STEP_BUDGET);
++    REQUIRE(!host.remaining && exhausted && !behavior_execution_scope_active());
++    return true;
++}
++
+ void test_program_sdk()
+ {
+     RUN_TEST_CASE(exported_program_sessions_keep_independent_retained_state);
++    RUN_TEST_CASE(exported_program_calls_respect_the_host_instruction_budget);
+ }
+diff --git a/tools/test_policy.py b/tools/test_policy.py
+index 532253893..111661b4a 100644
+--- a/tools/test_policy.py
++++ b/tools/test_policy.py
+@@ -89,6 +89,8 @@ TOOLS = {
+     'vector-nodes': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--vector-nodes'],
+     'package': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--package'],
+     'program-sdk': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--program-sdk'],
++    'chibi-cli-build': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--chibi-cli-build', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
++    'chibi-cli-doctor': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--chibi-cli-doctor', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
+     'chibi-cli-process': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--chibi-cli-process', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],
+     'chibi-cli': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'),
+                   '--chibi-cli', str(ROOT / os.environ.get('CHIBI_CLI', 'build-release/sdk/chibi'))],

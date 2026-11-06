@@ -1,0 +1,25 @@
+{
+  "source": {
+    "dirty": false,
+    "revision": "1dd12f7c1bc569bfac085fef14f322d2fc54d901",
+    "snapshot_sha256": "3f6f2b5084dc64eea70291d1b5bc81939573eb36d2bef2f194e7bfeaf4d29cec"
+  },
+  "package_build_id": "e1294e799f907fecdddb33874a3eba2c876711f5e3eaac61ef5e0a03597d1cc4",
+  "engine_build_id": "e16df301a651ecf5d6710907186aa52de8eccc80494f92419737d31f7ef1df5d",
+  "package_manifest_sha256": "35d5e1dbd527d706499223b8495d1a3a40e32dcce03331687dd0c7c321320018",
+  "version_byte_identity": true,
+  "steps": [
+    {
+      "step": "version",
+      "returncode": 0,
+      "wall_seconds": 0.239,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-version-1dd12f7c.log"
+    },
+    {
+      "step": "self-version",
+      "returncode": 0,
+      "wall_seconds": 0.14,
+      "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/public-sdk-self-version-1dd12f7c.log"
+    }
+  ]
+}

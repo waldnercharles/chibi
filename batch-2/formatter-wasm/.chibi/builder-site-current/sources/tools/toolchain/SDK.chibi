@@ -1,0 +1,313 @@
+package toolchain
+
+import os "core:os"
+import strings "core:strings"
+import json "core:encoding/json"
+import files "graph:install"
+import engine "graph:engine"
+
+// CompilerTools publishes a fresh native SDK transactionally. Install overlays
+// the same products into a user prefix. Neither distribution contains a VM
+// host or bootstrap bytecode.
+Join :: (parts: string[]) -> string { return strings.Concatenate(parts); }
+Option :: (arguments: string[], name: string) -> string {
+    for (i in 0..<length(arguments) - 1) {
+        if (arguments[i] == name) { return arguments[i + 1]; }
+    }
+    return "";
+}
+Suffix :: () -> string {
+    if (os.Platform() == "Windows") { return ".exe"; }
+    return "";
+}
+// Every item is DESTINATION=SOURCE, with absolute source paths.
+Entries :: (root: string, build_dir: string, third_party: string, with_wasm: bool) -> string[] {
+    suffix := Suffix();
+    entries := [
+        Join(["bin/chibi", suffix, "=", engine.Executable(build_dir, "chibi")]),
+        Join(["bin/chibi-compile", suffix, "=", engine.Executable(build_dir, "chibi")]),
+        Join(["libexec/chibi/chibi-asset-compiler", suffix, "=", engine.Executable(build_dir, "chibi-asset-compiler")]),
+        Join(["share/chibi/engine.json=", build_dir, "/share/chibi/engine.json"]),
+        Join(["share/chibi/compiler=", build_dir, "/share/chibi/compiler"]),
+        Join(["share/chibi/core=", build_dir, "/share/chibi/core"]),
+        Join(["share/chibi/apps/host=", build_dir, "/share/chibi/apps/host"]),
+        Join(["share/chibi/tools/toolchain=", root, "/tools/toolchain"]),
+        Join(["share/chibi/graph=", root, "/tools/graph"]),
+        Join(["share/chibi/licenses/chibi/LICENSE.md=", root, "/LICENSE.md"]),
+        Join(["share/chibi/licenses/chibi/COPYING=", root, "/COPYING"]),
+        Join(["share/chibi/licenses/chibi/COPYING.LESSER=", root, "/COPYING.LESSER"]),
+        Join(["share/chibi/licenses/chibi/COPYING.EXAMPLES=", root, "/COPYING.EXAMPLES"]),
+        Join(["share/chibi/licenses/chibi/docs/distribution-licensing.md=", root, "/docs/distribution-licensing.md"])
+    ];
+    if (os.Platform() == "Darwin" || os.Platform() == "Linux") {
+        entries.extend([
+            Join(["lib/chibi-vendor/libchibi_vendor_freetype.a=", build_dir, "/lib/chibi-vendor/libchibi_vendor_freetype.a"]),
+            Join(["share/chibi/licenses/vendor/freetype=", third_party, "/share/chibi/licenses/vendor/freetype"])
+        ]);
+    }
+    if (with_wasm) {
+        directory := engine.WebAssemblyDirectory(build_dir);
+        for (name in engine.WebAssemblyFiles()) {
+            if (name != "asset_compiler_host.h") {
+                entries.append(Join(["lib/chibi-wasm32/", name, "=", directory, "/", name]));
+            }
+        }
+        entries.extend([
+            Join(["include/chibi/authoring/asset_compiler_host.h=", directory, "/asset_compiler_host.h"]),
+            Join(["lib/cmake/ChibiAssetCompilerWasm/ChibiAssetCompilerWasmConfig.cmake=", root,
+                  "/sdk/ChibiAssetCompilerWasmConfig.cmake"])
+        ]);
+    }
+    return entries;
+}
+
+// An optional archive and its copied public header travel as one SDK component.
+// Reject a stale or partial build before either install path writes a prefix.
+WasmDigitZero: int : 48;
+WasmDigitNine: int : 57;
+WasmHexA: int : 97;
+WasmHexF: int : 102;
+WasmInputs :: (build_dir: string) -> bool {
+    directory := engine.WebAssemblyDirectory(build_dir);
+    header := os.HashFile(Join([directory, "/asset_compiler_host.h"]));
+    if (header.error != nil) { return false; }
+    for (threaded in [false, true]) {
+        name := "libchibi_asset_compiler.a";
+        if (threaded) { name = "libchibi_asset_compiler_threads.a"; }
+        archive := Join([directory, "/", name]);
+        digest := os.HashFile(archive);
+        read := os.ReadText(Join([archive, ".json"]));
+        if (digest.error != nil || read.error != nil || strings.ByteLength(read.text) > 4096) { return false; }
+        fields := json.JsonFields(read.text);
+        if (length(fields) != 7) { return false; }
+        for (field in fields) {
+            valid := false;
+            if (field.key == "format") { valid = field.value == "1"; }
+            else if (field.key == "target") { valid = json.JsonText(field.value) == "wasm32-unknown-emscripten"; }
+            else if (field.key == "threads") { valid = field.value == format_text("{}", threaded); }
+            else if (field.key == "archive_sha256") { valid = json.JsonText(field.value) == digest.digest; }
+            else if (field.key == "host_header_sha256") { valid = json.JsonText(field.value) == header.digest; }
+            else if (field.key == "identity") {
+                identity := json.JsonText(field.value);
+                valid = strings.ByteLength(identity) == 64;
+                for (byte in strings.Bytes(identity)) {
+                    valid = valid && ((byte >= WasmDigitZero && byte <= WasmDigitNine) || (byte >= WasmHexA && byte <= WasmHexF));
+                }
+            } else if (field.key == "link_options") {
+                options := [json.JsonQuote("-sSUPPORT_LONGJMP=wasm"), json.JsonQuote("-sSTACK_OVERFLOW_CHECK=2")];
+                if (threaded) { options.append(json.JsonQuote("-pthread")); }
+                valid = field.value == json.JsonArray(options);
+            }
+            if (!valid) { return false; }
+        }
+    }
+    return true;
+}
+// Staged compiler sources exclude non-authored files such as legacy seeds.
+// Verify both directions so extra or missing authored sources cannot pass.
+SameSources :: (source: string, staged: string) -> bool {
+    if (os.Kind(source) != os.KindDirectory || os.Kind(staged) != os.KindDirectory) { return false; }
+    original := os.List(source);
+    copied := os.List(staged);
+    if (original.error || copied.error) { return false; }
+    for (name in original.names) {
+        from := Join([source, "/", name]);
+        to := Join([staged, "/", name]);
+        if (os.IsDirectory(from)) {
+            if (!SameSources(from, to)) { return false; }
+        } else if (strings.HasSuffix(name, ".chibi") && !files.SameTree(from, to)) { return false; }
+    }
+    for (name in copied.names) {
+        from := Join([source, "/", name]);
+        to := Join([staged, "/", name]);
+        if (!os.Exists(from) || (os.IsFile(to) && !strings.HasSuffix(name, ".chibi"))) { return false; }
+    }
+    return true;
+}
+
+// Overlaying managed SDK paths must not write through a caller's symlink.
+// Check all destinations before copying the first product.
+InstallDestination :: (source: string, destination: string) -> bool {
+    kind := os.Kind(destination);
+    if (kind == os.KindLink) { return false; }
+    if (os.Kind(source) == os.KindDirectory) {
+        if (kind != os.KindNone && kind != os.KindDirectory) { return false; }
+        listed := os.List(source);
+        if (listed.error) { return false; }
+        for (name in listed.names) {
+            if (!InstallDestination(Join([source, "/", name]), Join([destination, "/", name]))) { return false; }
+        }
+    } else if (kind != os.KindNone && kind != os.KindFile) { return false; }
+    return true;
+}
+
+// The installed native compiler executes this entry after compiling it with
+// the staged core and graph bindings. Its argument names the private stage.
+Verify :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 1) { return 2; }
+    reserved := Join([arguments[0], "/.compiler-tools-probe"]);
+    published := Join([reserved, ".published"]);
+    if (os.Reserve(reserved)) { return 1; }
+    if (os.Publish(reserved, published)) { os.Remove(reserved); return 1; }
+    if (os.Remove(published)) { return 1; }
+    return 0;
+}
+
+Prepare :: (stage: string, entries: string[], llvm: string) -> bool {
+    for (item in entries) {
+        pair := strings.Partition(item, "=");
+        if (!files.CopyTree(pair.tail, Join([stage, "/", pair.head]))) {
+            os.Print(Join(["sdk: cannot copy ", pair.tail]));
+            return false;
+        }
+    }
+    compiler := Join([stage, "/bin/chibi", Suffix()]);
+    if (os.Run([compiler, "version"]) != 0) {
+        os.Print("sdk: staged native compiler failed identity verification");
+        return false;
+    }
+    asset := os.Capture([Join([stage, "/libexec/chibi/chibi-asset-compiler", Suffix()])]);
+    if (asset.status != 2 || !strings.HasPrefix(asset.stderr, "usage: chibi-asset-compiler REQUEST OUTPUT DIAGNOSTIC")) {
+        os.Print("sdk: staged native asset compiler failed verification"); return false;
+    }
+    work := Join([stage, "/.compiler-tools-check"]);
+    if (os.MakeDirectory(work)) { os.Print("sdk: cannot create native capability check directory"); return false; }
+    program := Join([work, "/verify", Suffix()]);
+    triple := "x86_64-unknown-linux-gnu";
+    if (os.Platform() == "Darwin") { triple = "aarch64-apple-darwin"; }
+    if (os.Platform() == "Windows") { triple = "x86_64-pc-windows-msvc"; }
+    command := [compiler, "--compiler", Join([stage, "/share/chibi/compiler"]),
+                "--core", Join([stage, "/share/chibi/core"]), "--source", Join([stage, "/share/chibi/tools/toolchain/SDK.chibi"]),
+                "--collection", Join(["graph=", stage, "/share/chibi/graph"]), "--entry", "Verify", "--output", program,
+                "--llvm", llvm, "--target", triple, "--level", "0"];
+    if (os.Run(command) != 0 || os.Run([program, stage]) != 0 || !files.RemoveTree(work)) {
+        os.Print("sdk: staged native compiler failed capability verification");
+        return false;
+    }
+    return !os.WriteText(Join([stage, "/share/chibi/compiler-tools.tsv"]), Join(["1\n", files.Inventory(stage, "")]));
+}
+
+CompilerTools :: () -> int {
+    arguments := os.Arguments();
+    build_dir := Option(arguments, "--build");
+    output := Option(arguments, "--output");
+    third_party := Option(arguments, "--third-party");
+    llvm := Option(arguments, "--llvm");
+    if (llvm == "") { llvm = os.Getenv("CHIBI_LLVM_BIN"); }
+    if (!files.IsAbsolute(build_dir) || !files.IsAbsolute(output) ||
+        ((os.Platform() == "Darwin" || os.Platform() == "Linux") && !files.IsAbsolute(third_party)) ||
+        !os.IsDirectory(llvm) || strings.HasSuffix(output, "/") ||
+        strings.HasSuffix(output, "/.") || strings.HasSuffix(output, "/..")) {
+        os.Print("sdk: --build, --output and --third-party must be absolute paths; --llvm must name LLVM tools; output must name a fresh prefix");
+        return 2;
+    }
+    if (os.Kind(output) != os.KindNone) { os.Print("sdk: output already exists"); return 2; }
+    root := Option(arguments, "--source-root");
+    if (root == "") { root = os.Root(); }
+    if (!files.IsAbsolute(root) || !os.IsDirectory(root)) {
+        os.Print("sdk: --source-root must name an absolute source directory"); return 2;
+    }
+    output = files.CanonicalPath(output);
+    if (output == "") { os.Print("sdk: output has an invalid directory ancestor"); return 2; }
+    stage := files.CanonicalPath(Join([output, ".chibi-stage"]));
+    if (stage == "") { os.Print("sdk: staging has an invalid directory ancestor"); return 2; }
+    with_wasm := arguments.contains("--with-wasm");
+    if (with_wasm && !WasmInputs(build_dir)) {
+        os.Print("sdk: optional Wasm compiler archives or header are missing or stale; rebuild chibi-asset-compiler-wasm"); return 1;
+    }
+    entries := Entries(root, build_dir, third_party, with_wasm);
+    for (item in entries) {
+        source := strings.Partition(item, "=").tail;
+        if (os.IsDirectory(source) && (files.Inside(output, source) || files.Inside(stage, source))) {
+            os.Print("sdk: output or staging lies inside a distribution input");
+            return 2;
+        }
+    }
+    if (!SameSources(Join([root, "/tools/compiler"]), Join([build_dir, "/share/chibi/compiler"])) ||
+        !files.SameTree(Join([root, "/packages/core"]), Join([build_dir, "/share/chibi/core"]))) {
+        os.Print("sdk: graph compiler/core resources are missing or stale; rebuild the native products");
+        return 1;
+    }
+    for (item in entries) {
+        source := strings.Partition(item, "=").tail;
+        kind := os.Kind(source);
+        if (kind != os.KindFile && kind != os.KindDirectory) {
+            os.Print(Join(["sdk: missing distribution input ", source])); return 1;
+        }
+    }
+    if (os.MakeDirectory(files.Parent(output))) { os.Print("sdk: cannot create output parent"); return 1; }
+    if (os.Reserve(stage)) {
+        os.Print("sdk: cannot reserve staging directory; existing staging is preserved"); return 1;
+    }
+    if (!Prepare(stage, entries, llvm) || os.Publish(stage, output)) {
+        if (!files.RemoveTree(stage)) { os.Print(Join(["sdk: incomplete staging directory retained at ", stage])); }
+        os.Print("sdk: compiler-tools publication failed"); return 1;
+    }
+    os.Print(Join(["sdk: installed compiler tools at ", output]));
+    return 0;
+}
+
+// The normal install overlays the same native products in the requested user
+// prefix. CompilerTools is the fresh-prefix distribution/publication entry.
+Install :: () -> int {
+    arguments := os.Arguments();
+    build_dir := Option(arguments, "--build");
+    prefix := Option(arguments, "--prefix");
+    if (!files.IsAbsolute(build_dir) || !files.IsAbsolute(prefix)) {
+        os.Print("sdk: --build and --prefix must be absolute paths"); return 2;
+    }
+    third_party := "";
+    if (os.Platform() == "Darwin" || os.Platform() == "Linux") { third_party = engine.ThirdParty(os.Root(), "", ""); }
+    with_wasm := arguments.contains("--with-wasm");
+    if (with_wasm && !WasmInputs(build_dir)) {
+        os.Print("sdk: optional Wasm compiler archives or header are missing or stale; rebuild chibi-asset-compiler-wasm"); return 1;
+    }
+    entries := Entries(os.Root(), build_dir, third_party, with_wasm);
+    canonical := files.CanonicalPath(prefix);
+    if (canonical == "") { os.Print("sdk: prefix has an invalid directory ancestor"); return 2; }
+    prefix = canonical;
+    for (item in entries) {
+        source := strings.Partition(item, "=").tail;
+        if (os.IsDirectory(source) && files.Inside(prefix, source)) {
+            os.Print("sdk: prefix lies inside an install input"); return 2;
+        }
+    }
+    for (item in entries) {
+        pair := strings.Partition(item, "=");
+        source := pair.tail;
+        destination := Join([prefix, "/", pair.head]);
+        if (os.Kind(source) == os.KindNone) {
+            os.Print(Join(["sdk: missing install input ", source])); return 1;
+        }
+        ancestor := files.Parent(destination);
+        while (ancestor != prefix && ancestor != "") {
+            if (os.Kind(ancestor) == os.KindLink) {
+                os.Print(Join(["sdk: install destination is a symlink: ", ancestor])); return 2;
+            }
+            ancestor = files.Parent(ancestor);
+        }
+        if (!InstallDestination(source, destination)) {
+            os.Print(Join(["sdk: invalid install destination ", destination])); return 2;
+        }
+    }
+    for (item in entries) {
+        pair := strings.Partition(item, "=");
+        copied := true;
+        if (pair.head == "share/chibi/compiler") {
+            copied = engine.NativeSources(pair.tail, Join([prefix, "/", pair.head]));
+        } else { copied = files.CopyTree(pair.tail, Join([prefix, "/", pair.head])); }
+        if (!copied) {
+            os.Print(Join(["sdk: cannot install ", pair.head])); return 1;
+        }
+    }
+    for (obsolete in [Join(["libexec/chibi/chibi-build-host", Suffix()]), Join(["libexec/chibi/chibi-compiler-host", Suffix()]),
+                      "share/chibi/tools/native_aot", "share/chibi/apps/chibi"]) {
+        path := Join([prefix, "/", obsolete]);
+        if (os.Exists(path) && !files.RemoveTree(path)) {
+            os.Print(Join(["sdk: cannot remove retired SDK tool ", path])); return 1;
+        }
+    }
+    os.Print(Join(["sdk: installed at ", prefix]));
+    return 0;
+}

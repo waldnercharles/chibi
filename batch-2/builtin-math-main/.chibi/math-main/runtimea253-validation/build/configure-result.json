@@ -1,0 +1,25 @@
+{
+  "command": [
+    "cmake",
+    "-S",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/test/language",
+    "-B",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build",
+    "-G",
+    "Ninja",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+    "-DCMAKE_C_COMPILER_LAUNCHER=",
+    "-DCMAKE_C_FLAGS=",
+    "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
+    "-DCHIBI_SDK_BUILD_COMPILER=ON",
+    "-DCHIBI_SDK_BUILD_NATIVE=OFF",
+    "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+    "-DCHIBI_ENABLE_SANITIZERS=OFF",
+    "-DCHIBI_LANGUAGE_TEST_ASSET_COMPILER_HOST=OFF",
+    "-DCHIBI_THIRD_PARTY_CACHE=/Users/cwaldner/Personal/chibi/chibi/.git/chibi/third_party"
+  ],
+  "exit_code": 0,
+  "seconds": 3.4935817080549896,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation/build/configure.log"
+}

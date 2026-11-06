@@ -1,0 +1,19 @@
+Expressions :: behavior {
+    total := 0.0
+
+    on Tick :: (dt: float s) {
+        // Multiplication binds more tightly than addition.
+        weighted := 2 + 3 * 4
+        grouped := (2 + 3) * 4
+        offset := -2
+        combined := weighted +
+                    grouped / 2 +
+                    offset * dt
+
+        total = clamp(
+            combined,
+            0,
+            100
+        )
+    }
+}

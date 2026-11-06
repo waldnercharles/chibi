@@ -1,0 +1,1470 @@
+package source_format
+
+// Generated from options.json by tools/docs/playground/generate-options.mjs.
+import strings "core:strings"
+
+pub MaxBytes: int : 8388608;
+pub Keep: int : 0;
+pub Omit: int : 1;
+pub Always: int : 2;
+pub Collapse: int : 1;
+pub Expand: int : 2;
+pub Attach: int : 1;
+pub NextLine: int : 2;
+pub OmitSingle: int : 1;
+
+pub Options :: struct {
+    profile: int;
+    preferred_width: int;
+    magic_trailing_comma: bool;
+    use_tabs: bool;
+    indent_width: int;
+    continuation_indent: int;
+    align_after_open_bracket: bool;
+    align_operands: bool;
+    indent_case_labels: bool;
+    indent_foreign_blocks: bool;
+    indent_when_blocks: bool;
+    tab_width: int;
+    brace_placement: int;
+    branch_braces: int;
+    empty_blocks: int;
+    keep_one_line_blocks: bool;
+    following_keyword: int;
+    unbraced_body_placement: int;
+    function_braces: int;
+    control_braces: int;
+    type_braces: int;
+    foreign_braces: int;
+    when_braces: int;
+    empty_function_blocks: int;
+    empty_control_blocks: int;
+    empty_type_blocks: int;
+    short_functions: int;
+    short_branches: int;
+    short_loops: int;
+    short_case_arms: int;
+    max_inline_statements: int;
+    function_body: int;
+    function_keyword: int;
+    return_arrow: int;
+    binding_types: int;
+    local_types: int;
+    constant_types: int;
+    parameter_types: int;
+    return_types: int;
+    member_types: int;
+    public_types: int;
+    type_spelling: int;
+    analysis_target: int;
+    semantic_targets: int;
+    statement_paragraphs: int;
+    paragraph_density: int;
+    max_blank_lines: int;
+    blank_lines_between_declarations: int;
+    keep_blank_lines_at_block_edges: bool;
+    blank_lines_before_final_return: int;
+    blank_lines_after_control: int;
+    blank_lines_between_members: int;
+    blank_lines_between_import_groups: int;
+    block_padding: int;
+    function_block_padding: int;
+    type_block_padding: int;
+    control_block_padding: int;
+    foreign_block_padding: int;
+    when_block_padding: int;
+    blank_lines_before_comments: int;
+    list_layout: int;
+    arguments_layout: int;
+    parameters_layout: int;
+    arrays_layout: int;
+    records_layout: int;
+    bindings_layout: int;
+    arguments_width: int;
+    parameters_width: int;
+    arrays_width: int;
+    records_width: int;
+    max_items_per_line: int;
+    list_indent: int;
+    closing_delimiter: int;
+    binary_operator_position: int;
+    binary_layout: int;
+    chain_layout: int;
+    chain_indent: bool;
+    attribute_layout: int;
+    signature_break_priority: int;
+    control_parens: int;
+    if_parens: int;
+    while_parens: int;
+    for_parens: int;
+    switch_parens: int;
+    expression_parens: int;
+    flatten_parens: bool;
+    when_parens: int;
+    readability_mixed_operators: bool;
+    space_in_braces: bool;
+    space_in_parens: bool;
+    space_in_brackets: bool;
+    spaces_before_trailing_comment: int;
+    operator_spacing: int;
+    space_multiplicative: int;
+    space_additive: int;
+    space_comparison: int;
+    space_logical: int;
+    space_assignment: int;
+    space_bitwise: int;
+    space_range: int;
+    space_before_control_parens: int;
+    space_before_call_parens: int;
+    space_before_declaration_parens: int;
+    space_inside_call_parens: int;
+    space_inside_parameter_parens: int;
+    space_inside_grouping_parens: int;
+    space_inside_control_parens: int;
+    space_inside_empty_parens: int;
+    space_inside_array_brackets: int;
+    space_inside_index_brackets: int;
+    space_inside_type_brackets: int;
+    space_inside_empty_brackets: int;
+    space_inside_record_braces: int;
+    space_inside_empty_record_braces: int;
+    space_before_type_colon: int;
+    space_after_type_colon: int;
+    space_before_field_colon: int;
+    space_after_field_colon: int;
+    space_before_named_argument_colon: int;
+    space_after_named_argument_colon: int;
+    space_before_case_colon: int;
+    space_after_case_colon: int;
+    space_around_arrows: int;
+    space_around_declaration_separator: int;
+    space_after_unary: int;
+    space_before_postfix: int;
+    space_before_comma: int;
+    space_after_comma: int;
+    align_assignments: bool;
+    align_field_types: bool;
+    align_constants: bool;
+    align_struct_literal_values: bool;
+    align_trailing_comments: bool;
+    assignment_alignment: int;
+    field_type_alignment: int;
+    constant_alignment: int;
+    record_value_alignment: int;
+    comment_alignment: int;
+    alignment_across_blank_lines: bool;
+    alignment_across_comments: bool;
+    alignment_max_padding: int;
+    alignment_max_column: int;
+    alignment_compound: int;
+    data_alignment: int;
+    declaration_type_alignment: int;
+    data_column_alignment: u64;
+    comment_reflow: int;
+    comment_width: int;
+    reflow_block_comments: bool;
+    numeric_separators: int;
+    decimal_group: int;
+    hex_group: int;
+    fraction_group: int;
+    numeric_min_digits: int;
+    hex_case: int;
+    exponent_case: int;
+    numeric_base: int;
+    exponent_group: int;
+    string_escapes: int;
+    char_escapes: int;
+    imports: int;
+    semicolons: int;
+    crlf: bool;
+    final_newline: bool;
+    trailing_commas: int;
+    trailing_commas_arguments: int;
+    trailing_commas_parameters: int;
+    trailing_commas_arrays: int;
+    trailing_commas_records: int;
+    trailing_commas_tuples: int;
+    trailing_commas_bindings: int;
+    start_line: int;
+    end_line: int;
+    range_scope: int;
+}
+
+pub Defaults :: () -> Options {
+    return {
+        profile: 0,
+        preferred_width: 0,
+        magic_trailing_comma: true,
+        use_tabs: false,
+        indent_width: 4,
+        continuation_indent: 0,
+        align_after_open_bracket: true,
+        align_operands: true,
+        indent_case_labels: true,
+        indent_foreign_blocks: false,
+        indent_when_blocks: false,
+        tab_width: 0,
+        brace_placement: 0,
+        branch_braces: 0,
+        empty_blocks: 0,
+        keep_one_line_blocks: false,
+        following_keyword: 0,
+        unbraced_body_placement: 0,
+        function_braces: 0,
+        control_braces: 0,
+        type_braces: 0,
+        foreign_braces: 0,
+        when_braces: 0,
+        empty_function_blocks: 0,
+        empty_control_blocks: 0,
+        empty_type_blocks: 0,
+        short_functions: 0,
+        short_branches: 0,
+        short_loops: 0,
+        short_case_arms: 0,
+        max_inline_statements: 1,
+        function_body: 0,
+        function_keyword: 0,
+        return_arrow: 0,
+        binding_types: 0,
+        local_types: -1,
+        constant_types: -1,
+        parameter_types: -1,
+        return_types: -1,
+        member_types: -1,
+        public_types: -1,
+        type_spelling: 0,
+        analysis_target: 0,
+        semantic_targets: 0,
+        statement_paragraphs: 0,
+        paragraph_density: 1,
+        max_blank_lines: 1,
+        blank_lines_between_declarations: 0,
+        keep_blank_lines_at_block_edges: true,
+        blank_lines_before_final_return: 0,
+        blank_lines_after_control: 0,
+        blank_lines_between_members: 0,
+        blank_lines_between_import_groups: 0,
+        block_padding: 0,
+        function_block_padding: 0,
+        type_block_padding: 0,
+        control_block_padding: 0,
+        foreign_block_padding: 0,
+        when_block_padding: 0,
+        blank_lines_before_comments: -1,
+        list_layout: 0,
+        arguments_layout: 0,
+        parameters_layout: 0,
+        arrays_layout: 0,
+        records_layout: 0,
+        bindings_layout: 0,
+        arguments_width: 0,
+        parameters_width: 0,
+        arrays_width: 0,
+        records_width: 0,
+        max_items_per_line: 0,
+        list_indent: 0,
+        closing_delimiter: 0,
+        binary_operator_position: 0,
+        binary_layout: 0,
+        chain_layout: 0,
+        chain_indent: true,
+        attribute_layout: 0,
+        signature_break_priority: 0,
+        control_parens: 0,
+        if_parens: -1,
+        while_parens: -1,
+        for_parens: -1,
+        switch_parens: -1,
+        expression_parens: 0,
+        flatten_parens: false,
+        when_parens: -1,
+        readability_mixed_operators: false,
+        space_in_braces: false,
+        space_in_parens: false,
+        space_in_brackets: false,
+        spaces_before_trailing_comment: 1,
+        operator_spacing: 0,
+        space_multiplicative: 0,
+        space_additive: 0,
+        space_comparison: 0,
+        space_logical: 0,
+        space_assignment: 0,
+        space_bitwise: 0,
+        space_range: 0,
+        space_before_control_parens: 0,
+        space_before_call_parens: 0,
+        space_before_declaration_parens: 0,
+        space_inside_call_parens: 0,
+        space_inside_parameter_parens: 0,
+        space_inside_grouping_parens: 0,
+        space_inside_control_parens: 0,
+        space_inside_empty_parens: 0,
+        space_inside_array_brackets: 0,
+        space_inside_index_brackets: 0,
+        space_inside_type_brackets: 0,
+        space_inside_empty_brackets: 0,
+        space_inside_record_braces: 0,
+        space_inside_empty_record_braces: 0,
+        space_before_type_colon: 0,
+        space_after_type_colon: 0,
+        space_before_field_colon: 0,
+        space_after_field_colon: 0,
+        space_before_named_argument_colon: 0,
+        space_after_named_argument_colon: 0,
+        space_before_case_colon: 0,
+        space_after_case_colon: 0,
+        space_around_arrows: 0,
+        space_around_declaration_separator: 0,
+        space_after_unary: 0,
+        space_before_postfix: 0,
+        space_before_comma: 0,
+        space_after_comma: 0,
+        align_assignments: false,
+        align_field_types: false,
+        align_constants: false,
+        align_struct_literal_values: false,
+        align_trailing_comments: false,
+        assignment_alignment: 0,
+        field_type_alignment: 0,
+        constant_alignment: 0,
+        record_value_alignment: 0,
+        comment_alignment: 0,
+        alignment_across_blank_lines: false,
+        alignment_across_comments: false,
+        alignment_max_padding: 0,
+        alignment_max_column: 0,
+        alignment_compound: 0,
+        data_alignment: 0,
+        declaration_type_alignment: 0,
+        data_column_alignment: 0,
+        comment_reflow: 0,
+        comment_width: 80,
+        reflow_block_comments: false,
+        numeric_separators: 0,
+        decimal_group: 3,
+        hex_group: 4,
+        fraction_group: 0,
+        numeric_min_digits: 5,
+        hex_case: 0,
+        exponent_case: 0,
+        numeric_base: 0,
+        exponent_group: 0,
+        string_escapes: 0,
+        char_escapes: 0,
+        imports: 0,
+        semicolons: 0,
+        crlf: false,
+        final_newline: true,
+        trailing_commas: 0,
+        trailing_commas_arguments: -1,
+        trailing_commas_parameters: -1,
+        trailing_commas_arrays: -1,
+        trailing_commas_records: -1,
+        trailing_commas_tuples: -1,
+        trailing_commas_bindings: -1,
+        start_line: 0,
+        end_line: 0,
+        range_scope: 0,
+    };
+}
+
+pub Profile :: (profile: int) -> Options {
+    options := Defaults();
+    if (profile == 0) {
+        options.profile = 0;
+    }
+    if (profile == 1) {
+        options.indent_width = 2;
+        options.preferred_width = 100;
+        options.short_functions = 3;
+        options.short_branches = 3;
+        options.short_loops = 3;
+        options.function_body = 2;
+        options.function_keyword = 1;
+        options.return_arrow = 1;
+        options.binding_types = 1;
+        options.operator_spacing = 1;
+        options.statement_paragraphs = 2;
+        options.paragraph_density = 0;
+        options.trailing_commas = 1;
+        options.profile = 1;
+    }
+    if (profile == 2) {
+        options.preferred_width = 80;
+        options.list_layout = 2;
+        options.short_functions = 1;
+        options.short_branches = 1;
+        options.short_loops = 1;
+        options.brace_placement = 2;
+        options.branch_braces = 2;
+        options.function_body = 1;
+        options.function_keyword = 2;
+        options.return_arrow = 2;
+        options.statement_paragraphs = 2;
+        options.paragraph_density = 2;
+        options.blank_lines_before_final_return = 1;
+        options.blank_lines_after_control = 1;
+        options.blank_lines_between_members = 1;
+        options.profile = 2;
+    }
+    if (profile == 3) {
+        options.preferred_width = 100;
+        options.list_layout = 3;
+        options.assignment_alignment = 3;
+        options.field_type_alignment = 3;
+        options.constant_alignment = 3;
+        options.record_value_alignment = 3;
+        options.comment_alignment = 3;
+        options.data_alignment = 3;
+        options.alignment_max_padding = 24;
+        options.alignment_max_column = 100;
+        options.statement_paragraphs = 2;
+        options.paragraph_density = 1;
+        options.profile = 3;
+    }
+    return options;
+}
+
+pub Validate :: (options: Options) -> string {
+    if (options.profile != 0 && options.profile != 1 && options.profile != 2 && options.profile != 3) {
+        return "Invalid formatter options: profile must be current_v1, compact_v1, expanded_v1 or tabular_v1";
+    }
+    if (options.preferred_width != 0 && (options.preferred_width < 20 || options.preferred_width > 400)) {
+        return "Invalid formatter options: preferred_width must be 0 or 20..400";
+    }
+    if (options.indent_width < 1 || options.indent_width > 16) {
+        return "Invalid formatter options: indent_width must be 1..16";
+    }
+    if (options.continuation_indent < 0 || options.continuation_indent > 16) {
+        return "Invalid formatter options: continuation_indent must be 0..16";
+    }
+    if (options.tab_width < 0 || options.tab_width > 16) {
+        return "Invalid formatter options: tab_width must be 0..16";
+    }
+    if (options.brace_placement != 0 && options.brace_placement != 1 && options.brace_placement != 2) {
+        return "Invalid formatter options: brace_placement must be preserve, attach or next_line";
+    }
+    if (options.branch_braces != 0 && options.branch_braces != 1 && options.branch_braces != 2) {
+        return "Invalid formatter options: branch_braces must be preserve, always or omit_single";
+    }
+    if (options.empty_blocks != 0 && options.empty_blocks != 1 && options.empty_blocks != 2) {
+        return "Invalid formatter options: empty_blocks must be keep, collapse or expand";
+    }
+    if (options.following_keyword != 0 && options.following_keyword != 1 && options.following_keyword != 2) {
+        return "Invalid formatter options: following_keyword must be same_line, next_line or preserve";
+    }
+    if (options.unbraced_body_placement != 0 && options.unbraced_body_placement != 1 && options.unbraced_body_placement != 2 && options.unbraced_body_placement != 3) {
+        return "Invalid formatter options: unbraced_body_placement must be inherit, preserve, same_line or next_line";
+    }
+    if (options.function_braces != 0 && options.function_braces != 1 && options.function_braces != 2 && options.function_braces != 3) {
+        return "Invalid formatter options: function_braces must be inherit, preserve, attach or next_line";
+    }
+    if (options.control_braces != 0 && options.control_braces != 1 && options.control_braces != 2 && options.control_braces != 3) {
+        return "Invalid formatter options: control_braces must be inherit, preserve, attach or next_line";
+    }
+    if (options.type_braces != 0 && options.type_braces != 1 && options.type_braces != 2 && options.type_braces != 3) {
+        return "Invalid formatter options: type_braces must be inherit, preserve, attach or next_line";
+    }
+    if (options.foreign_braces != 0 && options.foreign_braces != 1 && options.foreign_braces != 2 && options.foreign_braces != 3) {
+        return "Invalid formatter options: foreign_braces must be inherit, preserve, attach or next_line";
+    }
+    if (options.when_braces != 0 && options.when_braces != 1 && options.when_braces != 2 && options.when_braces != 3) {
+        return "Invalid formatter options: when_braces must be inherit, preserve, attach or next_line";
+    }
+    if (options.empty_function_blocks != 0 && options.empty_function_blocks != 1 && options.empty_function_blocks != 2 && options.empty_function_blocks != 3) {
+        return "Invalid formatter options: empty_function_blocks must be inherit, preserve, collapse or expand";
+    }
+    if (options.empty_control_blocks != 0 && options.empty_control_blocks != 1 && options.empty_control_blocks != 2 && options.empty_control_blocks != 3) {
+        return "Invalid formatter options: empty_control_blocks must be inherit, preserve, collapse or expand";
+    }
+    if (options.empty_type_blocks != 0 && options.empty_type_blocks != 1 && options.empty_type_blocks != 2 && options.empty_type_blocks != 3) {
+        return "Invalid formatter options: empty_type_blocks must be inherit, preserve, collapse or expand";
+    }
+    if (options.short_functions != 0 && options.short_functions != 1 && options.short_functions != 2 && options.short_functions != 3) {
+        return "Invalid formatter options: short_functions must be inherit, expand, preserve or inline_if_fits";
+    }
+    if (options.short_branches != 0 && options.short_branches != 1 && options.short_branches != 2 && options.short_branches != 3) {
+        return "Invalid formatter options: short_branches must be inherit, expand, preserve or inline_if_fits";
+    }
+    if (options.short_loops != 0 && options.short_loops != 1 && options.short_loops != 2 && options.short_loops != 3) {
+        return "Invalid formatter options: short_loops must be inherit, expand, preserve or inline_if_fits";
+    }
+    if (options.short_case_arms != 0 && options.short_case_arms != 1 && options.short_case_arms != 2 && options.short_case_arms != 3) {
+        return "Invalid formatter options: short_case_arms must be inherit, expand, preserve or inline_if_fits";
+    }
+    if (options.max_inline_statements < 0 || options.max_inline_statements > 16) {
+        return "Invalid formatter options: max_inline_statements must be 0..16";
+    }
+    if (options.function_body != 0 && options.function_body != 1 && options.function_body != 2) {
+        return "Invalid formatter options: function_body must be preserve, block or expression";
+    }
+    if (options.function_keyword != 0 && options.function_keyword != 1 && options.function_keyword != 2) {
+        return "Invalid formatter options: function_keyword must be preserve, omit or always";
+    }
+    if (options.return_arrow != 0 && options.return_arrow != 1 && options.return_arrow != 2) {
+        return "Invalid formatter options: return_arrow must be preserve, omit or always";
+    }
+    if (options.binding_types != 0 && options.binding_types != 1 && options.binding_types != 2 && options.binding_types != 3) {
+        return "Invalid formatter options: binding_types must be preserve, omit_redundant, explicit or evident";
+    }
+    if (options.local_types != -1 && options.local_types != 0 && options.local_types != 1 && options.local_types != 2 && options.local_types != 3) {
+        return "Invalid formatter options: local_types must be inherit, preserve, omit_redundant, explicit or evident";
+    }
+    if (options.constant_types != -1 && options.constant_types != 0 && options.constant_types != 1 && options.constant_types != 2 && options.constant_types != 3) {
+        return "Invalid formatter options: constant_types must be inherit, preserve, omit_redundant, explicit or evident";
+    }
+    if (options.parameter_types != -1 && options.parameter_types != 0 && options.parameter_types != 1 && options.parameter_types != 2 && options.parameter_types != 3) {
+        return "Invalid formatter options: parameter_types must be inherit, preserve, omit_redundant, explicit or evident";
+    }
+    if (options.return_types != -1 && options.return_types != 0 && options.return_types != 1 && options.return_types != 2 && options.return_types != 3) {
+        return "Invalid formatter options: return_types must be inherit, preserve, omit_redundant, explicit or evident";
+    }
+    if (options.member_types != -1 && options.member_types != 0 && options.member_types != 1 && options.member_types != 2 && options.member_types != 3) {
+        return "Invalid formatter options: member_types must be inherit, preserve, omit_redundant, explicit or evident";
+    }
+    if (options.public_types != -1 && options.public_types != 0 && options.public_types != 1 && options.public_types != 2 && options.public_types != 3) {
+        return "Invalid formatter options: public_types must be inherit, preserve, omit_redundant, explicit or evident";
+    }
+    if (options.type_spelling != 0 && options.type_spelling != 1 && options.type_spelling != 2) {
+        return "Invalid formatter options: type_spelling must be preserve_aliases, shortest or qualified";
+    }
+    if (options.analysis_target != 0 && options.analysis_target != 1 && options.analysis_target != 2 && options.analysis_target != 3) {
+        return "Invalid formatter options: analysis_target must be linux64, darwin64, windows64 or web32";
+    }
+    if (options.semantic_targets != 0 && options.semantic_targets != 1) {
+        return "Invalid formatter options: semantic_targets must be all or selected";
+    }
+    if (options.statement_paragraphs != 0 && options.statement_paragraphs != 1 && options.statement_paragraphs != 2) {
+        return "Invalid formatter options: statement_paragraphs must be preserve, syntax or logical";
+    }
+    if (options.paragraph_density != 0 && options.paragraph_density != 1 && options.paragraph_density != 2) {
+        return "Invalid formatter options: paragraph_density must be compact, balanced or spacious";
+    }
+    if (options.max_blank_lines < 0 || options.max_blank_lines > 3) {
+        return "Invalid formatter options: max_blank_lines must be 0..3";
+    }
+    if (options.blank_lines_between_declarations < 0 || options.blank_lines_between_declarations > 2) {
+        return "Invalid formatter options: blank_lines_between_declarations must be 0..2";
+    }
+    if (options.blank_lines_before_final_return < 0 || options.blank_lines_before_final_return > 3) {
+        return "Invalid formatter options: blank_lines_before_final_return must be 0..3";
+    }
+    if (options.blank_lines_after_control < 0 || options.blank_lines_after_control > 3) {
+        return "Invalid formatter options: blank_lines_after_control must be 0..3";
+    }
+    if (options.blank_lines_between_members < 0 || options.blank_lines_between_members > 3) {
+        return "Invalid formatter options: blank_lines_between_members must be 0..3";
+    }
+    if (options.blank_lines_between_import_groups < 0 || options.blank_lines_between_import_groups > 3) {
+        return "Invalid formatter options: blank_lines_between_import_groups must be 0..3";
+    }
+    if (options.block_padding != 0 && options.block_padding != 1 && options.block_padding != 2) {
+        return "Invalid formatter options: block_padding must be inherit, remove or blank";
+    }
+    if (options.function_block_padding != 0 && options.function_block_padding != 1 && options.function_block_padding != 2) {
+        return "Invalid formatter options: function_block_padding must be inherit, remove or blank";
+    }
+    if (options.type_block_padding != 0 && options.type_block_padding != 1 && options.type_block_padding != 2) {
+        return "Invalid formatter options: type_block_padding must be inherit, remove or blank";
+    }
+    if (options.control_block_padding != 0 && options.control_block_padding != 1 && options.control_block_padding != 2) {
+        return "Invalid formatter options: control_block_padding must be inherit, remove or blank";
+    }
+    if (options.foreign_block_padding != 0 && options.foreign_block_padding != 1 && options.foreign_block_padding != 2) {
+        return "Invalid formatter options: foreign_block_padding must be inherit, remove or blank";
+    }
+    if (options.when_block_padding != 0 && options.when_block_padding != 1 && options.when_block_padding != 2) {
+        return "Invalid formatter options: when_block_padding must be inherit, remove or blank";
+    }
+    if (options.blank_lines_before_comments < -1 || options.blank_lines_before_comments > 3) {
+        return "Invalid formatter options: blank_lines_before_comments must be -1..3";
+    }
+    if (options.list_layout != 0 && options.list_layout != 1 && options.list_layout != 2 && options.list_layout != 3) {
+        return "Invalid formatter options: list_layout must be preserve, fit, vertical or one_per_line_when_wrapped";
+    }
+    if (options.arguments_layout != 0 && options.arguments_layout != 1 && options.arguments_layout != 2 && options.arguments_layout != 3 && options.arguments_layout != 4) {
+        return "Invalid formatter options: arguments_layout must be inherit, preserve, fit, vertical or one_per_line_when_wrapped";
+    }
+    if (options.parameters_layout != 0 && options.parameters_layout != 1 && options.parameters_layout != 2 && options.parameters_layout != 3 && options.parameters_layout != 4) {
+        return "Invalid formatter options: parameters_layout must be inherit, preserve, fit, vertical or one_per_line_when_wrapped";
+    }
+    if (options.arrays_layout != 0 && options.arrays_layout != 1 && options.arrays_layout != 2 && options.arrays_layout != 3 && options.arrays_layout != 4) {
+        return "Invalid formatter options: arrays_layout must be inherit, preserve, fit, vertical or one_per_line_when_wrapped";
+    }
+    if (options.records_layout != 0 && options.records_layout != 1 && options.records_layout != 2 && options.records_layout != 3 && options.records_layout != 4) {
+        return "Invalid formatter options: records_layout must be inherit, preserve, fit, vertical or one_per_line_when_wrapped";
+    }
+    if (options.bindings_layout != 0 && options.bindings_layout != 1 && options.bindings_layout != 2 && options.bindings_layout != 3 && options.bindings_layout != 4) {
+        return "Invalid formatter options: bindings_layout must be inherit, preserve, fit, vertical or one_per_line_when_wrapped";
+    }
+    if (options.arguments_width < 0 || options.arguments_width > 400) {
+        return "Invalid formatter options: arguments_width must be 0..400";
+    }
+    if (options.parameters_width < 0 || options.parameters_width > 400) {
+        return "Invalid formatter options: parameters_width must be 0..400";
+    }
+    if (options.arrays_width < 0 || options.arrays_width > 400) {
+        return "Invalid formatter options: arrays_width must be 0..400";
+    }
+    if (options.records_width < 0 || options.records_width > 400) {
+        return "Invalid formatter options: records_width must be 0..400";
+    }
+    if (options.max_items_per_line < 0 || options.max_items_per_line > 100) {
+        return "Invalid formatter options: max_items_per_line must be 0..100";
+    }
+    if (options.list_indent != 0 && options.list_indent != 1 && options.list_indent != 2 && options.list_indent != 3) {
+        return "Invalid formatter options: list_indent must be inherit, block, align_first or hanging";
+    }
+    if (options.closing_delimiter != 0 && options.closing_delimiter != 1 && options.closing_delimiter != 2) {
+        return "Invalid formatter options: closing_delimiter must be own_line, last_item_line or preserve";
+    }
+    if (options.binary_operator_position != 0 && options.binary_operator_position != 1 && options.binary_operator_position != 2) {
+        return "Invalid formatter options: binary_operator_position must be preserve, leading or trailing";
+    }
+    if (options.binary_layout != 0 && options.binary_layout != 1 && options.binary_layout != 2) {
+        return "Invalid formatter options: binary_layout must be preserve, one_per_line or precedence_groups";
+    }
+    if (options.chain_layout != 0 && options.chain_layout != 1 && options.chain_layout != 2) {
+        return "Invalid formatter options: chain_layout must be preserve, fit or vertical";
+    }
+    if (options.attribute_layout != 0 && options.attribute_layout != 1 && options.attribute_layout != 2) {
+        return "Invalid formatter options: attribute_layout must be preserve, inline or one_per_line";
+    }
+    if (options.signature_break_priority != 0 && options.signature_break_priority != 1 && options.signature_break_priority != 2) {
+        return "Invalid formatter options: signature_break_priority must be preserve, parameters_first or return_first";
+    }
+    if (options.control_parens != 0 && options.control_parens != 1 && options.control_parens != 2) {
+        return "Invalid formatter options: control_parens must be preserve, omit or always";
+    }
+    if (options.if_parens != -1 && options.if_parens != 0 && options.if_parens != 1 && options.if_parens != 2) {
+        return "Invalid formatter options: if_parens must be inherit, preserve, omit or always";
+    }
+    if (options.while_parens != -1 && options.while_parens != 0 && options.while_parens != 1 && options.while_parens != 2) {
+        return "Invalid formatter options: while_parens must be inherit, preserve, omit or always";
+    }
+    if (options.for_parens != -1 && options.for_parens != 0 && options.for_parens != 1 && options.for_parens != 2) {
+        return "Invalid formatter options: for_parens must be inherit, preserve, omit or always";
+    }
+    if (options.switch_parens != -1 && options.switch_parens != 0 && options.switch_parens != 1 && options.switch_parens != 2) {
+        return "Invalid formatter options: switch_parens must be inherit, preserve, omit or always";
+    }
+    if (options.expression_parens != 0 && options.expression_parens != 1 && options.expression_parens != 2) {
+        return "Invalid formatter options: expression_parens must be preserve, omit_redundant or readability";
+    }
+    if (options.when_parens != -1 && options.when_parens != 0 && options.when_parens != 1 && options.when_parens != 2) {
+        return "Invalid formatter options: when_parens must be inherit, preserve, omit or always";
+    }
+    if (options.spaces_before_trailing_comment < 1 || options.spaces_before_trailing_comment > 4) {
+        return "Invalid formatter options: spaces_before_trailing_comment must be 1..4";
+    }
+    if (options.operator_spacing != 0 && options.operator_spacing != 1 && options.operator_spacing != 2) {
+        return "Invalid formatter options: operator_spacing must be uniform, precedence or preserve";
+    }
+    if (options.space_multiplicative != 0 && options.space_multiplicative != 1 && options.space_multiplicative != 2 && options.space_multiplicative != 3 && options.space_multiplicative != 4) {
+        return "Invalid formatter options: space_multiplicative must be inherit, none, one, two or preserve";
+    }
+    if (options.space_additive != 0 && options.space_additive != 1 && options.space_additive != 2 && options.space_additive != 3 && options.space_additive != 4) {
+        return "Invalid formatter options: space_additive must be inherit, none, one, two or preserve";
+    }
+    if (options.space_comparison != 0 && options.space_comparison != 1 && options.space_comparison != 2 && options.space_comparison != 3 && options.space_comparison != 4) {
+        return "Invalid formatter options: space_comparison must be inherit, none, one, two or preserve";
+    }
+    if (options.space_logical != 0 && options.space_logical != 1 && options.space_logical != 2 && options.space_logical != 3 && options.space_logical != 4) {
+        return "Invalid formatter options: space_logical must be inherit, none, one, two or preserve";
+    }
+    if (options.space_assignment != 0 && options.space_assignment != 1 && options.space_assignment != 2 && options.space_assignment != 3 && options.space_assignment != 4) {
+        return "Invalid formatter options: space_assignment must be inherit, none, one, two or preserve";
+    }
+    if (options.space_bitwise != 0 && options.space_bitwise != 1 && options.space_bitwise != 2 && options.space_bitwise != 3 && options.space_bitwise != 4) {
+        return "Invalid formatter options: space_bitwise must be inherit, none, one, two or preserve";
+    }
+    if (options.space_range != 0 && options.space_range != 1 && options.space_range != 2 && options.space_range != 3 && options.space_range != 4) {
+        return "Invalid formatter options: space_range must be inherit, none, one, two or preserve";
+    }
+    if (options.space_before_control_parens != 0 && options.space_before_control_parens != 1 && options.space_before_control_parens != 2 && options.space_before_control_parens != 3 && options.space_before_control_parens != 4) {
+        return "Invalid formatter options: space_before_control_parens must be inherit, none, one, two or preserve";
+    }
+    if (options.space_before_call_parens != 0 && options.space_before_call_parens != 1 && options.space_before_call_parens != 2 && options.space_before_call_parens != 3 && options.space_before_call_parens != 4) {
+        return "Invalid formatter options: space_before_call_parens must be inherit, none, one, two or preserve";
+    }
+    if (options.space_before_declaration_parens != 0 && options.space_before_declaration_parens != 1 && options.space_before_declaration_parens != 2 && options.space_before_declaration_parens != 3 && options.space_before_declaration_parens != 4) {
+        return "Invalid formatter options: space_before_declaration_parens must be inherit, none, one, two or preserve";
+    }
+    if (options.space_inside_call_parens != 0 && options.space_inside_call_parens != 1 && options.space_inside_call_parens != 2 && options.space_inside_call_parens != 3 && options.space_inside_call_parens != 4) {
+        return "Invalid formatter options: space_inside_call_parens must be inherit, none, one, two or preserve";
+    }
+    if (options.space_inside_parameter_parens != 0 && options.space_inside_parameter_parens != 1 && options.space_inside_parameter_parens != 2 && options.space_inside_parameter_parens != 3 && options.space_inside_parameter_parens != 4) {
+        return "Invalid formatter options: space_inside_parameter_parens must be inherit, none, one, two or preserve";
+    }
+    if (options.space_inside_grouping_parens != 0 && options.space_inside_grouping_parens != 1 && options.space_inside_grouping_parens != 2 && options.space_inside_grouping_parens != 3 && options.space_inside_grouping_parens != 4) {
+        return "Invalid formatter options: space_inside_grouping_parens must be inherit, none, one, two or preserve";
+    }
+    if (options.space_inside_control_parens != 0 && options.space_inside_control_parens != 1 && options.space_inside_control_parens != 2 && options.space_inside_control_parens != 3 && options.space_inside_control_parens != 4) {
+        return "Invalid formatter options: space_inside_control_parens must be inherit, none, one, two or preserve";
+    }
+    if (options.space_inside_empty_parens != 0 && options.space_inside_empty_parens != 1 && options.space_inside_empty_parens != 2 && options.space_inside_empty_parens != 3 && options.space_inside_empty_parens != 4) {
+        return "Invalid formatter options: space_inside_empty_parens must be inherit, none, one, two or preserve";
+    }
+    if (options.space_inside_array_brackets != 0 && options.space_inside_array_brackets != 1 && options.space_inside_array_brackets != 2 && options.space_inside_array_brackets != 3 && options.space_inside_array_brackets != 4) {
+        return "Invalid formatter options: space_inside_array_brackets must be inherit, none, one, two or preserve";
+    }
+    if (options.space_inside_index_brackets != 0 && options.space_inside_index_brackets != 1 && options.space_inside_index_brackets != 2 && options.space_inside_index_brackets != 3 && options.space_inside_index_brackets != 4) {
+        return "Invalid formatter options: space_inside_index_brackets must be inherit, none, one, two or preserve";
+    }
+    if (options.space_inside_type_brackets != 0 && options.space_inside_type_brackets != 1 && options.space_inside_type_brackets != 2 && options.space_inside_type_brackets != 3 && options.space_inside_type_brackets != 4) {
+        return "Invalid formatter options: space_inside_type_brackets must be inherit, none, one, two or preserve";
+    }
+    if (options.space_inside_empty_brackets != 0 && options.space_inside_empty_brackets != 1 && options.space_inside_empty_brackets != 2 && options.space_inside_empty_brackets != 3 && options.space_inside_empty_brackets != 4) {
+        return "Invalid formatter options: space_inside_empty_brackets must be inherit, none, one, two or preserve";
+    }
+    if (options.space_inside_record_braces != 0 && options.space_inside_record_braces != 1 && options.space_inside_record_braces != 2 && options.space_inside_record_braces != 3 && options.space_inside_record_braces != 4) {
+        return "Invalid formatter options: space_inside_record_braces must be inherit, none, one, two or preserve";
+    }
+    if (options.space_inside_empty_record_braces != 0 && options.space_inside_empty_record_braces != 1 && options.space_inside_empty_record_braces != 2 && options.space_inside_empty_record_braces != 3 && options.space_inside_empty_record_braces != 4) {
+        return "Invalid formatter options: space_inside_empty_record_braces must be inherit, none, one, two or preserve";
+    }
+    if (options.space_before_type_colon != 0 && options.space_before_type_colon != 1 && options.space_before_type_colon != 2 && options.space_before_type_colon != 3 && options.space_before_type_colon != 4) {
+        return "Invalid formatter options: space_before_type_colon must be inherit, none, one, two or preserve";
+    }
+    if (options.space_after_type_colon != 0 && options.space_after_type_colon != 1 && options.space_after_type_colon != 2 && options.space_after_type_colon != 3 && options.space_after_type_colon != 4) {
+        return "Invalid formatter options: space_after_type_colon must be inherit, none, one, two or preserve";
+    }
+    if (options.space_before_field_colon != 0 && options.space_before_field_colon != 1 && options.space_before_field_colon != 2 && options.space_before_field_colon != 3 && options.space_before_field_colon != 4) {
+        return "Invalid formatter options: space_before_field_colon must be inherit, none, one, two or preserve";
+    }
+    if (options.space_after_field_colon != 0 && options.space_after_field_colon != 1 && options.space_after_field_colon != 2 && options.space_after_field_colon != 3 && options.space_after_field_colon != 4) {
+        return "Invalid formatter options: space_after_field_colon must be inherit, none, one, two or preserve";
+    }
+    if (options.space_before_named_argument_colon != 0 && options.space_before_named_argument_colon != 1 && options.space_before_named_argument_colon != 2 && options.space_before_named_argument_colon != 3 && options.space_before_named_argument_colon != 4) {
+        return "Invalid formatter options: space_before_named_argument_colon must be inherit, none, one, two or preserve";
+    }
+    if (options.space_after_named_argument_colon != 0 && options.space_after_named_argument_colon != 1 && options.space_after_named_argument_colon != 2 && options.space_after_named_argument_colon != 3 && options.space_after_named_argument_colon != 4) {
+        return "Invalid formatter options: space_after_named_argument_colon must be inherit, none, one, two or preserve";
+    }
+    if (options.space_before_case_colon != 0 && options.space_before_case_colon != 1 && options.space_before_case_colon != 2 && options.space_before_case_colon != 3 && options.space_before_case_colon != 4) {
+        return "Invalid formatter options: space_before_case_colon must be inherit, none, one, two or preserve";
+    }
+    if (options.space_after_case_colon != 0 && options.space_after_case_colon != 1 && options.space_after_case_colon != 2 && options.space_after_case_colon != 3 && options.space_after_case_colon != 4) {
+        return "Invalid formatter options: space_after_case_colon must be inherit, none, one, two or preserve";
+    }
+    if (options.space_around_arrows != 0 && options.space_around_arrows != 1 && options.space_around_arrows != 2 && options.space_around_arrows != 3 && options.space_around_arrows != 4) {
+        return "Invalid formatter options: space_around_arrows must be inherit, none, one, two or preserve";
+    }
+    if (options.space_around_declaration_separator != 0 && options.space_around_declaration_separator != 1 && options.space_around_declaration_separator != 2 && options.space_around_declaration_separator != 3 && options.space_around_declaration_separator != 4) {
+        return "Invalid formatter options: space_around_declaration_separator must be inherit, none, one, two or preserve";
+    }
+    if (options.space_after_unary != 0 && options.space_after_unary != 1 && options.space_after_unary != 2 && options.space_after_unary != 3 && options.space_after_unary != 4) {
+        return "Invalid formatter options: space_after_unary must be inherit, none, one, two or preserve";
+    }
+    if (options.space_before_postfix != 0 && options.space_before_postfix != 1 && options.space_before_postfix != 2 && options.space_before_postfix != 3 && options.space_before_postfix != 4) {
+        return "Invalid formatter options: space_before_postfix must be inherit, none, one, two or preserve";
+    }
+    if (options.space_before_comma != 0 && options.space_before_comma != 1 && options.space_before_comma != 2 && options.space_before_comma != 3 && options.space_before_comma != 4) {
+        return "Invalid formatter options: space_before_comma must be inherit, none, one, two or preserve";
+    }
+    if (options.space_after_comma != 0 && options.space_after_comma != 1 && options.space_after_comma != 2 && options.space_after_comma != 3 && options.space_after_comma != 4) {
+        return "Invalid formatter options: space_after_comma must be inherit, none, one, two or preserve";
+    }
+    if (options.assignment_alignment != 0 && options.assignment_alignment != 1 && options.assignment_alignment != 2 && options.assignment_alignment != 3) {
+        return "Invalid formatter options: assignment_alignment must be inherit, off, preserve_manual or consecutive";
+    }
+    if (options.field_type_alignment != 0 && options.field_type_alignment != 1 && options.field_type_alignment != 2 && options.field_type_alignment != 3) {
+        return "Invalid formatter options: field_type_alignment must be inherit, off, preserve_manual or consecutive";
+    }
+    if (options.constant_alignment != 0 && options.constant_alignment != 1 && options.constant_alignment != 2 && options.constant_alignment != 3) {
+        return "Invalid formatter options: constant_alignment must be inherit, off, preserve_manual or consecutive";
+    }
+    if (options.record_value_alignment != 0 && options.record_value_alignment != 1 && options.record_value_alignment != 2 && options.record_value_alignment != 3) {
+        return "Invalid formatter options: record_value_alignment must be inherit, off, preserve_manual or consecutive";
+    }
+    if (options.comment_alignment != 0 && options.comment_alignment != 1 && options.comment_alignment != 2 && options.comment_alignment != 3) {
+        return "Invalid formatter options: comment_alignment must be inherit, off, preserve_manual or consecutive";
+    }
+    if (options.alignment_max_padding < 0 || options.alignment_max_padding > 80) {
+        return "Invalid formatter options: alignment_max_padding must be 0..80";
+    }
+    if (options.alignment_max_column < 0 || options.alignment_max_column > 400) {
+        return "Invalid formatter options: alignment_max_column must be 0..400";
+    }
+    if (options.alignment_compound != 0 && options.alignment_compound != 1) {
+        return "Invalid formatter options: alignment_compound must be operator_start or assignment_marker";
+    }
+    if (options.data_alignment != 0 && options.data_alignment != 1 && options.data_alignment != 2 && options.data_alignment != 3) {
+        return "Invalid formatter options: data_alignment must be off, preserve, columns or numeric_right";
+    }
+    if (options.declaration_type_alignment != 0 && options.declaration_type_alignment != 1 && options.declaration_type_alignment != 2 && options.declaration_type_alignment != 3) {
+        return "Invalid formatter options: declaration_type_alignment must be inherit, off, preserve_manual or consecutive";
+    }
+    if (!ValidAlignmentColumns(options.data_column_alignment)) {
+        return "Invalid formatter options: data_column_alignment contains an invalid column policy";
+    }
+    if (options.comment_reflow != 0 && options.comment_reflow != 1 && options.comment_reflow != 2 && options.comment_reflow != 3) {
+        return "Invalid formatter options: comment_reflow must be preserve, prose, docs or all";
+    }
+    if (options.comment_width < 20 || options.comment_width > 400) {
+        return "Invalid formatter options: comment_width must be 20..400";
+    }
+    if (options.numeric_separators != 0 && options.numeric_separators != 1 && options.numeric_separators != 2) {
+        return "Invalid formatter options: numeric_separators must be preserve, remove or group";
+    }
+    if (options.decimal_group < 1 || options.decimal_group > 16) {
+        return "Invalid formatter options: decimal_group must be 1..16";
+    }
+    if (options.hex_group < 1 || options.hex_group > 16) {
+        return "Invalid formatter options: hex_group must be 1..16";
+    }
+    if (options.fraction_group < 0 || options.fraction_group > 16) {
+        return "Invalid formatter options: fraction_group must be 0..16";
+    }
+    if (options.numeric_min_digits < 1 || options.numeric_min_digits > 64) {
+        return "Invalid formatter options: numeric_min_digits must be 1..64";
+    }
+    if (options.hex_case != 0 && options.hex_case != 1 && options.hex_case != 2) {
+        return "Invalid formatter options: hex_case must be preserve, lower or upper";
+    }
+    if (options.exponent_case != 0 && options.exponent_case != 1 && options.exponent_case != 2) {
+        return "Invalid formatter options: exponent_case must be preserve, lower or upper";
+    }
+    if (options.numeric_base != 0 && options.numeric_base != 1 && options.numeric_base != 2) {
+        return "Invalid formatter options: numeric_base must be preserve, decimal or hex";
+    }
+    if (options.exponent_group < 0 || options.exponent_group > 16) {
+        return "Invalid formatter options: exponent_group must be 0..16";
+    }
+    if (options.string_escapes != 0 && options.string_escapes != 1 && options.string_escapes != 2) {
+        return "Invalid formatter options: string_escapes must be preserve, minimal or ascii";
+    }
+    if (options.char_escapes != 0 && options.char_escapes != 1 && options.char_escapes != 2) {
+        return "Invalid formatter options: char_escapes must be preserve, minimal or ascii";
+    }
+    if (options.imports != 0 && options.imports != 1 && options.imports != 2) {
+        return "Invalid formatter options: imports must be preserve, sort or organize";
+    }
+    if (options.semicolons != 0 && options.semicolons != 1 && options.semicolons != 2) {
+        return "Invalid formatter options: semicolons must be keep, omit or always";
+    }
+    if (options.trailing_commas != 0 && options.trailing_commas != 1 && options.trailing_commas != 2) {
+        return "Invalid formatter options: trailing_commas must be preserve, omit or multiline";
+    }
+    if (options.trailing_commas_arguments != -1 && options.trailing_commas_arguments != 0 && options.trailing_commas_arguments != 1 && options.trailing_commas_arguments != 2) {
+        return "Invalid formatter options: trailing_commas_arguments must be inherit, preserve, omit or multiline";
+    }
+    if (options.trailing_commas_parameters != -1 && options.trailing_commas_parameters != 0 && options.trailing_commas_parameters != 1 && options.trailing_commas_parameters != 2) {
+        return "Invalid formatter options: trailing_commas_parameters must be inherit, preserve, omit or multiline";
+    }
+    if (options.trailing_commas_arrays != -1 && options.trailing_commas_arrays != 0 && options.trailing_commas_arrays != 1 && options.trailing_commas_arrays != 2) {
+        return "Invalid formatter options: trailing_commas_arrays must be inherit, preserve, omit or multiline";
+    }
+    if (options.trailing_commas_records != -1 && options.trailing_commas_records != 0 && options.trailing_commas_records != 1 && options.trailing_commas_records != 2) {
+        return "Invalid formatter options: trailing_commas_records must be inherit, preserve, omit or multiline";
+    }
+    if (options.trailing_commas_tuples != -1 && options.trailing_commas_tuples != 0 && options.trailing_commas_tuples != 1 && options.trailing_commas_tuples != 2) {
+        return "Invalid formatter options: trailing_commas_tuples must be inherit, preserve, omit or multiline";
+    }
+    if (options.trailing_commas_bindings != -1 && options.trailing_commas_bindings != 0 && options.trailing_commas_bindings != 1 && options.trailing_commas_bindings != 2) {
+        return "Invalid formatter options: trailing_commas_bindings must be inherit, preserve, omit or multiline";
+    }
+    if (options.start_line < 0 || options.start_line > 1000000) {
+        return "Invalid formatter options: start_line must be 0..1000000";
+    }
+    if (options.end_line < 0 || options.end_line > 1000000) {
+        return "Invalid formatter options: end_line must be 0..1000000";
+    }
+    if (options.range_scope != 0 && options.range_scope != 1) {
+        return "Invalid formatter options: range_scope must be declarations or statements";
+    }
+    if (options.end_line > 0 && options.start_line > options.end_line) {
+        return "Invalid formatter options: end_line must not precede start_line";
+    }
+    return "";
+}
+
+Number :: (text: string) -> int {
+    if (text == "") { return -2147483648; }
+    value: int = 0;
+    negative := strings.ByteAt(text, 0) == 45;
+    index: int = 0;
+    if (negative) { index = 1; }
+    if (index == strings.ByteLength(text)) { return -2147483648; }
+    while (index < strings.ByteLength(text)) {
+        digit := strings.ByteAt(text, index) - 48;
+        if (digit < 0 || digit > 9 || value > 100000000) { return -2147483648; }
+        value = value * 10 + digit;
+        index += 1;
+    }
+    if (negative) { return -value; }
+    return value;
+}
+
+pub ParseOptions :: (base: Options, text: string) -> (options: Options, error: string) {
+    pairs: string[] = [];
+    for (line in strings.SplitLines(text)) {
+        content := line;
+        hash := strings.IndexByte(line, 35);
+        if (hash >= 0) { content = strings.Slice(line, 0, hash); }
+        pairs.extend(strings.Fields(content));
+    }
+    options := base;
+    for (pair in pairs) {
+        if (strings.HasPrefix(pair, "profile=")) {
+            value := strings.TrimPrefix(pair, "profile=");
+            if (value == "current_v1") { options = Profile(0); }
+            else if (value == "compact_v1") { options = Profile(1); }
+            else if (value == "expanded_v1") { options = Profile(2); }
+            else if (value == "tabular_v1") { options = Profile(3); }
+            else { return (options, "Invalid formatter profile"); }
+        }
+    }
+    for (pair in pairs) {
+        equals := strings.IndexByte(pair, 61);
+        if (equals <= 0) { return (options, format_text("Invalid formatter option {}; write NAME=VALUE", pair)); }
+        name := strings.Slice(pair, 0, equals);
+        value := strings.Slice(pair, equals + 1, strings.ByteLength(pair) - equals - 1);
+        number := Number(value);
+        if (name == "profile") { continue; }
+        else if (name == "preferred_width" && number != -2147483648) { options.preferred_width = number; }
+        else if (name == "magic_trailing_comma" && (value == "true" || value == "false")) { options.magic_trailing_comma = value == "true"; }
+        else if (name == "use_tabs" && (value == "true" || value == "false")) { options.use_tabs = value == "true"; }
+        else if (name == "indent_width" && number != -2147483648) { options.indent_width = number; }
+        else if (name == "continuation_indent" && number != -2147483648) { options.continuation_indent = number; }
+        else if (name == "align_after_open_bracket" && (value == "true" || value == "false")) { options.align_after_open_bracket = value == "true"; }
+        else if (name == "align_operands" && (value == "true" || value == "false")) { options.align_operands = value == "true"; }
+        else if (name == "indent_case_labels" && (value == "true" || value == "false")) { options.indent_case_labels = value == "true"; }
+        else if (name == "indent_foreign_blocks" && (value == "true" || value == "false")) { options.indent_foreign_blocks = value == "true"; }
+        else if (name == "indent_when_blocks" && (value == "true" || value == "false")) { options.indent_when_blocks = value == "true"; }
+        else if (name == "tab_width" && number != -2147483648) { options.tab_width = number; }
+        else if (name == "brace_placement" && value == "preserve") { options.brace_placement = 0; }
+        else if (name == "brace_placement" && value == "attach") { options.brace_placement = 1; }
+        else if (name == "brace_placement" && value == "next_line") { options.brace_placement = 2; }
+        else if (name == "branch_braces" && value == "preserve") { options.branch_braces = 0; }
+        else if (name == "branch_braces" && value == "omit_single") { options.branch_braces = 1; }
+        else if (name == "branch_braces" && value == "always") { options.branch_braces = 2; }
+        else if (name == "empty_blocks" && value == "keep") { options.empty_blocks = 0; }
+        else if (name == "empty_blocks" && value == "collapse") { options.empty_blocks = 1; }
+        else if (name == "empty_blocks" && value == "expand") { options.empty_blocks = 2; }
+        else if (name == "keep_one_line_blocks" && (value == "true" || value == "false")) { options.keep_one_line_blocks = value == "true"; }
+        else if (name == "following_keyword" && value == "same_line") { options.following_keyword = 0; }
+        else if (name == "following_keyword" && value == "next_line") { options.following_keyword = 1; }
+        else if (name == "following_keyword" && value == "preserve") { options.following_keyword = 2; }
+        else if (name == "unbraced_body_placement" && value == "inherit") { options.unbraced_body_placement = 0; }
+        else if (name == "unbraced_body_placement" && value == "preserve") { options.unbraced_body_placement = 1; }
+        else if (name == "unbraced_body_placement" && value == "same_line") { options.unbraced_body_placement = 2; }
+        else if (name == "unbraced_body_placement" && value == "next_line") { options.unbraced_body_placement = 3; }
+        else if (name == "function_braces" && value == "inherit") { options.function_braces = 0; }
+        else if (name == "function_braces" && value == "preserve") { options.function_braces = 1; }
+        else if (name == "function_braces" && value == "attach") { options.function_braces = 2; }
+        else if (name == "function_braces" && value == "next_line") { options.function_braces = 3; }
+        else if (name == "control_braces" && value == "inherit") { options.control_braces = 0; }
+        else if (name == "control_braces" && value == "preserve") { options.control_braces = 1; }
+        else if (name == "control_braces" && value == "attach") { options.control_braces = 2; }
+        else if (name == "control_braces" && value == "next_line") { options.control_braces = 3; }
+        else if (name == "type_braces" && value == "inherit") { options.type_braces = 0; }
+        else if (name == "type_braces" && value == "preserve") { options.type_braces = 1; }
+        else if (name == "type_braces" && value == "attach") { options.type_braces = 2; }
+        else if (name == "type_braces" && value == "next_line") { options.type_braces = 3; }
+        else if (name == "foreign_braces" && value == "inherit") { options.foreign_braces = 0; }
+        else if (name == "foreign_braces" && value == "preserve") { options.foreign_braces = 1; }
+        else if (name == "foreign_braces" && value == "attach") { options.foreign_braces = 2; }
+        else if (name == "foreign_braces" && value == "next_line") { options.foreign_braces = 3; }
+        else if (name == "when_braces" && value == "inherit") { options.when_braces = 0; }
+        else if (name == "when_braces" && value == "preserve") { options.when_braces = 1; }
+        else if (name == "when_braces" && value == "attach") { options.when_braces = 2; }
+        else if (name == "when_braces" && value == "next_line") { options.when_braces = 3; }
+        else if (name == "empty_function_blocks" && value == "inherit") { options.empty_function_blocks = 0; }
+        else if (name == "empty_function_blocks" && value == "preserve") { options.empty_function_blocks = 1; }
+        else if (name == "empty_function_blocks" && value == "collapse") { options.empty_function_blocks = 2; }
+        else if (name == "empty_function_blocks" && value == "expand") { options.empty_function_blocks = 3; }
+        else if (name == "empty_control_blocks" && value == "inherit") { options.empty_control_blocks = 0; }
+        else if (name == "empty_control_blocks" && value == "preserve") { options.empty_control_blocks = 1; }
+        else if (name == "empty_control_blocks" && value == "collapse") { options.empty_control_blocks = 2; }
+        else if (name == "empty_control_blocks" && value == "expand") { options.empty_control_blocks = 3; }
+        else if (name == "empty_type_blocks" && value == "inherit") { options.empty_type_blocks = 0; }
+        else if (name == "empty_type_blocks" && value == "preserve") { options.empty_type_blocks = 1; }
+        else if (name == "empty_type_blocks" && value == "collapse") { options.empty_type_blocks = 2; }
+        else if (name == "empty_type_blocks" && value == "expand") { options.empty_type_blocks = 3; }
+        else if (name == "short_functions" && value == "inherit") { options.short_functions = 0; }
+        else if (name == "short_functions" && value == "expand") { options.short_functions = 1; }
+        else if (name == "short_functions" && value == "preserve") { options.short_functions = 2; }
+        else if (name == "short_functions" && value == "inline_if_fits") { options.short_functions = 3; }
+        else if (name == "short_branches" && value == "inherit") { options.short_branches = 0; }
+        else if (name == "short_branches" && value == "expand") { options.short_branches = 1; }
+        else if (name == "short_branches" && value == "preserve") { options.short_branches = 2; }
+        else if (name == "short_branches" && value == "inline_if_fits") { options.short_branches = 3; }
+        else if (name == "short_loops" && value == "inherit") { options.short_loops = 0; }
+        else if (name == "short_loops" && value == "expand") { options.short_loops = 1; }
+        else if (name == "short_loops" && value == "preserve") { options.short_loops = 2; }
+        else if (name == "short_loops" && value == "inline_if_fits") { options.short_loops = 3; }
+        else if (name == "short_case_arms" && value == "inherit") { options.short_case_arms = 0; }
+        else if (name == "short_case_arms" && value == "expand") { options.short_case_arms = 1; }
+        else if (name == "short_case_arms" && value == "preserve") { options.short_case_arms = 2; }
+        else if (name == "short_case_arms" && value == "inline_if_fits") { options.short_case_arms = 3; }
+        else if (name == "max_inline_statements" && number != -2147483648) { options.max_inline_statements = number; }
+        else if (name == "function_body" && value == "preserve") { options.function_body = 0; }
+        else if (name == "function_body" && value == "block") { options.function_body = 1; }
+        else if (name == "function_body" && value == "expression") { options.function_body = 2; }
+        else if (name == "function_keyword" && value == "preserve") { options.function_keyword = 0; }
+        else if (name == "function_keyword" && value == "omit") { options.function_keyword = 1; }
+        else if (name == "function_keyword" && value == "always") { options.function_keyword = 2; }
+        else if (name == "return_arrow" && value == "preserve") { options.return_arrow = 0; }
+        else if (name == "return_arrow" && value == "omit") { options.return_arrow = 1; }
+        else if (name == "return_arrow" && value == "always") { options.return_arrow = 2; }
+        else if (name == "binding_types" && value == "preserve") { options.binding_types = 0; }
+        else if (name == "binding_types" && value == "omit_redundant") { options.binding_types = 1; }
+        else if (name == "binding_types" && value == "explicit") { options.binding_types = 2; }
+        else if (name == "binding_types" && value == "evident") { options.binding_types = 3; }
+        else if (name == "local_types" && value == "inherit") { options.local_types = -1; }
+        else if (name == "local_types" && value == "preserve") { options.local_types = 0; }
+        else if (name == "local_types" && value == "omit_redundant") { options.local_types = 1; }
+        else if (name == "local_types" && value == "explicit") { options.local_types = 2; }
+        else if (name == "local_types" && value == "evident") { options.local_types = 3; }
+        else if (name == "constant_types" && value == "inherit") { options.constant_types = -1; }
+        else if (name == "constant_types" && value == "preserve") { options.constant_types = 0; }
+        else if (name == "constant_types" && value == "omit_redundant") { options.constant_types = 1; }
+        else if (name == "constant_types" && value == "explicit") { options.constant_types = 2; }
+        else if (name == "constant_types" && value == "evident") { options.constant_types = 3; }
+        else if (name == "parameter_types" && value == "inherit") { options.parameter_types = -1; }
+        else if (name == "parameter_types" && value == "preserve") { options.parameter_types = 0; }
+        else if (name == "parameter_types" && value == "omit_redundant") { options.parameter_types = 1; }
+        else if (name == "parameter_types" && value == "explicit") { options.parameter_types = 2; }
+        else if (name == "parameter_types" && value == "evident") { options.parameter_types = 3; }
+        else if (name == "return_types" && value == "inherit") { options.return_types = -1; }
+        else if (name == "return_types" && value == "preserve") { options.return_types = 0; }
+        else if (name == "return_types" && value == "omit_redundant") { options.return_types = 1; }
+        else if (name == "return_types" && value == "explicit") { options.return_types = 2; }
+        else if (name == "return_types" && value == "evident") { options.return_types = 3; }
+        else if (name == "member_types" && value == "inherit") { options.member_types = -1; }
+        else if (name == "member_types" && value == "preserve") { options.member_types = 0; }
+        else if (name == "member_types" && value == "omit_redundant") { options.member_types = 1; }
+        else if (name == "member_types" && value == "explicit") { options.member_types = 2; }
+        else if (name == "member_types" && value == "evident") { options.member_types = 3; }
+        else if (name == "public_types" && value == "inherit") { options.public_types = -1; }
+        else if (name == "public_types" && value == "preserve") { options.public_types = 0; }
+        else if (name == "public_types" && value == "omit_redundant") { options.public_types = 1; }
+        else if (name == "public_types" && value == "explicit") { options.public_types = 2; }
+        else if (name == "public_types" && value == "evident") { options.public_types = 3; }
+        else if (name == "type_spelling" && value == "preserve_aliases") { options.type_spelling = 0; }
+        else if (name == "type_spelling" && value == "shortest") { options.type_spelling = 1; }
+        else if (name == "type_spelling" && value == "qualified") { options.type_spelling = 2; }
+        else if (name == "analysis_target" && value == "linux64") { options.analysis_target = 0; }
+        else if (name == "analysis_target" && value == "darwin64") { options.analysis_target = 1; }
+        else if (name == "analysis_target" && value == "windows64") { options.analysis_target = 2; }
+        else if (name == "analysis_target" && value == "web32") { options.analysis_target = 3; }
+        else if (name == "semantic_targets" && value == "all") { options.semantic_targets = 0; }
+        else if (name == "semantic_targets" && value == "selected") { options.semantic_targets = 1; }
+        else if (name == "statement_paragraphs" && value == "preserve") { options.statement_paragraphs = 0; }
+        else if (name == "statement_paragraphs" && value == "syntax") { options.statement_paragraphs = 1; }
+        else if (name == "statement_paragraphs" && value == "logical") { options.statement_paragraphs = 2; }
+        else if (name == "paragraph_density" && value == "compact") { options.paragraph_density = 0; }
+        else if (name == "paragraph_density" && value == "balanced") { options.paragraph_density = 1; }
+        else if (name == "paragraph_density" && value == "spacious") { options.paragraph_density = 2; }
+        else if (name == "max_blank_lines" && number != -2147483648) { options.max_blank_lines = number; }
+        else if (name == "blank_lines_between_declarations" && number != -2147483648) { options.blank_lines_between_declarations = number; }
+        else if (name == "keep_blank_lines_at_block_edges" && (value == "true" || value == "false")) { options.keep_blank_lines_at_block_edges = value == "true"; }
+        else if (name == "blank_lines_before_final_return" && number != -2147483648) { options.blank_lines_before_final_return = number; }
+        else if (name == "blank_lines_after_control" && number != -2147483648) { options.blank_lines_after_control = number; }
+        else if (name == "blank_lines_between_members" && number != -2147483648) { options.blank_lines_between_members = number; }
+        else if (name == "blank_lines_between_import_groups" && number != -2147483648) { options.blank_lines_between_import_groups = number; }
+        else if (name == "block_padding" && value == "inherit") { options.block_padding = 0; }
+        else if (name == "block_padding" && value == "remove") { options.block_padding = 1; }
+        else if (name == "block_padding" && value == "blank") { options.block_padding = 2; }
+        else if (name == "function_block_padding" && value == "inherit") { options.function_block_padding = 0; }
+        else if (name == "function_block_padding" && value == "remove") { options.function_block_padding = 1; }
+        else if (name == "function_block_padding" && value == "blank") { options.function_block_padding = 2; }
+        else if (name == "type_block_padding" && value == "inherit") { options.type_block_padding = 0; }
+        else if (name == "type_block_padding" && value == "remove") { options.type_block_padding = 1; }
+        else if (name == "type_block_padding" && value == "blank") { options.type_block_padding = 2; }
+        else if (name == "control_block_padding" && value == "inherit") { options.control_block_padding = 0; }
+        else if (name == "control_block_padding" && value == "remove") { options.control_block_padding = 1; }
+        else if (name == "control_block_padding" && value == "blank") { options.control_block_padding = 2; }
+        else if (name == "foreign_block_padding" && value == "inherit") { options.foreign_block_padding = 0; }
+        else if (name == "foreign_block_padding" && value == "remove") { options.foreign_block_padding = 1; }
+        else if (name == "foreign_block_padding" && value == "blank") { options.foreign_block_padding = 2; }
+        else if (name == "when_block_padding" && value == "inherit") { options.when_block_padding = 0; }
+        else if (name == "when_block_padding" && value == "remove") { options.when_block_padding = 1; }
+        else if (name == "when_block_padding" && value == "blank") { options.when_block_padding = 2; }
+        else if (name == "blank_lines_before_comments" && number != -2147483648) { options.blank_lines_before_comments = number; }
+        else if (name == "list_layout" && value == "preserve") { options.list_layout = 0; }
+        else if (name == "list_layout" && value == "fit") { options.list_layout = 1; }
+        else if (name == "list_layout" && value == "vertical") { options.list_layout = 2; }
+        else if (name == "list_layout" && value == "one_per_line_when_wrapped") { options.list_layout = 3; }
+        else if (name == "arguments_layout" && value == "inherit") { options.arguments_layout = 0; }
+        else if (name == "arguments_layout" && value == "preserve") { options.arguments_layout = 1; }
+        else if (name == "arguments_layout" && value == "fit") { options.arguments_layout = 2; }
+        else if (name == "arguments_layout" && value == "vertical") { options.arguments_layout = 3; }
+        else if (name == "arguments_layout" && value == "one_per_line_when_wrapped") { options.arguments_layout = 4; }
+        else if (name == "parameters_layout" && value == "inherit") { options.parameters_layout = 0; }
+        else if (name == "parameters_layout" && value == "preserve") { options.parameters_layout = 1; }
+        else if (name == "parameters_layout" && value == "fit") { options.parameters_layout = 2; }
+        else if (name == "parameters_layout" && value == "vertical") { options.parameters_layout = 3; }
+        else if (name == "parameters_layout" && value == "one_per_line_when_wrapped") { options.parameters_layout = 4; }
+        else if (name == "arrays_layout" && value == "inherit") { options.arrays_layout = 0; }
+        else if (name == "arrays_layout" && value == "preserve") { options.arrays_layout = 1; }
+        else if (name == "arrays_layout" && value == "fit") { options.arrays_layout = 2; }
+        else if (name == "arrays_layout" && value == "vertical") { options.arrays_layout = 3; }
+        else if (name == "arrays_layout" && value == "one_per_line_when_wrapped") { options.arrays_layout = 4; }
+        else if (name == "records_layout" && value == "inherit") { options.records_layout = 0; }
+        else if (name == "records_layout" && value == "preserve") { options.records_layout = 1; }
+        else if (name == "records_layout" && value == "fit") { options.records_layout = 2; }
+        else if (name == "records_layout" && value == "vertical") { options.records_layout = 3; }
+        else if (name == "records_layout" && value == "one_per_line_when_wrapped") { options.records_layout = 4; }
+        else if (name == "bindings_layout" && value == "inherit") { options.bindings_layout = 0; }
+        else if (name == "bindings_layout" && value == "preserve") { options.bindings_layout = 1; }
+        else if (name == "bindings_layout" && value == "fit") { options.bindings_layout = 2; }
+        else if (name == "bindings_layout" && value == "vertical") { options.bindings_layout = 3; }
+        else if (name == "bindings_layout" && value == "one_per_line_when_wrapped") { options.bindings_layout = 4; }
+        else if (name == "arguments_width" && number != -2147483648) { options.arguments_width = number; }
+        else if (name == "parameters_width" && number != -2147483648) { options.parameters_width = number; }
+        else if (name == "arrays_width" && number != -2147483648) { options.arrays_width = number; }
+        else if (name == "records_width" && number != -2147483648) { options.records_width = number; }
+        else if (name == "max_items_per_line" && number != -2147483648) { options.max_items_per_line = number; }
+        else if (name == "list_indent" && value == "inherit") { options.list_indent = 0; }
+        else if (name == "list_indent" && value == "block") { options.list_indent = 1; }
+        else if (name == "list_indent" && value == "align_first") { options.list_indent = 2; }
+        else if (name == "list_indent" && value == "hanging") { options.list_indent = 3; }
+        else if (name == "closing_delimiter" && value == "own_line") { options.closing_delimiter = 0; }
+        else if (name == "closing_delimiter" && value == "last_item_line") { options.closing_delimiter = 1; }
+        else if (name == "closing_delimiter" && value == "preserve") { options.closing_delimiter = 2; }
+        else if (name == "binary_operator_position" && value == "preserve") { options.binary_operator_position = 0; }
+        else if (name == "binary_operator_position" && value == "leading") { options.binary_operator_position = 1; }
+        else if (name == "binary_operator_position" && value == "trailing") { options.binary_operator_position = 2; }
+        else if (name == "binary_layout" && value == "preserve") { options.binary_layout = 0; }
+        else if (name == "binary_layout" && value == "one_per_line") { options.binary_layout = 1; }
+        else if (name == "binary_layout" && value == "precedence_groups") { options.binary_layout = 2; }
+        else if (name == "chain_layout" && value == "preserve") { options.chain_layout = 0; }
+        else if (name == "chain_layout" && value == "fit") { options.chain_layout = 1; }
+        else if (name == "chain_layout" && value == "vertical") { options.chain_layout = 2; }
+        else if (name == "chain_indent" && (value == "true" || value == "false")) { options.chain_indent = value == "true"; }
+        else if (name == "attribute_layout" && value == "preserve") { options.attribute_layout = 0; }
+        else if (name == "attribute_layout" && value == "inline") { options.attribute_layout = 1; }
+        else if (name == "attribute_layout" && value == "one_per_line") { options.attribute_layout = 2; }
+        else if (name == "signature_break_priority" && value == "preserve") { options.signature_break_priority = 0; }
+        else if (name == "signature_break_priority" && value == "parameters_first") { options.signature_break_priority = 1; }
+        else if (name == "signature_break_priority" && value == "return_first") { options.signature_break_priority = 2; }
+        else if (name == "control_parens" && value == "preserve") { options.control_parens = 0; }
+        else if (name == "control_parens" && value == "omit") { options.control_parens = 1; }
+        else if (name == "control_parens" && value == "always") { options.control_parens = 2; }
+        else if (name == "if_parens" && value == "inherit") { options.if_parens = -1; }
+        else if (name == "if_parens" && value == "preserve") { options.if_parens = 0; }
+        else if (name == "if_parens" && value == "omit") { options.if_parens = 1; }
+        else if (name == "if_parens" && value == "always") { options.if_parens = 2; }
+        else if (name == "while_parens" && value == "inherit") { options.while_parens = -1; }
+        else if (name == "while_parens" && value == "preserve") { options.while_parens = 0; }
+        else if (name == "while_parens" && value == "omit") { options.while_parens = 1; }
+        else if (name == "while_parens" && value == "always") { options.while_parens = 2; }
+        else if (name == "for_parens" && value == "inherit") { options.for_parens = -1; }
+        else if (name == "for_parens" && value == "preserve") { options.for_parens = 0; }
+        else if (name == "for_parens" && value == "omit") { options.for_parens = 1; }
+        else if (name == "for_parens" && value == "always") { options.for_parens = 2; }
+        else if (name == "switch_parens" && value == "inherit") { options.switch_parens = -1; }
+        else if (name == "switch_parens" && value == "preserve") { options.switch_parens = 0; }
+        else if (name == "switch_parens" && value == "omit") { options.switch_parens = 1; }
+        else if (name == "switch_parens" && value == "always") { options.switch_parens = 2; }
+        else if (name == "expression_parens" && value == "preserve") { options.expression_parens = 0; }
+        else if (name == "expression_parens" && value == "omit_redundant") { options.expression_parens = 1; }
+        else if (name == "expression_parens" && value == "readability") { options.expression_parens = 2; }
+        else if (name == "flatten_parens" && (value == "true" || value == "false")) { options.flatten_parens = value == "true"; }
+        else if (name == "when_parens" && value == "inherit") { options.when_parens = -1; }
+        else if (name == "when_parens" && value == "preserve") { options.when_parens = 0; }
+        else if (name == "when_parens" && value == "omit") { options.when_parens = 1; }
+        else if (name == "when_parens" && value == "always") { options.when_parens = 2; }
+        else if (name == "readability_mixed_operators" && (value == "true" || value == "false")) { options.readability_mixed_operators = value == "true"; }
+        else if (name == "space_in_braces" && (value == "true" || value == "false")) { options.space_in_braces = value == "true"; }
+        else if (name == "space_in_parens" && (value == "true" || value == "false")) { options.space_in_parens = value == "true"; }
+        else if (name == "space_in_brackets" && (value == "true" || value == "false")) { options.space_in_brackets = value == "true"; }
+        else if (name == "spaces_before_trailing_comment" && number != -2147483648) { options.spaces_before_trailing_comment = number; }
+        else if (name == "operator_spacing" && value == "uniform") { options.operator_spacing = 0; }
+        else if (name == "operator_spacing" && value == "precedence") { options.operator_spacing = 1; }
+        else if (name == "operator_spacing" && value == "preserve") { options.operator_spacing = 2; }
+        else if (name == "space_multiplicative" && value == "inherit") { options.space_multiplicative = 0; }
+        else if (name == "space_multiplicative" && value == "none") { options.space_multiplicative = 1; }
+        else if (name == "space_multiplicative" && value == "one") { options.space_multiplicative = 2; }
+        else if (name == "space_multiplicative" && value == "two") { options.space_multiplicative = 3; }
+        else if (name == "space_multiplicative" && value == "preserve") { options.space_multiplicative = 4; }
+        else if (name == "space_additive" && value == "inherit") { options.space_additive = 0; }
+        else if (name == "space_additive" && value == "none") { options.space_additive = 1; }
+        else if (name == "space_additive" && value == "one") { options.space_additive = 2; }
+        else if (name == "space_additive" && value == "two") { options.space_additive = 3; }
+        else if (name == "space_additive" && value == "preserve") { options.space_additive = 4; }
+        else if (name == "space_comparison" && value == "inherit") { options.space_comparison = 0; }
+        else if (name == "space_comparison" && value == "none") { options.space_comparison = 1; }
+        else if (name == "space_comparison" && value == "one") { options.space_comparison = 2; }
+        else if (name == "space_comparison" && value == "two") { options.space_comparison = 3; }
+        else if (name == "space_comparison" && value == "preserve") { options.space_comparison = 4; }
+        else if (name == "space_logical" && value == "inherit") { options.space_logical = 0; }
+        else if (name == "space_logical" && value == "none") { options.space_logical = 1; }
+        else if (name == "space_logical" && value == "one") { options.space_logical = 2; }
+        else if (name == "space_logical" && value == "two") { options.space_logical = 3; }
+        else if (name == "space_logical" && value == "preserve") { options.space_logical = 4; }
+        else if (name == "space_assignment" && value == "inherit") { options.space_assignment = 0; }
+        else if (name == "space_assignment" && value == "none") { options.space_assignment = 1; }
+        else if (name == "space_assignment" && value == "one") { options.space_assignment = 2; }
+        else if (name == "space_assignment" && value == "two") { options.space_assignment = 3; }
+        else if (name == "space_assignment" && value == "preserve") { options.space_assignment = 4; }
+        else if (name == "space_bitwise" && value == "inherit") { options.space_bitwise = 0; }
+        else if (name == "space_bitwise" && value == "none") { options.space_bitwise = 1; }
+        else if (name == "space_bitwise" && value == "one") { options.space_bitwise = 2; }
+        else if (name == "space_bitwise" && value == "two") { options.space_bitwise = 3; }
+        else if (name == "space_bitwise" && value == "preserve") { options.space_bitwise = 4; }
+        else if (name == "space_range" && value == "inherit") { options.space_range = 0; }
+        else if (name == "space_range" && value == "none") { options.space_range = 1; }
+        else if (name == "space_range" && value == "one") { options.space_range = 2; }
+        else if (name == "space_range" && value == "two") { options.space_range = 3; }
+        else if (name == "space_range" && value == "preserve") { options.space_range = 4; }
+        else if (name == "space_before_control_parens" && value == "inherit") { options.space_before_control_parens = 0; }
+        else if (name == "space_before_control_parens" && value == "none") { options.space_before_control_parens = 1; }
+        else if (name == "space_before_control_parens" && value == "one") { options.space_before_control_parens = 2; }
+        else if (name == "space_before_control_parens" && value == "two") { options.space_before_control_parens = 3; }
+        else if (name == "space_before_control_parens" && value == "preserve") { options.space_before_control_parens = 4; }
+        else if (name == "space_before_call_parens" && value == "inherit") { options.space_before_call_parens = 0; }
+        else if (name == "space_before_call_parens" && value == "none") { options.space_before_call_parens = 1; }
+        else if (name == "space_before_call_parens" && value == "one") { options.space_before_call_parens = 2; }
+        else if (name == "space_before_call_parens" && value == "two") { options.space_before_call_parens = 3; }
+        else if (name == "space_before_call_parens" && value == "preserve") { options.space_before_call_parens = 4; }
+        else if (name == "space_before_declaration_parens" && value == "inherit") { options.space_before_declaration_parens = 0; }
+        else if (name == "space_before_declaration_parens" && value == "none") { options.space_before_declaration_parens = 1; }
+        else if (name == "space_before_declaration_parens" && value == "one") { options.space_before_declaration_parens = 2; }
+        else if (name == "space_before_declaration_parens" && value == "two") { options.space_before_declaration_parens = 3; }
+        else if (name == "space_before_declaration_parens" && value == "preserve") { options.space_before_declaration_parens = 4; }
+        else if (name == "space_inside_call_parens" && value == "inherit") { options.space_inside_call_parens = 0; }
+        else if (name == "space_inside_call_parens" && value == "none") { options.space_inside_call_parens = 1; }
+        else if (name == "space_inside_call_parens" && value == "one") { options.space_inside_call_parens = 2; }
+        else if (name == "space_inside_call_parens" && value == "two") { options.space_inside_call_parens = 3; }
+        else if (name == "space_inside_call_parens" && value == "preserve") { options.space_inside_call_parens = 4; }
+        else if (name == "space_inside_parameter_parens" && value == "inherit") { options.space_inside_parameter_parens = 0; }
+        else if (name == "space_inside_parameter_parens" && value == "none") { options.space_inside_parameter_parens = 1; }
+        else if (name == "space_inside_parameter_parens" && value == "one") { options.space_inside_parameter_parens = 2; }
+        else if (name == "space_inside_parameter_parens" && value == "two") { options.space_inside_parameter_parens = 3; }
+        else if (name == "space_inside_parameter_parens" && value == "preserve") { options.space_inside_parameter_parens = 4; }
+        else if (name == "space_inside_grouping_parens" && value == "inherit") { options.space_inside_grouping_parens = 0; }
+        else if (name == "space_inside_grouping_parens" && value == "none") { options.space_inside_grouping_parens = 1; }
+        else if (name == "space_inside_grouping_parens" && value == "one") { options.space_inside_grouping_parens = 2; }
+        else if (name == "space_inside_grouping_parens" && value == "two") { options.space_inside_grouping_parens = 3; }
+        else if (name == "space_inside_grouping_parens" && value == "preserve") { options.space_inside_grouping_parens = 4; }
+        else if (name == "space_inside_control_parens" && value == "inherit") { options.space_inside_control_parens = 0; }
+        else if (name == "space_inside_control_parens" && value == "none") { options.space_inside_control_parens = 1; }
+        else if (name == "space_inside_control_parens" && value == "one") { options.space_inside_control_parens = 2; }
+        else if (name == "space_inside_control_parens" && value == "two") { options.space_inside_control_parens = 3; }
+        else if (name == "space_inside_control_parens" && value == "preserve") { options.space_inside_control_parens = 4; }
+        else if (name == "space_inside_empty_parens" && value == "inherit") { options.space_inside_empty_parens = 0; }
+        else if (name == "space_inside_empty_parens" && value == "none") { options.space_inside_empty_parens = 1; }
+        else if (name == "space_inside_empty_parens" && value == "one") { options.space_inside_empty_parens = 2; }
+        else if (name == "space_inside_empty_parens" && value == "two") { options.space_inside_empty_parens = 3; }
+        else if (name == "space_inside_empty_parens" && value == "preserve") { options.space_inside_empty_parens = 4; }
+        else if (name == "space_inside_array_brackets" && value == "inherit") { options.space_inside_array_brackets = 0; }
+        else if (name == "space_inside_array_brackets" && value == "none") { options.space_inside_array_brackets = 1; }
+        else if (name == "space_inside_array_brackets" && value == "one") { options.space_inside_array_brackets = 2; }
+        else if (name == "space_inside_array_brackets" && value == "two") { options.space_inside_array_brackets = 3; }
+        else if (name == "space_inside_array_brackets" && value == "preserve") { options.space_inside_array_brackets = 4; }
+        else if (name == "space_inside_index_brackets" && value == "inherit") { options.space_inside_index_brackets = 0; }
+        else if (name == "space_inside_index_brackets" && value == "none") { options.space_inside_index_brackets = 1; }
+        else if (name == "space_inside_index_brackets" && value == "one") { options.space_inside_index_brackets = 2; }
+        else if (name == "space_inside_index_brackets" && value == "two") { options.space_inside_index_brackets = 3; }
+        else if (name == "space_inside_index_brackets" && value == "preserve") { options.space_inside_index_brackets = 4; }
+        else if (name == "space_inside_type_brackets" && value == "inherit") { options.space_inside_type_brackets = 0; }
+        else if (name == "space_inside_type_brackets" && value == "none") { options.space_inside_type_brackets = 1; }
+        else if (name == "space_inside_type_brackets" && value == "one") { options.space_inside_type_brackets = 2; }
+        else if (name == "space_inside_type_brackets" && value == "two") { options.space_inside_type_brackets = 3; }
+        else if (name == "space_inside_type_brackets" && value == "preserve") { options.space_inside_type_brackets = 4; }
+        else if (name == "space_inside_empty_brackets" && value == "inherit") { options.space_inside_empty_brackets = 0; }
+        else if (name == "space_inside_empty_brackets" && value == "none") { options.space_inside_empty_brackets = 1; }
+        else if (name == "space_inside_empty_brackets" && value == "one") { options.space_inside_empty_brackets = 2; }
+        else if (name == "space_inside_empty_brackets" && value == "two") { options.space_inside_empty_brackets = 3; }
+        else if (name == "space_inside_empty_brackets" && value == "preserve") { options.space_inside_empty_brackets = 4; }
+        else if (name == "space_inside_record_braces" && value == "inherit") { options.space_inside_record_braces = 0; }
+        else if (name == "space_inside_record_braces" && value == "none") { options.space_inside_record_braces = 1; }
+        else if (name == "space_inside_record_braces" && value == "one") { options.space_inside_record_braces = 2; }
+        else if (name == "space_inside_record_braces" && value == "two") { options.space_inside_record_braces = 3; }
+        else if (name == "space_inside_record_braces" && value == "preserve") { options.space_inside_record_braces = 4; }
+        else if (name == "space_inside_empty_record_braces" && value == "inherit") { options.space_inside_empty_record_braces = 0; }
+        else if (name == "space_inside_empty_record_braces" && value == "none") { options.space_inside_empty_record_braces = 1; }
+        else if (name == "space_inside_empty_record_braces" && value == "one") { options.space_inside_empty_record_braces = 2; }
+        else if (name == "space_inside_empty_record_braces" && value == "two") { options.space_inside_empty_record_braces = 3; }
+        else if (name == "space_inside_empty_record_braces" && value == "preserve") { options.space_inside_empty_record_braces = 4; }
+        else if (name == "space_before_type_colon" && value == "inherit") { options.space_before_type_colon = 0; }
+        else if (name == "space_before_type_colon" && value == "none") { options.space_before_type_colon = 1; }
+        else if (name == "space_before_type_colon" && value == "one") { options.space_before_type_colon = 2; }
+        else if (name == "space_before_type_colon" && value == "two") { options.space_before_type_colon = 3; }
+        else if (name == "space_before_type_colon" && value == "preserve") { options.space_before_type_colon = 4; }
+        else if (name == "space_after_type_colon" && value == "inherit") { options.space_after_type_colon = 0; }
+        else if (name == "space_after_type_colon" && value == "none") { options.space_after_type_colon = 1; }
+        else if (name == "space_after_type_colon" && value == "one") { options.space_after_type_colon = 2; }
+        else if (name == "space_after_type_colon" && value == "two") { options.space_after_type_colon = 3; }
+        else if (name == "space_after_type_colon" && value == "preserve") { options.space_after_type_colon = 4; }
+        else if (name == "space_before_field_colon" && value == "inherit") { options.space_before_field_colon = 0; }
+        else if (name == "space_before_field_colon" && value == "none") { options.space_before_field_colon = 1; }
+        else if (name == "space_before_field_colon" && value == "one") { options.space_before_field_colon = 2; }
+        else if (name == "space_before_field_colon" && value == "two") { options.space_before_field_colon = 3; }
+        else if (name == "space_before_field_colon" && value == "preserve") { options.space_before_field_colon = 4; }
+        else if (name == "space_after_field_colon" && value == "inherit") { options.space_after_field_colon = 0; }
+        else if (name == "space_after_field_colon" && value == "none") { options.space_after_field_colon = 1; }
+        else if (name == "space_after_field_colon" && value == "one") { options.space_after_field_colon = 2; }
+        else if (name == "space_after_field_colon" && value == "two") { options.space_after_field_colon = 3; }
+        else if (name == "space_after_field_colon" && value == "preserve") { options.space_after_field_colon = 4; }
+        else if (name == "space_before_named_argument_colon" && value == "inherit") { options.space_before_named_argument_colon = 0; }
+        else if (name == "space_before_named_argument_colon" && value == "none") { options.space_before_named_argument_colon = 1; }
+        else if (name == "space_before_named_argument_colon" && value == "one") { options.space_before_named_argument_colon = 2; }
+        else if (name == "space_before_named_argument_colon" && value == "two") { options.space_before_named_argument_colon = 3; }
+        else if (name == "space_before_named_argument_colon" && value == "preserve") { options.space_before_named_argument_colon = 4; }
+        else if (name == "space_after_named_argument_colon" && value == "inherit") { options.space_after_named_argument_colon = 0; }
+        else if (name == "space_after_named_argument_colon" && value == "none") { options.space_after_named_argument_colon = 1; }
+        else if (name == "space_after_named_argument_colon" && value == "one") { options.space_after_named_argument_colon = 2; }
+        else if (name == "space_after_named_argument_colon" && value == "two") { options.space_after_named_argument_colon = 3; }
+        else if (name == "space_after_named_argument_colon" && value == "preserve") { options.space_after_named_argument_colon = 4; }
+        else if (name == "space_before_case_colon" && value == "inherit") { options.space_before_case_colon = 0; }
+        else if (name == "space_before_case_colon" && value == "none") { options.space_before_case_colon = 1; }
+        else if (name == "space_before_case_colon" && value == "one") { options.space_before_case_colon = 2; }
+        else if (name == "space_before_case_colon" && value == "two") { options.space_before_case_colon = 3; }
+        else if (name == "space_before_case_colon" && value == "preserve") { options.space_before_case_colon = 4; }
+        else if (name == "space_after_case_colon" && value == "inherit") { options.space_after_case_colon = 0; }
+        else if (name == "space_after_case_colon" && value == "none") { options.space_after_case_colon = 1; }
+        else if (name == "space_after_case_colon" && value == "one") { options.space_after_case_colon = 2; }
+        else if (name == "space_after_case_colon" && value == "two") { options.space_after_case_colon = 3; }
+        else if (name == "space_after_case_colon" && value == "preserve") { options.space_after_case_colon = 4; }
+        else if (name == "space_around_arrows" && value == "inherit") { options.space_around_arrows = 0; }
+        else if (name == "space_around_arrows" && value == "none") { options.space_around_arrows = 1; }
+        else if (name == "space_around_arrows" && value == "one") { options.space_around_arrows = 2; }
+        else if (name == "space_around_arrows" && value == "two") { options.space_around_arrows = 3; }
+        else if (name == "space_around_arrows" && value == "preserve") { options.space_around_arrows = 4; }
+        else if (name == "space_around_declaration_separator" && value == "inherit") { options.space_around_declaration_separator = 0; }
+        else if (name == "space_around_declaration_separator" && value == "none") { options.space_around_declaration_separator = 1; }
+        else if (name == "space_around_declaration_separator" && value == "one") { options.space_around_declaration_separator = 2; }
+        else if (name == "space_around_declaration_separator" && value == "two") { options.space_around_declaration_separator = 3; }
+        else if (name == "space_around_declaration_separator" && value == "preserve") { options.space_around_declaration_separator = 4; }
+        else if (name == "space_after_unary" && value == "inherit") { options.space_after_unary = 0; }
+        else if (name == "space_after_unary" && value == "none") { options.space_after_unary = 1; }
+        else if (name == "space_after_unary" && value == "one") { options.space_after_unary = 2; }
+        else if (name == "space_after_unary" && value == "two") { options.space_after_unary = 3; }
+        else if (name == "space_after_unary" && value == "preserve") { options.space_after_unary = 4; }
+        else if (name == "space_before_postfix" && value == "inherit") { options.space_before_postfix = 0; }
+        else if (name == "space_before_postfix" && value == "none") { options.space_before_postfix = 1; }
+        else if (name == "space_before_postfix" && value == "one") { options.space_before_postfix = 2; }
+        else if (name == "space_before_postfix" && value == "two") { options.space_before_postfix = 3; }
+        else if (name == "space_before_postfix" && value == "preserve") { options.space_before_postfix = 4; }
+        else if (name == "space_before_comma" && value == "inherit") { options.space_before_comma = 0; }
+        else if (name == "space_before_comma" && value == "none") { options.space_before_comma = 1; }
+        else if (name == "space_before_comma" && value == "one") { options.space_before_comma = 2; }
+        else if (name == "space_before_comma" && value == "two") { options.space_before_comma = 3; }
+        else if (name == "space_before_comma" && value == "preserve") { options.space_before_comma = 4; }
+        else if (name == "space_after_comma" && value == "inherit") { options.space_after_comma = 0; }
+        else if (name == "space_after_comma" && value == "none") { options.space_after_comma = 1; }
+        else if (name == "space_after_comma" && value == "one") { options.space_after_comma = 2; }
+        else if (name == "space_after_comma" && value == "two") { options.space_after_comma = 3; }
+        else if (name == "space_after_comma" && value == "preserve") { options.space_after_comma = 4; }
+        else if (name == "align_assignments" && (value == "true" || value == "false")) { options.align_assignments = value == "true"; }
+        else if (name == "align_field_types" && (value == "true" || value == "false")) { options.align_field_types = value == "true"; }
+        else if (name == "align_constants" && (value == "true" || value == "false")) { options.align_constants = value == "true"; }
+        else if (name == "align_struct_literal_values" && (value == "true" || value == "false")) { options.align_struct_literal_values = value == "true"; }
+        else if (name == "align_trailing_comments" && (value == "true" || value == "false")) { options.align_trailing_comments = value == "true"; }
+        else if (name == "assignment_alignment" && value == "inherit") { options.assignment_alignment = 0; }
+        else if (name == "assignment_alignment" && value == "off") { options.assignment_alignment = 1; }
+        else if (name == "assignment_alignment" && value == "preserve_manual") { options.assignment_alignment = 2; }
+        else if (name == "assignment_alignment" && value == "consecutive") { options.assignment_alignment = 3; }
+        else if (name == "field_type_alignment" && value == "inherit") { options.field_type_alignment = 0; }
+        else if (name == "field_type_alignment" && value == "off") { options.field_type_alignment = 1; }
+        else if (name == "field_type_alignment" && value == "preserve_manual") { options.field_type_alignment = 2; }
+        else if (name == "field_type_alignment" && value == "consecutive") { options.field_type_alignment = 3; }
+        else if (name == "constant_alignment" && value == "inherit") { options.constant_alignment = 0; }
+        else if (name == "constant_alignment" && value == "off") { options.constant_alignment = 1; }
+        else if (name == "constant_alignment" && value == "preserve_manual") { options.constant_alignment = 2; }
+        else if (name == "constant_alignment" && value == "consecutive") { options.constant_alignment = 3; }
+        else if (name == "record_value_alignment" && value == "inherit") { options.record_value_alignment = 0; }
+        else if (name == "record_value_alignment" && value == "off") { options.record_value_alignment = 1; }
+        else if (name == "record_value_alignment" && value == "preserve_manual") { options.record_value_alignment = 2; }
+        else if (name == "record_value_alignment" && value == "consecutive") { options.record_value_alignment = 3; }
+        else if (name == "comment_alignment" && value == "inherit") { options.comment_alignment = 0; }
+        else if (name == "comment_alignment" && value == "off") { options.comment_alignment = 1; }
+        else if (name == "comment_alignment" && value == "preserve_manual") { options.comment_alignment = 2; }
+        else if (name == "comment_alignment" && value == "consecutive") { options.comment_alignment = 3; }
+        else if (name == "alignment_across_blank_lines" && (value == "true" || value == "false")) { options.alignment_across_blank_lines = value == "true"; }
+        else if (name == "alignment_across_comments" && (value == "true" || value == "false")) { options.alignment_across_comments = value == "true"; }
+        else if (name == "alignment_max_padding" && number != -2147483648) { options.alignment_max_padding = number; }
+        else if (name == "alignment_max_column" && number != -2147483648) { options.alignment_max_column = number; }
+        else if (name == "alignment_compound" && value == "operator_start") { options.alignment_compound = 0; }
+        else if (name == "alignment_compound" && value == "assignment_marker") { options.alignment_compound = 1; }
+        else if (name == "data_alignment" && value == "off") { options.data_alignment = 0; }
+        else if (name == "data_alignment" && value == "preserve") { options.data_alignment = 1; }
+        else if (name == "data_alignment" && value == "columns") { options.data_alignment = 2; }
+        else if (name == "data_alignment" && value == "numeric_right") { options.data_alignment = 3; }
+        else if (name == "declaration_type_alignment" && value == "inherit") { options.declaration_type_alignment = 0; }
+        else if (name == "declaration_type_alignment" && value == "off") { options.declaration_type_alignment = 1; }
+        else if (name == "declaration_type_alignment" && value == "preserve_manual") { options.declaration_type_alignment = 2; }
+        else if (name == "declaration_type_alignment" && value == "consecutive") { options.declaration_type_alignment = 3; }
+        else if (name == "data_column_alignment") {
+            parsed := AlignmentColumnPolicy(value);
+            if (parsed.error != "") { return (options, parsed.error); }
+            options.data_column_alignment = parsed.bits;
+        }
+        else if (name == "comment_reflow" && value == "preserve") { options.comment_reflow = 0; }
+        else if (name == "comment_reflow" && value == "prose") { options.comment_reflow = 1; }
+        else if (name == "comment_reflow" && value == "docs") { options.comment_reflow = 2; }
+        else if (name == "comment_reflow" && value == "all") { options.comment_reflow = 3; }
+        else if (name == "comment_width" && number != -2147483648) { options.comment_width = number; }
+        else if (name == "reflow_block_comments" && (value == "true" || value == "false")) { options.reflow_block_comments = value == "true"; }
+        else if (name == "numeric_separators" && value == "preserve") { options.numeric_separators = 0; }
+        else if (name == "numeric_separators" && value == "remove") { options.numeric_separators = 1; }
+        else if (name == "numeric_separators" && value == "group") { options.numeric_separators = 2; }
+        else if (name == "decimal_group" && number != -2147483648) { options.decimal_group = number; }
+        else if (name == "hex_group" && number != -2147483648) { options.hex_group = number; }
+        else if (name == "fraction_group" && number != -2147483648) { options.fraction_group = number; }
+        else if (name == "numeric_min_digits" && number != -2147483648) { options.numeric_min_digits = number; }
+        else if (name == "hex_case" && value == "preserve") { options.hex_case = 0; }
+        else if (name == "hex_case" && value == "lower") { options.hex_case = 1; }
+        else if (name == "hex_case" && value == "upper") { options.hex_case = 2; }
+        else if (name == "exponent_case" && value == "preserve") { options.exponent_case = 0; }
+        else if (name == "exponent_case" && value == "lower") { options.exponent_case = 1; }
+        else if (name == "exponent_case" && value == "upper") { options.exponent_case = 2; }
+        else if (name == "numeric_base" && value == "preserve") { options.numeric_base = 0; }
+        else if (name == "numeric_base" && value == "decimal") { options.numeric_base = 1; }
+        else if (name == "numeric_base" && value == "hex") { options.numeric_base = 2; }
+        else if (name == "exponent_group" && number != -2147483648) { options.exponent_group = number; }
+        else if (name == "string_escapes" && value == "preserve") { options.string_escapes = 0; }
+        else if (name == "string_escapes" && value == "minimal") { options.string_escapes = 1; }
+        else if (name == "string_escapes" && value == "ascii") { options.string_escapes = 2; }
+        else if (name == "char_escapes" && value == "preserve") { options.char_escapes = 0; }
+        else if (name == "char_escapes" && value == "minimal") { options.char_escapes = 1; }
+        else if (name == "char_escapes" && value == "ascii") { options.char_escapes = 2; }
+        else if (name == "imports" && value == "preserve") { options.imports = 0; }
+        else if (name == "imports" && value == "sort") { options.imports = 1; }
+        else if (name == "imports" && value == "organize") { options.imports = 2; }
+        else if (name == "semicolons" && value == "keep") { options.semicolons = 0; }
+        else if (name == "semicolons" && value == "omit") { options.semicolons = 1; }
+        else if (name == "semicolons" && value == "always") { options.semicolons = 2; }
+        else if (name == "line_ending" && value == "lf") { options.crlf = false; }
+        else if (name == "line_ending" && value == "crlf") { options.crlf = true; }
+        else if (name == "final_newline" && (value == "true" || value == "false")) { options.final_newline = value == "true"; }
+        else if (name == "trailing_commas" && value == "preserve") { options.trailing_commas = 0; }
+        else if (name == "trailing_commas" && value == "omit") { options.trailing_commas = 1; }
+        else if (name == "trailing_commas" && value == "multiline") { options.trailing_commas = 2; }
+        else if (name == "trailing_commas_arguments" && value == "inherit") { options.trailing_commas_arguments = -1; }
+        else if (name == "trailing_commas_arguments" && value == "preserve") { options.trailing_commas_arguments = 0; }
+        else if (name == "trailing_commas_arguments" && value == "omit") { options.trailing_commas_arguments = 1; }
+        else if (name == "trailing_commas_arguments" && value == "multiline") { options.trailing_commas_arguments = 2; }
+        else if (name == "trailing_commas_parameters" && value == "inherit") { options.trailing_commas_parameters = -1; }
+        else if (name == "trailing_commas_parameters" && value == "preserve") { options.trailing_commas_parameters = 0; }
+        else if (name == "trailing_commas_parameters" && value == "omit") { options.trailing_commas_parameters = 1; }
+        else if (name == "trailing_commas_parameters" && value == "multiline") { options.trailing_commas_parameters = 2; }
+        else if (name == "trailing_commas_arrays" && value == "inherit") { options.trailing_commas_arrays = -1; }
+        else if (name == "trailing_commas_arrays" && value == "preserve") { options.trailing_commas_arrays = 0; }
+        else if (name == "trailing_commas_arrays" && value == "omit") { options.trailing_commas_arrays = 1; }
+        else if (name == "trailing_commas_arrays" && value == "multiline") { options.trailing_commas_arrays = 2; }
+        else if (name == "trailing_commas_records" && value == "inherit") { options.trailing_commas_records = -1; }
+        else if (name == "trailing_commas_records" && value == "preserve") { options.trailing_commas_records = 0; }
+        else if (name == "trailing_commas_records" && value == "omit") { options.trailing_commas_records = 1; }
+        else if (name == "trailing_commas_records" && value == "multiline") { options.trailing_commas_records = 2; }
+        else if (name == "trailing_commas_tuples" && value == "inherit") { options.trailing_commas_tuples = -1; }
+        else if (name == "trailing_commas_tuples" && value == "preserve") { options.trailing_commas_tuples = 0; }
+        else if (name == "trailing_commas_tuples" && value == "omit") { options.trailing_commas_tuples = 1; }
+        else if (name == "trailing_commas_tuples" && value == "multiline") { options.trailing_commas_tuples = 2; }
+        else if (name == "trailing_commas_bindings" && value == "inherit") { options.trailing_commas_bindings = -1; }
+        else if (name == "trailing_commas_bindings" && value == "preserve") { options.trailing_commas_bindings = 0; }
+        else if (name == "trailing_commas_bindings" && value == "omit") { options.trailing_commas_bindings = 1; }
+        else if (name == "trailing_commas_bindings" && value == "multiline") { options.trailing_commas_bindings = 2; }
+        else if (name == "start_line" && number != -2147483648) { options.start_line = number; }
+        else if (name == "end_line" && number != -2147483648) { options.end_line = number; }
+        else if (name == "range_scope" && value == "declarations") { options.range_scope = 0; }
+        else if (name == "range_scope" && value == "statements") { options.range_scope = 1; }
+        else { return (options, format_text("Invalid formatter option {}", pair)); }
+    }
+    return (options, Validate(options));
+}

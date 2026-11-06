@@ -1,0 +1,22 @@
+package task_growth
+
+Main :: () -> int {
+    yield
+    for (i in 0..<1024) { Worker(); }
+    yield
+    yield
+    if (Count(false) != 1024) { return 1; }
+    return 0;
+}
+
+Count :: (increment: bool) -> int {
+    count: retain int = 0;
+    if (increment) { count += 1; }
+    return count;
+}
+
+Worker :: () -> int {
+    yield
+    Count(true);
+    return 0;
+}

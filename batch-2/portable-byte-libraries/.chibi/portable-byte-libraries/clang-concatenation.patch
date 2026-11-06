@@ -1,0 +1,42 @@
+diff --git a/test/language/semantic.c b/test/language/semantic.c
+index 16012e229..ae5697ff0 100644
+--- a/test/language/semantic.c
++++ b/test/language/semantic.c
+@@ -576,8 +576,8 @@ TEST_CASE(language_reductions_require_system_component_fields)
+     const char *invalid_targets[] = {
+         "Motion :: system() { total := 0; reduce total += 1; }",
+         "Motion :: system() { if true { total := 0; reduce total += 1; } }",
+-        "Motion :: system(position: ^Position) { reduce position^ += "
+-        "position^; }",
++        ("Motion :: system(position: ^Position) { reduce position^ += "
++         "position^; }"),
+         "Motion :: system(position: ^Placement) { reduce position.x += 1; }",
+         "Motion :: system(position: ^Position?) { reduce position.x += 1; }",
+     };
+@@ -1118,8 +1118,9 @@ TEST_CASE(language_emit_sends_events_to_their_target)
+                                     .entity_type = 40 };
+     const char *valid[] = {
+         "L :: library { F :: (other: entity) { emit other.Damage(3) } }",
+-        "L :: library { F :: (other: entity) { emit Damage(other, Amount: 3) } "
+-        "}",
++        ("L :: library { F :: (other: entity) { emit Damage(other, Amount: 3) "
++         "} "
++         "}"),
+         /* An event send never calls the function its event shares a name with. */
+         "L :: library { Damage :: (other: entity) { emit Damage(other, 3) } }",
+     };
+diff --git a/test/language/syntax.c b/test/language/syntax.c
+index c463c211e..b5610bf8b 100644
+--- a/test/language/syntax.c
++++ b/test/language/syntax.c
+@@ -207,8 +207,8 @@ TEST_CASE(language_systems_use_flat_queries_and_implicit_step)
+         "Motion :: system(p: Position) join target in self.Targets {}",
+         "Demo :: behavior { query components(); }",
+         "Motion :: system(p: Position split self) {}",
+-        "Demo :: behavior { on Tick :: () { rows := query(p: Position split "
+-        "self); } }",
++        ("Demo :: behavior { on Tick :: () { rows := query(p: Position split "
++         "self); } }"),
+     };
+     for (size_t i = 0; i < sizeof removed / sizeof *removed; i++) {
+         parse(removed[i]);

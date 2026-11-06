@@ -1,0 +1,34 @@
+{
+  "base": "79743c5675e5a18eeea14193d729cc6e45bdf926",
+  "source_tree": "e0731ca621abf03d0632bac9ec2aa4485e88115f",
+  "current_executions": [],
+  "current_failures": [],
+  "inherited_scoped_write": {
+    "historical_failure": "CWRITE2/authored0 on original normal source; old replay preserved",
+    "root_cause": "WriteStep retained WriteFact but omitted public WRITE work item",
+    "current_state": "selected source correction integrated and independently reviewed; fresh combined runtime/purity/GC proof pending",
+    "selected_patch_sha256": "e497dda37cd4cd57222040b82fbabb6df8f7439508ba7258164166bf4e93298c",
+    "current_steps_sha256": "a0a09a1594962cb119a402161814563a85c83b7cfe74b067e311730e8259aa75",
+    "no_current_execution_claim": true
+  },
+  "unchanged_historical_baselines": [
+    {
+      "record_baselines": "74a record-values/compatibility/prepared green; no rerun for source-only correction"
+    },
+    {
+      "E1_layout_accounting": "accepted802 installed prerequisite proof remains historical/valid for unchanged runtime; no repeat counter proof"
+    },
+    {
+      "effect_analysis": "owner reported2/4 on accepted/candidate historical801 source; not freshly reproduced on current Math; do not attribute or silently mask it"
+    }
+  ],
+  "math_stage_pending": [
+    "public recoverable @error type contract after matching parser/results",
+    "source constant folding",
+    "compositional records",
+    "advanced quaternion functions",
+    "native AOT/shaders",
+    "combined artifact/native/prepared/SDK acceptance"
+  ],
+  "producer_publication_holds": true
+}

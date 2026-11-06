@@ -1,0 +1,11 @@
+package scalar
+Cursor :: struct { pos: int; final: int; }
+Main :: () -> int {
+    c: Cursor = {pos: 0, final: 5};
+    Run(&c);
+    return c.pos;
+}
+Run :: (c: ^Cursor) {
+    Step(c);
+    Step(c);
+}

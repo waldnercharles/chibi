@@ -1,0 +1,129 @@
+package native_driver
+
+import compiler "project:package_compiler"
+import facts "project:scalar_facts"
+import strings "core:strings"
+
+TestProgram :: struct {
+    rows: facts.Row[];
+    effects: int[];
+}
+
+// Sort indices once, retaining the source-order test ordinal as their value.
+// The pinned bootstrap accepts plain arrays, so no map type enters its closure.
+TestNameOrder :: (names: string[]) -> int[] {
+    from: int[] = [];
+    for (index in 0..<length(names)) { from.append(index); }
+    to := resize([int(0)], length(names));
+    width := 1;
+    while (width < length(names)) {
+        start := 0;
+        while (start < length(names)) {
+            middle := start + width;
+            if (middle > length(names)) { middle = length(names); }
+            end := middle + width;
+            if (end > length(names)) { end = length(names); }
+            left := start;
+            right := middle;
+            at := start;
+            while (at < end) {
+                if (right >= end || (left < middle && strings.Compare(names[from[left]], names[from[right]]) <= 0)) {
+                    to[at] = from[left];
+                    left += 1;
+                } else {
+                    to[at] = from[right];
+                    right += 1;
+                }
+                at += 1;
+            }
+            start = end;
+        }
+        previous := from;
+        from = to;
+        to = previous;
+        width *= 2;
+    }
+    return from;
+}
+
+TestNamed :: (names: string[], order: int[], name: string) -> int {
+    low := 0;
+    high := length(order);
+    while (low < high) {
+        middle := low + (high - low) / 2;
+        if (strings.Compare(names[order[middle]], name) < 0) { low = middle + 1; }
+        else { high = middle; }
+    }
+    if (low < length(order) && names[order[low]] == name) { return order[low]; }
+    return -1;
+}
+
+// The first files are the tested package, including its generated entry and
+// dispatcher. Imported documents follow, so one joined-byte boundary identifies
+// its functions without conflating names in other packages.
+TestProgramRows :: (collected: compiler.ScalarCollection, paths: string[], sources: string[], names: string[],
+                    main_name: string, dispatcher: string) -> TestProgram {
+    root_end := 0;
+    root := Directory(paths[0]);
+    for (index in 0..<length(paths)) {
+        if (Directory(paths[index]) != root) { break; }
+        root_end += strings.ByteLength(sources[index]);
+        if (!strings.HasSuffix(sources[index], "\n")) { root_end += 1; }
+    }
+    order := TestNameOrder(names);
+    masks := resize([int(0)], length(names));
+    waiting := resize([false], length(collected.waiting));
+    dispatcher_function := -1;
+    entry_function := -1;
+    function := 0;
+    found := 0;
+    awaits := false;
+    for (row in collected.rows) {
+        if (row.kind != facts.FunctionRow) { continue; }
+        if (row.start < root_end) {
+            test := TestNamed(names, order, row.name);
+            if (test >= 0) {
+                masks[test] = collected.effects[function];
+                waiting[function] = collected.waiting[function];
+                awaits = awaits || waiting[function];
+                found += 1;
+            } else if (row.name == dispatcher) { dispatcher_function = function; }
+            else if (row.name == main_name) { entry_function = function; }
+        }
+        function += 1;
+    }
+    assert(found == length(names) && function == length(collected.effects) &&
+           function == length(collected.waiting) && dispatcher_function >= 0 && entry_function >= 0,
+           "typed test metadata follows the collected functions");
+    rows := collected.rows;
+    if (!awaits) { return {rows: rows, effects: masks}; }
+
+    // Only private generated wrapper calls change. Await waiting tests inline;
+    // otherwise a bare call would spawn before their body reaches a Busy guard.
+    // The ordinary scalar validator still checks these rows at EmitRows.
+    function = -1;
+    for (row, index in collected.rows) {
+        if (row.kind == facts.FunctionRow) {
+            function += 1;
+            if (function == dispatcher_function) {
+                changed := row;
+                changed.value = facts.FunctionVoid;
+                rows[index] = changed;
+            }
+        } else if (row.kind == facts.CallRow && function == dispatcher_function && waiting[row.value]) {
+            changed := row;
+            changed.literal = i64(facts.CallAwaited);
+            changed.type = facts.IntType;
+            rows[index] = changed;
+            discarded := rows[index - 1];
+            assert(discarded.kind == facts.LocalRow && discarded.count == 1, "generated zero-argument test call");
+            discarded.type = facts.IntType;
+            rows[index - 1] = discarded;
+        } else if (row.kind == facts.CallRow && function == entry_function && row.value == dispatcher_function) {
+            changed := row;
+            changed.literal = i64(facts.CallAwaited);
+            rows[index] = changed;
+        }
+    }
+    return {rows: rows, effects: masks};
+}

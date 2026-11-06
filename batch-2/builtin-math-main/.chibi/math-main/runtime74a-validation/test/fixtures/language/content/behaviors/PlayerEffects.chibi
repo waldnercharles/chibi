@@ -1,0 +1,8 @@
+PlayerEffects :: behavior {
+    on Begin :: () {
+        movement := await spawn_prototype(MovementEmitter)
+        movement.ParticleEmitter.Parent = self
+        boost := await spawn_prototype(BoostEmitter)
+        boost.ParticleEmitter.Parent = self
+    }
+}

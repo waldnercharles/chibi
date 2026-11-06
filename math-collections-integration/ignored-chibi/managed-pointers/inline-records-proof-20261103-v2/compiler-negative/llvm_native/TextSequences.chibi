@@ -1,0 +1,80 @@
+package llvm_native
+
+import abi "project:native_abi"
+
+TextSequenceOperation :: (op: int) -> bool { return op == TextRange || op == TextClone; }
+TextSequenceValid :: (records: Record[], fields: int[], slots: int[], item: Instruction) -> bool {
+    if (!Typed(slots, item.left, abi.TextStorage)) { return false; }
+    if (item.op == TextClone) {
+        return item.type == abi.TextStorage && item.right == 0 && item.target == 0 && item.literal == 0;
+    }
+    return (item.literal == i64(TextRangeView) || item.literal == i64(TextRangeCopy)) &&
+        Typed(slots, item.right, abi.IntStorage) && Typed(slots, item.target, abi.IntStorage) &&
+        ViewOptional(records, fields, item.type, abi.TextStorage);
+}
+
+// Copying an immutable string preserves its byte count and embedded NULs.
+// The ordinary text owner has count/length/bytes at offsets 0/8/12; empty
+// strings own nothing. ArrayText uses this same code with its loaded bytes.
+TextCopiedBytes :: (pc: int, guarded: bool = false) -> string {
+    text := abi.TextType();
+    out := format_text("  %none{} = icmp eq i32 %n{}, 0\n", pc, pc);
+    out = format_text("{}  br i1 %none{}, label %done{}, label %make{}\nmake{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %bytes{} = zext i32 %n{} to i64\n  %total{} = add i64 %bytes{}, 17\n", out, pc, pc, pc, pc);
+    out = format_text("{}{}", out, Allocated(format_text("owner{}", pc), format_text("%total{}", pc), guarded));
+    out = format_text("{}  store i64 1, ptr %owner{}\n  %size.at{} = getelementptr inbounds i8, ptr %owner{}, i64 8\n", out, pc, pc, pc);
+    out = format_text("{}  store i32 %n{}, ptr %size.at{}\n  %fresh{} = getelementptr inbounds i8, ptr %owner{}, i64 12\n", out, pc, pc, pc, pc);
+    out = format_text("{}  call void @chibi_scalar.copy(ptr %fresh{}, ptr %data{}, i64 %bytes{})\n", out, pc, pc, pc);
+    out = format_text("{}  br label %done{}\ndone{}:\n", out, pc, pc);
+    out = format_text("{}  %buffer{} = phi ptr [ null, %p{} ], [ %fresh{}, %make{} ]\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %held{} = phi ptr [ null, %p{} ], [ %owner{}, %make{} ]\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %at{} = insertvalue {} zeroinitializer, ptr %buffer{}, 0\n", out, pc, text, pc);
+    out = format_text("{}  %sized{} = insertvalue {} %at{}, i32 %n{}, 1\n", out, pc, text, pc, pc);
+    return format_text("{}  %v{} = insertvalue {} %sized{}, ptr %held{}, 2\n", out, pc, text, pc, pc);
+}
+TextSequenceModule :: (code: Instruction[], guarded: bool = false) -> string {
+    needed := false;
+    for (item in code) {
+        if (TextSequenceOperation(item.op)) { needed = true; break; }
+    }
+    if (!needed) { return ""; }
+    return format_text("define internal {} @chibi_text.copy(ptr %ctx, ptr %data0, i32 %n0) {{\np0:\n{}  ret {} %v0\n}}\n",
+                       abi.TextType(), TextCopiedBytes(0, guarded), abi.TextType());
+}
+
+TextSequenceInstruction :: (item: Instruction, pc: int) -> string {
+    text := abi.TextType();
+    out := Load(format_text("source{}", pc), abi.TextStorage, "s", item.left);
+    out = format_text("{}  %length{} = extractvalue {} %source{}, 1\n  %data{} = extractvalue {} %source{}, 0\n", out, pc, text, pc, pc, text, pc);
+    if (item.op == TextClone) {
+        out = format_text("{}  %v{} = call {} @chibi_text.copy(ptr %ctx, ptr %data{}, i32 %length{})\n", out, pc, text, pc, pc);
+        return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+    }
+    out = format_text("{}{}{}", out, Load(format_text("first{}", pc), abi.IntStorage, "s", item.right),
+                      Load(format_text("last{}", pc), abi.IntStorage, "s", item.target));
+    out = format_text("{}  %nonnegative{} = icmp sge i32 %first{}, 0\n  %ordered{} = icmp sge i32 %last{}, %first{}\n", out, pc, pc, pc, pc, pc);
+    out = format_text("{}  %within{} = icmp sle i32 %last{}, %length{}\n  %low{} = and i1 %nonnegative{}, %ordered{}\n  %valid{} = and i1 %low{}, %within{}\n", out, pc, pc, pc, pc, pc, pc, pc, pc, pc);
+    out = format_text("{}  br i1 %valid{}, label %range{}, label %done{}\nrange{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %count{} = sub i32 %last{}, %first{}\n  %empty{} = icmp eq i32 %count{}, 0\n", out, pc, pc, pc, pc, pc);
+    out = format_text("{}  br i1 %empty{}, label %found{}, label %window{}\nwindow{}:\n", out, pc, pc, pc, pc);
+    out = format_text("{}  %offset{} = zext i32 %first{} to i64\n  %start{} = getelementptr inbounds i8, ptr %data{}, i64 %offset{}\n", out, pc, pc, pc, pc, pc);
+    selected_block := format_text("window{}", pc);
+    if (item.literal == i64(TextRangeCopy)) {
+        out = format_text("{}  %selected{} = call {} @chibi_text.copy(ptr %ctx, ptr %start{}, i32 %count{})\n", out, pc, text, pc, pc);
+    } else {
+        // A host may lend uncounted bytes only for the call. Import them
+        // before returning a window; static literal bytes use this same path.
+        out = format_text("{}  %owner{} = extractvalue {} %source{}, 2\n  %borrowed{} = icmp eq ptr %owner{}, null\n", out, pc, text, pc, pc, pc);
+        out = format_text("{}  br i1 %borrowed{}, label %import{}, label %share{}\nimport{}:\n", out, pc, pc, pc, pc);
+        out = format_text("{}  %imported{} = call {} @chibi_text.copy(ptr %ctx, ptr %start{}, i32 %count{})\n  br label %owned{}\nshare{}:\n", out, pc, text, pc, pc, pc, pc);
+        out = format_text("{}  call void @chibi_scalar.retain(ptr %owner{})\n  %moved{} = insertvalue {} %source{}, ptr %start{}, 0\n", out, pc, pc, text, pc, pc);
+        out = format_text("{}  %shared{} = insertvalue {} %moved{}, i32 %count{}, 1\n  br label %owned{}\nowned{}:\n", out, pc, text, pc, pc, pc, pc);
+        out = format_text("{}  %selected{} = phi {} [ %imported{}, %import{} ], [ %shared{}, %share{} ]\n", out, pc, text, pc, pc, pc, pc);
+        selected_block = format_text("owned{}", pc);
+    }
+    result := TypeName(item.type);
+    out = format_text("{}  br label %found{}\nfound{}:\n  %payload{} = phi {} [ zeroinitializer, %range{} ], [ %selected{}, %{} ]\n", out, pc, pc, pc, text, pc, pc, selected_block);
+    out = format_text("{}  %tagged{} = insertvalue {} zeroinitializer, i32 1, 0\n  %present{} = insertvalue {} %tagged{}, {} %payload{}, 1\n", out, pc, result, pc, result, pc, text, pc);
+    out = format_text("{}  br label %done{}\ndone{}:\n  %v{} = phi {} [ zeroinitializer, %p{} ], [ %present{}, %found{} ]\n", out, pc, pc, pc, result, pc, pc, pc);
+    return format_text("{}{}", out, Store(format_text("%v{}", pc), item.type, "s", item.output));
+}

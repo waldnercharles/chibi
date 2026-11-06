@@ -1,0 +1,42 @@
+{
+  "kind": "related fixture-only branch CI evidence; no local rerun or cause attribution",
+  "head": "c2556d3417bf6aaa9a37e60ddd0c0d1253b15635",
+  "parent": "afcd777ba1741dfa3f1d890c90d5310a9415e331",
+  "compared_base": "afcd777ba1741dfa3f1d890c90d5310a9415e331",
+  "changed_files": [
+    "test/tools/GraphDiscovery.chibi"
+  ],
+  "pull_request": 804,
+  "job_id": 122994347432,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/graph-discovery-fixture/chibi/.chibi/graph-fixture/ci-804/linux-graph-job-122994347432.log",
+  "log_sha256": "04418683a7044ed9f2052d8eaad52546abbe2bd5da3564ecfd737c9dee926f59",
+  "excerpts": [
+    {
+      "line": 1082,
+      "text": "2026-10-28T17:56:28.6700833Z recovered the compiler of revision f2a71eae9611009c8a9a237b87f867739c7a5f82: 20780474 bytes, sha256 bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a"
+    },
+    {
+      "line": 1085,
+      "text": "2026-10-28T17:58:32.8349968Z recovered the compiler of revision f2a71eae9611009c8a9a237b87f867739c7a5f82: 20780474 bytes, sha256 bf582baf6aa06496b15e6f715f27cab3d5afbd0fb68feb59483c85d7481cc64a"
+    },
+    {
+      "line": 1086,
+      "text": "2026-10-28T17:58:32.8354818Z stopped after 120 seconds: /home/runner/work/chibi/chibi/build-release/sdk/chibi-build-host --root /home/runner/work/chibi/chibi --source /home/runner/work/chibi/chibi/tools/toolchain/SDK.chibi --core /home/runner/work/chibi/chibi/packages/core --entry CompilerTools --timeout-ms 120000 -- --build /home/runner/work/chibi/chibi/build-release --output /tmp/chibi-sdk-JFRuV9/compiler tools --third-party /home/runner/work/chibi/chibi/.git/chibi/third_party/1ef571b800ac45d9a0f7adce338ae6ed153f2f460883dbb2a595509a9c1648d7"
+    },
+    {
+      "line": 1087,
+      "text": "2026-10-28T17:58:32.8358277Z (FAILED: ../test/tools/build_sdk.c (782): !install(build_path, original))"
+    },
+    {
+      "line": 1097,
+      "text": "2026-10-28T17:58:32.8972054Z Summary: Passed: 7 Failed: 1 Total: 8 Suites: 0 Asserts: 161"
+    },
+    {
+      "line": 1098,
+      "text": "2026-10-28T17:58:32.9100452Z Test command wall time: 308.162s; includes in-test fixture setup; external configuration/build excluded."
+    }
+  ],
+  "qualification": "SDK CompilerTools timeout occurred without #795 or #802 changes. Identical cause, inherited performance, and input identity remain unproven; owner is preserving actual inputs.",
+  "distinct_failure": "#803macOS facade CompileClosure180seconds is a different operation, not this SDK120-second install.",
+  "next_action": "No new rerun requested. Retain CHIBI_BUILD_TIMINGS and unchanged normal limits for the next already-required accepted-combination SDK acceptance."
+}

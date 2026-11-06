@@ -1,0 +1,15 @@
+package facts
+Mix8 :: (a: u8, b: u8) -> u8 { return (a & b) | ((a ^ b) & ~b); }
+NotU8 :: (a: u8) -> u8 { return ~a; }
+NotI8 :: (a: i8) -> i8 { return ~a; }
+NotU16 :: (a: u16) -> u16 { return ~a; }
+NotI16 :: (a: i16) -> i16 { return ~a; }
+NotU32 :: (a: u32) -> u32 { return ~a; }
+NotI32 :: (a: i32) -> i32 { return ~a; }
+NotU64 :: (a: u64) -> u64 { return ~a; }
+NotI64 :: (a: i64) -> i64 { return ~a; }
+XorI16 :: (a: i16, b: i16) -> i16 { return a ^ b; }
+AndU32 :: (a: u32, b: u32) -> u32 { return a & b; }
+OrI64 :: (a: i64, b: i64) -> i64 { return a | b; }
+ShiftU16 :: (a: u16, n: u32) -> u16 { return a << n; }
+ShiftI8 :: (a: i8, n: u32) -> i8 { return a >> n; }

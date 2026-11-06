@@ -1,0 +1,60 @@
+package facts
+Holder :: union { Has(xs: int[]) | Empty }
+Work :: union { Visit(h: Holder) | Token(n: int) }
+Removed :: () -> int {
+    outer: Holder[] = [Holder.Empty, Holder.Has([7])];
+    pending: Work[] = [];
+    pending.append(Work.Visit(outer[1]));
+    work := pending[0];
+    pending.remove_index(0);
+    switch work {
+        case .Visit(h):
+            switch h {
+                case .Has(xs):
+                    return length(xs);
+                case:
+                    return -2;
+            }
+        case:
+            return -3;
+    }
+}
+Replaced :: () -> int {
+    pending: Work[] = [Work.Visit(Holder.Has([1, 2]))];
+    work := pending[0];
+    work = pending[0];
+    pending[0] = Work.Token(0);
+    switch work {
+        case .Visit(h):
+            switch h {
+                case .Has(xs):
+                    return length(xs);
+                case:
+                    return -2;
+            }
+        case:
+            return -3;
+    }
+}
+Walked :: () -> int {
+    outer: Holder[] = [Holder.Has([5, 6, 7])];
+    pending: Work[] = [Work.Visit(outer[0]), Work.Token(1)];
+    total: int = 0;
+    while (length(pending) > 0) {
+        work := pending[length(pending) - 1];
+        pending.remove_index(length(pending) - 1);
+        switch work {
+            case .Visit(h):
+                switch h {
+                    case .Has(xs):
+                        total += length(xs);
+                        pending.append(Work.Token(10));
+                    case:
+                        total = -2;
+                }
+            case .Token(n):
+                total += n;
+        }
+    }
+    return total;
+}

@@ -1,0 +1,27 @@
+{
+  "name": "configure-native-math-local-dirty",
+  "argv": [
+    "cmake",
+    "-S",
+    "test/language",
+    "-B",
+    ".chibi/integration/language",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DCMAKE_C_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang",
+    "-DCMAKE_CXX_COMPILER=/opt/homebrew/opt/llvm@22/bin/clang++",
+    "-DCHIBI_SDK_BUILD_COMPILER=ON",
+    "-DCHIBI_SDK_BUILD_DESKTOP=OFF",
+    "-DCHIBI_SDK_BUILD_NATIVE=OFF"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot",
+  "environment": {
+    "CHIBI_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot/.chibi/integration/language",
+    "CHIBI_RELEASE_LANGUAGE_BUILD_DIR": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot/.chibi/integration/language"
+  },
+  "exit_code": 0,
+  "wall_seconds": 8.202193916076794,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot/.chibi/integration/configure-native-math-local-dirty.log",
+  "log_sha256": "ff20a5d44d4b3b04930623f129ccba7eb947b7426a6698213651fd8f0d716d25",
+  "head": "8b14194143d47ac0ec089e2bb3f034e541d1955e",
+  "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n"
+}

@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { return smoothstep(0, 1, vec4(-1, 0, 0.5, 2)) == vec4(0, 0, 0.5, 1); }

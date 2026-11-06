@@ -1,0 +1,207 @@
+{
+  "purpose": "NATIVE MATH LOCAL DIRTY DIAGNOSTIC ONLY; no publication",
+  "head": "8b14194143d47ac0ec089e2bb3f034e541d1955e",
+  "tree": "0d37a14441cb01d97aef3157c9daaaded75f25b7",
+  "tracked_status": "",
+  "artifact_original_attribution": "2a76e61a8",
+  "artifact_closure": {
+    "file": "compiler.chibip",
+    "bytes": 20805242,
+    "sha256": "ce56a52ba79e51fe538eac447bd1caf2d233d5250f2a990e56f9d4ca0e9b3356"
+  },
+  "artifact_manifest_sha256": "216d418a988dc0e6eae622b391585b5d10ab030d11d9d4e20492926d673fa2f0",
+  "actual_compiler27sources_match": [
+    {
+      "path": "package_compiler/Compile.chibi",
+      "disk": "tools/compiler/package_compiler/Compile.chibi",
+      "bytes": 150403,
+      "sha256": "7398ea88f67f5e890babdc749f95a8da90e52d27cd7ed5e351ff594f49c50ee4"
+    },
+    {
+      "path": "package_compiler/Body.chibi",
+      "disk": "tools/compiler/package_compiler/Body.chibi",
+      "bytes": 178545,
+      "sha256": "c3a91864fdc32387495620075ec5e696161be62a983b09d878050d5159cf51d0"
+    },
+    {
+      "path": "package_compiler/Steps.chibi",
+      "disk": "tools/compiler/package_compiler/Steps.chibi",
+      "bytes": 309690,
+      "sha256": "68d5a8af7b542f3a89d0ba4d4cb76405afbce19d3201a7211d002fe0cb67b6dc"
+    },
+    {
+      "path": "package_compiler/Maps.chibi",
+      "disk": "tools/compiler/package_compiler/Maps.chibi",
+      "bytes": 29459,
+      "sha256": "351d13270cdfffcda31f35026681b33933e9fde05babb221fc963976061add00"
+    },
+    {
+      "path": "package_compiler/References.chibi",
+      "disk": "tools/compiler/package_compiler/References.chibi",
+      "bytes": 40733,
+      "sha256": "d73825ac0b16dd082005650699e2bd6a35987592103a553f76fd0b5783414852"
+    },
+    {
+      "path": "package_compiler/Pointers.chibi",
+      "disk": "tools/compiler/package_compiler/Pointers.chibi",
+      "bytes": 52353,
+      "sha256": "a60181b885210b47741be52754d7d06ed7203ff47f4008dba6f80a696659f665"
+    },
+    {
+      "path": "package_compiler/Tasks.chibi",
+      "disk": "tools/compiler/package_compiler/Tasks.chibi",
+      "bytes": 11882,
+      "sha256": "43c5ec60e6a9d87490dabe19a2ce379cc0a57c40c2d88d9ffeebaa60c0700970"
+    },
+    {
+      "path": "package_compiler/TaskResults.chibi",
+      "disk": "tools/compiler/package_compiler/TaskResults.chibi",
+      "bytes": 10463,
+      "sha256": "dfb8db278474f39ccec2c5066ae13137d885eca76c430b32dcfe0cc3b86bfef1"
+    },
+    {
+      "path": "package_compiler/Tree.chibi",
+      "disk": "tools/compiler/package_compiler/Tree.chibi",
+      "bytes": 2578,
+      "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a"
+    },
+    {
+      "path": "package_compiler/Number.chibi",
+      "disk": "tools/compiler/package_compiler/Number.chibi",
+      "bytes": 29513,
+      "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2"
+    },
+    {
+      "path": "package_compiler/Optional.chibi",
+      "disk": "tools/compiler/package_compiler/Optional.chibi",
+      "bytes": 20634,
+      "sha256": "91c199e4ef66413df60ab11efd05ed2b984dbe049c0e6cbfeb7c018e0152ecf8"
+    },
+    {
+      "path": "package_compiler/Sequences.chibi",
+      "disk": "tools/compiler/package_compiler/Sequences.chibi",
+      "bytes": 61040,
+      "sha256": "e32665981a97d00ca0eda60bde73f81ffdcd7ba8f25ed2a3cf826eff89a53b53"
+    },
+    {
+      "path": "package_compiler/Queries.chibi",
+      "disk": "tools/compiler/package_compiler/Queries.chibi",
+      "bytes": 93003,
+      "sha256": "772064ffa7540a34d1beb7070da58d208b5d51e6b5111e9bd23e6fb7648c1b28"
+    },
+    {
+      "path": "package_compiler/QueryLoops.chibi",
+      "disk": "tools/compiler/package_compiler/QueryLoops.chibi",
+      "bytes": 12308,
+      "sha256": "6d731bf9a6a97533119dc83c186119f4ff9070a681bb5be890e9d432198be588"
+    },
+    {
+      "path": "package_compiler/Behavior.chibi",
+      "disk": "tools/compiler/package_compiler/Behavior.chibi",
+      "bytes": 56738,
+      "sha256": "82f35ecb2f9e6c11241ceb9950a1bbc367a182936cee40cd100c5b2af751f41d"
+    },
+    {
+      "path": "package_compiler/Scalar.chibi",
+      "disk": "tools/compiler/package_compiler/Scalar.chibi",
+      "bytes": 115064,
+      "sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b"
+    },
+    {
+      "path": "syntax_diagnostics/Diagnostics.chibi",
+      "disk": "tools/compiler/syntax_diagnostics/Diagnostics.chibi",
+      "bytes": 2282,
+      "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
+    },
+    {
+      "path": "/sdk/core/strings/Strings.chibi",
+      "disk": "packages/core/strings/Strings.chibi",
+      "bytes": 16404,
+      "sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df"
+    },
+    {
+      "path": "source_snapshot/Snapshot.chibi",
+      "disk": "tools/compiler/source_snapshot/Snapshot.chibi",
+      "bytes": 15871,
+      "sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622"
+    },
+    {
+      "path": "compiler_syntax/Syntax.chibi",
+      "disk": "tools/compiler/compiler_syntax/Syntax.chibi",
+      "bytes": 1529,
+      "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4"
+    },
+    {
+      "path": "package_routes/Routes.chibi",
+      "disk": "tools/compiler/package_routes/Routes.chibi",
+      "bytes": 7736,
+      "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228"
+    },
+    {
+      "path": "package_syntax/Extract.chibi",
+      "disk": "tools/compiler/package_syntax/Extract.chibi",
+      "bytes": 4276,
+      "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146"
+    },
+    {
+      "path": "package_graph/Graph.chibi",
+      "disk": "tools/compiler/package_graph/Graph.chibi",
+      "bytes": 13271,
+      "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da"
+    },
+    {
+      "path": "package_paths/Paths.chibi",
+      "disk": "tools/compiler/package_paths/Paths.chibi",
+      "bytes": 2274,
+      "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30"
+    },
+    {
+      "path": "lexical_binding/Binding.chibi",
+      "disk": "tools/compiler/lexical_binding/Binding.chibi",
+      "bytes": 8673,
+      "sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1"
+    },
+    {
+      "path": "prepared_writer/Writer.chibi",
+      "disk": "tools/compiler/prepared_writer/Writer.chibi",
+      "bytes": 40444,
+      "sha256": "2dcc3d41a4feb3e95855d9de860eaf36b1347ae96bdab0d7bd3280720a838081"
+    },
+    {
+      "path": "scalar_facts/Facts.chibi",
+      "disk": "tools/compiler/scalar_facts/Facts.chibi",
+      "bytes": 16982,
+      "sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50"
+    }
+  ],
+  "recorded_source_path_order_matches": true,
+  "virtual_roots_debug_target_match": true,
+  "checkedMath_target_matches_pure_artifact": true,
+  "compiler_host_target_type_runtime_source_paths_unchanged_from_pure60b": true,
+  "changed_source_paths_from_pure": [
+    "packages/core/math/Math.chibi",
+    "packages/core/math/MathTests.chibi",
+    "packages/core/math/Spring.chibi",
+    "packages/core/math/SpringTests.chibi",
+    "packages/core/math/ease/Ease.chibi",
+    "packages/core/math/ease/EaseTests.chibi",
+    "src/graph/nodes/const_nodes.c",
+    "src/graph/nodes/math_expression.c",
+    "src/graph/nodes/math_nodes.c",
+    "src/graph/nodes/math_nodes.h",
+    "src/runtime/math.c",
+    "src/runtime/math_definition.c",
+    "src/runtime/math_definition.h",
+    "src/runtime/math_native.h",
+    "test/fixtures/feature-coverage/coverage-gaps.txt",
+    "test/language/CMakeLists.txt",
+    "test/language/main.c",
+    "test/language/package_compiler_chibi.c",
+    "test/language/package_math.c",
+    "test/language/packed.c",
+    "test/runtime/source_features.c",
+    "tools/graph/engine/Targets.chibi",
+    "tools/test_policy.py"
+  ],
+  "strict_reuse_caveat": "Math root Generate still adds broad core inventory before bootstrap capture; ordinary build may expose33-source request rather than the recorded27; record and stop if this prevents reuse"
+}

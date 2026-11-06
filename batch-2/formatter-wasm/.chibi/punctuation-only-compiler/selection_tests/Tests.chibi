@@ -1,0 +1,159 @@
+package source_format_tests
+
+import format "project:source_format"
+import strings "core:strings"
+
+SelectionCase :: (source: string, completed: string, expected: string, options: format.Options) {
+    switch format.SelectFormatted(source, completed, options) {
+        case .Rejected(message): print_string(message); assert(false, "range fixture formats");
+        case .Formatted(text, notes):
+            if (text != expected) { print_string(text); print_string(notes); }
+            assert(text == expected, "only the complete selected syntax changes");
+            assert(notes != "", "range expansion is reported");
+    }
+}
+
+@test
+DeclarationSelectionKeepsOtherDeclarationsByteExact :: () {
+    options := format.Defaults(); options.start_line = 4; options.end_line = 4;
+    SelectionCase("package p\n\nFirst :: () {\n value:=1;\n}\n\nSecond  :: () {value:=2;}\n",
+                  "package p\n\nFirst :: () {\n    value := 1;\n}\n\nSecond :: () {\n    value := 2;\n}\n",
+                  "package p\n\nFirst :: () {\n    value := 1;\n}\n\nSecond  :: () {value:=2;}\n", options);
+}
+
+@test
+StatementSelectionKeepsHeaderAndSiblingBytes :: () {
+    options := format.Defaults(); options.start_line = 4; options.end_line = 4; options.range_scope = 1;
+    SelectionCase("package p\nFirst  :: () {\n a:=1;\n b:=2;\n Use(a,b);\n}\n",
+                  "package p\nFirst :: () {\n    a := 1;\n    b := 2;\n    Use(a, b);\n}\n",
+                  "package p\nFirst  :: () {\n a:=1;\n    b := 2;\n Use(a,b);\n}\n", options);
+}
+
+@test
+AssignmentSelectionExpandsItsAlignmentGroup :: () {
+    options := format.Defaults(); options.start_line = 4; options.end_line = 4;
+    options.range_scope = 1; options.assignment_alignment = 3;
+    SelectionCase("package p\nFirst  :: () {\n a:=1;\n longer:=2;\n Use(a,longer);\n}\n",
+                  "package p\nFirst :: () {\n    a      := 1;\n    longer := 2;\n    Use(a, longer);\n}\n",
+                  "package p\nFirst  :: () {\n    a      := 1;\n    longer := 2;\n Use(a,longer);\n}\n", options);
+}
+
+@test
+CollapsedFunctionSelectionExpandsWithoutDuplicatingIt :: () {
+    options := format.Defaults(); options.start_line = 3; options.end_line = 3; options.range_scope = 1;
+    SelectionCase("package p\nFirst  :: () {\n return 1;\n}\nSecond  :: () {}\n",
+                  "package p\nFirst :: () => 1;\nSecond :: () {}\n",
+                  "package p\nFirst :: () => 1;\nSecond  :: () {}\n", options);
+}
+
+@test
+ImportSelectionIncludesTheWholeImportGroup :: () {
+    options := format.Defaults(); options.start_line = 3; options.end_line = 3;
+    SelectionCase("package p\nimport z \"core:z\"\nimport a \"core:a\"\nFirst  :: () {}\n",
+                  "package p\nimport a \"core:a\"\nimport z \"core:z\"\nFirst :: () {}\n",
+                  "package p\nimport a \"core:a\"\nimport z \"core:z\"\nFirst  :: () {}\n", options);
+}
+
+@test
+StatementSelectionPreservesUnicodeAndCrLfOutsideIt :: () {
+    options := format.Defaults(); options.start_line = 4; options.end_line = 4; options.range_scope = 1;
+    SelectionCase("package p\r\n// café\r\nFirst  :: () {\r\n value:=1;\r\n Other();\r\n}\r\n",
+                  "package p\n// café\nFirst :: () {\n    value := 1;\n    Other();\n}\n",
+                  "package p\r\n// café\r\nFirst  :: () {\r\n    value := 1;\n Other();\r\n}\r\n", options);
+}
+
+@test
+SelectionIncludesAssociatedDocumentationComments :: () {
+    options := format.Defaults(); options.start_line = 4; options.end_line = 4;
+    SelectionCase("package p\n// First docs\nFirst  :: () {\n value:=1;\n}\nSecond  :: () {}\n",
+                  "package p\n// First docs\nFirst :: () {\n    value := 1;\n}\nSecond :: () {}\n",
+                  "package p\n// First docs\nFirst :: () {\n    value := 1;\n}\nSecond  :: () {}\n", options);
+}
+
+@test
+SelectionRejectsInvalidRangesAndInvalidCompletedSource :: () {
+    options := format.Defaults(); options.start_line = 3; options.end_line = 2;
+    switch format.SelectFormatted("package p\nFirst :: () {}\n", "package p\n", options) {
+        case .Formatted(text, notes): assert(false, "reversed selection rejects");
+        case .Rejected(message): assert(strings.Contains(message, "ordered line range"), "range diagnostic");
+    }
+    options.start_line = 50; options.end_line = 50;
+    switch format.SelectFormatted("package p\n", "package p\n", options) {
+        case .Formatted(text, notes): assert(false, "out of bounds selection rejects");
+        case .Rejected(message): assert(strings.Contains(message, "inside the source"), "bounds diagnostic");
+    }
+    options.start_line = 1; options.end_line = 1;
+    switch format.SelectFormatted("package p\n", "package p\nFirst :: (", options) {
+        case .Formatted(text, notes): assert(false, "invalid formatted source rejects");
+        case .Rejected(message): assert(strings.Contains(message, "invalid formatter output"), "invalid output diagnostic");
+    }
+}
+
+@test
+WholeFileSelectionReturnsTheCompletedContextAwarePass :: () {
+    options := format.Defaults();
+    switch format.SelectFormatted("package p\nFirst  :: () {}\n", "package p\nFirst :: () {}\n", options) {
+        case .Rejected(message): assert(false, "whole file selection works");
+        case .Formatted(text, notes):
+            assert(text == "package p\nFirst :: () {}\n" && notes == "", "zero range is the complete pass");
+    }
+}
+
+@test
+SelectionHandlesImplicitTerminatorsWithoutCapturingNextStatement :: () {
+    options := format.Defaults(); options.start_line = 4; options.end_line = 4; options.range_scope = 1;
+    SelectionCase("package p\nFirst  :: () {\n a:=1\n b:=2\n Use(a,b)\n}\n",
+                  "package p\nFirst :: () {\n    a := 1\n    b := 2\n    Use(a, b)\n}\n",
+                  "package p\nFirst  :: () {\n a:=1\n    b := 2\n Use(a,b)\n}\n", options);
+}
+
+@test
+StatementSelectionIncludesNewLogicalParagraphBoundary :: () {
+    options := format.Defaults(); options.start_line = 4; options.end_line = 4; options.range_scope = 1;
+    SelectionCase("package p\nFirst  :: () {\n a:=1;\n b:=2;\n Use(a,b);\n}\n",
+                  "package p\nFirst :: () {\n    a := 1;\n\n    b := 2;\n    Use(a, b);\n}\n",
+                  "package p\nFirst  :: () {\n a:=1;\n\n    b := 2;\n Use(a,b);\n}\n", options);
+}
+
+@test
+CommentAlignmentSelectionIncludesAdjacentCommentedStatements :: () {
+    options := format.Defaults(); options.start_line = 4; options.end_line = 4;
+    options.range_scope = 1; options.comment_alignment = 3;
+    SelectionCase("package p\nFirst  :: () {\n Call(); // one\n LongerCall(); // two\n Other();\n}\n",
+                  "package p\nFirst :: () {\n    Call();       // one\n    LongerCall(); // two\n    Other();\n}\n",
+                  "package p\nFirst  :: () {\n    Call();       // one\n    LongerCall(); // two\n Other();\n}\n", options);
+}
+
+@test
+AssignmentSelectionRespectsBlankLineGroupBoundaries :: () {
+    options := format.Defaults(); options.start_line = 5; options.end_line = 5;
+    options.range_scope = 1; options.assignment_alignment = 3;
+    SelectionCase("package p\nFirst  :: () {\n earlier:=1;\n\n a:=2;\n longer:=3;\n Use(a,longer);\n}\n",
+                  "package p\nFirst :: () {\n    earlier := 1;\n\n    a      := 2;\n    longer := 3;\n    Use(a, longer);\n}\n",
+                  "package p\nFirst  :: () {\n earlier:=1;\n\n    a      := 2;\n    longer := 3;\n Use(a,longer);\n}\n", options);
+}
+
+@test
+DeclarationSelectionCorrespondenceIgnoresTypeAndFunctionSpelling :: () {
+    options := format.Defaults(); options.start_line = 3; options.end_line = 3;
+    SelectionCase("package p\nFirst :: () -> int {\n value: int = 1;\n return value;\n}\nSecond  :: () {}\n",
+                  "package p\nFirst :: fn() int {\n    value := 1;\n    return value;\n}\nSecond :: fn() {}\n",
+                  "package p\nFirst :: fn() int {\n    value := 1;\n    return value;\n}\nSecond  :: () {}\n", options);
+}
+
+@test
+RemovedImportCommentsArePreservedWithVisibleExpansion :: () {
+    options := format.Defaults(); options.start_line = 2; options.end_line = 3;
+    SelectionCase("package p\n// keep why\nimport unused \"core:unused\"\nFirst  :: () {}\n",
+                  "package p\n// keep why\nFirst :: () {}\n",
+                  "package p\n// keep why\nFirst :: () {}\n", options);
+}
+
+@test
+SelectionIncludesAlignmentGroupsCreatedByBlankLineRemoval :: () {
+    options := format.Defaults(); options.start_line = 5; options.end_line = 5;
+    options.range_scope = 1; options.assignment_alignment = 3; options.max_blank_lines = 0;
+    SelectionCase("package p\nFirst  :: () {\n a:=1;\n\n longer:=2;\n Use(a,longer);\n}\n",
+                  "package p\nFirst :: () {\n    a      := 1;\n    longer := 2;\n    Use(a, longer);\n}\n",
+                  "package p\nFirst  :: () {\n    a      := 1;\n    longer := 2;\n Use(a,longer);\n}\n", options);
+}

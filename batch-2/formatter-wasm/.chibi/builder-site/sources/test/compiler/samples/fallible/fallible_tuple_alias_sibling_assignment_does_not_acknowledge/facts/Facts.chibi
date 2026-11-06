@@ -1,0 +1,6 @@
+package facts
+@error Failure :: struct { code: int; }
+Read :: () -> (value: int, error: Failure?) { return(7, {code: 3}); }
+Use :: () -> int { r := Read(); copy := r; copy.value = 5; return copy.value; }
+
+// error: 4:25: Error result is ignored on a reachable path; check, report, store or return it

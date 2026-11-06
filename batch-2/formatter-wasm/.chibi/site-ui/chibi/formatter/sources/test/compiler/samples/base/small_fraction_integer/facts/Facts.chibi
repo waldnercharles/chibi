@@ -1,0 +1,4 @@
+package facts
+Run :: () -> i64 { x: i64 = 0; return x + 9007199254740992.5; }
+
+// error: 2:43: Numeric literal has a fraction, which i64 cannot hold

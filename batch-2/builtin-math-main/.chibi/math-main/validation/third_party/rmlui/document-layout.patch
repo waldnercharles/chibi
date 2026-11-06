@@ -1,0 +1,73 @@
+diff --git a/Include/RmlUi/Core/Element.h b/Include/RmlUi/Core/Element.h
+--- a/Include/RmlUi/Core/Element.h
++++ b/Include/RmlUi/Core/Element.h
+@@ -591,7 +591,7 @@
+ 	const ComputedValues& GetComputedValues() const;
+ 
+ protected:
+-	void Update(float dp_ratio, Vector2f vp_dimensions);
++	void Update(float dp_ratio, Vector2f vp_dimensions, bool run_callbacks = true);
+ 	void Render();
+ 
+ 	/// Updates definition, computed values, and runs OnPropertyChange on this element.
+diff --git a/Include/RmlUi/Core/ElementDocument.h b/Include/RmlUi/Core/ElementDocument.h
+--- a/Include/RmlUi/Core/ElementDocument.h
++++ b/Include/RmlUi/Core/ElementDocument.h
+@@ -115,7 +115,8 @@
+ 	/// Updates the document, including its layout. Users must call this manually before requesting information such as
+ 	/// the size or position of an element if any element in the document was recently changed, unless Context::Update
+ 	/// has already been called after the change. This has a performance penalty, only call when necessary.
+-	void UpdateDocument();
++	/// Disable per-frame callbacks when only resolving pending style and geometry changes.
++	void UpdateDocument(bool run_callbacks = true);
+ 
+ protected:
+ 	/// Repositions the document if necessary.
+diff --git a/Source/Core/Element.cpp b/Source/Core/Element.cpp
+--- a/Source/Core/Element.cpp
++++ b/Source/Core/Element.cpp
+@@ -117,7 +117,7 @@
+ 	num_non_dom_children = 0;
+ }
+ 
+-void Element::Update(float dp_ratio, Vector2f vp_dimensions)
++void Element::Update(float dp_ratio, Vector2f vp_dimensions, bool run_callbacks)
+ {
+ #ifdef RMLUI_TRACY_PROFILING
+ 	auto name = GetAddress(false, false);
+@@ -125,7 +125,8 @@
+ 	RMLUI_ZoneText(name.c_str(), name.size());
+ #endif
+ 
+-	OnUpdate();
++	if (run_callbacks)
++		OnUpdate();
+ 
+ 	HandleTransitionProperty();
+ 	HandleAnimationProperty();
+@@ -146,7 +147,7 @@
+ 	meta->effects.InstanceEffects();
+ 
+ 	for (size_t i = 0; i < children.size(); i++)
+-		children[i]->Update(dp_ratio, vp_dimensions);
++		children[i]->Update(dp_ratio, vp_dimensions, run_callbacks);
+ 
+ 	if (!animations.empty() && IsVisible(true))
+ 	{
+diff --git a/Source/Core/ElementDocument.cpp b/Source/Core/ElementDocument.cpp
+--- a/Source/Core/ElementDocument.cpp
++++ b/Source/Core/ElementDocument.cpp
+@@ -464,11 +464,11 @@
+ 
+ void ElementDocument::LoadExternalScript(const String& /*source_path*/) {}
+ 
+-void ElementDocument::UpdateDocument()
++void ElementDocument::UpdateDocument(bool run_callbacks)
+ {
+ 	const float dp_ratio = (context ? context->GetDensityIndependentPixelRatio() : 1.0f);
+ 	const Vector2f vp_dimensions = (context ? Vector2f(context->GetDimensions()) : Vector2f(1.0f));
+-	Update(dp_ratio, vp_dimensions);
++	Update(dp_ratio, vp_dimensions, run_callbacks);
+ 	UpdateLayout();
+ 	UpdatePosition();
+ }

@@ -1,0 +1,5 @@
+package facts
+Note :: struct { count: int; }
+Grow :: (b: u8) -> int { n: Note = {count: 1}; n.count += b; return n.count; }
+
+// error: 3:48: Mismatched integer types int and u8; convert one operand

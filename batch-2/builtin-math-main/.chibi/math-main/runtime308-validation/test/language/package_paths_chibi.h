@@ -1,0 +1,4 @@
+#ifndef CHIBI_TEST_PACKAGE_PATHS_CHIBI_H
+#define CHIBI_TEST_PACKAGE_PATHS_CHIBI_H
+void test_language_package_paths_chibi();
+#endif

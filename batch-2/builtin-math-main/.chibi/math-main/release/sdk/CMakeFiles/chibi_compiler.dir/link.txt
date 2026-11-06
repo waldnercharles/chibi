@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_compiler.a "CMakeFiles/chibi_compiler.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/language/lower.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_compiler.a

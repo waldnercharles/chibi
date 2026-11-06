@@ -1,0 +1,5 @@
+package facts
+Binary :: () -> string { return "a\u0000b"; }
+Default :: (value: string = "a\u0000b") -> string { return value; }
+ReadDefault :: () -> string { return Default(); }
+Equal :: () -> bool { return "a\u0000b" == "a\u0000c"; }

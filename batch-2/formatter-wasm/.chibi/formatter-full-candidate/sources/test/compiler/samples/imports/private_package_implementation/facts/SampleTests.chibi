@@ -1,0 +1,15 @@
+package facts
+
+// private package implementation
+@test
+Calls :: () {
+    r1: int = One();
+    e1: int = 20;
+    assert(r1 == e1, "One call 1");
+}
+
+@test
+Records :: () {
+    local: Local = {Hidden: 11};
+    assert(Shadow(local) == 11, "Shadow");
+}

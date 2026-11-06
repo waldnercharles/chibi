@@ -1,0 +1,5 @@
+package facts
+pub Overflow :: (value: f64) -> bool { x: number = number(value); return x > 0.0 && x == x + x; }
+pub NegativeOverflow :: (value: f64) -> bool { x: number = number(value); return x < 0.0 && x == x + x; }
+pub NotANumber :: (unused: f64) -> bool { z: f64 = 0.0; x: number = number(z / z); return x != x; }
+pub NegativeZero :: (unused: f64) -> bool { z: f64 = -0.0; x: number = number(z); return x == 0.0 && 1.0 / x < 0.0; }

@@ -1,0 +1,4 @@
+package lib
+pub Fail :: () {
+    assert(false, "imported failure");
+}

@@ -1,0 +1,23 @@
+package facts
+
+// defaults
+@test
+Calls :: () {
+    a1_0: int = 5;
+    a1_1: int = 6;
+    a1_2: i64 = 7;
+    r1: i64 = Add(a1_0, a1_1, a1_2);
+    e1: i64 = 18;
+    assert(r1 == e1, "Add call 1");
+    r2: i64 = Use();
+    e2: i64 = 32;
+    assert(r2 == e2, "Use call 2");
+    r3: string = Hello();
+    e3: string = "HI you";
+    assert(r3 == e3, "Hello call 3");
+    a4_0: string = "ada";
+    a4_1: bool = false;
+    r4: string = Greet(a4_0, a4_1);
+    e4: string = "ada";
+    assert(r4 == e4, "Greet call 4");
+}

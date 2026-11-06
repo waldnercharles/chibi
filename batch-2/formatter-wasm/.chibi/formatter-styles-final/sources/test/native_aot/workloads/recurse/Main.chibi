@@ -1,0 +1,21 @@
+package workload
+
+// Calls: naive recursive Fibonacci and Takeuchi functions, which spend their
+// time in calls and returns and stay within the VM's call depth.
+Main :: () -> int {
+    return (Fibonacci(32) + Takeuchi(18, 12, 6)) % 251;
+}
+
+Fibonacci :: (n: int) -> int {
+    if (n < 2) {
+        return n;
+    }
+    return Fibonacci(n - 1) + Fibonacci(n - 2);
+}
+
+Takeuchi :: (x: int, y: int, z: int) -> int {
+    if (y < x) {
+        return Takeuchi(Takeuchi(x - 1, y, z), Takeuchi(y - 1, z, x), Takeuchi(z - 1, x, y));
+    }
+    return z;
+}

@@ -1,0 +1,6 @@
+package facts
+pub InDeclaration :: (unused: number) -> number { result: number = 1.5; return result; }
+pub InAssignment :: (unused: number) -> number { result: number = 0.0; result = 1.5; return result; }
+pub InReturn :: (unused: number) -> number { return 1.5; }
+Take :: (value: number) -> number { return value; }
+pub InArgument :: (unused: number) -> number { return Take(1.5); }

@@ -1,0 +1,5 @@
+package main
+Main :: () {
+    assert((false), "");
+    assert(false, "unreached second assertion");
+}

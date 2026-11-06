@@ -1,0 +1,2 @@
+package lib
+pub Bump :: (v: ^int) { v^ += 1; }

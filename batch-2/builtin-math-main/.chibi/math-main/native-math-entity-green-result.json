@@ -1,0 +1,8 @@
+{
+  "status": 1,
+  "seconds": 19.904,
+  "binary_sha256": "e05190e01c6e654654d41ba3dc46fb1611c71be99beb56430ed6e0265d17e560",
+  "source_math_sha256": "db504d94e9329e6f39572dd77890aa32aa93a567f9c6553a5b9ee7c2a2a1efb7",
+  "test_source_sha256": "985ff3bf66513976e2e6e57a6ce92e428245fee192b47dc590334d22745427c4",
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/native-math-entity-green.log"
+}

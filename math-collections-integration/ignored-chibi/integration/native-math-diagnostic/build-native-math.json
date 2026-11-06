@@ -1,0 +1,57 @@
+{
+  "purpose": "NATIVE MATH LOCAL DIRTY DIAGNOSTIC ONLY; not publication",
+  "argv": [
+    "cmake",
+    "--build",
+    ".chibi/integration/language",
+    "--parallel",
+    "4"
+  ],
+  "cwd": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot",
+  "exit_code": -15,
+  "wall_seconds": 79.74326829100028,
+  "diagnostic": {
+    "captured_request_sha256": "b4dec15a190d33b2fc52b98e4fe58cbbf9d03add6236cf3c5cc8fac27ad7885f",
+    "captured_source_count": 33,
+    "recorded_source_count": 27,
+    "extra_paths": [
+      "/sdk/core/math/Math.chibi",
+      "/sdk/core/math/MathTests.chibi",
+      "/sdk/core/math/Spring.chibi",
+      "/sdk/core/math/SpringTests.chibi",
+      "/sdk/core/math/ease/Ease.chibi",
+      "/sdk/core/math/ease/EaseTests.chibi"
+    ],
+    "missing_paths": [],
+    "target_argv": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot/.chibi/integration/language/sdk/chibi-compiler-host",
+      "--target-json",
+      "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/fresh-native-target.json"
+    ],
+    "target_exit_code": 0,
+    "target_seconds": 0.017964500002563,
+    "fresh_target_matches_artifact": true,
+    "reuse_argv": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-artifact-snapshot/.chibi/integration/language/sdk/chibi-compiler-host",
+      "--reuse-bootstrap",
+      "tools/compiler/bootstrap",
+      "--compiler",
+      "tools/compiler",
+      "--core",
+      "packages/core",
+      "--input",
+      "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/captured-bootstrap-request.json",
+      "--output-artifact",
+      "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/reuse-output.chibip"
+    ],
+    "reuse_exit_code": 3,
+    "reuse_seconds": 2.009035750059411,
+    "reuse_wrote_output": false,
+    "cancellation_reason": "Task-directed stop after actual captured request could not reuse the recorded compiler; production guards unchanged"
+  },
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/math-collections-integration/chibi/.chibi/integration/native-math-diagnostic/build-native-math.log",
+  "log_sha256": "a4f7c02d6cae272e0aa949bf9394d484c3e0ab0d7b47bcad6c68d5861d4dcfcf",
+  "head": "8b14194143d47ac0ec089e2bb3f034e541d1955e",
+  "snapshot_revision": "8b1419414-dirty",
+  "tracked_status": " M tools/compiler/bootstrap/bootstrap.json\n M tools/compiler/bootstrap/compiler.chibip\n"
+}

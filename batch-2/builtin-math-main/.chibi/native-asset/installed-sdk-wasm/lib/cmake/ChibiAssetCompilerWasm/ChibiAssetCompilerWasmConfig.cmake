@@ -1,0 +1,46 @@
+# Optional compiler-only Web component. The archive contains the authored
+# compiler and C facade, so no bytecode host or generated compiler blob links.
+if(NOT EMSCRIPTEN)
+    message(FATAL_ERROR "ChibiAssetCompilerWasm requires the Emscripten toolchain")
+endif()
+get_filename_component(_chibi_wasm_prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+set(_chibi_wasm_include "${_chibi_wasm_prefix}/include/chibi")
+set(_chibi_wasm_library "${_chibi_wasm_prefix}/lib/chibi-wasm32")
+foreach(_variant IN ITEMS plain threads)
+    set(_name libchibi_asset_compiler)
+    set(_target Chibi::asset_compiler_wasm)
+    if(_variant STREQUAL threads)
+        string(APPEND _name _threads)
+        string(APPEND _target _threads)
+    endif()
+    set(_archive "${_chibi_wasm_library}/${_name}.a")
+    if(NOT EXISTS "${_archive}" OR NOT EXISTS "${_archive}.json")
+        message(FATAL_ERROR "The optional Chibi Wasm compiler is missing: ${_archive}")
+    endif()
+    file(READ "${_archive}.json" _record)
+    string(JSON _format GET "${_record}" format)
+    string(JSON _triple GET "${_record}" target)
+    string(JSON _expected_archive GET "${_record}" archive_sha256)
+    string(JSON _expected_header GET "${_record}" host_header_sha256)
+    file(SHA256 "${_archive}" _actual_archive)
+    file(SHA256 "${_chibi_wasm_include}/authoring/asset_compiler_host.h" _actual_header)
+    if(NOT _format EQUAL 1 OR NOT _triple STREQUAL wasm32-unknown-emscripten OR
+       NOT _actual_archive STREQUAL _expected_archive OR NOT _actual_header STREQUAL _expected_header)
+        message(FATAL_ERROR "The optional Chibi Wasm compiler or header is stale: ${_archive}")
+    endif()
+    if(NOT TARGET ${_target})
+        add_library(${_target} STATIC IMPORTED)
+        set_target_properties(${_target} PROPERTIES
+            IMPORTED_LOCATION "${_archive}"
+            INTERFACE_INCLUDE_DIRECTORIES "${_chibi_wasm_include}"
+            INTERFACE_LINK_OPTIONS "-sSUPPORT_LONGJMP=wasm;-sSTACK_OVERFLOW_CHECK=2")
+        if(_variant STREQUAL threads)
+            set_target_properties(${_target} PROPERTIES
+                INTERFACE_COMPILE_OPTIONS -pthread
+                INTERFACE_LINK_OPTIONS "-sSUPPORT_LONGJMP=wasm;-sSTACK_OVERFLOW_CHECK=2;-pthread")
+        endif()
+    endif()
+endforeach()
+unset(_chibi_wasm_prefix)
+unset(_chibi_wasm_include)
+unset(_chibi_wasm_library)

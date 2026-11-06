@@ -1,0 +1,4 @@
+package facts
+Count: u32 : 3;
+Eight :: (x: i64) -> bool { return x == (1 << Count); }
+Huge :: (f: f64) -> bool { return f / 0 > 1000000.0; }

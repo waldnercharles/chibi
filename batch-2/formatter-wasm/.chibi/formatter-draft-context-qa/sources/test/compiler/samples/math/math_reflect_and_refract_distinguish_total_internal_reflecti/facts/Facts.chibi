@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { normal := vec3(0, 1, 0); return reflect(vec3(1, -1, 0), normal) == vec3(1, 1, 0) && refract(vec3(0, -1, 0), normal, 0.5) == vec3(0, -1, 0) && refract(vec3(1, 0, 0), normal, 2) == vec3(0); }

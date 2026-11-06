@@ -1,0 +1,9 @@
+package facts
+Named: number : 1.5;
+pub NamedBodyArithmetic :: (unused: number) -> number { return Named + Named; }
+ParenthesizedNegative: f64 : f64(-(1.5));
+pub ConvertParenthesizedNegative :: (unused: number) -> f64 { return ParenthesizedNegative; }
+ParenthesizedPositive: number : number(+((1.5)));
+pub ConvertParenthesizedPositive :: (unused: number) -> number { return ParenthesizedPositive; }
+NestedNegative: f64 : f64(-(-1.5));
+pub ConvertNestedNegative :: (unused: number) -> f64 { return NestedNegative; }

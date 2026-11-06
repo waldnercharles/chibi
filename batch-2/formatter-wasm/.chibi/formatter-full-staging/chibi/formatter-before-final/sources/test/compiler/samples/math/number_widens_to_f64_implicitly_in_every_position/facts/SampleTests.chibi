@@ -1,0 +1,10 @@
+package facts
+
+// number widens to f64 implicitly in every position
+@test
+Calls :: () {
+    assert(InDeclaration(1.5) == 1.5, "declaration");
+    assert(InAssignment(1.5) == 1.5, "assignment");
+    assert(InReturn(1.5) == 1.5, "return");
+    assert(InArgument(1.5) == 1.5, "argument");
+}

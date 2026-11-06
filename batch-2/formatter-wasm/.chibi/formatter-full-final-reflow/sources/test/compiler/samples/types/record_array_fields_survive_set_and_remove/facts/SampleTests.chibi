@@ -1,0 +1,10 @@
+package facts
+
+// record array fields survive set and remove
+@test
+Calls :: () {
+    assert(Set() == 92, "Set");
+    assert(RemoveIndex() == 112, "RemoveIndex");
+    assert(RemoveItem() == 31, "RemoveItem");
+    assert(SetNested() == 11 + 101 * 4, "SetNested");
+}

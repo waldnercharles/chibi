@@ -1,0 +1,71 @@
+package native_exit_status_tests
+
+import os "core:os"
+import strings "core:strings"
+
+ProgramPath :: (output: string) -> string {
+    for line in strings.SplitLines(output) {
+        if (strings.HasPrefix(line, "native: ")) {
+            return strings.TrimSuffix(strings.Slice(line, 8, strings.ByteLength(line) - 8), " is up to date");
+        }
+    }
+    return "";
+}
+
+Main :: () -> int {
+    arguments := os.Arguments();
+    if (length(arguments) != 3) { return 2; }
+    folder := format_text("{}/exit status", arguments[2]);
+    made := os.MakeDirectory(folder);
+    assert(made == nil);
+    source := strings.Concatenate([folder, "/Main.chibi"]);
+    message := "Main returned an exit status outside 0..255";
+    for context in [false, true] {
+        for code in [int(-1), 0, 134, 255, 256] {
+            prefix := "";
+            returned := format_text("{}", code);
+            if (context) {
+                prefix = "    values := [int(0)];\n";
+                returned = strings.Concatenate([returned, " + values[0]"]);
+            }
+            text := strings.Concatenate(["package status\nMain :: () -> int {\n", prefix, "    return ", returned, ";\n}\n"]);
+            written := os.WriteText(source, text);
+            assert(written == nil);
+            invalid := code < 0 || code > 255;
+            wanted := code;
+            if (invalid) { wanted = 1; }
+            for level in ["-O0", "-O2"] {
+                ran := os.Capture([arguments[0], "run", level, "--llvm", arguments[1], source]);
+                if (ran.status != wanted || strings.Contains(ran.stderr, message) != invalid) {
+                    os.Print(format_text("Main status context={} code={} level={}: expected {}, got {}", context, code, level, wanted, ran.status));
+                    os.Print(ran.stdout); os.Print(ran.stderr);
+                }
+                assert(ran.status == wanted && strings.Contains(ran.stderr, message) == invalid,
+                       "CLI Main exit status keeps 0..255 and diagnoses other results");
+                built := os.Capture([arguments[0], "build", "--native", level, "--llvm", arguments[1], source]);
+                if (built.status != 0) { os.Print(built.stdout); os.Print(built.stderr); }
+                assert(built.status == 0);
+                program := ProgramPath(strings.Concatenate([built.stdout, built.stderr]));
+                assert(program != "", "build reports the executable path");
+                direct := os.Capture([program]);
+                if (direct.status != wanted || strings.Contains(direct.stderr, message) != invalid) {
+                    os.Print(format_text("Built Main status context={} code={} level={}: expected {}, got {}", context, code, level, wanted, direct.status));
+                    os.Print(direct.stdout); os.Print(direct.stderr);
+                }
+                assert(direct.status == wanted && strings.Contains(direct.stderr, message) == invalid,
+                       "built executable keeps the same Main status contract");
+            }
+        }
+    }
+    // A failure ends the entry before its otherwise invalid result is checked.
+    written := os.WriteText(source, "package status\nMain :: () -> int { assert(false, \"first failure\"); return 256; }\n");
+    assert(written == nil);
+    built := os.Capture([arguments[0], "build", "--native", "--llvm", arguments[1], source]);
+    assert(built.status == 0);
+    program := ProgramPath(strings.Concatenate([built.stdout, built.stderr]));
+    assert(program != "", "build reports the failing executable path");
+    failed := os.Capture([program]);
+    assert(failed.status == 134 && !strings.Contains(failed.stderr, message), "runtime failure precedes the exit-status contract");
+    os.Print("native exit statuses: CLI and built executables preserve the Main contract at O0/O2");
+    return 0;
+}

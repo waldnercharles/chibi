@@ -1,0 +1,6 @@
+package map_array_missing
+Main :: () -> int {
+    values: [int: int[]] = [:];
+    values[1].append(7);
+    return 0;
+}

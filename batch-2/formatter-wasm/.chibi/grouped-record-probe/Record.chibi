@@ -1,0 +1,5 @@
+package record_expression
+Point :: struct { x: int; }
+Make :: fn() Point => ({x: 1});
+@test
+RecordResult :: () { assert(Make().x == 1, "grouped expression body returns its record"); }

@@ -1,0 +1,13 @@
+package rejected_foreign_record
+foreign import libc "system:c"
+foreign libc { memset :: (data: u8[], value: i32, count: u64) -> rawptr }
+Box :: struct { bytes: u8[]; }
+Main :: () -> int {
+    value: Box = {bytes: [u8(65)]};
+    Fill(value);
+    // Keep this acceptance assertion while the foreign boundary rejects
+    // record fields pending writable-place and descriptor-writeback proof.
+    assert(value.bytes[0] == 65);
+    return 0;
+}
+Fill :: (value: Box) { changed := memset(value.bytes, 9, 1); }

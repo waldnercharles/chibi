@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_conversion_capabilities.a "CMakeFiles/chibi_conversion_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/conversions.c.o" "CMakeFiles/chibi_conversion_capabilities.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/runtime/conversion_definition.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_conversion_capabilities.a

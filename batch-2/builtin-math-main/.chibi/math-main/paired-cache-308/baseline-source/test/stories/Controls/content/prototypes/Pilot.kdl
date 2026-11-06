@@ -1,0 +1,6 @@
+name "Pilot"
+components {
+    (object)Input
+    (object)Transform
+}
+(array)behaviors "Pilot"

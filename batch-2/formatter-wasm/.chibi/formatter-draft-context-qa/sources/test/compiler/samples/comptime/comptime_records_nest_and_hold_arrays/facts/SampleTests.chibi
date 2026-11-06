@@ -1,0 +1,25 @@
+package facts
+
+// records nest and hold arrays at compile time
+@test
+Calls :: () {
+    span: int = Span;
+    assert(span == 25, "a record of records");
+    total: int = Total;
+    expected_total: int = Sum(Square(5));
+    assert(total == expected_total, "an array of records in a record");
+    assert(total == 26, "points (1,0), (5,0) and (5,15)");
+    weights: f64 = Weights;
+    expected_weights: f64 = Weight(Square(5));
+    assert(weights == expected_weights, "an array of floats in a record");
+    assert(weights == 2.0, "0.5 and 1.5");
+    count: int = Count;
+    assert(count == 3, "length of an array in a record");
+    right: int = Right;
+    assert(right == 7, "a field of an element of an array in a record");
+    name: int = Name;
+    assert(name == 6, "text in a record");
+    shifted: int = Shifted;
+    expected_shifted: int = SquaredLength(Moved({from: {x: 0, y: 0}, to: {x: 3, y: 4}}, 2));
+    assert(shifted == expected_shifted, "assignment to a nested record");
+}

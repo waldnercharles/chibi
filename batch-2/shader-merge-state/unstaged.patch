@@ -1,0 +1,118 @@
+diff --git a/docs/chibi-shaders/PLAN.md b/docs/chibi-shaders/PLAN.md
+index bd3a965a3..9289f5efb 100644
+--- a/docs/chibi-shaders/PLAN.md
++++ b/docs/chibi-shaders/PLAN.md
+@@ -3,6 +3,22 @@
+ Status: CPU source-inspection foundation implemented locally, 2026-10-22. No authoring cutover or
+ GPU parity claim is established by this plan.
+ 
++The current source-map/call-chain/staleness implementation is C, but that was a
++staging choice rather than a demonstrated language requirement. The Chibi-owned
++boundary below fits the already authorized primary-authoring-language goal;
++implementation needs no fresh human permission gate. PR 663 remains draft for
++incomplete boundary, integration and proof work. Native evaluator/resource
++access and the sampled-SDF diagnostic repair remain appropriate C boundaries.
++
++[Chibi-owned boundary proposal](chibi-boundary.md) makes the next design
++checkpoint concrete: authored lowering/provenance/stale policy, a narrow native
++IR/evaluation/resource bridge and a real imported-helper gradient fixture. It
++separates the initial flat-record facts proof from nested-record/render
++acceptance. Progress the authored implementation once the compiler facts and
++typed constructor dependencies are concrete and source-reviewed with their
++owners. Keep one authoritative policy implementation and preserve the native
++evaluator repair.
++
+ ## Ownership and checkpoints
+ 
+ Engine checkout: `/Users/cwaldner/Personal/chibi/.worktrees/chibi-shader-authoring/chibi`.
+@@ -173,6 +189,43 @@ work. PRs carry exact tested commits and evidence, not historical test claims.
+ 
+ ## Current checkpoint and next dependency
+ 
++### Authored source preparation on current main
++
++The unfinished fa1 merge was preserved under
++`.chibi/shader-source/main-integration/preserved-fa1-merge/` and replaced with an
++ordinary clean, uncommitted merge of reviewed main `d0de4a84`. Existing shader
++policy/evaluator/test files remain byte-identical to the prior branch head.
++Earlier tooling failures remain in their original logs; checks on this new
++candidate have not run and earlier successes do not prove it.
++
++New authored source is frozen by Git blob/SHA256 in
++`.chibi/shader-source/d0-authored-source/manifest.json`:
++
++- `tools/compiler/compiler_facts/Facts.chibi` defines the flat owned schema,
++  with compiler-owner semantic source agreement. It has no Analyze producer/hooks. Compiler ownership
++  retains actual facts production and nested-record support.
++- `tools/compiler/shader_source/SourceMap.chibi` implements provenance
++  validation, origin/call-chain/result/node lookup, ordered source equality and
++  nonzero generation/count matching. Failures separate source IDs from IR
++  indices; aggregate field bindings and aliases are explicit. Cycle checking
++  precomputes parent indices and uses iterative visit colors.
++
++Independent source review clarified opaque source-tree anchors and final
++transitive/imported-helper facts invariants; the policy source has been reviewed
++against the existing native contract. Neither module has compilation/runtime
++proof yet. No inventory, bootstrap, pin or prepared resource was generated or
++edited for them. Required current-main checks and the authored behavior focus
++are queued after the coordinator's existing compiler/task/typed resource work.
++
++The policy port's production dependency is its own prepared closure plus SDK
++facade/install/runtime-only consumer proof, not the missing shader facts export.
++Only when that replacement is integrated does C cease to own policy; retain no
++C semantic fallback. The evaluator and independent sampled-SDF repair remain
++native. Real material lowering/rendering still requires facts, nested records
++and the agreed typed SourceMaterial contract.
++
++### Earlier native foundation evidence
++
+ Stage 2 is implemented in `src/runtime/shaders/source_debug.[ch]`. It owns source
+ documents, origin-only call chains, node values and principal results; validates
+ the complete current document closure before returning values; preserves the last
+diff --git a/docs/chibi-shaders/typed-facts.md b/docs/chibi-shaders/typed-facts.md
+index 4f177ce4f..8adaacd1d 100644
+--- a/docs/chibi-shaders/typed-facts.md
++++ b/docs/chibi-shaders/typed-facts.md
+@@ -74,9 +74,36 @@ IR node separately from auxiliary-node provenance. An immutable alias can bind
+ an existing node. Neither graph layout nor prepared executable code defines
+ shader semantics.
+ 
+-The exact Chibi record/API names and transport envelope remain to be agreed.
+-Prefer a private compile-analysis result with owned arrays and source diagnostics
+-over widening stable public Compile arguments or changing ABI20. The compiler
+-owner exports facts; the shader owner implements the domain pass and existing IR
+-adapter. A native transport bridge may copy validated values and invoke the
+-authored pass; it must not resolve source semantics.
++## Source-only schema checkpoint
++
++`tools/compiler/compiler_facts/Facts.chibi` now defines the flat owned row/result
++schema in the shader worktree. Its producer and Analyze entry are not
++implemented. The compiler owner assigned this new file and independent consumer
++source preparation to the shader lane; package compiler hooks, nested records,
++bootstrap and source inventories remain in the compiler lane. The schema is
++agreed by the compiler owner for the initial flat Float3/imported-helper/two-call/
++alias/add-multiply/exact-constant slice. This declaration/consumer agreement does
++not implement or authorize compiler hooks, resources or nested records.
++
++Function rows distinguish source/native callees in one table and preserve the
++rich catalog's native kind, actual intrinsic and direct admission. A call's
++callee index therefore has one meaning. Direct admission does not imply domain
++purity. Parameter spans reference Binding rows; Argument.parameter and .field
++reference their destination rows separately from actual source evaluation
++order. Omitted defaults follow supplied arguments and retain typed constant
++expressions plus call-site and declaration origins.
++
++The initial shared classifications name add/multiply and exact/wrap/clamp
++conversions independently of prepared/shader opcodes. Other ordinary-valid
++operations or callable shapes retain unsupported rows/ranges. Storage/container
++codes still come from the matching compiler target; semantic qualifiers use
++explicit schema categories rather than copied raw runtime flags. These choices
++have compiler-owner source agreement and do not establish a working facts producer.
++
++Keep a private compile-analysis result with owned arrays and source diagnostics
++instead of widening stable public Compile arguments. The compiler owner exports
++facts; the shader owner implements the domain pass and existing IR adapter. A
++native transport bridge may copy validated values and invoke the authored pass;
++it must not resolve source semantics. Real source-material acceptance still
++requires nested Sample/Parameters/Surface records, the typed constructor,
++resource/catalog integration, rendering and CPU source inspection.

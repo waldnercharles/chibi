@@ -1,0 +1,44 @@
+package directory_poll_errors
+
+import os "core:os"
+
+foreign import faults "/Users/cwaldner/Personal/chibi/.worktrees/authored-strings-regressions/chibi/.chibi/directory-errors/work.8QABas/fault.a"
+foreign faults {
+    chibi_directory_mode :: (mode: i32) -> i32
+    chibi_directory_poll_install :: () -> i32
+    chibi_directory_poll_observed :: () -> i32
+}
+
+Make :: (value: int) -> ^int { return &value; }
+Dead :: () -> int {
+    pointer := Make(7);
+    return pointer^;
+}
+Main :: () -> int {
+    arguments := os.Arguments();
+    assert(length(arguments) == 5, "the same owned listing fixtures");
+    installed := chibi_directory_poll_install();
+    assert(installed == 0, "the release callback audit is installed");
+    for (mode in [int(0), 2, 3]) {
+        selected := chibi_directory_mode(i32(mode));
+        assert(selected == mode, "the provider selects its enumeration condition");
+        dead := Dead();
+        assert(dead == 7, "a managed cell becomes unreachable before enumeration");
+        path := arguments[0];
+        if (mode == 3) { path = arguments[1]; }
+        listed := os.List(path);
+        if (mode == 2) {
+            assert(listed.error != nil, "a partial read still fails after callback error clobbering");
+            assert(length(listed.names) == 0, "the partial inventory remains discarded");
+        } else {
+            assert(listed.error == nil, "EOF and empty no-match remain successful after callbacks");
+            expected := 5;
+            if (mode == 3) { expected = 0; }
+            assert(length(listed.names) == expected, "every expected name survives collection");
+        }
+        observed := chibi_directory_poll_observed();
+        assert(observed == 1, "collection and its clobbering callback completed before the OS error was captured");
+    }
+    os.Print("PASS directory errors survive actual GC release callbacks");
+    return 0;
+}

@@ -1,0 +1,35 @@
+package source_type_style_tests
+
+import style "project:source_type_style"
+import strings "core:strings"
+
+@test
+PlatformConditionsUseTheSelectedAnalysisTarget :: () {
+    source := "package p\nimport target \"core:target\"\nwhen target.Os == target.Linux { Count :: () -> i8 { return 4; } } else { Count :: () -> f64 { return 4; } }\nMain :: () { value := Count(); }\n";
+    dependency := "package target\npub Linux: int : 1\npub Os: int : 0\n";
+    paths := ["/formatter/Main.chibi", "/core/target/Target.chibi"];
+    for (selected in [int(0), 1, 2, 3]) {
+        preferences := style.Defaults(); preferences.bindings = style.Explicit; preferences.analysis_target = selected;
+        switch style.RewriteProjectWith(source, preferences, "/formatter", ["core"], ["/core"], paths, [source, dependency]) {
+            case .Rejected(message): print_string(message); assert(false, "selected platform accepts valid program");
+            case .Rewritten(text, changed, skipped, notes):
+                expected := "value: f64 = Count()";
+                if (selected == 0) { expected = "value: i8 = Count()"; }
+                if (changed != 1) { print_string(notes); }
+                assert(strings.Contains(text, expected) && changed == 1 && skipped == 0, "conditional callable signature comes from the selected platform");
+                proof := style.ProveProjectFor(source, text, "/formatter", ["core"], ["/core"], paths, [source, dependency], selected);
+                assert(proof.same && proof.notes == "", "type rewrite and proof select the same platform");
+        }
+    }
+}
+
+@test
+TargetSourceEditsNeverUseMaterializedByteRanges :: () {
+    source := "package target\n// real file comments change all later byte offsets\npub Linux: int : 1\npub Os: int : 0\n";
+    preferences := style.Defaults(); preferences.bindings = style.OmitRedundant;
+    switch style.RewriteProjectWith(source, preferences, "/formatter", ["core"], ["/core"], ["/core/target/Target.chibi"], [source]) {
+        case .Rejected(message): assert(false, "target source remains available for layout");
+        case .Rewritten(text, changed, skipped, notes):
+            assert(text == source && changed == 0 && notes != "", "the actual target source is retained with a precise explanation");
+    }
+}

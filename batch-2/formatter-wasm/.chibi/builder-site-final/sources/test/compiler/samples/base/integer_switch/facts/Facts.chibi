@@ -1,0 +1,16 @@
+package facts
+Kind :: (c: int) -> int {
+    switch c {
+        case 61: return 1;
+        case: return 0;
+        case -62: return 2;
+    }
+}
+Spaces :: (xs: int[]) -> int {
+    total: int = 0;
+    for x in xs {
+        b := u8(x);
+        switch b { case 32: total += 1; case 10: total += 100; }
+    }
+    return total;
+}

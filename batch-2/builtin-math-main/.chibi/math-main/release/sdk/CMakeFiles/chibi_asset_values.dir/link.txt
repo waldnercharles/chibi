@@ -1,0 +1,2 @@
+/usr/bin/ar qc libchibi_asset_values.a "CMakeFiles/chibi_asset_values.dir/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/src/support/asset_value.c.o"
+/opt/homebrew/opt/llvm@22/bin/llvm-ranlib libchibi_asset_values.a

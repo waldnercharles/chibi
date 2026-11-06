@@ -1,0 +1,10 @@
+package facts
+
+// array fields assigned after the record is built
+@test
+Calls :: () {
+    a1_0: string = "a";
+    r1: int = Fill(a1_0);
+    e1: int = 15;
+    assert(r1 == e1, "Fill call 1");
+}

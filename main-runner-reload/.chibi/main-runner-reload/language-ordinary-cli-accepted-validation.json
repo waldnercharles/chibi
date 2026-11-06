@@ -1,0 +1,114 @@
+[
+  {
+    "selector": "language-program-session",
+    "phase": "accepted",
+    "returncode": 0,
+    "wall_seconds": 1.22,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-program-session-ordinary-cli-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--program-session"
+    ],
+    "passed": 7,
+    "failed": 0,
+    "cases": 7,
+    "suites": 0,
+    "assertions": 126
+  },
+  {
+    "selector": "language-program",
+    "phase": "accepted",
+    "returncode": 0,
+    "wall_seconds": 0.761,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-program-ordinary-cli-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--program"
+    ],
+    "passed": 211,
+    "failed": 0,
+    "cases": 211,
+    "suites": 0,
+    "assertions": 14167
+  },
+  {
+    "selector": "language-publication",
+    "phase": "accepted",
+    "returncode": 0,
+    "wall_seconds": 0.011,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-publication-ordinary-cli-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--publication"
+    ],
+    "passed": 6,
+    "failed": 0,
+    "cases": 6,
+    "suites": 0,
+    "assertions": 320
+  },
+  {
+    "selector": "language-record-publication",
+    "phase": "accepted",
+    "returncode": 0,
+    "wall_seconds": 0.01,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-record-publication-ordinary-cli-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--record-publication"
+    ],
+    "passed": 7,
+    "failed": 0,
+    "cases": 7,
+    "suites": 0,
+    "assertions": 230
+  },
+  {
+    "selector": "language-root-state",
+    "phase": "accepted",
+    "returncode": 0,
+    "wall_seconds": 0.011,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-root-state-ordinary-cli-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--root-state"
+    ],
+    "passed": 3,
+    "failed": 0,
+    "cases": 3,
+    "suites": 0,
+    "assertions": 194
+  },
+  {
+    "selector": "language-modules",
+    "phase": "accepted",
+    "returncode": 0,
+    "wall_seconds": 0.079,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-modules-ordinary-cli-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--modules"
+    ],
+    "passed": 22,
+    "failed": 0,
+    "cases": 22,
+    "suites": 0,
+    "assertions": 908
+  },
+  {
+    "selector": "language-record-prepared",
+    "phase": "accepted",
+    "returncode": 0,
+    "wall_seconds": 0.076,
+    "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-record-prepared-ordinary-cli-accepted.log",
+    "command": [
+      "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+      "--record-prepared"
+    ],
+    "passed": 23,
+    "failed": 0,
+    "cases": 23,
+    "suites": 0,
+    "assertions": 6465
+  }
+]

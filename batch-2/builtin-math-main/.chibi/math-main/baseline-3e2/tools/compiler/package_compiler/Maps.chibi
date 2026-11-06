@@ -1,0 +1,527 @@
+package package_compiler
+
+import snapshot "project:source_snapshot"
+import strings "core:strings"
+
+// Maps `[K: V]`, lowered to stage zero's map intrinsics: a map is a pointer
+// whose header names its collection type, types[record], a MapDecl. These
+// steps live in a file of their own: slicing a document's text costs time in
+// proportion to its length, so compiling a large file grows quadratically.
+
+MapMakeIntrinsic: int : 30;
+MapGetIntrinsic: int : 31;
+MapHasIntrinsic: int : 32;
+MapItemIntrinsic: int : 34;
+MapStoreIntrinsic: int : 36;
+MapDeleteIntrinsic: int : 37;
+
+// A header-only cell of a map's, its key's or its value's type.
+MapCell :: (map: int) -> Cell {
+    return {storage: UnionStorage, container: MapContainer, record: map, constant: 0, variant: -1, kind: ValueKind};
+}
+KeyCell :: (types: TypeDecl[], map: int) -> Cell {
+    return {storage: types[map].key, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+}
+ItemCell :: (types: TypeDecl[], map: int) -> Cell {
+    return {storage: types[map].value_storage, container: types[map].value_container, record: types[map].value_record, constant: 0,
+            variant: -1, kind: ValueKind};
+}
+// A cell of a value's type that a map call writes.
+PartCell :: (value: Value) -> Cell {
+    return {storage: value.storage, container: value.container, record: value.record, constant: 0, variant: -1, kind: ValueKind};
+}
+// Whether a value is a map.
+IsMap :: (value: Value) -> bool {
+    return value.container == MapContainer;
+}
+// A map literal `[k: v, ...]` or `[:]` of the map type its context expects:
+// phase 0 schedules each key and value; phase 1 makes the map from the map's,
+// key's and value's headers and then each pair, as stage zero does.
+MapLiteralStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], values: Value[], top: int,
+                   item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    code: Code[] = [];
+    slots: Slot[] = [];
+    cells: Cell[] = [];
+    roots: Root[] = [];
+    next: Work[] = [];
+    if (item.container != MapContainer) {
+        return Fail(forest, item.node, document, "map literal needs a [K: V] type");
+    }
+    map := item.record;
+    if (item.phase == 0) {
+        count: int = 0;
+        for (pair in Members(forest, item.node)) {
+            next.append(Expect(Field(forest, pair, "key"), types[map].key, 0, -1));
+            next.append(Expect(Field(forest, pair, "value"), types[map].value_storage, types[map].value_container,
+                               types[map].value_record));
+            next.append(Resume(Field(forest, pair, "value"), CopyValuePhase, 0, 0));
+            count += 2;
+        }
+        rest := Expect(item.node, item.storage, item.container, map);
+        rest.phase = 1;
+        rest.a = count;
+        next.append(rest);
+        return Step.Emitted(code, slots, [], cells, [], roots, [], [], next, 0, NoValue(), NoValue(), []);
+    }
+    cells = [MapCell(map), KeyCell(types, map), ItemCell(types, map)];
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    index: int = 0;
+    for (pair in Members(forest, item.node)) {
+        key := values[top - item.a + index];
+        value := values[top - item.a + index + 1];
+        if (!SameType(types[map].key, 0, -1, key)) {
+            return Fail(forest, Field(forest, pair, "key"), document, "Map key type does not match");
+        }
+        if (!Accepts(types, types[map].value_storage, types[map].value_container, types[map].value_record, value)) {
+            return Fail(forest, Field(forest, pair, "value"), document, "map value differs from the map's type");
+        }
+        for (part in [key, value]) {
+            cells.append(PartCell(part));
+            slots.append(address);
+            code.extend(CellWrite(SlotStorage(part.storage, part.container, target), part.slot, at.cell + length(cells) - 1,
+                                  ops, target, at.slot + length(slots) - 1, forest[pair]));
+        }
+        index += 2;
+    }
+    cells.append(MapCell(map));
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: MapMakeIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+                  result_count: 1, written: false};
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    slots.extend([address, address]);
+    made := at.slot + length(slots) - 1;
+    code.extend(CellRead(target.pointer_storage, at.cell + length(cells) - 1, ops, target, made - 1, node));
+    root: Root = {slot: made, storage: UnionStorage, container: MapContainer, record: map};
+    roots.append(root);
+    result := Typed(made, UnionStorage, MapContainer, map);
+    result.cell = at.cell + length(cells) - 1;
+    result.owned = true;
+    emitted := Step.Emitted(code, slots, [], cells, [host], roots, [], [], next, item.a,
+                            result, NoValue(), []);
+    return CleanupSequenceValues(emitted, slice(values, top - item.a, item.a), ops, target, at, node);
+}
+// The phase of an index whose object is ready, which picks its type.
+KeyPhase: int : 2;
+// Whether a map's value type has a zero that a missing key reads, as stage
+// zero's has: a number, bool or string. A record without field defaults
+// has none, so reading its missing key fails.
+HasZero :: (types: TypeDecl[], value: ValueType) -> bool {
+    if (value.container == ViewContainer) {
+        return false;
+    }
+    if (value.container != 0) {
+        return true;
+    }
+    if (value.record >= 0 && types[value.record].kind == OptionalDecl) {
+        return true;
+    }
+    if (value.storage == PointerStorage) {
+        return value.record >= 0 && types[value.record].key != 0;
+    }
+    return value.storage != StructStorage && value.storage != UnionStorage;
+}
+// `m[k]`: stage zero's map get, which reads the value type's zero for a
+// missing key when it has one, an expression of its own at the index.
+MapReadStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], map: Value, key: Value,
+                ops: Ops, target: Target, at: Bases, index: int) -> Step {
+    node := forest[index];
+    declared := types[map.record];
+    if (!SameType(declared.key, 0, -1, key)) {
+        return Fail(forest, Field(forest, index, "index"), document, "Map key type does not match");
+    }
+    item: ValueType = {storage: declared.value_storage, container: declared.value_container, record: declared.value_record};
+    cells: Cell[] = [MapCell(map.record), KeyCell(types, map.record)];
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    slots: Slot[] = [address, address];
+    code := extend(CellWrite(target.pointer_storage, map.slot, at.cell, ops, target, at.slot, node),
+                   CellWrite(SlotStorage(key.storage, 0, target), key.slot, at.cell + 1, ops, target, at.slot + 1, node));
+    if (HasZero(types, item)) {
+        code.append(ExpressionCode(ops, node));
+        zero: Slot = {storage: SlotStorage(item.storage, item.container, target), kind: SlotKind(item.storage, item.container)};
+        slots.append(zero);
+        code.append(ConstantCode(ops, zero.storage, 0, at.slot + 2, node));
+        code.append(WatchCode(ops, at.slot + 2, item.storage, item.container, item.record, 0, true, node, target));
+        cells.append(ItemCell(types, map.record));
+        slots.append(address);
+        code.extend(CellWrite(SlotStorage(item.storage, item.container, target), at.slot + 2, at.cell + 2, ops, target, at.slot + 3, node));
+    }
+    cells.append(ItemCell(types, map.record));
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: MapGetIntrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+                  result_count: 1, written: false};
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    read := length(slots);
+    slots.append(address);
+    result: Slot = {storage: SlotStorage(item.storage, item.container, target), kind: SlotKind(item.storage, item.container)};
+    slots.append(result);
+    code.extend(CellRead(SlotStorage(item.storage, item.container, target), at.cell + length(cells) - 1, ops, target,
+                         at.slot + read, node));
+    roots: Root[] = [];
+    if (Pointer(item.storage, item.container)) {
+        root: Root = {slot: at.slot + read + 1, storage: item.storage, container: item.container, record: item.record};
+        roots.append(root);
+    }
+    return Step.Emitted(code, slots, [], cells, [host], roots, [], [], [], 2,
+                        Typed(at.slot + read + 1, item.storage, item.container, item.record), NoValue(), []);
+}
+// Statement phases of a local map's in-place store and removal.
+MapStorePhase: int : 11;
+MapDeletePhase: int : 12;
+// The `c` of a map method's later work, which tells it from a call's.
+MapHasMark: int : -1;
+// Whether a binary operator is `not in`, the only one longer than three bytes.
+NotIn :: (forest: snapshot.SnapshotNode[], node: int, operator: string) -> bool {
+    return strings.ByteLength(operator) > 3 && Is(forest, Field(forest, node, "operator"), "not_in");
+}
+// Whether `node` calls the map method `name`, such as `m.has(k)`: a member
+// of a value, not of a package, as stage zero tells them apart. Every call
+// asks, so the member's length is checked before its text is read.
+MapMethod :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int, name: string) -> bool {
+    if (!Is(forest, node, "call_expression")) {
+        return false;
+    }
+    function := Field(forest, node, "function");
+    member := Field(forest, function, "member");
+    if (!Is(forest, function, "member_expression") ||
+        forest[member].end - forest[member].start != strings.ByteLength(name) ||
+        Text(forest, text, member) != name) {
+        return false;
+    }
+    root := Field(forest, function, "object");
+    while (Is(forest, root, "member_expression") || Is(forest, root, "index_expression")) {
+        root = Field(forest, root, "object");
+    }
+    if (!Is(forest, root, "identifier")) {
+        return true;
+    }
+    found := Lookup(names, Text(forest, text, root));
+    return found >= 0 && !Alias(names[found].place);
+}
+// The local map `node` names, which a store or removal updates in place, as
+// stage zero updates an owned local; -1 for any other.
+LocalMap :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> int {
+    if (!Is(forest, node, "identifier")) {
+        return -1;
+    }
+    found := Lookup(names, Text(forest, text, node));
+    if (found < 0 || names[found].place != CellPlace || names[found].container != MapContainer ||
+        !names[found].writable || Parameter(forest, names[found])) {
+        return -1;
+    }
+    return found;
+}
+// `m[k] = v` on a local map: the statement's check, the target's point, then
+// the key and the value. A step of its own takes no code of the statement's,
+// which would make the statement copy its code on every append.
+MapStoreStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], names: Name[],
+                 found: int, item: Work, ops: Ops, node: snapshot.SnapshotNode) -> Step {
+    destination := Field(forest, item.node, "target");
+    if (Text(forest, text, Field(forest, item.node, "operator")) != "=") {
+        return Fail(forest, item.node, document, "compound map assignment is not supported yet");
+    }
+    if (LocalMap(forest, text, names, Field(forest, destination, "object")) < 0) {
+        return Fail(forest, destination, document, "map assignment needs a local map");
+    }
+    map := types[names[found].record];
+    next: Work[] = [Expect(Field(forest, destination, "index"), map.key, 0, -1),
+                    Expect(Field(forest, item.node, "value"), map.value_storage, map.value_container, map.value_record),
+                    Resume(item.node, MapStorePhase, found, 0)];
+    code: Code[] = [Instruction(ops.check, 0, 0, 0, 0, 0, node), ExpressionCode(ops, forest[destination])];
+    return Step.Emitted(code, [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+}
+// `delete m[k]` and `m.delete(k)` on a local map, which stage zero lowers as
+// an assignment of the map without the key: the statement's check, the
+// map's point, the removal's, then the key.
+MapDeleteStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], names: Name[],
+                  item: Work, ops: Ops, node: snapshot.SnapshotNode) -> Step {
+    object := Field(forest, Field(forest, item.node, "target"), "object");
+    if (node.kind != "delete_statement") {
+        removal := FirstMember(forest, item.node);
+        arguments := Members(forest, Field(forest, removal, "arguments"));
+        if (length(arguments) != 1) {
+            return Fail(forest, removal, document, "Map method requires one key");
+        }
+        object = Field(forest, Field(forest, removal, "function"), "object");
+    }
+    return Step.Emitted([Instruction(ops.check, 0, 0, 0, 0, 0, node)], [], [], [], [], [], [], [],
+                        [PlaceVisit(object), Resume(item.node, MapDeletePlacePhase, 0, 0)],
+                        0, NoValue(), NoValue(), []);
+}
+MapDeletePlacePhase: int : 47;
+MapDeleteDonePhase: int : 48;
+MapDeletePlaceIntrinsic: int : 61;
+MapPlaceDeleteStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], values: Value[],
+                       top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    key := Field(forest, Field(forest, item.node, "target"), "index");
+    if (node.kind != "delete_statement") {
+        removal := FirstMember(forest, item.node);
+        key = FirstMember(forest, Field(forest, removal, "arguments"));
+    }
+    if (item.phase == MapDeletePlacePhase) {
+        place := values[top - 1];
+        if (Single(place, PointerStorage)) {
+            return PointerContinue(ReadSequencePlace(place, 1, ops, target, at, node),
+                                   Resume(item.node, PlacePointerPhase, MapDeletePlacePhase, 0));
+        }
+        if (!place.place || !IsMap(place)) {
+            return Fail(forest, item.node, document, "delete requires a writable map");
+        }
+        return Step.Emitted([], [], [], [], [], [], [], [],
+                            [Expect(key, types[place.record].key, 0, -1),
+                             Resume(item.node, MapDeleteDonePhase, 0, 0)],
+                            0, NoValue(), NoValue(), []);
+    }
+    place := values[top - 2];
+    value := values[top - 1];
+    if (!SameType(types[place.record].key, 0, -1, value)) {
+        return Fail(forest, key, document, "Map key type does not match");
+    }
+    return IgnoreSequenceValue(SequenceCallStep([place, value], MapDeletePlaceIntrinsic,
+                                                Typed(-1, BoolStorage, 0, -1), u64(0), false, 2, ops, target, at, node));
+}
+// The in-place store or removal on the local map names[item.a]: the local's
+// header address, the key and a store's value go to the intrinsic, which
+// returns a bool. A removal then evaluates the map again, as stage zero does
+// to watch it.
+MapUpdateStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], names: Name[],
+                  values: Value[], top: int, item: Work, ops: Ops, target: Target, at: Bases,
+                  node: snapshot.SnapshotNode) -> Step {
+    binding := names[item.a];
+    map := types[binding.record];
+    store := item.phase == MapStorePhase;
+    arguments: Value[] = [values[top - 1]];
+    if (store) {
+        arguments = [values[top - 2], values[top - 1]];
+        if (!Accepts(types, map.value_storage, map.value_container, map.value_record, values[top - 1])) {
+            return Fail(forest, item.node, document, "map value differs from the map's type");
+        }
+    }
+    if (!SameType(map.key, 0, -1, arguments[0])) {
+        return Fail(forest, item.node, document, "Map key type does not match");
+    }
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    address_cell: Cell = {storage: target.pointer_storage, container: 0, record: -1, constant: 0, variant: -1,
+                          kind: AddressKind};
+    cells: Cell[] = [address_cell];
+    slots: Slot[] = [address, address];
+    code: Code[] = [Instruction(ops.host_slot, target.pointer_storage, at.slot, binding.index, 0, 0, node)];
+    code.extend(CellWrite(target.pointer_storage, at.slot, at.cell, ops, target, at.slot + 1, node));
+    for (argument in arguments) {
+        cells.append(PartCell(argument));
+        slots.append(address);
+        code.extend(CellWrite(SlotStorage(argument.storage, argument.container, target), argument.slot,
+                              at.cell + length(cells) - 1, ops, target, at.slot + length(slots) - 1, node));
+    }
+    done: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    cells.append(done);
+    intrinsic := MapDeleteIntrinsic;
+    if (store) {
+        intrinsic = MapStoreIntrinsic;
+    }
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: intrinsic, linked: -1, first: at.cell, result_first: at.cell + length(cells) - 1,
+                  result_count: 1, written: false};
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.append(SymbolCode(ops, binding.node, node));
+    if (!store) {
+        code.extend(NamePoints(forest, text, names, ops, item.b));
+    }
+    // The map a removal leaves is its watched output.
+    if (!store && ops.debug) {
+        slots.append(address);
+        reread := Instruction(ops.load, target.pointer_storage, at.slot + length(slots) - 1, at.slot, 0, 0, node);
+        reread.offset = target.payload_offset;
+        code.append(reread);
+        code.append(WatchCode(ops, at.slot + length(slots) - 1, UnionStorage, MapContainer, binding.record,
+                              0, true, forest[item.c], target));
+    }
+    return Step.Emitted(code, slots, [], cells, [host], [], [], [], [], length(arguments), NoValue(), NoValue(), []);
+}
+// `k in m`, `k not in m` and `m.has(k)`: the map, then the key, to stage
+// zero's map has. `not in` negates it, an expression of its own at the same
+// range.
+MapHasStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], values: Value[],
+               top: int, item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    negated := Is(forest, Field(forest, item.node, "operator"), "not_in");
+    map := Field(forest, item.node, "right");
+    key := Field(forest, item.node, "left");
+    if (node.kind == "call_expression") {
+        map = Field(forest, Field(forest, item.node, "function"), "object");
+        arguments := Members(forest, Field(forest, item.node, "arguments"));
+        if (length(arguments) != 1) {
+            return Fail(forest, item.node, document, "Map method requires one key");
+        }
+        key = arguments[0];
+    }
+    if (item.phase == 0) {
+        code: Code[] = [];
+        if (negated) {
+            code.append(ExpressionCode(ops, node));
+        }
+        resume := Resume(item.node, KeyPhase, 0, 0);
+        resume.c = MapHasMark;
+        return Step.Emitted(code, [], [], [], [], [], [], [], [Visit(map), resume], 0, NoValue(), NoValue(), []);
+    }
+    if (item.phase == KeyPhase) {
+        if (Single(values[top - 1], PointerStorage)) {
+            resumed := Resume(item.node, KeyPhase, 0, 0);
+            resumed.c = MapHasMark;
+            return PointerContinue(PointerReadStep(types, values[top - 1], 1, ops, target, at, node), resumed);
+        }
+        if (!IsMap(values[top - 1])) {
+            return Fail(forest, map, document, "Map operation requires a map");
+        }
+        resume := Resume(item.node, 1, 0, 0);
+        resume.c = MapHasMark;
+        next: Work[] = [Expect(key, types[values[top - 1].record].key, 0, -1), resume];
+        return Step.Emitted([], [], [], [], [], [], [], [], next, 0, NoValue(), NoValue(), []);
+    }
+    held := values[top - 2];
+    sought := values[top - 1];
+    if (!SameType(types[held.record].key, 0, -1, sought)) {
+        return Fail(forest, key, document, "Map key type does not match");
+    }
+    flag: Slot = {storage: BoolStorage, kind: ValueKind};
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    result: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    cells: Cell[] = [MapCell(held.record), PartCell(sought), result];
+    slots: Slot[] = [address, address, address, flag];
+    code := extend(CellWrite(target.pointer_storage, held.slot, at.cell, ops, target, at.slot, node),
+                   CellWrite(SlotStorage(sought.storage, 0, target), sought.slot, at.cell + 1, ops, target,
+                             at.slot + 1, node));
+    host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: MapHasIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 2, result_count: 1,
+                  written: false};
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host, node));
+    code.extend(CellRead(BoolStorage, at.cell + 2, ops, target, at.slot + 2, node));
+    answer := at.slot + 3;
+    if (negated) {
+        // `not in` is a negation of the has, an expression of its own.
+        code.append(ScalarWatch(ops, answer, BoolStorage, 0, true, node));
+        // Not is equality with false.
+        slots.append(flag);
+        code.append(ConstantCode(ops, BoolStorage, 0, at.slot + 4, node));
+        slots.append(flag);
+        code.append(Instruction(ops.eq, BoolStorage, at.slot + 5, answer, at.slot + 4, -1, node));
+        answer = at.slot + 5;
+    }
+    return Step.Emitted(code, slots, [], cells, [host], [], [], [], [], 2, Typed(answer, BoolStorage, 0, -1),
+                        NoValue(), []);
+}
+// One entry of a map by its insertion ordinal: its value, or its key when
+// `key`, from stage zero's map item intrinsic, whose cells start at `cell`.
+MapItemCode :: (types: TypeDecl[], map: int, held: int, ordinal: int, key: bool, cell: int, host: int, slot: int,
+                ops: Ops, target: Target, node: snapshot.SnapshotNode) -> Code[] {
+    code := extend(CellWrite(target.pointer_storage, held, cell, ops, target, slot, node),
+                   CellWrite(IntStorage, ordinal, cell + 1, ops, target, slot + 1, node));
+    code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, host, node));
+    storage := types[map].key;
+    if (!key) {
+        storage = SlotStorage(types[map].value_storage, types[map].value_container, target);
+    }
+    return extend(code, CellRead(storage, cell + 3, ops, target, slot + 2, node));
+}
+MapItemCells :: (types: TypeDecl[], map: int, key: bool) -> Cell[] {
+    flag: Cell = {storage: BoolStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    result := ItemCell(types, map);
+    if (key) {
+        flag.constant = 1;
+        result = KeyCell(types, map);
+    }
+    ordinal: Cell = {storage: IntStorage, container: 0, record: -1, constant: 0, variant: -1, kind: ValueKind};
+    return [MapCell(map), ordinal, flag, result];
+}
+// A loop over the map, or its copy, in the last cell, as stage zero emits it:
+// its ordinal from 0 up to the map's count, then the entry's value, saved in a
+// local or copied into a cell of its own for a record, and, when the loop
+// names it, its key, saved in a local. It binds the value's `name` and the
+// key's `key`, then schedules the body; its marks are the head and the exit
+// jump, and the ordinal is its first local.
+MapForStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, types: TypeDecl[], held: Value,
+               item: Work, ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[item.node];
+    if (Field(forest, item.node, "reverse") >= 0) {
+        return Fail(forest, item.node, document, "for < reverses only ranges and arrays");
+    }
+    map := types[held.record];
+    number: Slot = {storage: IntStorage, kind: ValueKind};
+    flag: Slot = {storage: BoolStorage, kind: ValueKind};
+    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+    slots: Slot[] = [number];
+    code: Code[] = [ConstantCode(ops, IntStorage, 0, at.slot, node)];
+    locals: Slot[] = [ValueLocal(IntStorage)];
+    code.append(Instruction(ops.save, IntStorage, 0, at.slot, 0, at.local, node));
+    b := at.slot + 1;
+    head := at.pc + length(code);
+    code.append(Instruction(ops.check, 0, 0, 0, 0, 0, node));
+    slots.extend([address, address, number, number, flag]);
+    code.append(Instruction(ops.host_slot, target.pointer_storage, b, held.cell, 0, 0, node));
+    load := Instruction(ops.load, target.pointer_storage, b + 1, b, 0, 0, node);
+    load.offset = target.payload_offset;
+    code.append(load);
+    root: Root = {slot: b + 1, storage: UnionStorage, container: MapContainer, record: held.record};
+    roots: Root[] = [root];
+    count := Instruction(ops.load, IntStorage, b + 2, b + 1, 0, 0, node);
+    count.offset = target.map_count_offset;
+    code.append(count);
+    code.append(Instruction(ops.local, IntStorage, b + 3, at.local, 0, 0, node));
+    code.append(Instruction(ops.lt, IntStorage, b + 4, b + 3, b + 2, -1, node));
+    code.append(Instruction(ops.branch_if, 0, 0, b + 4, 0, at.pc + length(code) + 2, node));
+    leave := at.pc + length(code);
+    code.append(Instruction(ops.jump, 0, 0, 0, 0, Pending, node));
+    cells := MapItemCells(types, held.record, false);
+    hosts: Host[] = [{owned_arguments: false, command: 0, syntax_node: 0, intrinsic: MapItemIntrinsic, linked: -1, first: at.cell, result_first: at.cell + 3,
+                      result_count: 1, written: false}];
+    value := at.slot + length(slots) + 3;
+    slots.extend([address, address, address,
+                  {storage: SlotStorage(map.value_storage, map.value_container, target), kind: SlotKind(map.value_storage, map.value_container)}]);
+    code.extend(MapItemCode(types, held.record, b + 1, b + 3, false, at.cell, at.host, value - 3, ops, target,
+                            node));
+    value_node := Field(forest, item.node, "name");
+    binding: Name = {owned: false, name: Text(forest, text, value_node), place: LocalPlace, index: at.local + 1,
+                     storage: map.value_storage, container: map.value_container, record: map.value_record, writable: false,
+                     node: value_node};
+    if (Pointer(map.value_storage, map.value_container)) {
+        // The record is copied into a cell of its own, as a record element is.
+        copy: Cell = {storage: map.value_storage, container: map.value_container, record: map.value_record, constant: 0, variant: -1,
+                      kind: ValueKind};
+        cells.extend([copy, copy]);
+        slots.append(address);
+        code.extend(CellWrite(target.pointer_storage, value, at.cell + 4, ops, target, at.slot + length(slots) - 1,
+                              node));
+        snapshot: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: ValueCopyIntrinsic, linked: -1, first: at.cell + 4, result_first: at.cell + 5,
+                          result_count: 1, written: false};
+        hosts.append(snapshot);
+        code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, at.host + 1, node));
+        binding.place = CellPlace;
+        binding.owned = true;
+        binding.index = at.cell + 5;
+    } else {
+        locals.append(ValueLocal(map.value_storage));
+        code.append(Instruction(ops.save, map.value_storage, 0, value, 0, at.local + 1, node));
+    }
+    bound: Name[] = [binding];
+    code.append(SymbolCode(ops, value_node, node));
+    key_node := Field(forest, item.node, "key");
+    if (key_node >= 0 && Text(forest, text, key_node) == binding.name) {
+        return Fail(forest, value_node, document, format_text("Duplicate declaration '{}'", binding.name));
+    }
+    if (key_node >= 0) {
+        first := at.cell + length(cells);
+        cells.extend(MapItemCells(types, held.record, true));
+        key_host: Host = {owned_arguments: false, command: 0, syntax_node: 0, intrinsic: MapItemIntrinsic, linked: -1, first: first, result_first: first + 3,
+                          result_count: 1, written: false};
+        hosts.append(key_host);
+        slots.extend([address, address, address, ValueLocal(map.key)]);
+        code.extend(MapItemCode(types, held.record, b + 1, b + 3, true, first, at.host + length(hosts) - 1,
+                                at.slot + length(slots) - 4, ops, target, node));
+        key: Name = {owned: false, name: Text(forest, text, key_node), place: LocalPlace, index: at.local + length(locals),
+                     storage: map.key, container: 0, record: -1, writable: false, node: key_node};
+        locals.append(ValueLocal(map.key));
+        code.append(Instruction(ops.save, map.key, 0, at.slot + length(slots) - 1, 0, key.index, node));
+        bound.append(key);
+        code.append(SymbolCode(ops, key_node, node));
+    }
+    next: Work[] = [Visit(Field(forest, item.node, "body")), Resume(item.node, 4, 0, 0)];
+    return Step.Emitted(code, slots, locals, cells, hosts, roots, [], bound, next, 0, NoValue(), NoValue(),
+                        [head, leave]);
+}

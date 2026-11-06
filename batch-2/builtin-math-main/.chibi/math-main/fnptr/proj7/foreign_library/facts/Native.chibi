@@ -1,0 +1,4 @@
+package facts
+pub Native :: () -> int {
+    return Calls();
+}

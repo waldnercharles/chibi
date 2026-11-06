@@ -1,0 +1,27 @@
+package import_probe
+import diag "project:syntax_diagnostics"
+ChildByField :: (rows: diag.Node[], fields: int[], parent: int, field: int) -> int {
+    child := rows[parent].first_child;
+    while (child >= 0) {
+        if (fields[child] == field) {
+            return child;
+        }
+        child = rows[child].next_sibling;
+    }
+    return -1;
+}
+
+Breaks :: (bytes: int[], packaged: bool, start: int, end: int) -> int {
+    count: int = 0;
+    at := start;
+    while (at < end) {
+        if (bytes[at] == 10) {
+            count += 1;
+        } else if (packaged && bytes[at] == 13 && !(at + 1 < length(bytes) && bytes[at + 1] == 10)) {
+            count += 1;
+        }
+        at += 1;
+    }
+    return count;
+}
+

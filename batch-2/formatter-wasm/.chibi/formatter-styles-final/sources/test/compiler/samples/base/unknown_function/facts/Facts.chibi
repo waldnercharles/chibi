@@ -1,0 +1,4 @@
+package facts
+One :: () -> int { return Missing(1); }
+
+// error: 2:27: Unknown function 'Missing'

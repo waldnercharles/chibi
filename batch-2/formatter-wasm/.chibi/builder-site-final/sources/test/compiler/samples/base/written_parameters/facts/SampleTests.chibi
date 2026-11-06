@@ -1,0 +1,9 @@
+package facts
+
+// written parameters
+@test
+Calls :: () {
+    r1: int = Caller();
+    e1: int = 1390;
+    assert(r1 == e1, "Caller call 1");
+}

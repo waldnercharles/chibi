@@ -1,0 +1,9 @@
+package facts
+
+// math length and distance use three four five triangles
+@test
+Calls :: () {
+    r1: bool = Check();
+    e1: bool = true;
+    assert(r1 == e1, "Check call 1");
+}

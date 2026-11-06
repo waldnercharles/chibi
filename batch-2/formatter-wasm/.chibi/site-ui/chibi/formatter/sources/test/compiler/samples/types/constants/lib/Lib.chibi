@@ -1,0 +1,5 @@
+package lib
+pub Step: int : 100;
+pub Low: int : -2147483648;
+pub High: int : 2147483647;
+pub Scaled :: (n: int, by: int = 1) -> int { return n * Step * by; }

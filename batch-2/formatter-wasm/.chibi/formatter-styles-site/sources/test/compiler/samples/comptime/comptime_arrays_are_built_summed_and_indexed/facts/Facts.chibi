@@ -1,0 +1,27 @@
+package facts
+Squares :: (count: int) -> int[] {
+    values: int[] = [];
+    for i in 0..<count {
+        values.append(i * i);
+    }
+    return values;
+}
+Sum :: (values: int[]) -> int {
+    total := 0;
+    for value in values {
+        total += value;
+    }
+    return total;
+}
+Adjusted :: (values: int[]) -> int[] {
+    copy := values;
+    copy[0] = 100;
+    copy[1] += 5;
+    return copy;
+}
+Total :: Sum(Squares(5));
+Third :: Squares(6)[3];
+Count :: length(Squares(7));
+Literal :: Sum([1, 2, 3]);
+Adjustment :: Sum(Adjusted(Squares(3)));
+Main :: () -> int { return Total * 1000000 + Third * 10000 + Count * 100 + Literal + Adjustment; }

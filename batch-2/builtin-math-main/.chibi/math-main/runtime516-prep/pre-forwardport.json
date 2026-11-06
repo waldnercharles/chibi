@@ -1,0 +1,27 @@
+{
+  "head": "74a9ac60a44a0a8735149a89f1b5482bdd87d127",
+  "tree": "4f8baedfd3d30984ff1e7a71ccf3fa63a01eda2f",
+  "patch_sha256": "bdd5f89640132c97f58ff432ad3282ebfa2af0577ca2f624810cca505f9cf217",
+  "stash_commit": "868ec3f52dc10323162d5007fa01372097b6daf0",
+  "accepted_base": "51650ccff2c8830c6c22eb2c17f0b67c07dcf346",
+  "accepted_tree": "da8306cbab686314181ace879212a0319e12ce7d",
+  "protected_evidence": {
+    ".chibi/math-main/seed/compiler.chibip": {
+      "bytes": 22469206,
+      "sha256": "f1a6bdffc9d8bec2de2b55f61bad48a2d8593c2a8ab1fc21cca42f46a6497c9c"
+    },
+    ".chibi/math-main/experimental-bootstrap/bootstrap.json": {
+      "bytes": 26769,
+      "sha256": "25e11f25b9c4cd71a48bdc4a907df76df3ddf2191d75eb1651862d5b3214f73c"
+    },
+    ".chibi/math-main/runtime308-gc-effects-build/receipt.json": {
+      "bytes": 26060,
+      "sha256": "97825f2be3f90a97b0a39d6c9818fcdded7dc7f063ed2203e72b61bb81f6dab8"
+    },
+    ".chibi/math-main/runtime74a-validation/build/validation-receipt.json": {
+      "bytes": 10330,
+      "sha256": "f8406e534ab4c8b6f64d7226529eb709d6035681b8cdd560c7dd8ff6dfc05cc8"
+    }
+  },
+  "heavy_producer_runs": []
+}

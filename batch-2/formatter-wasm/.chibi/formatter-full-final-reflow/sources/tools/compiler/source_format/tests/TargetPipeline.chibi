@@ -1,0 +1,46 @@
+package source_format_tests
+
+import format "project:source_format"
+import strings "core:strings"
+
+TargetContext :: (source: string) -> format.Context {
+    return {project: "/formatter", collection_names: ["core"], collection_paths: ["/core"],
+            paths: ["/formatter/Main.chibi", "/core/target/Target.chibi"],
+            sources: [source, "package target\npub Linux: int : 1\npub Os: int : 0\n"]};
+}
+
+@test
+DefaultTypeStylesPreserveEverySupportedPlatform :: () {
+    source := "package p\nimport target \"core:target\"\nwhen target.Os == target.Linux { Count :: () -> i8 { return 4; } } else { Count :: () -> f64 { return 4; } }\nMain :: () { value:=Count(); }\n";
+    options := format.Defaults(); options.binding_types = 2;
+    result := PipelineOutput(format.FormatProject(source, options, TargetContext(source)));
+    assert(strings.Contains(result.text, "value := Count();"), "a Linux i8 must not replace a platform-dependent inferred binding");
+    assert(!strings.Contains(result.text, "value: i8") && !strings.Contains(result.text, "value: f64"), "cross-platform source keeps its portable inference");
+    assert(strings.Contains(result.notes, "Cross-platform validation") && strings.Contains(result.notes, "macOS arm64"), "the rejected platform-specific type has a precise explanation");
+    repeated := PipelineOutput(format.FormatProject(result.text, options, TargetContext(source)));
+    assert(repeated.text == result.text, "portable refusal still reaches a layout fixed point");
+}
+
+@test
+SelectedTargetTypeStylesRequireAnExplicitScope :: () {
+    source := "package p\nimport target \"core:target\"\nwhen target.Os == target.Linux { Count :: () -> i8 { return 4; } } else { Count :: () -> f64 { return 4; } }\nMain :: () { value:=Count(); }\n";
+    for (selected in 0..<4) {
+        options := format.Defaults(); options.binding_types = 2; options.analysis_target = selected; options.semantic_targets = 1;
+        result := PipelineOutput(format.FormatProject(source, options, TargetContext(source)));
+        expected := "value: f64 = Count();";
+        if (selected == 0) { expected = "value: i8 = Count();"; }
+        assert(strings.Contains(result.text, expected), "explicit target-only validation uses the chosen compiler configuration");
+        assert(strings.Contains(result.notes, "only"), "target-limited semantic edits identify their proof scope");
+        repeated := PipelineOutput(format.FormatProject(result.text, options, TargetContext(source)));
+        assert(repeated.text == result.text, "target-specific style is stable when its scope is explicit");
+    }
+}
+
+@test
+PortableTypeOmissionsStillApplyAcrossConditionalSignatures :: () {
+    source := "package p\nimport target \"core:target\"\nwhen target.Os == target.Linux { Count :: () -> i8 { return 4; } } else { Count :: () -> f64 { return 4; } }\nMain :: () { ready:bool=true; value:=Count(); }\n";
+    options := format.Defaults(); options.binding_types = 1;
+    result := PipelineOutput(format.FormatProject(source, options, TargetContext(source)));
+    assert(strings.Contains(result.text, "ready := true;") && strings.Contains(result.text, "value := Count();"), "target-independent omission remains available beside a varying call signature");
+    assert(!strings.Contains(result.notes, "not applied"), "every platform proves the portable omission");
+}

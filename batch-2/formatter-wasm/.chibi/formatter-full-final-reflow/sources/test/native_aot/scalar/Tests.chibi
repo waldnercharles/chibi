@@ -1,0 +1,402 @@
+package scalar_llvm_tests
+
+import facts "project:scalar_facts"
+import scalar "project:scalar_llvm"
+import abi "project:native_abi"
+import strings "core:strings"
+
+Row :: (kind: int, type: int, value: int, count: int, name: string, start: int, end: int, line: int,
+        column: int) -> facts.Row {
+    return {kind: kind, type: type, value: value, count: count, literal: 0, name: name, text: "", start: start,
+            end: end, line: line, column: column};
+}
+Literal :: (type: int, literal: i64, start: int, end: int, line: int, column: int) -> facts.Row {
+    row := Row(facts.LiteralRow, type, 0, 0, "", start, end, line, column);
+    row.literal = literal;
+    return row;
+}
+// Synthetic representation fixture, not a substitute for the real producer:
+// Main calls Pick(7, true), which returns its int parameter.
+pub Accepted :: () -> facts.Row[] {
+    source: facts.Row = {kind: facts.SourceRow, type: 0, value: 0, count: 0, literal: 0, name: "Scalar.chibi",
+                         text: "package scalar\nMain :: () -> int { return Pick(7, true); }\nPick :: (x: int, b: bool) -> int { return x; }",
+                         start: 0, end: 0, line: 0, column: 0};
+    return [
+        source, Row(facts.DocumentRow, 0, 0, 0, "project:Scalar.chibi", 0, 0, 0, 0),
+        Row(facts.FunctionRow, facts.IntType, 0, 0, "Main", 15, 58, 2, 1),
+        Row(facts.ReturnRow, 0, 0, 3, "", 35, 56, 2, 21),
+        Literal(facts.IntType, 7, 47, 48, 2, 33),
+        Literal(facts.BoolType, 1, 50, 54, 2, 36),
+        Row(facts.CallRow, facts.IntType, 1, 2, "Pick", 42, 55, 2, 28),
+        Row(facts.FunctionRow, facts.IntType, 0, 2, "Pick", 59, 105, 3, 1),
+        Row(facts.ParameterRow, facts.IntType, 0, 0, "x", 68, 69, 3, 10),
+        Row(facts.ParameterRow, facts.BoolType, 1, 0, "b", 76, 77, 3, 18),
+        Row(facts.ReturnRow, 0, 0, 1, "", 94, 103, 3, 36),
+        Row(facts.ReadRow, facts.IntType, 0, 0, "", 101, 102, 3, 43),
+    ];
+}
+pub Rejected :: () -> facts.Row[] {
+    source: facts.Row = {kind: facts.SourceRow, type: 0, value: 0, count: 0, literal: 0, name: "Bad.chibi", text: "bad",
+                         start: 0, end: 0, line: 0, column: 0};
+    rejection: facts.Row = {kind: facts.RejectionRow, type: 0, value: 0, count: 0, literal: 0, name: "",
+                            text: "expected package", start: 0, end: 3, line: 1, column: 1};
+    return [source, rejection];
+}
+
+Kind: int : 0;
+Type: int : 1;
+Value: int : 2;
+Count: int : 3;
+Start: int : 4;
+Column: int : 5;
+LiteralValue: int : 6;
+// A copy of rows with one integer field of one row replaced.
+Changed :: (rows: facts.Row[], index: int, field: int, value: int) -> facts.Row[] {
+    row := rows[index];
+    switch field {
+        case Kind:
+            row.kind = value;
+        case Type:
+            row.type = value;
+        case Value:
+            row.value = value;
+        case Count:
+            row.count = value;
+        case Start:
+            row.start = value;
+        case Column:
+            row.column = value;
+        case LiteralValue:
+            row.literal = i64(value);
+    }
+    rows[index] = row;
+    return rows;
+}
+Renamed :: (rows: facts.Row[], index: int, name: string, text: string) -> facts.Row[] {
+    row := rows[index];
+    row.name = name;
+    row.text = text;
+    rows[index] = row;
+    return rows;
+}
+Invalid :: (rows: facts.Row[]) -> bool {
+    if (scalar.Validate(rows) == "" || length(scalar.EmitBytes(rows)) != 0) {
+        return false;
+    }
+    switch scalar.Emit(rows) {
+        case .Invalid(message):
+            return message != "";
+        case .Rejected(projection):
+            return false;
+        case .Emitted(text):
+            return false;
+    }
+}
+Emitted :: (rows: facts.Row[]) -> string {
+    if (scalar.Validate(rows) != "" || length(scalar.EmitBytes(rows)) == 0) {
+        return "";
+    }
+    switch scalar.Emit(rows) {
+        case .Invalid(message):
+            return "";
+        case .Rejected(projection):
+            return "";
+        case .Emitted(text):
+            return text;
+    }
+}
+
+// The accepted module with Pick's read of its int parameter replaced by a
+// call of Main, so the two functions recurse.
+Recursive :: () -> facts.Row[] {
+    return Renamed(Changed(Changed(Accepted(), 11, Kind, facts.CallRow), 11, Value, 0), 11, "Main", "");
+}
+// Each fixture changes one fact of an otherwise valid module.
+MalformedCount: int : 26;
+Malformed :: (index: int) -> facts.Row[] {
+    rows := Accepted();
+    switch index {
+        case 0:
+            return Renamed(rows, 1, "", ""); // document key
+        case 1:
+            return Changed(rows, 0, Start, 1); // located source
+        case 2:
+            return Renamed(rows, 2, "Main", "x"); // function text
+        case 3:
+            return Changed(rows, 2, Type, facts.BoolType); // entry result
+        case 4:
+            return Changed(rows, 2, Count, 9); // too many parameters
+        case 5:
+            return Changed(rows, 3, Count, 0); // empty return
+        case 6:
+            return Changed(rows, 3, Count, 2); // return/operand layout
+        case 7:
+            return Changed(rows, 4, Kind, 9); // operand kind
+        case 8:
+            return Changed(rows, 4, Start, 10); // operand outside its return
+        case 9:
+            return Changed(rows, 4, Column, 34); // operand column
+        case 10:
+            return Changed(rows, 5, LiteralValue, 2); // noncanonical bool
+        case 11:
+            return Changed(rows, 5, Type, facts.IntType); // argument type
+        case 12:
+            return Changed(rows, 6, Value, 2); // callee index
+        case 13:
+            return Changed(rows, 6, Value, -1); // callee index
+        case 14:
+            return Renamed(rows, 6, "Other", ""); // callee name
+        case 15:
+            return Changed(rows, 6, Type, facts.BoolType); // callee result
+        case 16:
+            return Changed(rows, 6, Count, 1); // callee arity
+        case 17:
+            return Changed(rows, 6, Count, 3); // more arguments than operands
+        case 18:
+            return Changed(rows, 8, Value, 1); // parameter ordinal
+        case 19:
+            return Changed(rows, 9, Type, 99); // parameter type
+        case 20:
+            return Changed(rows, 11, Value, 1); // read of the bool parameter as int
+        case 21:
+            return Changed(rows, 11, Value, 2); // read outside the parameters
+        case 22:
+            return Renamed(Recursive(), 11, "Other", ""); // recursive callee name
+        case 23:
+            rejected := Rejected();
+            rejected.append(rows[2]);
+            return rejected; // rejection keeps a partial result
+        case 24:
+            return Renamed(Rejected(), 1, "", ""); // rejection without a message
+    }
+    return Changed(Rejected(), 1, Start, 4); // rejection outside its source
+}
+
+// Scalar call facts are checked here, before native lowering. Keeping these
+// with the scalar representation tests avoids importing that layer into the
+// native emitter test package. Run.ps1 executes Tests on bytecode and SLJIT.
+TaskFact :: (kind: int, type: int, value: int, count: int, name: string, start: int, end: int) -> facts.Row {
+    return {kind: kind, type: type, value: value, count: count, literal: 0, name: name, text: "",
+            start: start, end: end, line: 1, column: start + 1};
+}
+TaskFacts :: (mode: int, waits: bool) -> facts.Row[] {
+    source := TaskFact(facts.SourceRow, 0, 0, 0, "Tasks.chibi", 0, 0);
+    source.line = 0;
+    source.column = 0;
+    source.text = "................................................................";
+    document := source;
+    document.kind = facts.DocumentRow;
+    document.text = "";
+    call := TaskFact(facts.CallRow, facts.IntType, 1, 0, "Work", 1, 2);
+    call.literal = i64(mode);
+    suspension := TaskFact(facts.YieldRow, facts.IntType, 0, 0, "", 34, 35);
+    if (!waits) { suspension.kind = facts.LiteralRow; }
+    return [source, document, TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 0, 32),
+            TaskFact(facts.ReturnRow, 0, 0, 1, "", 1, 2), call,
+            TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Work", 33, 64),
+            TaskFact(facts.LocalRow, facts.IntType, 0, 1, "_", 34, 35), suspension,
+            TaskFact(facts.ReturnRow, 0, 0, 1, "", 36, 37),
+            TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 36, 37)];
+}
+ScalarPlainCallsCannotUseWaitingFunctions :: () {
+    assert(scalar.Validate(TaskFacts(facts.CallPlain, true)) == "scalar plain call cannot name a waiting function");
+    assert(scalar.Validate(TaskFacts(facts.CallPlain, false)) == "");
+}
+ScalarAwaitedCallsMustNameWaitingFunctions :: () {
+    assert(scalar.Validate(TaskFacts(facts.CallAwaited, false)) ==
+           "scalar awaited call or spawn names a function that does not wait");
+    assert(scalar.Validate(TaskFacts(facts.CallAwaited, true)) == "");
+}
+ScalarFunctionAddressesCannotNameWaitingFunctions :: () {
+    rows := TaskFacts(facts.CallPlain, true);
+    address := TaskFact(facts.FunctionAddressRow, facts.WordType, 1, 0, "Work", 1, 2);
+    rows = [rows[0], rows[1], rows[2],
+            TaskFact(facts.LocalRow, facts.WordType, 0, 1, "_", 1, 2), address,
+            TaskFact(facts.ReturnRow, 0, 0, 1, "", 3, 4),
+            TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 3, 4),
+            rows[5], rows[6], rows[7], rows[8], rows[9]];
+    assert(scalar.Validate(rows) == "scalar function address cannot name a waiting function");
+}
+ScalarCallModesAreBounded :: () {
+    for (mode in [int(-1), 3]) {
+        assert(scalar.Validate(TaskFacts(mode, false)) == "invalid scalar operand row");
+    }
+}
+ScalarArrayWithoutOperandsAreValidated :: () {
+    source := Accepted();
+    array := facts.ArrayType + facts.IntType;
+    rows := [source[0], source[1], source[2],
+             Row(facts.LocalRow, array, 0, 5, "values", 35, 56, 2, 21),
+             Literal(facts.IntType, 1, 35, 36, 2, 21),
+             Literal(facts.IntType, 2, 35, 36, 2, 21),
+             Row(facts.ArrayRow, array, facts.ArrayNew, 2, "", 35, 36, 2, 21),
+             Literal(facts.IntType, 0, 35, 36, 2, 21),
+             Row(facts.ArrayRow, array, facts.ArrayWithout, 2, "", 35, 36, 2, 21),
+             Row(facts.ReturnRow, 0, 0, 2, "", 56, 57, 2, 42),
+             Row(facts.ReadRow, array, 0, 0, "", 56, 57, 2, 42),
+             Row(facts.ArrayRow, facts.IntType, facts.ArrayLength, 1, "", 56, 57, 2, 42)];
+    assert(scalar.Validate(rows) == "");
+    expected := "scalar array operation differs from its operands";
+    assert(scalar.Validate(Changed(rows, 7, Type, facts.BoolType)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Count, 1)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Type, facts.IntType)) == expected);
+    assert(scalar.Validate(Changed(rows, 8, Value, facts.ArrayLoan + 1)) == expected);
+}
+ScalarForceUnwrapRequiresAnOptionalAndAProgramRuntime :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    optional := facts.RecordType;
+    rows := [original[0], original[1],
+             TaskFact(facts.UnionRow, 0, 0, 2, "optional", 0, 1),
+             TaskFact(facts.VariantRow, 0, 0, 0, "Nil", 0, 1),
+             TaskFact(facts.VariantRow, 0, 1, 1, "Some", 0, 1),
+             TaskFact(facts.MemberRow, facts.IntType, 0, 0, "value", 0, 1),
+             TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+             TaskFact(facts.ReturnRow, 0, 0, 3, "", 2, 10),
+             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 3, 4),
+             TaskFact(facts.MakeRow, optional, 1, 1, "", 4, 5),
+             TaskFact(facts.UnwrapRow, facts.IntType, 0, 1, "", 5, 6)];
+    assert(scalar.Validate(rows) == "");
+    expected := "scalar force unwrap differs from its optional";
+    assert(scalar.Validate(Changed(rows, 10, Type, facts.BoolType)) == expected);
+    assert(scalar.Validate(Changed(rows, 10, Count, 0)) == expected);
+    assert(scalar.Validate(Changed(rows, 10, Value, 1)) == expected);
+    assert(scalar.Validate(Renamed(rows, 3, "Empty", "")) == expected);
+    switch scalar.EmitFor(abi.LinuxX64(), rows) {
+        case .Invalid(message): assert(message == "typed failures require a standalone native program");
+        case .Rejected(projected): assert(false);
+        case .Emitted(text): assert(false);
+    }
+    switch scalar.EmitProgramFor(abi.LinuxX64(), rows, "") {
+        case .Invalid(message): assert(false);
+        case .Rejected(projected): assert(false);
+        case .Emitted(text): assert(strings.Contains(text, "call void @chibi_native_failure(i32 7)"));
+    }
+}
+ScalarCharacterConversionsCheckIntegerOperands :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    rows := [original[0], original[1],
+             TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+             TaskFact(facts.ReturnRow, 0, 0, 2, "", 2, 10),
+             TaskFact(facts.LiteralRow, facts.WordType, 0, 0, "", 3, 4),
+             TaskFact(facts.ConvertRow, facts.IntType, facts.CheckedChar, 1, "", 4, 5)];
+    assert(scalar.Validate(rows) == "");
+    expected := "scalar conversion is not one the runtime implements";
+    assert(scalar.Validate(Changed(rows, 4, Type, facts.BoolType)) == expected);
+    assert(scalar.Validate(Changed(rows, 4, Type, facts.FloatType)) == expected);
+    assert(scalar.Validate(Changed(rows, 5, Type, facts.UintType)) == expected);
+    assert(scalar.Validate(Changed(rows, 5, Count, 0)) == expected);
+    assert(scalar.Validate(Changed(rows, 5, Value, facts.CheckedChar + 1)) == expected);
+    switch scalar.EmitFor(abi.LinuxX64(), rows) {
+        case .Invalid(message): assert(false);
+        case .Rejected(projected): assert(false);
+        case .Emitted(text): assert(strings.Contains(text, "icmp ule i64"));
+    }
+    switch scalar.EmitProgramFor(abi.LinuxX64(), rows, "") {
+        case .Invalid(message): assert(false);
+        case .Rejected(projected): assert(false);
+        case .Emitted(text): assert(strings.Contains(text, "call void @chibi_native_failure(i32 4)"));
+    }
+}
+
+// Reversed remainder consumes the source-order values but exchanges only
+// their use at the operation. It is a floating native operation, not integer %.
+ScalarReversedRemainderChecksFloatingOperands :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    rows := [original[0], original[1],
+             TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+             TaskFact(facts.LocalRow, facts.DoubleType, 0, 3, "value", 2, 10),
+             TaskFact(facts.LiteralRow, facts.DoubleType, 0, 0, "", 3, 4),
+             TaskFact(facts.LiteralRow, facts.DoubleType, 0, 0, "", 4, 5),
+             TaskFact(facts.ArithmeticRow, facts.DoubleType, facts.ReversedRemainder, 2, "", 5, 6),
+             TaskFact(facts.ReturnRow, 0, 0, 1, "", 11, 13),
+             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 12, 13)];
+    assert(scalar.Validate(rows) == "");
+    for (index in 3..<7) { rows = Changed(rows, index, Type, facts.IntType); }
+    assert(scalar.Validate(rows) == "scalar arithmetic differs from its number operands");
+}
+
+ScalarArrayFieldPlacesAreValidated :: () {
+    original := TaskFacts(facts.CallPlain, false);
+    record := facts.RecordType;
+    array := facts.ArrayType + facts.IntType;
+    changed := TaskFact(facts.ArrayRow, record, facts.ArrayPush, 2, "", 14, 15);
+    changed.literal = 1;
+    rows := [original[0], original[1],
+             TaskFact(facts.RecordRow, 0, 0, 1, "Buffer", 0, 1),
+             TaskFact(facts.MemberRow, array, 0, 0, "values", 0, 1),
+             TaskFact(facts.FunctionRow, facts.IntType, 0, 0, "Main", 1, 64),
+             TaskFact(facts.LocalRow, record, 0, 1, "buffer", 2, 10),
+             TaskFact(facts.ZeroRow, record, 0, 0, "", 3, 4),
+             TaskFact(facts.AssignRow, record, 0, 3, "", 11, 20),
+             TaskFact(facts.RefRow, record, 0, 0, "", 12, 13),
+             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 13, 14), changed,
+             TaskFact(facts.ReturnRow, 0, 0, 1, "", 21, 24),
+             TaskFact(facts.LiteralRow, facts.IntType, 0, 0, "", 22, 23)];
+    assert(scalar.Validate(rows) == "");
+    assert(scalar.Validate(Changed(rows, 10, Value, facts.ArrayResize)) == "");
+    for (ordinal in [int(-1), 2]) { assert(Invalid(Changed(rows, 10, LiteralValue, ordinal))); }
+    assert(Invalid(Changed(rows, 10, Type, array)));
+    assert(Invalid(Changed(rows, 10, Count, 1)));
+    assert(Invalid(Changed(rows, 10, Value, facts.ArrayLength)));
+    assert(Invalid(Changed(rows, 8, Type, facts.IntType)));
+    assert(Invalid(Changed(rows, 8, Value, 1)));
+    assert(Invalid(Changed(rows, 8, LiteralValue, 1)));
+    assert(Invalid(Changed(rows, 3, Type, facts.BoolType)));
+    wrong := rows[10];
+    wrong.literal = i64(2147483647) + i64(1);
+    rows[10] = wrong;
+    assert(Invalid(rows));
+}
+
+pub Tests :: () -> int {
+    ScalarReversedRemainderChecksFloatingOperands();
+    ScalarPlainCallsCannotUseWaitingFunctions();
+    ScalarAwaitedCallsMustNameWaitingFunctions();
+    ScalarFunctionAddressesCannotNameWaitingFunctions();
+    ScalarCallModesAreBounded();
+    ScalarArrayWithoutOperandsAreValidated();
+    ScalarArrayFieldPlacesAreValidated();
+    ScalarForceUnwrapRequiresAnOptionalAndAProgramRuntime();
+    ScalarCharacterConversionsCheckIntegerOperands();
+    text := Emitted(Accepted());
+    if (!strings.Contains(text, "define i32 @chibi_scalar()") ||
+        !strings.Contains(text, "define internal i32 @chibi_scalar.1(i32 %arg0, i1 %arg1)") ||
+        !strings.Contains(text, "call i32 @chibi_scalar.1(i32 %c3_0, i1 %c3_1)") ||
+        !strings.Contains(text, "store i32 1, ptr %budget0") || !strings.Contains(text, "icmp sgt i32 %remaining0, 0") ||
+        !strings.Contains(text, "store i32 7, ptr %s0") || !strings.Contains(text, "store i1 1, ptr %s1")) {
+        return 1;
+    }
+    rejected := Rejected();
+    if (scalar.Validate(rejected) != "" || length(scalar.EmitBytes(rejected)) != 0) {
+        return 2;
+    }
+    switch scalar.Emit(rejected) {
+        case .Invalid(message):
+            return 3;
+        case .Emitted(output):
+            return 4;
+        case .Rejected(projection):
+            if (length(projection) != 2 || projection[0].text != "bad" || projection[1].text != "expected package" ||
+                projection[1].end != 3) {
+                return 5;
+            }
+    }
+    for (index in 0..<MalformedCount) {
+        if (!Invalid(Malformed(index))) {
+            return 100 + index;
+        }
+    }
+    // Recursive functions call each other directly, with no depth counter.
+    recursive := Emitted(Recursive());
+    if (!strings.Contains(recursive, "call i32 @chibi_scalar()") ||
+        !strings.Contains(recursive, "call i32 @chibi_scalar.1(i32 %c3_0, i1 %c3_1)") ||
+        strings.Contains(recursive, "depth")) {
+        return 8;
+    }
+    // A coherent fabricated value is not authenticated by shape checks. Only
+    // producer/source/envelope binding establishes source semantics.
+    if (!strings.Contains(Emitted(Changed(Accepted(), 4, LiteralValue, 8)), "store i32 8, ptr %s0")) {
+        return 7;
+    }
+    return 0;
+}

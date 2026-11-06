@@ -1,0 +1,29 @@
+package facts
+NegateI32 :: (x: i32) -> i32 { return -x; }
+NegateI64 :: (x: i64) -> i64 { return -x; }
+Compare32 :: (a: i32, b: i32) -> int {
+    bits := 0;
+    if (a < b) { bits += 1; }
+    if (a <= b) { bits += 2; }
+    if (a > b) { bits += 4; }
+    if (a >= b) { bits += 8; }
+    if (a == b) { bits += 16; }
+    if (a != b) { bits += 32; }
+    return bits;
+}
+Compare64 :: (a: i64, b: i64) -> int {
+    bits := 0;
+    if (a < b) { bits += 1; }
+    if (a <= b) { bits += 2; }
+    if (a > b) { bits += 4; }
+    if (a >= b) { bits += 8; }
+    if (a == b) { bits += 16; }
+    if (a != b) { bits += 32; }
+    return bits;
+}
+CompareU64 :: (a: u64, b: u64) -> int {
+    bits := 0;
+    if (a < b) { bits += 1; }
+    if (a > b) { bits += 4; }
+    return bits;
+}

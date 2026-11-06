@@ -1,0 +1,3 @@
+package facts
+One :: () -> int { return ~0; }
+Grouped :: () -> int { return (~0); }

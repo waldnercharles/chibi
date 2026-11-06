@@ -1,0 +1,24 @@
+package engine
+
+import strings "core:strings"
+
+// Native toolchain selections still supplied by Make's SDK consumers. Unknown
+// definitions fail at the boundary instead of silently selecting another tool.
+pub NativeToolchainOption :: (argument: string) -> string[] {
+    if (!strings.HasPrefix(argument, "-D") || !strings.Contains(argument, "=")) {
+        return [];
+    }
+    name := build.before(build.before(build.after(argument, "-D"), "="), ":");
+    value := build.after(argument, "=");
+    if (value == "") {
+        return [];
+    }
+    for (pair in ["CMAKE_C_COMPILER=--compiler", "CMAKE_CXX_COMPILER=--cxx-compiler",
+                  "CMAKE_OSX_SYSROOT=--sysroot", "CMAKE_OSX_ARCHITECTURES=--architecture",
+                  "CMAKE_AR=--archiver", "CMAKE_RANLIB=--ranlib", "LIBCLANG_ROOT=--libclang-root"]) {
+        if (name == build.before(pair, "=")) {
+            return [build.after(pair, "="), value];
+        }
+    }
+    return [];
+}

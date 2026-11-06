@@ -1,0 +1,1533 @@
+diff --git a/PLAN.md b/PLAN.md
+index 47f1aa12e..81fd20da6 100644
+--- a/PLAN.md
++++ b/PLAN.md
+@@ -7,6 +7,42 @@
+ 
+ # Chibi toolchain consolidation and self-hosting
+ 
++## Main runner and state-preserving reload, 2026-10-28
++
++Port the local Main runner onto origin/main at 2c6d3ed5c in an isolated
++worktree. Preserve the original checkout and its tracked/untracked changes;
++the backup is .chibi/hello-port-preservation-20261028 in that checkout.
++
++The CLI supports explicit run and file/directory shorthand. An opt-in
++--watch host keeps an execution_program alive and reruns Main after accepted
++source changes. Runtime-owned function invocation binds retained state and
++imports. Existing prepare/commit replacement owns state migration, resets and
++retired generations. Invalid edits retain the accepted generation. Ordinary
++locals reinitialize; retain locals persist. Main remains synchronous.
++
++Changes cover the source loader, program authoring host, runtime function-call
++boundary, CLI/compiler dispatch, both build descriptions, documentation and
++native boundary regressions. No syntax, project-version or Studio change.
++
++Verify Main file/directory execution, exit status and diagnostics; retained
++state across valid reloads, invalid-edit recovery and import changes; current
++publication, record-publication and root-state/runtime coverage. Build against
++this worktree's matching compiler/runtime. Record actual results and elapsed
++time; do not infer new-main readiness from the old runner's test results.
++
++Completed locally against 2c6d3ed5c. Release build passed. CLI: 28 cases,
++398 assertions, 13.856 seconds. Native runtime: program 211/14,167/1.519s,
++publication 6/320/1.047s, record-publication 7/230/1.046s, root-state
++3/194/1.036s, modules 22/908/0.830s. All passed; runtime call/reload cases
++exercise bytecode and the platform compiled backend. Manual watch printed
++Run 1 then Reloaded 2 in one process. Clang-format 22 and diff checks passed.
++Full native/material/project/language/tooling aggregates, browser/Windows and
++Studio were not run. No SDK installation or publishing occurred.
++
++This increment extends the existing C host and runtime. Polling/CLI policy is
++not inherently native; moving orchestration into Chibi remains the direction
++recorded in docs/toolchain-inventory.md.
++
+ ## Coordinated named struct results, 2026-10-22
+ 
+ The next local setup slice extends the ABI20 authored compiler's existing
+diff --git a/README.md b/README.md
+index 7de821cb7..76d8d143e 100644
+--- a/README.md
++++ b/README.md
+@@ -1,12 +1,11 @@
+ # Chibi
+ 
+-Chibi is a language and runtime for games. Write game behavior in `.chibi`
+-files. Define scenes, components and resources in text files. Run the game with
+-`chibi run`.
++Chibi is a language and runtime for games. Start with a `.chibi` program and
++run it with `chibi`. Game projects add scenes, components and resources.
+ 
+ - [Language](docs/code-language.md): learn the syntax through code.
+ - [Examples](docs/examples.md): try common game programming tasks.
+-- [Toolchain](docs/guide/toolchain.md): build, run and export a project.
++- [Toolchain](docs/guide/toolchain.md): run a program, or build and export a game.
+ - [Testing](docs/guide/testing.md): check package functions with `@test`.
+ 
+ ## Install
+@@ -26,6 +25,38 @@ player, headers and libraries.
+ 
+ For a development build, use `make build`. Run the command as `build/sdk/chibi`.
+ 
++## Hello World
++
++Save this as `Hello.chibi`:
++
++```chibi
++package hello
++
++Main :: () {
++    print_string("Hello, world!")
++}
++```
++
++Run it:
++
++```sh
++chibi Hello.chibi
++```
++
++It prints `Hello, world!` and exits. `chibi run Hello.chibi` does the same thing.
++The program runner calls `Main` once. It takes no arguments and can return
++nothing, as above, or an `int` exit status from 0 to 255.
++
++Every program source needs a `package` header. Running a file compiles that
++file and the core library. To include sibling source files and local package
++imports, run the package directory with `chibi .`.
++
++To keep the program open while you edit it, use `chibi --watch Hello.chibi`.
++Each valid source change calls `Main` again. Explicit `retain` bindings keep
++their values; ordinary locals start again. Invalid edits report diagnostics
++and keep the last valid program and state. See [program reload](docs/guide/toolchain.md#reload-a-program)
++for a complete example.
++
+ ## Run a project
+ 
+ Give `chibi run` a project folder or its `project.kdl`:
+@@ -34,6 +65,8 @@ Give `chibi run` a project folder or its `project.kdl`:
+ chibi run /path/to/game
+ ```
+ 
++`chibi /path/to/game` also runs a game folder containing `project.kdl`.
++
+ Inside a project folder, omit the path:
+ 
+ ```sh
+diff --git a/docs/guide/toolchain.md b/docs/guide/toolchain.md
+index 5002bf470..0bb988bc4 100644
+--- a/docs/guide/toolchain.md
++++ b/docs/guide/toolchain.md
+@@ -3,6 +3,86 @@
+ Run `chibi` from an installed SDK or use `build/sdk/chibi` in an engine checkout.
+ The command finds the compiler, player and engine resources beside itself.
+ 
++## Run a program
++
++Create `Hello.chibi`:
++
++```chibi
++package hello
++
++Main :: () {
++    print_string("Hello, world!")
++}
++```
++
++Run it with either command:
++
++```sh
++chibi Hello.chibi
++chibi run Hello.chibi
++```
++
++The program prints `Hello, world!` and exits. The runner calls `Main` once.
++`Main` is an ordinary function; only the program runner calls it automatically.
++It must take no arguments and return either nothing or an `int` exit status
++from 0 to 255. Returning nothing means success, exit status 0.
++
++Every source file must start with `package NAME`. Running a file compiles only
++the selected file and the core library, so unrelated sibling files do not
++affect it. It can import SDK packages with `core:NAME`.
++
++When a program spans several files, run its package directory:
++
++```sh
++chibi .
++```
++
++This includes the package's sibling source files and supports local package
++imports with `project:NAME`, alongside `core:NAME` imports. A directory with
++`project.kdl` runs its game instead.
++
++With no path, `chibi run` finds the nearest `project.kdl` in or above the working
++directory. If there is none, it runs the package in the working directory.
++
++## Reload a program
++
++Add `--watch` to keep the process open after `Main` returns:
++
++```sh
++chibi --watch Hello.chibi
++chibi run --watch Hello.chibi
++chibi Hello.chibi --watch
++```
++
++Each accepted source change replaces the program and calls `Main` again.
++Use `retain` for a value that should survive those replacements:
++
++```chibi
++package hello
++
++Main :: () {
++    count: retain int = 0
++    count += 1
++    print_string(format_text("Run {}", count))
++}
++```
++
++The first call prints `Run 1`. Change the message to `"Reloaded {}"` and save;
++the next call prints `Reloaded 2`. The retained `count` keeps its value while
++ordinary locals initialize again. Changed retained types follow the existing
++[state conversion and reset rules](../code-language.md#behaviors-and-state).
++
++Invalid source, or a missing or invalid `Main`, reports diagnostics and keeps
++the last valid program and its state. A later valid edit replaces that version.
++File targets watch the selected source and core library. Directory targets also
++watch sibling files and local package sources. Use `chibi --watch .` for a
++program that spans several files.
++
++`Main` must finish synchronously; it cannot suspend or start tasks. Reloads
++apply between completed calls, so an edit cannot interrupt a busy `Main`.
++Press Ctrl-C to stop watching. `--watch` applies to standalone programs, not
++game projects.
++
+ ## Build and run
+ 
+ PROJECT is a project folder or its `project.kdl`. Without a path, these
+@@ -14,6 +94,8 @@ chibi build /path/to/game
+ chibi run /path/to/game
+ ```
+ 
++`chibi /path/to/game` also runs a game folder containing `project.kdl`.
++
+ `check` checks the project without writing files. `build` writes
+ `.chibi/build/game.chibip`. `run` builds changed content and starts the player.
+ Pass player options after `--`. Use `chibi-player --help` to list them.
+@@ -371,6 +453,7 @@ Each command accepts `--help`.
+ Linux and macOS support all commands, except `build --native`, which runs on
+ Linux only. It builds programs for Linux x86-64, macOS arm64 and Windows x64.
+ 
+-TODO: Windows support for reading package sources in `test` and `doc`.
++TODO: Windows support for reading package sources in program `run`, `test` and
++`doc`.
+ 
+ TODO: Windows support for the local server in `web` and `doc --serve`.
+diff --git a/sdk/project_preparation.cmake b/sdk/project_preparation.cmake
+index 8e4ab85f6..5fb907ef0 100644
+--- a/sdk/project_preparation.cmake
++++ b/sdk/project_preparation.cmake
+@@ -38,7 +38,7 @@ file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/private/sound_preparation/vendor/sound_v
+ set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+     "${CHIBI_THIRD_PARTY_DIR}/source/cute_framework/libraries/stb/stb_vorbis.c")
+ add_library(chibi_project_compilation STATIC)
+-foreach(unit component_declarations project_open project_prepare project_prepare_assets project_compile renderer_catalog prototype_prepare
++foreach(unit component_declarations project_open project_prepare project_prepare_assets project_compile program_run renderer_catalog prototype_prepare
+     graph_sources native_graph_prepare source_graph_library material_prepare scene_prepare sound_prepare ui_prepare
+     ui_prepare_assets source_costs)
+     target_sources(chibi_project_compilation PRIVATE "${CHIBI_SDK_ROOT}/src/authoring/${unit}.c")
+diff --git a/src/authoring/project_compile.h b/src/authoring/project_compile.h
+index 3864ec49f..419ec582c 100644
+--- a/src/authoring/project_compile.h
++++ b/src/authoring/project_compile.h
+@@ -37,6 +37,19 @@ int authoring_project_compile_modules(
+  * worker budget). Call on the controlling thread, outside a pool submission.
+  * 0 when every test passes, 1 for a failure, invalid package or worker setting. */
+ int authoring_project_test(const char *root, const char *core);
++/* Runs Main in one source file or a directory's root package, with core:
++ * imports and terminal logging. Main takes no arguments and returns void or
++ * an int exit status in 0..255. Paths are absolute. Does not create a game or
++ * write artifacts. */
++int authoring_program_run(const char *path, const char *core);
++typedef struct authoring_program authoring_program;
++/* Persistent standalone host. A rejected or unchanged disk snapshot returns
++ * false from reload, preserving the accepted generation and retained state.
++ * Call Main only after open or a successful reload. Paths are absolute. */
++authoring_program *authoring_program_open(const char *path, const char *core);
++bool authoring_program_reload(authoring_program *);
++int authoring_program_call(authoring_program *);
++void authoring_program_free(authoring_program *);
+ /* chibi doc: writes the site root/docs/site.kdl lists into root/build/docs:
+  * each page's Markdown, package reference or grammar rendered and laid out by
+  * the generator packages at generator_root (markdown, reference, grammar and
+diff --git a/src/authoring/source_package_files.c b/src/authoring/source_package_files.c
+index 3e9a28d98..8dba007ff 100644
+--- a/src/authoring/source_package_files.c
++++ b/src/authoring/source_package_files.c
+@@ -395,6 +395,52 @@ bool source_package_files_read(const char *root, source_package_input **files, s
+ #endif
+ }
+ 
++bool source_package_file_read(const char *path, source_package_input **files, source_package_load_error *error)
++{
++    assert(files && !*files && error);
++    *error = (source_package_load_error){ 0 };
++#ifdef _WIN32
++    (void)path;
++    return reject(error, "", "Package filesystem loading is unsupported on Windows");
++#else
++    char *canonical = realpath(path, NULL);
++    if (!canonical) {
++        return reject(error, path, "Cannot canonicalize program source");
++    }
++    if (strlen(canonical) >= MAX_PATH) {
++        free(canonical);
++        return reject(error, path, "Program source path limit exceeded");
++    }
++    char *parent = xstrdup(canonical);
++    char *slash = strrchr(parent, '/');
++    assert(slash);
++    slash[slash == parent ? 1 : 0] = 0;
++    int directory = open_root(parent);
++    free(parent);
++    const char *name = strrchr(canonical, '/') + 1;
++    struct stat info;
++    package_files found = { .error = error };
++    bool ok = directory >= 0 &&
++              !fstatat(directory, name, &info, AT_SYMLINK_NOFOLLOW) &&
++              S_ISREG(info.st_mode);
++    if (ok) {
++        ok = read_file(&found, directory, name, canonical, &info);
++    } else {
++        reject(error, canonical, "Program source is not a readable regular file");
++    }
++    if (directory >= 0) {
++        close(directory);
++    }
++    if (ok) {
++        *files = found.files;
++        found.files = NULL;
++    }
++    free_files(&found);
++    free(canonical);
++    return ok;
++#endif
++}
++
+ bool source_package_files_load(
+     const source_package_disk_options *options,
+     source_package_snapshot_options *inputs,
+diff --git a/src/authoring/source_package_io.h b/src/authoring/source_package_io.h
+index 3fa4d890e..19475533e 100644
+--- a/src/authoring/source_package_io.h
++++ b/src/authoring/source_package_io.h
+@@ -51,6 +51,9 @@ void source_package_files_release(source_package_snapshot_options *inputs);
+ /* The same bounded filesystem reader for one root, retaining only files.
+  * Stores nothing on failure. Windows returns an unsupported error. */
+ bool source_package_files_read(const char *root, source_package_input **files, source_package_load_error *);
++/* Reads one explicit regular source, with the same byte/read checks. The
++ * resulting one-element array is released with source_package_files_free. */
++bool source_package_file_read(const char *path, source_package_input **files, source_package_load_error *);
+ void source_package_files_free(source_package_input *files);
+ 
+ #endif
+diff --git a/src/execution/module.h b/src/execution/module.h
+index 6f33ef664..92e282bfc 100644
+--- a/src/execution/module.h
++++ b/src/execution/module.h
+@@ -277,6 +277,19 @@ int execution_instance_dispatch(
+     double delta,
+     unsigned budget
+ );
++/* Calls one package-level authored function in the attached instance, keeping
++ * its retained state and imported owners. The function takes no arguments and
++ * returns nothing or one int; result receives zero or that value on success.
++ * The instance and its program must be quiescent, with no pending activations.
++ * Waiting and starting tasks fail without leaving work queued. */
++int execution_instance_call(
++    execution_instance *,
++    uint64_t function,
++    int *result,
++    double now,
++    double delta,
++    unsigned budget
++);
+ const pin_value *execution_instance_state(const execution_instance *instance, uint64_t id);
+ int execution_instance_set_state(execution_instance *instance, uint64_t id, pin_value value);
+ int execution_instance_pending(const execution_instance *instance);
+diff --git a/src/execution/program.c b/src/execution/program.c
+index dd4c7db9a..a105a6811 100644
+--- a/src/execution/program.c
++++ b/src/execution/program.c
+@@ -1730,6 +1730,88 @@ int execution_instance_dispatch(
+     program_collect_states(program);
+     return status;
+ }
++static int synchronous_wait(behavior_function_context *context, int)
++{
++    context->error_message = "a synchronous call must finish without waiting";
++    return FLOW_ERR_STATE;
++}
++static int synchronous_task(behavior_function_context *context, int)
++{
++    context->error_message = "a synchronous call cannot start a task";
++    const behavior_function *function = context->source_function;
++    const behavior_function_instruction
++        *call = &function->instructions[context->activation->pc - 1];
++    context->failure = BEHAVIOR_FUNCTION_COMMAND;
++    context->node_id = call->node_id;
++    context->error_source = call->source;
++    context->error_frame = call->frame;
++    context->error_stack = call->stack;
++    /* Task refusal returns through the call scheduler, outside the normal
++     * instruction failure observer. Capture its diagnostic before unwinding. */
++    record_failure(function, context, FLOW_ERR_STATE);
++    return FLOW_ERR_STATE;
++}
++int execution_instance_call(
++    execution_instance *instance,
++    uint64_t id,
++    int *result,
++    double now,
++    double delta,
++    unsigned budget
++)
++{
++    assert(instance && result);
++    execution_program *p = instance->program;
++    if (p->running || p->dispatching || p->system_prepared ||
++        execution_instance_pending(instance)) {
++        return FLOW_ERR_STATE;
++    }
++    const behavior_function *function = NULL;
++    for (int i = 0; i < p->module->plan.function_count; i++) {
++        const execution_module_function *candidate = &p->module->plan.functions[i];
++        if (candidate->id == id &&
++            candidate->kind == EXECUTION_FUNCTION_AUTHORED && !candidate->parent) {
++            function = candidate->body;
++            break;
++        }
++    }
++    if (!function) {
++        return FLOW_ERR_ARGUMENT;
++    }
++    int parameters = 0, results = 0;
++    behavior_function_arguments(function, &parameters);
++    const pin_value *signature = behavior_function_results(function, &results);
++    if (parameters || results > 1 ||
++        (results && (signature[0].type != PIN_I32 || signature[0].container != PIN_CONTAINER_SINGLE ||
++                     behavior_function_kind(function, BEHAVIOR_BANK_RESULT, 0) !=
++                         BEHAVIOR_VALUE))) {
++        return FLOW_ERR_ARGUMENT;
++    }
++    execution_activation *a = program_activation_new(instance, function, NULL, 0, now, delta, budget);
++    if (!a) {
++        return FLOW_ERR_ARGUMENT;
++    }
++    a->context.begin_command = synchronous_wait;
++    a->context.start_task = synchronous_task;
++    int status = program_activation_run(a, now, delta, budget);
++    if (status > 0 || (status == FLOW_OK && !a->context.returned)) {
++        const behavior_function *active = function;
++        behavior_function_context *context = behavior_function_active_context(&a->context, &active);
++        context
++            ->error_message = "a synchronous call must finish without waiting";
++        status = FLOW_ERR_STATE;
++        record_failure(active, context, status);
++    }
++    if (status == FLOW_OK) {
++        *result = results ? a->context.results[0].i : 0;
++    } else {
++        program_activation_cancel(a);
++    }
++    program_activation_free(a);
++    program_apply_services(p->owner_program);
++    program_collect_states(p);
++    return status;
++}
+ const pin_value *execution_instance_state(const execution_instance *instance, uint64_t id)
+ {
+     for (int i = 0; i < instance->program->module->plan.state_count; i++) {
+diff --git a/src/host/chibi_main.c b/src/host/chibi_main.c
+index 3c59e9ee8..b3c533002 100644
+--- a/src/host/chibi_main.c
++++ b/src/host/chibi_main.c
+@@ -50,7 +50,7 @@ extern char **environ;
+  * chibi fmt [--check] [PATH...]: rewrites each project's assets, or the
+  * package sources of a folder without a project.kdl, in their canonical form,
+  * or with --check names the ones that are not.
+- * chibi run [PROJECT] [PLAYER OPTIONS]: prepares, then plays the project.
++ * chibi run [PATH], chibi PATH: runs a package's Main or plays a game project.
+  * chibi export [PROJECT] --output DIR [--web PLAYER | --native [--llvm DIR]]:
+  * builds a runnable game folder, or a static site for browsers, with --native
+  * its library sources compiled for the player to load.
+@@ -180,13 +180,19 @@ static int usage(const char *program)
+         "       %s check [PROJECT] [--explain-costs [--json]]\n"
+         "       %s fmt [--check] [PATH...]\n"
+         "       %s test [ROOT]\n"
+-        "       %s run [PROJECT] [--] [PLAYER OPTIONS]\n"
++        "       %s run [--watch] [PATH] [--] [PLAYER OPTIONS]\n"
++        "       %s [--watch] PATH\n"
+         "       %s export [PROJECT] --output DIR [--web PLAYER] [--archive]\n"
+         "                [--native [--llvm DIR]]\n"
+         "       %s web [PROJECT] --player PLAYER [--port PORT]\n"
+         "       %s doc [ROOT] [--serve] [--port PORT]\n"
+         "PROJECT is a project directory or its project.kdl. Without one, the\n"
+         "nearest project.kdl at or above the working directory is used.\n"
++        "PATH may also be a .chibi file or package directory. Its Main takes\n"
++        "no arguments and returns nothing or an int exit status. A directory\n"
++        "with project.kdl runs as a game. chibi PATH is shorthand for run.\n"
++        "--watch reruns a standalone Main after edits, keeping retained "
++        "state.\n"
+         "version prints the SDK, build, compiler and artifact-format "
+         "identity.\n"
+         "doctor reports the SDK, compiler, player, platform, native backend "
+@@ -217,7 +223,7 @@ static int usage(const char *program)
+         "write them; --check writes nothing and fails when one would change.\n"
+         "A PATH that is a folder without a project.kdl has the package\n"
+         "sources below it formatted instead, as test reads them.\n"
+-        "run prepares and starts the player.\n"
++        "run calls Main for a program, or prepares and starts a game.\n"
+         "Player options are passed to chibi-player; see chibi-player --help.\n"
+         "export compiles the project into DIR with the player, its resources\n"
+         "and engine files, ready to run and ship: a DIR.app on macOS, a\n"
+@@ -248,6 +254,7 @@ static int usage(const char *program)
+         program,
+         program,
+         program,
++        program,
+         program
+     );
+     return 0;
+@@ -1313,20 +1320,77 @@ static int test_packages(int argc, char **argv)
+     return result;
+ }
+ 
+-static int run_game(int argc, char **argv)
++static bool ends_with(const char *text, const char *suffix)
+ {
+-    if (argc == 3 && (!strcmp(argv[2], "--help") || !strcmp(argv[2], "-h"))) {
++    size_t length = strlen(text), tail = strlen(suffix);
++    return length >= tail && !strcmp(text + length - tail, suffix);
++}
++
++static int run_path(const char *requested, int count, char **arguments, bool watch)
++{
++    char *found = requested ? NULL : chibi_project_find(".");
++    const char *target = requested ? requested : found ? found : ".";
++    char *path = realpath(target, NULL);
++    if (!path) {
++        fprintf(stderr, "%s: %s\n", target, strerror(errno));
++        free(found);
++        return 2;
++    }
++    free(found);
++    struct stat info;
++    bool directory = !stat(path, &info) && S_ISDIR(info.st_mode);
++    char *manifest = directory ? join(path, "project.kdl") : NULL;
++    bool game = directory ? !access(manifest, F_OK) : ends_with(path, "/project.kdl");
++    free(manifest);
++    if (game) {
++        if (watch) {
++            fprintf(stderr, "--watch requires a standalone .chibi program or package directory\n");
++            free(path);
++            return 2;
++        }
++        int status = project_command(path, count, arguments, true);
++        free(path);
++        return status;
++    }
++    if (count || (!directory && !ends_with(path, ".chibi"))) {
++        fprintf(stderr, "A program requires a .chibi file or package directory, with no extra arguments\n");
++        free(path);
++        return 2;
++    }
++    char *bin = file_executable_dir();
++    char *compiler = join(bin, "chibi-compile" CHIBI_EXECUTABLE_SUFFIX);
++    char *args[] = { compiler, "--project-root",         path,
++                     "--run",  watch ? "--watch" : NULL, NULL };
++    int status = chibi_process_run(args);
++    free(compiler);
++    free(bin);
++    free(path);
++    return status;
++}
++
++static int run_command(int argc, char **argv, int first)
++{
++    if (argc == first + 1 &&
++        (!strcmp(argv[first], "--help") || !strcmp(argv[first], "-h"))) {
+         return usage(argv[0]);
+     }
+-    int first = 2;
++    bool watch = false;
++    if (first < argc && !strcmp(argv[first], "--watch")) {
++        watch = true;
++        first++;
++    }
+     const char *requested = NULL;
+     if (first < argc && strcmp(argv[first], "--") && argv[first][0] != '-') {
+         requested = argv[first++];
+     }
++    if (!watch && first < argc && !strcmp(argv[first], "--watch")) {
++        watch = true;
++        first++;
++    }
+     if (first < argc && !strcmp(argv[first], "--")) {
+         first++;
+     }
+-    return project_command(requested, argc - first, argv + first, true);
++    return run_path(requested, argc - first, argv + first, watch);
+ }
+ 
+ int main(int argc, char **argv)
+@@ -1362,9 +1426,17 @@ int main(int argc, char **argv)
+         return format_games(argc, argv);
+     }
+     if (argc > 1 && !strcmp(argv[1], "run")) {
+-        return run_game(argc, argv);
++        return run_command(argc, argv, 2);
++    }
++    if (argc > 1 && !strcmp(argv[1], "--watch")) {
++        return run_command(argc, argv, 1);
+     }
+     if (argc > 1) {
++        struct stat info;
++        if (argv[1][0] != '-' && (!stat(argv[1], &info) || ends_with(argv[1], ".chibi") ||
++                                  strchr(argv[1], '/'))) {
++            return run_command(argc, argv, 1);
++        }
+         fprintf(stderr, "Unknown command: %s; use --help.\n", argv[1]);
+         return 2;
+     }
+diff --git a/src/host/compile_main.c b/src/host/compile_main.c
+index b358bcbe7..6d082b0d4 100644
+--- a/src/host/compile_main.c
++++ b/src/host/compile_main.c
+@@ -12,9 +12,11 @@
+ #include "types/catalog.h"
+ 
+ #include <errno.h>
++#include <signal.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <time.h>
+ 
+ /* Explicit final application composition, shared with the prepared player. */
+ static bool additional_pack(int index)
+@@ -65,7 +67,8 @@ static int usage(const char *program)
+         stderr,
+         "Usage: %s --project-root PATH (--output FILE [--modules FILE | "
+         "--resources-only] | "
+-        "--check [--explain-costs [--json]] | --test | --format [--check] | "
++        "--check [--explain-costs [--json]] | --test | --run [--watch] | "
++        "--format [--check] | "
+         "--docs | --stage-one-input "
+         "FILE) [--scene PATH]\n",
+         program
+@@ -79,6 +82,11 @@ static int test(const char *)
+     fprintf(stderr, "This compiler prepares browser exports; it runs no tests\n");
+     return 2;
+ }
++static int run_program(const char *, bool)
++{
++    fprintf(stderr, "This compiler prepares browser exports; it runs no programs\n");
++    return 2;
++}
+ static int format(const char *, bool)
+ {
+     fprintf(stderr, "This compiler prepares browser exports; it formats nothing\n");
+@@ -124,6 +132,57 @@ static int test(const char *project)
+     free(root);
+     return status;
+ }
++#ifndef _WIN32
++static volatile sig_atomic_t watch_stopped;
++static void stop_watch(int)
++{
++    watch_stopped = 1;
++}
++#endif
++static int run_program(const char *path, bool watch)
++{
++    char *root = realpath(path, NULL);
++    if (!root) {
++        fprintf(stderr, "%s: %s\n", path, strerror(errno));
++        return 1;
++    }
++    char *core = core_collection();
++    authoring_program *program = core ? authoring_program_open(root, core) : NULL;
++    int status = program ? authoring_program_call(program) : 1;
++    if (program && watch) {
++#ifdef _WIN32
++        fprintf(stderr, "Watching standalone programs is unsupported on Windows\n");
++        status = 2;
++#else
++        watch_stopped = 0;
++        void (*interrupt)(int) = signal(SIGINT, stop_watch);
++        void (*terminate)(int) = signal(SIGTERM, stop_watch);
++        while (!watch_stopped) {
++            struct timespec delay = { .tv_nsec = 250000000 };
++            nanosleep(&delay, NULL);
++            if (watch_stopped || !authoring_program_reload(program)) {
++                continue;
++            }
++            /* A synchronous Main still uses normal interruption while busy. */
++            signal(SIGINT, interrupt);
++            signal(SIGTERM, terminate);
++            if (watch_stopped) {
++                break;
++            }
++            status = authoring_program_call(program);
++            signal(SIGINT, stop_watch);
++            signal(SIGTERM, stop_watch);
++        }
++        signal(SIGINT, interrupt);
++        signal(SIGTERM, terminate);
++        status = 0;
++#endif
++    }
++    authoring_program_free(program);
++    free(core);
++    free(root);
++    return status;
++}
+ /* Writes the documentation site of the root at project with the SDK's site
+  * generator. */
+ static int docs(const char *project)
+@@ -283,8 +342,9 @@ int main(int argc, char **argv)
+ {
+     const char *project = NULL, *scene = NULL, *output = NULL, *target = NULL,
+                *modules = NULL;
+-    bool check = false, tests = false, formats = false, site = false, resources = false;
+-    bool explain = false, json = false;
++    bool check = false, tests = false, formats = false, site = false,
++         resources = false, program = false;
++    bool explain = false, json = false, watch = false;
+     for (int i = 1; i < argc; i++) {
+         if (!strcmp(argv[i], "--help")) {
+             usage(argv[0]);
+@@ -306,6 +366,14 @@ int main(int argc, char **argv)
+             tests = true;
+             continue;
+         }
++        if (!strcmp(argv[i], "--run") && !program) {
++            program = true;
++            continue;
++        }
++        if (!strcmp(argv[i], "--watch") && !watch) {
++            watch = true;
++            continue;
++        }
+         if (!strcmp(argv[i], "--format") && !formats) {
+             formats = true;
+             continue;
+@@ -343,13 +411,15 @@ int main(int argc, char **argv)
+         }
+         return usage(argv[0]);
+     }
+-    int modes = (check && !formats) + tests + formats + site +
++    int modes = (check && !formats) + tests + formats + site + program +
+                 (output != NULL) + (target != NULL);
+     if (!project || !*project || modes != 1 || (output && !*output) ||
+-        (target && !*target) || ((tests || formats || site || target) && scene) ||
++        (target && !*target) ||
++        ((tests || formats || site || target || program) && scene) ||
+         (modules && (!output || !*modules || scene)) ||
+         (resources && (!output || modules || scene)) ||
+-        (explain && (!check || formats)) || (json && !explain)) {
++        (explain && (!check || formats)) || (json && !explain) ||
++        (watch && !program)) {
+         return usage(argv[0]);
+     }
+     if (resources) {
+@@ -367,6 +437,9 @@ int main(int argc, char **argv)
+     if (tests) {
+         return test(project);
+     }
++    if (program) {
++        return run_program(project, watch);
++    }
+     if (formats) {
+         return format(project, check);
+     }
+diff --git a/test/language/program.c b/test/language/program.c
+index 1d0ed2bc5..73dc7861f 100644
+--- a/test/language/program.c
++++ b/test/language/program.c
+@@ -4,6 +4,7 @@
+ #include "authoring/native_bindings.h"
+ #include "authoring/source_catalog.h"
+ #include "authoring/source_minimize.h"
++#include "authoring/source_package_prepare.h"
+ #include "backend.h"
+ #include "ecs/ecs.h"
+ #include "execution/delay.h"
+@@ -301,6 +302,7 @@ static execution_module *prior_module;
+ static execution_program *other_program;
+ static bool program_prepared_type(void *, uint64_t, execution_prepared_type *);
+ static native_capabilities *state_native;
++static authoring_packages *call_packages[3];
+ static execution_inspector *debugger;
+ static behavior_function_context parser_context;
+ static behavior_function_activation parser_activation;
+@@ -364,6 +366,10 @@ static void cleanup()
+     script_syntax_free(syntax);
+     ecs_world_free(world);
+     lifetime_cleanup();
++    for (int i = 0; i < 3; i++) {
++        authoring_packages_free(call_packages[i]);
++        call_packages[i] = NULL;
++    }
+     native_capabilities_free(state_native);
+     state_native = NULL;
+     program = NULL;
+@@ -13165,9 +13171,176 @@ void test_language_migration34()
+     pu_clear_setup();
+ }
+ 
++static const authoring_package *call_package(
++    int index,
++    int previous,
++    const char *source,
++    const char *dependency,
++    behavior_backend backend
++)
++{
++    if (!state_native) {
++        char error[256];
++        const native_definition_pack packs[] = { CORE_DEFINITION_PACK };
++        state_native = native_capabilities_from_definition_packs(NULL, 0, packs, 1, error, sizeof error);
++        assert(state_native);
++    }
++    source_package_input files[] = {
++        { "Main.chibi", source, strlen(source) },
++        { "counter/Counter.chibi", dependency, dependency ? strlen(dependency) : 0 },
++    };
++    source_package_snapshot_options options = { .project_root = "/program-call",
++                                                .files = files,
++                                                .file_count = dependency ? 2 : 1 };
++    source_package_snapshot *snapshot = source_package_snapshot_new(&options);
++    script_lower_bindings bindings = authoring_native_bindings(state_native);
++    call_packages[index] = authoring_packages_prepare(
++        snapshot,
++        native_capabilities_catalog(state_native),
++        &bindings,
++        backend,
++        previous >= 0 ? call_packages[previous] : NULL
++    );
++    if (!authoring_packages_valid(call_packages[index])) {
++        for (int i = 0; i < authoring_packages_count(call_packages[index]); i++) {
++            const authoring_package *package = authoring_packages_at(call_packages[index], i);
++            for (int j = 0; j < package->diagnostic_count; j++) {
++                fprintf(stderr, "program package: %s\n", package->diagnostics[j].message);
++            }
++        }
++        return NULL;
++    }
++    for (int i = 0; i < authoring_packages_count(call_packages[index]); i++) {
++        const authoring_package *package = authoring_packages_at(call_packages[index], i);
++        if (!strcmp(package->identity, "project:")) {
++            return package;
++        }
++    }
++    return NULL;
++}
++static uint64_t call_id(const authoring_package *package, const char *name)
++{
++    for (int i = 0; i < package->analysis->symbol_count; i++) {
++        const script_symbol *symbol = &package->analysis->symbols[i];
++        if (symbol->kind == SCRIPT_FUNCTION &&
++            symbol->scope == package->analysis->package_scope &&
++            !strcmp(symbol->name, name)) {
++            return symbol->id;
++        }
++    }
++    return 0;
++}
++/* Ordinary package functions run with their own instance and import owners,
++ * without a scene or world. A reload keeps both retained counters, converts
++ * one's type, ignores its new default and resets invocation locals. */
++TEST_CASE(program_calls_keep_package_and_import_state_across_replacement)
++{
++    const char
++        *before = "package app\nimport counter \"project:counter\"\n"
++                  "Main :: () -> int { count: retain int = 0; count += 1; "
++                  "fresh := 0; fresh += 1; return count * 100 + counter.Next() "
++                  "* 10 + fresh; }\n",
++        *after = "package app\nimport counter \"project:counter\"\n"
++                 "Main :: () -> int { count: retain f64 = 100; count += 1; "
++                 "fresh := 0; fresh += 1; return int(count) * 1000 + "
++                 "counter.Next() * 10 + fresh; }\n",
++        *dependency = "package counter\npub Next :: () -> int { calls: retain "
++                      "int = 0; calls += 1; return calls; }\n",
++        *changed = "package counter\npub Next :: () -> int { calls: retain int "
++                   "= 50; calls += 2; return calls; }\n";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        prepare();
++        const authoring_package *original = call_package(0, -1, before, dependency, backends[b]);
++        REQUIRE(original);
++        program = execution_program_new(original->module, NULL, NULL);
++        REQUIRE(program);
++        execution_instance *instance = execution_program_attach(program, 1);
++        uint64_t main = call_id(original, "Main");
++        REQUIRE(instance && main);
++        int result = -1;
++        REQUIRE(execution_instance_call(instance, main, &result, 0, 0, 1000) == FLOW_OK);
++        REQUIRE(result == 111);
++        REQUIRE(execution_instance_call(instance, main, &result, 0, 0, 1000) == FLOW_OK);
++        REQUIRE(result == 221 && execution_instance_pending(instance) == 0);
++        const authoring_package *next = call_package(1, 0, after, changed, backends[b]);
++        REQUIRE(next && call_id(next, "Main") == main);
++        other_program = execution_program_prepare_replace(program, next->module, false);
++        REQUIRE(other_program);
++        execution_program_commit_replace(program, other_program);
++        other_program = NULL;
++        instance = execution_program_instance(program, 1);
++        REQUIRE(instance);
++        REQUIRE(execution_instance_call(instance, main, &result, 0, 0, 1000) == FLOW_OK);
++        REQUIRE(result == 3041 && execution_instance_pending(instance) == 0);
++        REQUIRE(execution_program_replace(program, next->module, true) == FLOW_OK);
++        instance = execution_program_instance(program, 1);
++        REQUIRE(instance);
++        REQUIRE(execution_instance_call(instance, main, &result, 0, 0, 1000) == FLOW_OK);
++        REQUIRE(result == 101521);
++    }
++    return true;
++}
++/* The synchronous call boundary never schedules unsupported work. Rejected
++ * calls leave the result alone and the instance ready for another call. */
++TEST_CASE(program_calls_reject_signatures_waits_and_tasks_without_pending_work)
++{
++    const char *source = "package app\n"
++                         "Main :: () -> int { return 7; }\n"
++                         "Empty :: () {}\n"
++                         "Argument :: (value: int) -> int { return value; }\n"
++                         "Text :: () -> string { return \"wrong\"; }\n"
++                         "Wait :: () { await delay(1); }\n"
++                         "Task :: () { Wait(); }\n"
++                         "Fails :: () { assert(false, \"call failure\"); }\n";
++    const behavior_backend backends[] = { BEHAVIOR_BYTECODE, TEST_COMPILED_BACKEND };
++    for (int b = 0; b < 2; b++) {
++        prepare();
++        const authoring_package *package = call_package(0, -1, source, NULL, backends[b]);
++        REQUIRE(package);
++        program = execution_program_new(package->module, NULL, NULL);
++        REQUIRE(program);
++        execution_instance *instance = execution_program_attach(program, 1);
++        REQUIRE(instance);
++        int result = -1;
++        REQUIRE(
++            execution_instance_call(instance, call_id(package, "Empty"), &result, 0, 0, 1000) == FLOW_OK
++        );
++        REQUIRE(result == 0);
++        const char *invalid[] = { "Argument", "Text", "Absent" };
++        for (int i = 0; i < 3; i++) {
++            result = -1;
++            REQUIRE(
++                execution_instance_call(instance, call_id(package, invalid[i]), &result, 0, 0, 1000) ==
++                FLOW_ERR_ARGUMENT
++            );
++            REQUIRE(result == -1 && execution_instance_pending(instance) == 0);
++        }
++        const char *rejected[] = { "Wait", "Task", "Fails" };
++        const char *messages[] = { "waiting", "task", "call failure" };
++        for (int i = 0; i < 3; i++) {
++            execution_program_clear_error(program);
++            result = -1;
++            REQUIRE(
++                execution_instance_call(instance, call_id(package, rejected[i]), &result, 0, 0, 1000) < 0
++            );
++            const execution_program_failure *failure = execution_program_error(program);
++            REQUIRE(failure && strstr(failure->message, messages[i]));
++            REQUIRE(result == -1 && execution_instance_pending(instance) == 0);
++            REQUIRE(
++                execution_instance_call(instance, call_id(package, "Main"), &result, 0, 0, 1000) == FLOW_OK
++            );
++            REQUIRE(result == 7);
++        }
++    }
++    return true;
++}
++
+ void test_language_program()
+ {
+     pu_setup(NULL, cleanup);
++    RUN_TEST_CASE(program_calls_keep_package_and_import_state_across_replacement);
++    RUN_TEST_CASE(program_calls_reject_signatures_waits_and_tasks_without_pending_work);
+     RUN_TEST_CASE(program_captured_addressed_local_preserves_pointer_alias);
+     RUN_TEST_CASE(program_borrowed_pointer_array_results_survive_collection);
+     RUN_TEST_CASE(program_borrowing_kernel_results_survive_collection);
+diff --git a/test/tools/chibi_cli.c b/test/tools/chibi_cli.c
+index 71aeac1c1..fdeb66905 100644
+--- a/test/tools/chibi_cli.c
++++ b/test/tools/chibi_cli.c
+@@ -131,18 +131,20 @@ TEST_CASE(build_and_run_use_the_prepared_project)
+     REQUIRE(file_is("player.args", expected));
+     REQUIRE(file_is("compiles", "compile\n"));
+ 
+-    /* The unnamed run form is gone: a project is not a command. */
+-    char played_path[256];
+-    path(played_path, "player.args");
+-    char *played = tool_read(played_path);
+-    REQUIRE(played);
++    /* A project path is shorthand for run, including player options. */
+     const char *unnamed[] = { launcher, "game with spaces", "--frames", "3", NULL };
+-    REQUIRE(tool_run(unnamed, root, log_path) == 2);
++    REQUIRE(tool_run(unnamed, root, log_path) == 0);
++    snprintf(
++        expected,
++        sizeof expected,
++        "%s/.chibi/build/game.chibip\n--resource-root\n%s\n--frames\n3\n",
++        game,
++        game
++    );
++    REQUIRE(file_is("player.args", expected));
+     const char *bare[] = { launcher, NULL };
+     REQUIRE(tool_run(bare, root, log_path) == 2);
+-    bool unplayed = file_is("player.args", played);
+-    free(played);
+-    REQUIRE(unplayed);
++    REQUIRE(file_is("player.args", expected));
+     REQUIRE(file_is("compiles", "compile\n"));
+ 
+     write_file("fail", "");
+@@ -1021,6 +1023,488 @@ static void directory(const char *relative)
+     assert(!mkdir(folder, 0700) || errno == EEXIST);
+ }
+ 
++/* Standalone paths go directly to the compiler, without preparing a game or
++ * starting its player. All public spellings share that dispatch. */
++TEST_CASE(run_dispatches_standalone_programs)
++{
++    directory("standalone dispatch");
++    write_file("standalone dispatch/Hello.chibi", "package hello\nMain :: () {}\n");
++    char folder[256], source[256], expected[768], player[256];
++    path(folder, "standalone dispatch");
++    path(source, "standalone dispatch/Hello.chibi");
++    path(player, "player.args");
++    unlink(player);
++    const char *commands[][4] = {
++        { launcher, "run", "standalone dispatch/Hello.chibi", NULL },
++        { launcher, "standalone dispatch/Hello.chibi", NULL },
++        { launcher, "run", "standalone dispatch", NULL },
++        { launcher, "standalone dispatch", NULL },
++    };
++    for (int i = 0; i < 4; i++) {
++        REQUIRE(tool_run(commands[i], root, log_path) == 0);
++        snprintf(expected, sizeof expected, "--project-root\n%s\n--run\n", i < 2 ? source : folder);
++        REQUIRE(file_is("compile.args", expected));
++        REQUIRE(!exists("player.args"));
++        REQUIRE(!exists("standalone dispatch/.chibi"));
++    }
++    const char *here[] = { launcher, ".", NULL };
++    REQUIRE(tool_run(here, folder, log_path) == 0);
++    snprintf(expected, sizeof expected, "--project-root\n%s\n--run\n", folder);
++    REQUIRE(file_is("compile.args", expected));
++    const char *implicit[] = { launcher, "run", NULL };
++    REQUIRE(tool_run(implicit, folder, log_path) == 0);
++    REQUIRE(file_is("compile.args", expected));
++
++    const char *watch_commands[][6] = {
++        { launcher, "--watch", source, NULL },
++        { launcher, "run", "--watch", source, NULL },
++        { launcher, source, "--watch", NULL },
++        { launcher, "run", source, "--watch", NULL },
++        { launcher, "--watch", folder, NULL },
++        { launcher, "run", "--watch", folder, NULL },
++        { launcher, folder, "--watch", NULL },
++        { launcher, "run", folder, "--watch", NULL },
++    };
++    for (int i = 0; i < 8; i++) {
++        REQUIRE(tool_run(watch_commands[i], root, log_path) == 0);
++        snprintf(expected, sizeof expected, "--project-root\n%s\n--run\n--watch\n", i < 4 ? source : folder);
++        REQUIRE(file_is("compile.args", expected));
++    }
++    const char *watch_here[] = { launcher, ".", "--watch", NULL };
++    REQUIRE(tool_run(watch_here, folder, log_path) == 0);
++    snprintf(expected, sizeof expected, "--project-root\n%s\n--run\n--watch\n", folder);
++    REQUIRE(file_is("compile.args", expected));
++    const char *watch_implicit[] = { launcher, "run", "--watch", NULL };
++    REQUIRE(tool_run(watch_implicit, folder, log_path) == 0);
++    REQUIRE(file_is("compile.args", expected));
++
++    char *before = contents("compiles");
++    const char *watch_games[][5] = {
++        { launcher, "--watch", "game with spaces", NULL },
++        { launcher, "run", "--watch", "game with spaces", NULL },
++        { launcher, "game with spaces", "--watch", NULL },
++    };
++    for (int i = 0; i < 3; i++) {
++        REQUIRE(tool_run(watch_games[i], root, log_path) == 2);
++    }
++    REQUIRE(!exists("player.args"));
++    const char *extra[] = { launcher, "run", source, "--", "extra", NULL };
++    REQUIRE(tool_run(extra, root, log_path) == 2);
++    const char *unnamed_extra[] = { launcher, source, "extra", NULL };
++    REQUIRE(tool_run(unnamed_extra, root, log_path) == 2);
++    REQUIRE(file_is("compiles", before));
++    free(before);
++    write_file("fail", "");
++    REQUIRE(tool_run(commands[0], root, log_path) == 37);
++    char failure[256];
++    path(failure, "fail");
++    REQUIRE(!unlink(failure));
++    REQUIRE(!exists("player.args"));
++    REQUIRE(!exists("standalone dispatch/.chibi"));
++    return true;
++}
++
++static const char HELLO_PROGRAM[] = "package hello\n"
++                                    "Main :: () {\n"
++                                    "    print_string(\"Hello, world!\")\n"
++                                    "}\n";
++
++/* Runs a program through the actual launcher and compiler. Installed SDK
++ * coverage uses the same cases with the installed binaries. */
++static int run_program(const char *target)
++{
++    const char *args[] = { built, "run", target, NULL };
++    return tool_run(args, root, log_path);
++}
++
++TEST_CASE(program_main_runs_from_files_and_directories)
++{
++    directory("run-main");
++    write_file("run-main/Hello.chibi", HELLO_PROGRAM);
++    REQUIRE(run_program("run-main/Hello.chibi") == 0);
++    REQUIRE(file_is("output.log", "Hello, world!\n"));
++    const char *file[] = { built, "run-main/Hello.chibi", NULL };
++    REQUIRE(tool_run(file, root, log_path) == 0);
++    REQUIRE(file_is("output.log", "Hello, world!\n"));
++    REQUIRE(run_program("run-main") == 0);
++    REQUIRE(file_is("output.log", "Hello, world!\n"));
++    const char *folder[] = { built, "run-main", NULL };
++    REQUIRE(tool_run(folder, root, log_path) == 0);
++    REQUIRE(file_is("output.log", "Hello, world!\n"));
++    char cwd[256], source[256];
++    path(cwd, "run-main");
++    path(source, "run-main/Hello.chibi");
++    const char *here[] = { built, ".", NULL };
++    REQUIRE(tool_run(here, cwd, log_path) == 0);
++    REQUIRE(file_is("output.log", "Hello, world!\n"));
++    const char *implicit[] = { built, "run", NULL };
++    REQUIRE(tool_run(implicit, cwd, log_path) == 0);
++    REQUIRE(file_is("output.log", "Hello, world!\n"));
++    const char *direct[] = { compiler, "--project-root", source, "--run", NULL };
++    REQUIRE(tool_run(direct, root, log_path) == 0);
++    REQUIRE(file_is("output.log", "Hello, world!\n"));
++    const char *conflict[] = { compiler, "--project-root", source,
++                               "--run",  "--test",         NULL };
++    REQUIRE(tool_run(conflict, root, log_path) == 2);
++
++    write_file("run-main/Hello.chibi", "package hello\nMain :: () -> int { return 23 }\n");
++    REQUIRE(run_program("run-main/Hello.chibi") == 23);
++    REQUIRE(file_is("output.log", ""));
++    REQUIRE(file_is("run-main/Hello.chibi", "package hello\nMain :: () -> int { return 23 }\n"));
++    REQUIRE(!exists("run-main/.chibi"));
++    return true;
++}
++
++TEST_CASE(program_sources_link_packages_and_select_the_root_entry)
++{
++    directory("run-file");
++    write_file(
++        "run-file/Hello.chibi",
++        "package hello\nimport strings \"core:strings\"\n"
++        "Main :: () { print_string(strings.Join([\"Hello\", \"world!\"], \", "
++        "\")) }\n"
++    );
++    /* Selecting a source file must not parse a neighboring source. */
++    write_file("run-file/Broken.chibi", "this is not valid Chibi\n");
++    REQUIRE(run_program("run-file/Hello.chibi") == 0);
++    REQUIRE(file_is("output.log", "Hello, world!\n"));
++    REQUIRE(!exists("run-file/.chibi"));
++
++    directory("run-packages");
++    directory("run-packages/words");
++    write_file(
++        "run-packages/Hello.chibi",
++        "package hello\nimport words \"project:words\"\n"
++        "Main :: () { print_string(Greeting(words.Message())) }\n"
++    );
++    write_file(
++        "run-packages/Greeting.chibi",
++        "package hello\n"
++        "Greeting :: (message: string) -> string { return message }\n"
++    );
++    write_file(
++        "run-packages/words/Words.chibi",
++        "package words\n"
++        "pub Message :: () -> string { return \"Local packages\" }\n"
++        "Main :: () -> int { return 31 }\n"
++    );
++    REQUIRE(run_program("run-packages") == 0);
++    REQUIRE(file_is("output.log", "Local packages\n"));
++    /* The helper is available only when the directory is the target. */
++    REQUIRE(run_program("run-packages/Greeting.chibi") == 1);
++    REQUIRE(file_has("output.log", "Main"));
++    REQUIRE(!exists("run-packages/.chibi"));
++    REQUIRE(!exists("run-packages/words/.chibi"));
++    return true;
++}
++
++TEST_CASE(program_failures_report_entry_and_source_errors)
++{
++    directory("run-errors");
++    const char *invalid_entries[] = {
++        "package hello\nHelper :: () {}\n",
++        "package hello\nMain :: (value: int) {}\n",
++        "package hello\nMain :: (value: $T) {}\n",
++        "package hello\nMain :: () -> string { return \"wrong\" }\n",
++        "package hello\nMain :: () -> int? { return 0 }\n",
++        "package hello\nMain :: () -> (a: int, b: int) { return(1, 2) }\n",
++        "package hello\nMain :: () -> int { return 256 }\n",
++        "package hello\nMain :: () -> int { return -1 }\n",
++    };
++    for (size_t i = 0; i < sizeof invalid_entries / sizeof *invalid_entries; i++) {
++        write_file("run-errors/Hello.chibi", invalid_entries[i]);
++        REQUIRE(run_program("run-errors/Hello.chibi") == 1);
++        REQUIRE(file_has("output.log", "Main"));
++    }
++    write_file(
++        "run-errors/Hello.chibi",
++        "package hello\nFail :: () {\n"
++        "    assert(false, \"nested program failure\")\n}\nMain :: () { Fail() "
++        "}\n"
++    );
++    REQUIRE(run_program("run-errors/Hello.chibi") == 1);
++    REQUIRE(file_has("output.log", "/run-errors/Hello.chibi:3:5:"));
++    REQUIRE(file_has("output.log", "Assertion failed: nested program failure"));
++    write_file("run-errors/Hello.chibi", "package hello\nMain :: () { missing() }\n");
++    REQUIRE(run_program("run-errors/Hello.chibi") == 1);
++    REQUIRE(file_has("output.log", "/run-errors/Hello.chibi:2:"));
++    write_file("run-errors/Hello.chibi", "Main :: () {}\n");
++    REQUIRE(run_program("run-errors/Hello.chibi") == 1);
++    REQUIRE(file_has("output.log", "/run-errors/Hello.chibi:1:1:"));
++    write_file("run-errors/Hello.chibi", "package hello\nMain :: () { await delay(1) }\n");
++    REQUIRE(run_program("run-errors/Hello.chibi") == 1);
++    REQUIRE(file_has("output.log", "waiting"));
++    write_file(
++        "run-errors/Hello.chibi",
++        "package hello\nWait :: () { await delay(1) }\n"
++        "Main :: () { Wait() }\n"
++    );
++    REQUIRE(run_program("run-errors/Hello.chibi") == 1);
++    REQUIRE(file_has("output.log", "task"));
++
++    /* An imported package's Main cannot replace the root's missing entry. */
++    directory("run-errors/words");
++    write_file(
++        "run-errors/Hello.chibi",
++        "package hello\nimport words \"project:words\"\n"
++        "Value :: words.Value\n"
++    );
++    write_file(
++        "run-errors/words/Words.chibi",
++        "package words\npub Value :: 1\n"
++        "Main :: () { print_string(\"wrong entry\") }\n"
++    );
++    REQUIRE(run_program("run-errors") == 1);
++    REQUIRE(file_has("output.log", "Main"));
++    REQUIRE(!file_has("output.log", "wrong entry"));
++    REQUIRE(!exists("run-errors/.chibi"));
++    return true;
++}
++
++/* Each handshake checks output written after that edit. Failures still reach
++ * process cleanup before an assertion can return from the test. */
++static size_t watch_output_size()
++{
++    char *text = tool_read(log_path);
++    size_t length = text ? strlen(text) : 0;
++    free(text);
++    return length;
++}
++
++static bool watch_output(chibi_process *process, size_t after, const char *expected)
++{
++    double deadline = chibi_process_now() + TOOL_RUN_SECONDS;
++    do {
++        char *text = tool_read(log_path);
++        bool found = text && strlen(text) >= after && strstr(text + after, expected);
++        free(text);
++        if (found) {
++            return !chibi_process_poll(process);
++        }
++        if (chibi_process_poll(process)) {
++            break;
++        }
++        usleep(10000);
++    } while (chibi_process_now() < deadline);
++    fprintf(stderr, "watch output did not contain %s\n", expected);
++    return false;
++}
++
++static bool watch_unchanged(chibi_process *process)
++{
++    size_t size = watch_output_size();
++    double deadline = chibi_process_now() + 1;
++    do {
++        if (chibi_process_poll(process) || watch_output_size() != size) {
++            return false;
++        }
++        usleep(10000);
++    } while (chibi_process_now() < deadline);
++    return true;
++}
++
++static bool watch_stop(chibi_process *process)
++{
++    chibi_process_stop(process);
++    double deadline = chibi_process_now() + 5;
++    while (!chibi_process_poll(process) && chibi_process_now() < deadline) {
++        usleep(10000);
++    }
++    if (!process->finished) {
++        kill(-process->pid, SIGKILL);
++        deadline = chibi_process_now() + 1;
++        while (!chibi_process_poll(process) && chibi_process_now() < deadline) {
++            usleep(1000);
++        }
++    }
++    bool stopped = process->finished &&
++                   (process->status == 0 || process->status == 128 + SIGTERM);
++    deadline = chibi_process_now() + 2;
++    while (!kill(-process->pid, 0) && chibi_process_now() < deadline) {
++        usleep(10000);
++    }
++    bool empty = kill(-process->pid, 0) < 0 && errno == ESRCH;
++    if (!empty) {
++        kill(-process->pid, SIGKILL);
++    }
++    tool_release_process(process->pid);
++    if (!stopped || !empty) {
++        fprintf(
++            stderr,
++            "watch shutdown status=%d process-group-empty=%d\n",
++            process->status,
++            empty
++        );
++    }
++    return stopped && empty;
++}
++
++static void watch_failure_log(bool passed)
++{
++    if (passed) {
++        return;
++    }
++    char *text = tool_read(log_path);
++    if (text) {
++        fputs(text, stderr);
++        free(text);
++    }
++}
++
++static void write_watch_file(const char *type, int count, const char *marker)
++{
++    char text[1024];
++    int length = snprintf(
++        text,
++        sizeof text,
++        "package watch_file\nMain :: () {\n"
++        "    count: retain %s = 0\n"
++        "    count += 1\n"
++        "    ordinary: int = 0\n"
++        "    ordinary += 1\n"
++        "    assert(count == %d, \"retained Main count\")\n"
++        "    assert(ordinary == 1, \"ordinary Main local\")\n"
++        "    print_string(\"%s\")\n}\n",
++        type,
++        count,
++        marker
++    );
++    assert(length > 0 && length < (int)sizeof text);
++    write_file("watch-file/Hello.chibi", text);
++}
++
++TEST_CASE(program_watch_preserves_main_state_and_rejects_invalid_edits)
++{
++    directory("watch-file");
++    write_watch_file("int", 1, "watch-file-first");
++    const char *args[] = { built, "--watch", "watch-file/Hello.chibi", NULL };
++    chibi_process process;
++    REQUIRE(chibi_process_start(&process, args, root, log_path));
++    tool_own_process(process.pid);
++    bool passed = watch_output(&process, 0, "watch-file-first\n");
++    if (passed) {
++        /* A file target neither compiles nor watches its sibling sources. */
++        write_file("watch-file/Broken.chibi", "not valid Chibi\n");
++        passed = watch_unchanged(&process);
++    }
++    if (passed) {
++        size_t after = watch_output_size();
++        write_watch_file("int", 2, "watch-file-second");
++        passed = watch_output(&process, after, "watch-file-second\n");
++    }
++    const char *invalid[] = { "package watch_file\nMain :: ( {\n",
++                              "package watch_file\nHelper :: () {}\n",
++                              "package watch_file\nMain :: (value: int) {}\n" };
++    const char *errors[] = { "/watch-file/Hello.chibi:",
++                             "No runnable Main",
++                             "Main must take no arguments" };
++    for (int i = 0; passed && i < 3; i++) {
++        size_t after = watch_output_size();
++        write_file("watch-file/Hello.chibi", invalid[i]);
++        passed = watch_output(&process, after, errors[i]);
++    }
++    if (passed) {
++        size_t after = watch_output_size();
++        /* Conversion uses the runtime's existing numeric-state migration. */
++        write_watch_file("number", 3, "watch-file-third");
++        passed = watch_output(&process, after, "watch-file-third\n");
++    }
++    bool stopped = watch_stop(&process);
++    watch_failure_log(passed && stopped);
++    REQUIRE(passed);
++    REQUIRE(stopped);
++    REQUIRE(!exists("watch-file/.chibi"));
++    return true;
++}
++
++static void write_watch_sibling(int step, const char *marker)
++{
++    char text[512];
++    int length = snprintf(
++        text,
++        sizeof text,
++        "package watch_directory\nStep :: %d\n"
++        "Marker :: () -> string { return \"%s\" }\n",
++        step,
++        marker
++    );
++    assert(length > 0 && length < (int)sizeof text);
++    write_file("watch-directory/Values.chibi", text);
++}
++
++static void write_watch_import(int expected, const char *marker)
++{
++    char text[768];
++    int length = snprintf(
++        text,
++        sizeof text,
++        "package words\npub Expected :: %d\n"
++        "pub Next :: () -> int {\n"
++        "    count: retain int = 0\n"
++        "    count += 1\n"
++        "    return count\n}\n"
++        "pub Marker :: () -> string { return \"%s\" }\n",
++        expected,
++        marker
++    );
++    assert(length > 0 && length < (int)sizeof text);
++    write_file("watch-directory/words/Words.chibi", text);
++}
++
++TEST_CASE(program_watch_tracks_siblings_and_preserves_imported_state)
++{
++    directory("watch-directory");
++    directory("watch-directory/words");
++    write_file(
++        "watch-directory/Main.chibi",
++        "package watch_directory\nimport words \"project:words\"\n"
++        "Main :: () {\n"
++        "    count: retain int = 0\n"
++        "    count += 1\n"
++        "    expected := words.Expected + Step\n"
++        "    assert(count == expected, \"directory Main count\")\n"
++        "    assert(words.Next() == expected, \"imported retained count\")\n"
++        "    print_string(Marker())\n"
++        "    print_string(words.Marker())\n}\n"
++    );
++    write_watch_sibling(0, "watch-directory-first");
++    write_watch_import(1, "watch-import-first");
++    char cwd[256];
++    path(cwd, "watch-directory");
++    const char *args[] = { built, "run", "--watch", ".", NULL };
++    chibi_process process;
++    REQUIRE(chibi_process_start(&process, args, cwd, log_path));
++    tool_own_process(process.pid);
++    bool passed = watch_output(&process, 0, "watch-import-first\n");
++    if (passed) {
++        size_t after = watch_output_size();
++        write_watch_sibling(1, "watch-directory-second");
++        passed = watch_output(&process, after, "watch-directory-second\n");
++    }
++    if (passed) {
++        size_t after = watch_output_size();
++        write_watch_import(2, "watch-import-third");
++        passed = watch_output(&process, after, "watch-import-third\n");
++    }
++    if (passed) {
++        size_t after = watch_output_size();
++        write_file("watch-directory/words/Words.chibi", "package words\npub Next :: ( {\n");
++        passed = watch_output(&process, after, "/watch-directory/words/Words.chibi:");
++    }
++    if (passed) {
++        size_t after = watch_output_size();
++        write_watch_import(3, "watch-import-fourth");
++        passed = watch_output(&process, after, "watch-import-fourth\n");
++    }
++    bool stopped = watch_stop(&process);
++    watch_failure_log(passed && stopped);
++    REQUIRE(passed);
++    REQUIRE(stopped);
++    REQUIRE(!exists("watch-directory/.chibi"));
++    REQUIRE(!exists("watch-directory/words/.chibi"));
++    return true;
++}
++
+ static const char MESSY_PACKAGE[] = "package lib\nDouble :: (x: int) -> int "
+                                     "{   return x*2; }\n";
+ 
+@@ -1772,6 +2256,12 @@ void test_tool_chibi_cli(const char *binary)
+     RUN_TEST_CASE(compiler_test_links_the_compiler_bridges);
+     RUN_TEST_CASE(compiler_runs_cost_explanation_regressions);
+     RUN_TEST_CASE(compiler_test_needs_the_core_collection);
++    RUN_TEST_CASE(run_dispatches_standalone_programs);
++    RUN_TEST_CASE(program_main_runs_from_files_and_directories);
++    RUN_TEST_CASE(program_sources_link_packages_and_select_the_root_entry);
++    RUN_TEST_CASE(program_failures_report_entry_and_source_errors);
++    RUN_TEST_CASE(program_watch_preserves_main_state_and_rejects_invalid_edits);
++    RUN_TEST_CASE(program_watch_tracks_siblings_and_preserves_imported_state);
+     RUN_TEST_CASE(fmt_formats_each_project);
+     RUN_TEST_CASE(compiler_format_rewrites_noncanonical_assets);
+     RUN_TEST_CASE(compiler_format_rewrites_package_sources);
+@@ -1927,6 +2417,10 @@ static void setup_installed(const char *binary)
+     char *program = realpath(binary, NULL);
+     assert(program && strlen(program) < sizeof launcher);
+     strcpy(launcher, program);
++    strcpy(built, program);
++    *strrchr(program, '/') = 0;
++    int length = snprintf(compiler, sizeof compiler, "%s/chibi-compile", program);
++    assert(length > 0 && length < (int)sizeof compiler);
+     free(program);
+     path(log_path, "output.log");
+ }
+@@ -2061,6 +2555,11 @@ void test_tool_chibi_cli_installed(const char *binary)
+     setup_installed(binary);
+     RUN_TEST_CASE(installed_identity_and_doctor);
+     RUN_TEST_CASE(installed_project_commands);
++    RUN_TEST_CASE(program_main_runs_from_files_and_directories);
++    RUN_TEST_CASE(program_sources_link_packages_and_select_the_root_entry);
++    RUN_TEST_CASE(program_failures_report_entry_and_source_errors);
++    RUN_TEST_CASE(program_watch_preserves_main_state_and_rejects_invalid_edits);
++    RUN_TEST_CASE(program_watch_tracks_siblings_and_preserves_imported_state);
+     RUN_TEST_CASE(installed_package_commands_and_docs);
+     tool_remove_tree(root);
+ }
+diff --git a/tools/graph/engine/Targets.chibi b/tools/graph/engine/Targets.chibi
+index 09667da09..32485ec08 100644
+--- a/tools/graph/engine/Targets.chibi
++++ b/tools/graph/engine/Targets.chibi
+@@ -608,7 +608,7 @@ Files :: (target: string) -> string[] {
+         return [
+             "src/authoring/component_declarations.c", "src/authoring/project_open.c",
+             "src/authoring/project_prepare.c", "src/authoring/project_prepare_assets.c",
+-            "src/authoring/project_compile.c", "src/authoring/source_costs.c", "src/authoring/renderer_catalog.c",
++            "src/authoring/project_compile.c", "src/authoring/program_run.c", "src/authoring/source_costs.c", "src/authoring/renderer_catalog.c",
+             "src/authoring/prototype_prepare.c", "src/authoring/graph_sources.c",
+             "src/authoring/native_graph_prepare.c", "src/authoring/source_graph_library.c",
+             "src/authoring/material_prepare.c", "src/authoring/scene_prepare.c",

@@ -1,0 +1,27 @@
+native-driver-cache 1
+target aarch64-apple-darwin
+entry Main
+mode 0
+lines false
+static false
+shared false
+cli-errors true
+diagnostic-project /Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/native-asset/assertion-probe/run assertion cases/project
+diagnostic-source /Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/native-asset/assertion-probe/run assertion cases/project/Main.chibi
+compiler /Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/native-asset/chibi-assertions-final
+compiler-sha256 484aa2aa2846ea7bbcb93946f5d356c4c1d93cdfeb3716be1544435b6768ecb4
+opt /private/tmp/chibi-llvm22/opt
+opt-sha256 2bd5eaa23de1e47480d02ac50d9376df0e071130d995e34f1fd3f2b76d1bb3d6
+llc /private/tmp/chibi-llvm22/llc
+llc-sha256 71ae3605805a8667d8875d11e9945be073baf6449a2468561a16086c90b03136
+linker /private/tmp/chibi-llvm22/ld64.lld
+linker-sha256 b46796ecf50def5ccf45ffefafd29f83854fb2f7789c0d7f00ec1270b33eb1a8
+collection core=/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/packages/core
+source Main.chibi
+source-sha256 d9a177e9a64f58f8939de6bf01d01a7903163b526f56f17cb47b5f803a56874c
+source lib/Lib.chibi
+source-sha256 917749e1c179f7d360c18e1ce87e73da7d3fd61825c807dfaac640710937a04b
+key 7a49d5c28e6948f8b155d76f0ea823daced397ff3ab3b8ba0ea6e233fdaa43d4
+output-kind executable
+linkage dynamic libSystem
+program-sha256 41fcdf3e2fd11967f9ed36b7de25a27d8244d3b1d0860931c5c53f658468ef96

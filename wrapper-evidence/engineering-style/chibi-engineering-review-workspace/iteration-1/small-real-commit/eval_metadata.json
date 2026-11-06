@@ -1,0 +1,10 @@
+{
+  "eval_name": "small-real-commit",
+  "prompt": "Review commit a1135ab93 in the Chibi repo at /Users/cwaldner/Personal/chibi/.worktrees/review-eval/chibi and be strict about it. Read only. Save the review as review.md.",
+  "assertions": [
+    "Every finding in the review cites a specific path and line number.",
+    "The review does not recommend defensive checks, compatibility shims, deprecation steps, or splitting functions for length.",
+    "Every finding includes concrete evidence (a count, measurement, named caller/consumer or failing input), or the review states plainly that there are no substantive findings.",
+    "The review identifies who consumes the changed effect summaries (a named caller, pass or test), showing it read beyond the diff hunks."
+  ]
+}

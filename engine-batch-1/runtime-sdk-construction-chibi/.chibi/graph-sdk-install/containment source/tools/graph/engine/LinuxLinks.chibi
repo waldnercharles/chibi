@@ -1,0 +1,71 @@
+package engine
+
+// Linux CMake reference link order; repeated libraries are intentional.
+// System OpenGL paths are resolved by the profile, not pinned to a distro.
+pub LinuxLinks :: (target: string) -> string[] {
+    if (target == "chibi-compile") {
+        return [
+            "chibi_behavior_runtime", "chibi_asset_json",
+            "chibi_asset_compiler_host",
+            "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
+            "chibi_scheduling",
+            "chibi_host_native_default",
+            "chibi_host_native_catalog", "chibi_native_bindings",
+            "chibi_task_pool_runtime",
+            "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lstdc++",
+            "chibi_source_catalog", "chibi_text_capabilities", "chibi_fmt", "chibi_array_capabilities", "chibi_core_capabilities",
+            "chibi_selection_capabilities", "chibi_set_capabilities",
+            "chibi_comparison_capabilities", "chibi_conversion_capabilities", "chibi_vector_capabilities",
+            "chibi_math_capabilities", "chibi_arithmetic_capabilities", "chibi_value_document",
+            "chibi_json", "chibi_behavior_runtime", "chibi_events",
+            "chibi_native_capabilities", "chibi_asset_values", "chibi_execution",
+            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_native_types", "chibi_ecs",
+            "chibi_capabilities", "chibi_types", "chibi_support", "-lm"
+        ];
+    }
+    if (target == "test_language") {
+        return [
+            "chibi_host_clock",
+            "chibi_task_pool_runtime", "chibi_conversion_capabilities", "chibi_json", "chibi_asset_json", "chibi_native_prepared", "chibi_compiler_host", "chibi_asset_compiler_host",
+            "chibi_native_prepared", "-ldl", "chibi_math_capabilities", "chibi_value_document", "chibi_array_capabilities",
+            "chibi_source_catalog", "chibi_behavior_runtime",
+            "chibi_text_capabilities", "chibi_arithmetic_capabilities",
+            "chibi_core_capabilities", "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_asset_json", "chibi_native_prepared",
+            "chibi_scheduling", "chibi_host_native_default", "chibi_host_native_catalog", "chibi_native_bindings",
+            "chibi_task_pool_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lstdc++",
+            "chibi_conversion_capabilities",
+            "chibi_math_capabilities", "chibi_value_document",
+            "chibi_array_capabilities", "chibi_text_capabilities", "chibi_fmt", "chibi_arithmetic_capabilities", "chibi_core_capabilities", "chibi_asset_values", "chibi_comparison_capabilities", "chibi_vector_capabilities",
+            "chibi_selection_capabilities", "chibi_set_capabilities", "chibi_native_types", "chibi_json",
+            "chibi_native_capabilities", "chibi_behavior_runtime", "chibi_execution", "chibi_ecs",
+            "chibi_capabilities", "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_events",
+            "chibi_types", "chibi_support", "-lm"
+        ];
+    }
+    if (target == "test_tools") {
+        return [
+            "chibi_behavior_runtime", "chibi_value_document", "chibi_compiler_host",
+            "chibi_execution", "chibi_array_capabilities", "-ldl",
+            "chibi_source_catalog", "chibi_comparison_capabilities", "chibi_conversion_capabilities", "chibi_host_native_default",
+            "chibi_task_pool_runtime", "chibi_asset_json", "chibi_fmt", "chibi_native_types",
+            "chibi_arithmetic_capabilities",
+            "chibi_task_pool_runtime", "chibi_math_capabilities", "chibi_vector_capabilities",
+            "chibi_native_types",
+            "-lpthread", "-ldl", "-lrt",
+            "chibi_source_catalog", "chibi_host_native_default", "chibi_host_native_catalog", "chibi_native_bindings",
+            "third-party/lib/chibi-vendor/libchibi_vendor_box3d.a",
+            "chibi_scheduling", "chibi_task_pool_runtime", "third-party/lib/chibi-vendor/libchibi_vendor_enkits.a", "-lstdc++",
+            "chibi_asset_compiler_host", "chibi_compiler_host", "chibi_native_prepared",
+            "chibi_asset_json",
+            "chibi_behavior_runtime",
+            "chibi_json", "chibi_native_types", "chibi_value_document", "chibi_array_capabilities", "chibi_comparison_capabilities",
+            "chibi_conversion_capabilities", "chibi_arithmetic_capabilities", "chibi_math_capabilities", "chibi_vector_capabilities",
+            "chibi_events", "chibi_asset_values", "chibi_text_capabilities", "chibi_fmt",
+            "chibi_core_capabilities", "chibi_selection_capabilities",
+            "chibi_set_capabilities", "chibi_execution", "chibi_ecs",
+            "third-party/lib/chibi-vendor/libchibi_vendor_sljit.a", "chibi_native_capabilities",
+            "chibi_capabilities", "chibi_types", "chibi_support", "-lm"
+        ];
+    }
+    return [];
+}

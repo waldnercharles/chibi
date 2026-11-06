@@ -1,0 +1,2 @@
+package hello
+Main :: () -> int { return 23 }

@@ -1,0 +1,35 @@
+{
+  "base": "2c6d3ed5cd7a086901b1730638824dcf5aa9f914",
+  "policy_sha256": "6973d7e983e4364890286590e3a31d8d6e284f8177a7e6d4ab9b9cc92a3471da",
+  "cli": {
+    "cases": 29,
+    "assertions": 424,
+    "wall_seconds": 14.931
+  },
+  "runtime": {
+    "cases": 249,
+    "assertions": 15819,
+    "wall_seconds": 6.964
+  },
+  "resources": {
+    "cases": 2,
+    "assertions": 20,
+    "wall_seconds": 54.115
+  },
+  "sdk": {
+    "cases": 8,
+    "assertions": 214,
+    "wall_seconds": 293.815
+  },
+  "authored_parser_tests": 4,
+  "independent_review": "No actionable findings",
+  "original_checkout": "Tracked diff and three untracked files match preservation snapshot",
+  "not_run": [
+    "broader native/material/project/language/tooling aggregates",
+    "browser",
+    "Windows",
+    "Studio"
+  ],
+  "installed_sdk_changed": false,
+  "status": "local uncommitted candidate"
+}

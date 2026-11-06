@@ -1,0 +1,120 @@
+
+// Actual RuntimeSDK entry checks. The native dispatcher can append this body to
+// Graph.chibi as its existing run_graph_batch helper does.
+VerifyRuntimeSDK :: () -> int {
+    root := build.arguments()[0];
+    bad := strings.Join([root, "/bad options"], "");
+    vendor := strings.Join([root, "/vendor"], "");
+    if (!build.make_directory(vendor) || !build.write_file(strings.Join([vendor, "/third-party.cmake"], ""), "fixture\n")) {
+        return 2;
+    }
+    toolchain := ["-DCMAKE_C_COMPILER=/usr/bin/false", "-DCMAKE_CXX_COMPILER=/usr/bin/false",
+                  "-DCMAKE_AR=/usr/bin/false", "-DCMAKE_RANLIB=/usr/bin/false"];
+    if (build.probe(["uname", "-m"]) != 0) {
+        return 12;
+    }
+    architecture := strings.TrimSpace(build.last_stdout());
+    other_architecture := "arm64";
+    if (architecture == "arm64") {
+        other_architecture = "x86_64";
+    }
+    rejected := ["--unknown\tx", "--jobs\t0", "--jobs\t-1", "--jobs", "--commands-only\ttrue",
+                  "--reflect\trelative", "--third-party\trelative", "--build\trelative",
+                  "--\t-DCMAKE_BUILD_TYPE=Fast", "--\t-DCHIBI_ENABLE_WARNINGS=maybe",
+                  "--\t-DCHIBI_ENABLE_CCACHE=maybe", "--\t-DCHIBI_ENABLE_SANITIZERS=maybe",
+                  "--\t-DCHIBI_SANITIZERS=memory", "--\t-DCMAKE_C_FLAGS=-funsafe",
+                  "--\t-DCHIBI_ENABLE_SJLIT=OFF", "--\t-D", "--\t-Dmissing",
+                  "--\t-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64", "--\t-DCMAKE_OSX_ARCHITECTURES=unsupported"];
+    rejected.append(strings.Join(["--\t-DCMAKE_OSX_ARCHITECTURES=", other_architecture], ""));
+    for (tail in rejected) {
+        options := ["--build", bad, "--reflect", "/not-run/reflect", "--third-party", vendor, "--commands-only", "on"];
+        parts := strings.Split(tail, "\t");
+        if (parts[0] == "--") {
+            options.append("--");
+            options.extend(toolchain);
+            options.extend(slice(parts, 1, length(parts) - 1));
+        } else {
+            options.extend(parts);
+            options.append("--");
+            options.extend(toolchain);
+        }
+        if (RuntimeSDKWithArguments(options) != 2 || build.file_kind(bad) != "") {
+            build.report(strings.Join(["invalid runtime options accepted: ", tail], ""));
+            return 1;
+        }
+    }
+    if (RuntimeSDKWithArguments(build.concat(["--build", bad, "--third-party", vendor, "--commands-only", "on", "--"], toolchain)) != 2 ||
+        RuntimeSDKWithArguments(build.concat(["--reflect", "/not-run/reflect", "--third-party", vendor, "--commands-only", "on", "--"], toolchain)) != 2 ||
+        build.file_kind(bad) != "") {
+        return 7;
+    }
+    output := strings.Join([root, "/commands"], "");
+    if (RuntimeSDKWithArguments(["--build", output, "--jobs", "2", "--third-party", vendor,
+                                "--reflect", "/not-run/reflect", "--commands-only", "on", "--",
+                                "-DCMAKE_C_COMPILER=/usr/bin/false", "-DCMAKE_CXX_COMPILER=/usr/bin/false",
+                                "-DCMAKE_AR=/usr/bin/false", "-DCMAKE_RANLIB=/usr/bin/false"]) != 0) {
+        return 3;
+    }
+    commands := build.read_file(strings.Join([output, "/compile_commands.json"], ""));
+    links := build.read_file(strings.Join([output, "/link_commands.json"], ""));
+    for (path in ["src/runtime/engine.c", "src/execution/vm.c", "src/ui/rml.cpp", "src/render/gpu_clock.m",
+                  "generated/native_types.c", "generated/native_capabilities.c", "generated/fonts/studio_regular_font.c"]) {
+        if (!strings.Contains(commands, path)) {
+            build.report(strings.Join(["missing runtime compile: ", path], ""));
+            return 4;
+        }
+    }
+    for (path in ["src/language/", "src/authoring/asset_compiler_host.c", "src/host/build_main.c", "test/tools/"]) {
+        if (strings.Contains(commands, path)) {
+            build.report(strings.Join(["unexpected runtime compile: ", path], ""));
+            return 5;
+        }
+    }
+    if (!strings.Contains(commands, "-g") || strings.Contains(commands, "-fsanitize=") ||
+        !strings.Contains(commands, "-Wpedantic") ||
+        !strings.Contains(links, strings.Join([output, "/sdk/chibi-player"], "")) ||
+        build.file_kind(strings.Join([output, "/generated"], "")) != "" ||
+        build.file_kind(strings.Join([output, "/objects"], "")) != "" ||
+        build.file_kind(strings.Join([output, "/sdk"], "")) != "") {
+        return 6;
+    }
+    release := strings.Join([root, "/release"], "");
+    base := ["--build", release, "--jobs", "2", "--third-party", vendor,
+             "--reflect", "/not-run/reflect", "--commands-only", "on", "--",
+             "-DCMAKE_C_COMPILER=/usr/bin/false", "-DCMAKE_CXX_COMPILER=/usr/bin/false",
+             "-DCMAKE_AR=/usr/bin/false", "-DCMAKE_RANLIB=/usr/bin/false"];
+    if (RuntimeSDKWithArguments(build.concat(base,
+        ["-DCMAKE_BUILD_TYPE=Release", "-DCHIBI_ENABLE_SANITIZERS=OFF", "-DCHIBI_ENABLE_WARNINGS=ON", "-DCHIBI_ENABLE_CCACHE=ON",
+         "-D", "CMAKE_C_COMPILER:FILEPATH=/usr/bin/true", "-DCMAKE_OSX_SYSROOT:PATH=/sdk path=fixture",
+         strings.Join(["-DCMAKE_OSX_ARCHITECTURES=", architecture], "")])) != 0) {
+        return 8;
+    }
+    commands = build.read_file(strings.Join([release, "/compile_commands.json"], ""));
+    if (!strings.Contains(commands, "\"arguments\": [\"/usr/bin/true\"") ||
+        !strings.Contains(commands, "-O3") || !strings.Contains(commands, "-DNDEBUG") ||
+        !strings.Contains(commands, "/sdk path=fixture") || strings.Contains(commands, "-fsanitize=")) {
+        return 9;
+    }
+    sanitized := strings.Join([root, "/sanitized"], "");
+    base[1] = sanitized;
+    if (RuntimeSDKWithArguments(build.concat(base,
+        ["-DCMAKE_BUILD_TYPE=Release", "-DCMAKE_BUILD_TYPE:STRING=RelWithDebInfo", "-DCHIBI_ENABLE_WARNINGS=ON",
+         "-DCHIBI_ENABLE_WARNINGS:BOOL=OFF", "-DCHIBI_ENABLE_CCACHE=OFF", "-DCHIBI_ENABLE_SANITIZERS=ON",
+         "-DCHIBI_SANITIZERS=thread"])) != 0) {
+        return 10;
+    }
+    commands = build.read_file(strings.Join([sanitized, "/compile_commands.json"], ""));
+    if (!strings.Contains(commands, "-O2") || !strings.Contains(commands, "-g") ||
+        !strings.Contains(commands, "-fsanitize=thread") || strings.Contains(commands, "-Wpedantic")) {
+        return 11;
+    }
+    // The SDK's architecture restriction must not change general graph callers.
+    general := strings.Join([root, "/general libraries"], "");
+    if (LibrariesWithArguments(["--build", general, "--profile", "explicit", "--compiler", "/usr/bin/false",
+                               "--archiver", "/usr/bin/false", "--ranlib", "/usr/bin/false", "--target", "chibi_support",
+                               "--commands-only", "on", "--architecture", other_architecture]) != 0 ||
+        !strings.Contains(build.read_file(strings.Join([general, "/compile_commands.json"], "")), other_architecture)) {
+        return 13;
+    }
+    return 0;
+}

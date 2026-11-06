@@ -1,0 +1,17 @@
+package windows
+
+Main :: () -> int {
+    unsigned: u64[] = [0, 1, 9, 10, 99, 100, 2147483647, 2147483648, 4294967295, 9223372036854775808, 18446744073709551615];
+    unsigned_text := ["0", "1", "9", "10", "99", "100", "2147483647", "2147483648", "4294967295", "9223372036854775808", "18446744073709551615"];
+    for index in 0..<length(unsigned) {
+        rendered := UnsignedDecimal(unsigned[index]);
+        assert(rendered == unsigned_text[index], "Win32 unsigned decimal words keep their full width");
+    }
+    signed: i64[] = [-9223372036854775808, -11644473600, -2147483649, -10, -1, 0, 1, 10, 2147483648, 9223372036854775807];
+    signed_text := ["-9223372036854775808", "-11644473600", "-2147483649", "-10", "-1", "0", "1", "10", "2147483648", "9223372036854775807"];
+    for index in 0..<length(signed) {
+        rendered := SignedDecimal(signed[index]);
+        assert(rendered == signed_text[index], "Win32 signed decimal includes the minimum and pre-epoch times");
+    }
+    return 0;
+}

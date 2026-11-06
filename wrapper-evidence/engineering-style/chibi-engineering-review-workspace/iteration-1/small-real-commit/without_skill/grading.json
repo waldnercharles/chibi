@@ -1,0 +1,78 @@
+{
+  "expectations": [
+    {
+      "text": "Every finding in the review cites a specific path and line number.",
+      "passed": false,
+      "evidence": "Findings 1-4 cite path:line (e.g. 'PointerWriteStep (Pointers.chibi:327-355)', 'Steps.chibi:795', 'Compile.chibi:2838-2853', 'Steps.chibi:848'). Finding 5 ('the commit message says what, not why') cites no path or line. Finding 6 ('Nit: the parallel column adds no signal for WRITE rows') quotes 'parallel = pure && !actual.effects && hosts_pure(...)' but gives no file path or line number."
+    },
+    {
+      "text": "The review does not recommend defensive checks, compatibility shims, deprecation steps, or splitting functions for length.",
+      "passed": true,
+      "evidence": "Recommendations are: wrap PointerWriteStep results in WriteStep, add test rows (DereferenceWrite, KeepWrite, StoreField, IncrementInt), reword the OwnWrite comment and add a friction entry, optionally derive public WRITE from body_write in Assemble, and rewrite the commit message. 'Compare with ==, not &, because UnknownWrite is -1' is a correctness note, not a defensive check. No shims, deprecations or length-based splits."
+    },
+    {
+      "text": "Every finding includes concrete evidence (a count, measurement, named caller/consumer or failing input), or the review states plainly that there are no substantive findings.",
+      "passed": false,
+      "evidence": "Findings 1-4 have concrete evidence (failing inputs 'pub DereferenceWrite ...' and 'pub KeepWrite :: (pointer: ^int) -> ^int { pointer^ = 2; return pointer; }'; named call sites; named consumer 'library_function (src/execution/native.c:114-123)'; named StatePlace path Steps.chibi:848). Finding 6 offers only a paraphrase of the formula ('any nonzero expected effect forces false') with no count of rows, no location and no consumer; contrast the with_skill review's 'in all 21 rows'. Finding 5's core point ('says what, not why') is a rule restatement, though it does point at PointerWriteStep for the false claim. Borderline, but the burden of proof is on the assertion."
+    },
+    {
+      "text": "The review identifies who consumes the changed effect summaries (a named caller, pass or test), showing it read beyond the diff hunks.",
+      "passed": true,
+      "evidence": "Finding 3: 'library_function (src/execution/native.c:114-123) refuses to bind any authored function whose effects is nonzero'. 'What the change does': 'Callers then inherit the bit through the effect-call fixed point (Compile.chibi:2838-2853)'. Also names the preparation-side in-place proof (docs/package-compiler.md:110-115) as the WriteFact consumer."
+    }
+  ],
+  "summary": {
+    "passed": 2,
+    "failed": 2,
+    "total": 4,
+    "pass_rate": 0.5
+  },
+  "claims": [
+    {
+      "claim": "PointerWriteStep (Pointers.chibi:327-355) emits neither WriteFact nor WriteEffect, while PointerReadStep wraps its result in EffectsStep(..., ReadEffect) (Pointers.chibi:180-182).",
+      "type": "factual",
+      "verified": true,
+      "evidence": "At a1135ab93, PointerWriteStep's Step.Emitted has next: [] and no RecordSemantic/RecordEffects; the read path ends 'return EffectsStep(CellSchemaStep(...), ReadEffect);' at Pointers.chibi:179-182."
+    },
+    {
+      "claim": "The diff changes five WriteStep call sites ('the diff changes five call sites'; 'Read ... all five WriteStep call sites').",
+      "type": "factual",
+      "verified": false,
+      "evidence": "There are exactly 4 WriteStep calls at the commit: Steps.chibi:795, 906, 910, 913. The review's own bullet list names the same four sites, so the heading count is wrong."
+    },
+    {
+      "claim": "library_function (src/execution/native.c:114-123) refuses to bind any authored function whose effects is nonzero.",
+      "type": "factual",
+      "verified": true,
+      "evidence": "native.c:115-124 at the commit: 'return info.effects ? NULL : info.body;' for a matching authored function."
+    },
+    {
+      "claim": "Steps.chibi:906-908 handles field stores through a scoped reference (pointer.value = 2 / pointer^.value = 2), so the new WRITE applies there.",
+      "type": "factual",
+      "verified": false,
+      "evidence": "Body.chibi:3352 tests ArrayElementAssignment before the StatementStep branch at :3354, and ArrayElementAssignment (Sequences.chibi:371-391) returns true for a member assignment rooted at a writable ReferencePlace name. Such stores therefore go to ElementAssignStep, which never calls WriteStep, so they do not reach Steps.chibi:906. Traced by reading, not executed; the with_skill review reaches the opposite (and better-supported) conclusion."
+    },
+    {
+      "claim": "In source mode component writes were already WRITE through Effects (Behavior.chibi:177-193).",
+      "type": "factual",
+      "verified": true,
+      "evidence": "Behavior.chibi:177-193 at the commit defines Effects(ops, code, reads_components, writes_components), which ORs ReadEffect | WriteEffect when writes_components; Compile.chibi:2741-2742 applies it only when source_mode."
+    }
+  ],
+  "eval_feedback": {
+    "suggestions": [
+      {
+        "assertion": "Every finding in the review cites a specific path and line number.",
+        "reason": "Commit-message findings have no natural line number. Decide whether they are exempt or must cite the code that contradicts the message; as written, a commit-message finding fails unless it cites code in its evidence."
+      },
+      {
+        "reason": "No assertion checks the accuracy of claims. This review miscounts the WriteStep call sites (five vs four) and attributes field stores to Steps.chibi:906-908 when the routing at Body.chibi:3352 sends them to ElementAssignStep. Neither error is caught by the current assertions."
+      },
+      {
+        "reason": "No assertion covers the real defect both reviews found: managed-pointer stores (PointerWriteStep) still publish no WRITE. An assertion for it would discriminate reviews that read the store routes from ones that only read the hunk."
+      }
+    ],
+    "overall": "A solid review whose central finding (finding 1) is correct and verified; it fails on form for two low-value findings and has two factual slips that no assertion checks."
+  },
+  "timing": {"total_tokens": 182163, "duration_ms": 740261, "total_duration_seconds": 740.3}
+}

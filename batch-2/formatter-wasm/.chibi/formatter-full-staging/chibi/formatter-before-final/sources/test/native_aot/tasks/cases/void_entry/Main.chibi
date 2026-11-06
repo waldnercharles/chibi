@@ -1,0 +1,13 @@
+package void_task_entry
+
+Main :: () {
+    value := await Child();
+    Check(value);
+}
+Check :: (value: int) {
+    assert(value == 2);
+}
+Child :: () -> int {
+    yield;
+    return 2;
+}

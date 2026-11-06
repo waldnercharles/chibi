@@ -1,0 +1,273 @@
+package llvm_native
+
+import abi "project:native_abi"
+import strings "core:strings"
+
+// A native backing has one reference count before its aligned elements.
+// A null owner is borrowed storage. Importing it makes an owned allocation;
+// releasing it never returns the external pointer to the context.
+ArrayAllocate :: (type: int, prefix: int, guarded: bool = false) -> string {
+    array := abi.ArrayType();
+    out := [format_text("define internal {} @chibi_array.{}.allocate(ptr %ctx, i32 %length, i32 %capacity) {{\nentry:\n", array, type)];
+    out.append("  %empty = icmp eq i32 %capacity, 0\n  br i1 %empty, label %none, label %make\nnone:\n");
+    out.append(format_text("  ret {} zeroinitializer\nmake:\n", array));
+    out.append(Sized("width", type - ArrayType));
+    out.append(format_text("  %count = zext i32 %capacity to i64\n  %bytes = mul i64 %count, %width\n  %total = add i64 %bytes, {}\n", prefix));
+    out.append(Allocated("owner", "%total", guarded));
+    out.append(format_text("  store i64 1, ptr %owner\n  %data = getelementptr inbounds i8, ptr %owner, i64 {}\n", prefix));
+    if (type == ArrayType + PointerType) {
+        out.append(format_text("  %epoch.at = getelementptr i8, ptr %owner, i64 {}\n  store i64 0, ptr %epoch.at\n", abi.ManagedArrayEpochOffset));
+        out.append("  %heap = call ptr @chibi_managed.owner(ptr %ctx)\n");
+        out.append(format_text("  %heap.at = getelementptr i8, ptr %owner, i64 {}\n  store ptr %heap, ptr %heap.at\n", abi.ManagedArrayOwnerOffset));
+    }
+    out.append(format_text("  %sized = insertvalue {} zeroinitializer, i32 %length, 0\n", array));
+    out.append(format_text("  %capped = insertvalue {} %sized, i32 %capacity, 1\n", array));
+    out.append(format_text("  %pointed = insertvalue {} %capped, ptr %data, 2\n", array));
+    out.append(format_text("  %value = insertvalue {} %pointed, ptr %owner, 3\n  ret {} %value\n}}\n", array, array));
+    return strings.Join(out, "");
+}
+ArrayClone :: (type: int, owners: bool[]) -> string {
+    array := abi.ArrayType();
+    out := [format_text("define internal {} @chibi_array.{}.clone(ptr %ctx, {} %value, i32 %capacity) {{\nentry:\n", array, type, array)];
+    out.append(format_text("  %length = extractvalue {} %value, 0\n  %source = extractvalue {} %value, 2\n", array, array));
+    if (type == ArrayType + PointerType) {
+        out.append(format_text("  %source.owner = extractvalue {} %value, 3\n  call void @chibi_managed.array.owner(ptr %ctx, ptr %source.owner)\n", array));
+    }
+    out.append(format_text("  %result = call {} @chibi_array.{}.allocate(ptr %ctx, i32 %length, i32 %capacity)\n", array, type));
+    out.append(format_text("  %data = extractvalue {} %result, 2\n", array));
+    out.append(Sized("width", type - ArrayType));
+    out.append("  %count = zext i32 %length to i64\n  %bytes = mul i64 %count, %width\n  call void @chibi_scalar.copy(ptr %data, ptr %source, i64 %bytes)\n");
+    out.append(ArrayRefs(owners, type, "%data", "%length", true));
+    out.append(format_text("  ret {} %result\n}}\n", array));
+    return strings.Join(out, "");
+}
+ArrayDropHelper :: (type: int, owners: bool[], backed: bool[], guarded: bool = false) -> string {
+    if (ArrayBacked(type, backed)) { return ArrayQueuedDrop(type, guarded); }
+    array := abi.ArrayType();
+    out := [format_text("define internal void @chibi_array.{}.drop(ptr %ctx, {} %value) {{\nentry:\n", type, array)];
+    out.append(format_text("  %owner = extractvalue {} %value, 3\n", array));
+    out.append("  %owned = icmp ne ptr %owner, null\n  br i1 %owned, label %count, label %done\ncount:\n");
+    if (type == ArrayType + PointerType) { out.append("  call void @chibi_managed.array.owner(ptr %ctx, ptr %owner)\n"); }
+    out.append("  %before = atomicrmw sub ptr %owner, i64 1 acq_rel\n  %last = icmp eq i64 %before, 1\n  br i1 %last, label %release, label %done\nrelease:\n");
+    out.append(format_text("  %length = extractvalue {} %value, 0\n  %data = extractvalue {} %value, 2\n", array, array));
+    out.append(ArrayRefs(owners, type, "%data", "%length", false));
+    out.append(ContextCall("give", 4, guarded));
+    out.append("  call void %give(ptr %ctx, ptr %owner)\n  br label %done\ndone:\n  ret void\n}\n");
+    return strings.Join(out, "");
+}
+ArrayShare :: (type: int) -> string {
+    array := abi.ArrayType();
+    ownership := "";
+    if (type == ArrayType + PointerType) { ownership = "  call void @chibi_managed.array.owner(ptr %ctx, ptr %owner)\n"; }
+    return strings.Concatenate([
+        format_text("define internal {} @chibi_array.{}.copy(ptr %ctx, {} %value) {{\nentry:\n", array, type, array),
+        format_text("  %owner = extractvalue {} %value, 3\n", array),
+        ownership,
+        "  %owned = icmp ne ptr %owner, null\n  br i1 %owned, label %keep, label %import\nkeep:\n",
+        "  call void @chibi_scalar.retain(ptr %owner)\n",
+        format_text("  ret {} %value\nimport:\n  %length = extractvalue {} %value, 0\n", array, array),
+        format_text("  %copied = call {} @chibi_array.{}.clone(ptr %ctx, {} %value, i32 %length)\n  ret {} %copied\n}}\n", array, type, array, array)
+    ]);
+}
+// A consumed unique backing moves its initialized elements when it grows.
+// Shared or borrowed inputs copy their elements and acquire their ownership.
+// The caller may then replace/remove an element or publish a longer length.
+ArrayUnique :: (type: int, guarded: bool = false) -> string {
+    array := abi.ArrayType();
+    out := [format_text("define internal {} @chibi_array.{}.unique(ptr %ctx, {} %value, i32 %needed, i1 %consume) {{\nentry:\n", array, type, array)];
+    out.append(format_text("  %owner = extractvalue {} %value, 3\n  %capacity = extractvalue {} %value, 1\n", array, array));
+    if (type == ArrayType + PointerType) { out.append("  call void @chibi_managed.array.owner(ptr %ctx, ptr %owner)\n"); }
+    out.append("  %owned = icmp ne ptr %owner, null\n  br i1 %owned, label %count, label %clone\ncount:\n");
+    out.append("  %references = load atomic i64, ptr %owner monotonic, align 8\n  %alone = icmp eq i64 %references, 1\n  br i1 %alone, label %unique, label %clone\nunique:\n");
+    out.append("  %fits = icmp ule i32 %needed, %capacity\n  br i1 %fits, label %same, label %grow\ngrow:\n  br i1 %consume, label %move, label %clone\nsame:\n");
+    out.append(format_text("  ret {} %value\nmove:\n", array));
+    out.append("  %double = shl i32 %capacity, 1\n  %larger = icmp ugt i32 %double, %needed\n  %grown = select i1 %larger, i32 %double, i32 %needed\n");
+    out.append(format_text("  %length = extractvalue {} %value, 0\n  %source = extractvalue {} %value, 2\n", array, array));
+    out.append(format_text("  %moved = call {} @chibi_array.{}.allocate(ptr %ctx, i32 %length, i32 %grown)\n", array, type));
+    out.append(format_text("  %data = extractvalue {} %moved, 2\n", array));
+    out.append(Sized("width", type - ArrayType));
+    out.append("  %extent = zext i32 %length to i64\n  %bytes = mul i64 %extent, %width\n  call void @chibi_scalar.copy(ptr %data, ptr %source, i64 %bytes)\n");
+    out.append(ContextCall("give", 4, guarded));
+    out.append(format_text("  call void %give(ptr %ctx, ptr %owner)\n  ret {} %moved\nclone:\n", array));
+    // The all-zero descriptor is also C's null optional buffer. Requiring
+    // writable zero elements must not turn it into a nonnull allocation.
+    out.append("  %nothing = icmp eq i32 %needed, 0\n  br i1 %nothing, label %maybe_empty, label %clone_value\nmaybe_empty:\n");
+    out.append(format_text("  %empty_length = extractvalue {} %value, 0\n  %empty_data = extractvalue {} %value, 2\n", array, array));
+    out.append("  %length_zero = icmp eq i32 %empty_length, 0\n  %capacity_zero = icmp eq i32 %capacity, 0\n  %data_zero = icmp eq ptr %empty_data, null\n  %owner_zero = icmp eq ptr %owner, null\n");
+    out.append("  %empty_size = and i1 %length_zero, %capacity_zero\n  %empty_storage = and i1 %data_zero, %owner_zero\n  %empty_descriptor = and i1 %empty_size, %empty_storage\n  br i1 %empty_descriptor, label %empty, label %clone_value\nempty:\n");
+    out.append(format_text("  ret {} %value\nclone_value:\n", array));
+    out.append("  %enough = icmp ule i32 %needed, %capacity\n  %doubled = shl i32 %capacity, 1\n  %bigger = icmp ugt i32 %doubled, %needed\n  %growth = select i1 %bigger, i32 %doubled, i32 %needed\n  %room = select i1 %enough, i32 %capacity, i32 %growth\n  %small = icmp ult i32 %room, 4\n  %space = select i1 %small, i32 4, i32 %room\n");
+    out.append(format_text("  %copied = call {} @chibi_array.{}.clone(ptr %ctx, {} %value, i32 %space)\n", array, type, array));
+    out.append("  br i1 %consume, label %drop, label %done\ndrop:\n");
+    out.append(format_text("  call void @chibi_array.{}.drop(ptr %ctx, {} %value)\n  br label %done\ndone:\n  ret {} %copied\n}}\n", type, array, array));
+    return strings.Join(out, "");
+}
+ArrayAllocation: int : 1;
+ArrayCloning: int : 2;
+ArrayDropping: int : 4;
+ArraySharing: int : 8;
+ArrayMutation: int : 16;
+
+NestedArrayElement :: (records: Record[], fields: int[], type: int) -> int {
+    wrapper := ElementType(records, type);
+    if (wrapper < RecordType || wrapper >= ArrayType || !Index(wrapper - RecordType, length(records))) { return 0; }
+    record := records[wrapper - RecordType];
+    if (record.count != 1) { return 0; }
+    inner := fields[record.first];
+    element := ElementType(records, inner);
+    if (element == 0 || (!Integer(element) && !abi.Floating(element) &&
+        element != abi.BoolStorage && element != abi.TextStorage)) { return 0; }
+    return inner;
+}
+
+// The owner is canonical and already evaluated. No source code runs between
+// this address and its consuming inner mutation, so outer backing stays put.
+ArrayValueReference :: (item: Instruction, pc: int, program: bool) -> string {
+    array := abi.ArrayType();
+    wrapper := item.target - ArrayType;
+    out := Load(format_text("outer_ref{}", pc), RefType + item.target, "s", item.left);
+    out = format_text("{}  %outer_value{} = load {}, ptr %outer_ref{}\n", out, pc, array, pc);
+    out = format_text("{}  %outer_length{} = extractvalue {} %outer_value{}, 0\n", out, pc, array, pc);
+    out = format_text("{}{}", out, Load(format_text("outer_index{}", pc), abi.IntStorage, "s", item.right));
+    out = format_text("{}  %outer_inside{} = icmp ult i32 %outer_index{}, %outer_length{}\n", out, pc, pc, pc);
+    out = format_text("{}  br i1 %outer_inside{}, label %outer_present{}, label %outer_absent{}\nouter_absent{}:\n", out, pc, pc, pc, pc);
+    if (program) {
+        failure := "chibi_native_reference_unavailable";
+        if (item.literal == i64(ArrayAddressMethod)) { failure = "chibi_native_array_mutation_unavailable"; }
+        out = format_text("{}  call void @{}()\n", out, failure);
+    } else { out = format_text("{}  call void @llvm.trap()\n", out); }
+    out = format_text("{}  unreachable\nouter_present{}:\n", out, pc);
+    out = format_text("{}  %outer_unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %outer_value{}, i32 %outer_length{}, i1 true)\n",
+        out, pc, array, item.target, array, pc, pc);
+    out = format_text("{}  store {} %outer_unique{}, ptr %outer_ref{}\n", out, array, pc, pc);
+    out = format_text("{}  %outer_data{} = extractvalue {} %outer_unique{}, 2\n", out, pc, array, pc);
+    out = format_text("{}  %outer_offset{} = zext i32 %outer_index{} to i64\n", out, pc, pc);
+    out = format_text("{}  %outer_at{} = getelementptr inbounds {}, ptr %outer_data{}, i64 %outer_offset{}\n", out, pc, TypeName(wrapper), pc, pc);
+    out = format_text("{}  %inner_at{} = getelementptr inbounds {}, ptr %outer_at{}, i32 0, i32 0\n", out, pc, TypeName(wrapper), pc);
+    return format_text("{}{}", out, Store(format_text("%inner_at{}", pc), item.type, "s", item.output));
+}
+// The native array domain has 1024 possible element storage IDs. One scan
+// records which operations each used type needs; unused helpers are not emitted.
+ArrayUses :: (code: Instruction[]) -> int[] {
+    used := resize([int(0)], MapType - ArrayType);
+    for (item in code) {
+        type := item.type;
+        flags := 0;
+        if (ViewOperation(item.op)) {
+            type = ArrayType + ViewElement(item);
+            if (item.op == ViewClone || item.op == ViewSlice) { flags = ArrayAllocation; }
+            if (item.op == ViewSet) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation; }
+        } else if (item.op == ArrayValueAddress) {
+            type = item.target;
+            flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation;
+        }
+        if (item.op == ManagedNew && ManagedArray(item.right)) {
+            type = item.right;
+            flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;
+        }
+        if (item.op == ManagedPin || item.op == OwnerPin) {
+            if (type >= RefType) { type -= RefType; }
+            flags = ArrayDropping;
+        }
+        if (MapOperation(item.op)) {
+            type = MapValue(MapUsed(item));
+            if (MapArrayValue(type)) {
+                flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing;
+            }
+        }
+        if (type < ArrayType || type >= MapType) { continue; }
+        if (item.op == ArrayDrop || item.op == ValueDrop) { flags = ArrayDropping; }
+        if (item.op == ArrayCopy) { flags = ArrayAllocation | ArrayCloning; }
+        if (item.op == ValueCopy) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing; }
+        if (item.op == StateLoad || item.op == StateStore) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArraySharing; }
+        if (item.op == ArrayLoan) {
+            flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation;
+            if (item.target != 1) { flags |= ArraySharing; }
+        }
+        if (item.op == ArrayInsert || item.op == ArrayReverse || item.op == ArrayPush || item.op == ArrayExtend || item.op == ArraySet || item.op == ArrayRemove) { flags = ArrayAllocation | ArrayCloning | ArrayDropping | ArrayMutation; }
+        if (item.op == ArraySlice || item.op == ArrayResize || item.op == ArrayBytes) { flags = ArrayAllocation; }
+        used[type - ArrayType] |= flags;
+    }
+    return used;
+}
+ArrayModule :: (used: int[], owners: bool[], backed: bool[], guarded: bool = false) -> string {
+    out: string[] = [];
+    for (index in 0..<length(used)) {
+        flags := used[index];
+        if (flags == 0) { continue; }
+        type := ArrayType + index;
+        prefix := 8;
+        if (ArrayBacked(type, backed)) { prefix = 32; }
+        if (type == ArrayType + PointerType) { prefix = abi.ManagedArrayPrefix; }
+        if ((flags & ArrayAllocation) != 0) { out.append(ArrayAllocate(type, prefix, guarded)); }
+        if ((flags & ArrayCloning) != 0) { out.append(ArrayClone(type, owners)); }
+        if ((flags & ArrayDropping) != 0) { out.append(ArrayDropHelper(type, owners, backed, guarded)); }
+        if ((flags & ArraySharing) != 0) { out.append(ArrayShare(type)); }
+        if ((flags & ArrayMutation) != 0) { out.append(ArrayUnique(type, guarded)); }
+    }
+    return strings.Join(out, "");
+}
+
+// A recursive element release only enqueues children. Its caller drains one
+// stack-owned queue, so runtime nesting does not become native call depth.
+ArrayQueuedDrop :: (type: int, guarded: bool = false) -> string {
+    array := abi.ArrayType();
+    element := type - ArrayType;
+    return strings.Concatenate([
+        format_text("define internal void @chibi_array.{}.release_owned(ptr %ctx, ptr %owner, i32 %length, ptr %pending) {{\nentry:\n", type),
+        "  %data = getelementptr inbounds i8, ptr %owner, i64 32\n",
+        format_text("  call void @chibi_value.{}.drop_range_into(ptr %ctx, ptr %data, i32 %length, ptr %pending)\n", element),
+        ContextCall("give", 4, guarded),
+        "  call void %give(ptr %ctx, ptr %owner)\n  ret void\n}\n",
+        format_text("define internal void @chibi_array.{}.drop_into(ptr %ctx, {} %value, ptr %pending) {{\nentry:\n", type, array),
+        format_text("  %owner = extractvalue {} %value, 3\n", array),
+        "  %owned = icmp ne ptr %owner, null\n  br i1 %owned, label %count, label %done\ncount:\n",
+        "  %before = atomicrmw sub ptr %owner, i64 1 acq_rel\n  %last = icmp eq i64 %before, 1\n  br i1 %last, label %enqueue, label %done\nenqueue:\n",
+        format_text("  %length = extractvalue {} %value, 0\n", array),
+        "  %next = load ptr, ptr %pending\n  store ptr %next, ptr %owner\n",
+        "  %ctx.at = getelementptr inbounds i8, ptr %owner, i64 8\n  store ptr %ctx, ptr %ctx.at\n",
+        "  %release.at = getelementptr inbounds i8, ptr %owner, i64 16\n",
+        format_text("  store ptr @chibi_array.{}.release_owned, ptr %release.at\n", type),
+        "  %length.at = getelementptr inbounds i8, ptr %owner, i64 24\n  store i32 %length, ptr %length.at\n",
+        "  store ptr %owner, ptr %pending\n  br label %done\ndone:\n  ret void\n}\n",
+        format_text("define internal void @chibi_array.{}.drop(ptr %ctx, {} %value) {{\nentry:\n", type, array),
+        ValuePending(),
+        format_text("  call void @chibi_array.{}.drop_into(ptr %ctx, {} %value, ptr %pending)\n", type, array),
+        "  call void @chibi_value.drain(ptr %pending)\n  ret void\n}\n"
+    ]);
+}
+
+// Uniqueness acquires a shared backing once. The shift moves initialized
+// element bytes backward, never retaining or releasing the values it moves.
+ArrayInserted :: (item: Instruction, pc: int) -> string {
+    array := abi.ArrayType();
+    element := TypeName(item.type - ArrayType);
+    out := [Load(format_text("b{}", pc), abi.IntStorage, "s", item.right),
+            Load(format_text("c{}", pc), item.type - ArrayType, "s", item.target)];
+    out.append(format_text("  %negative{} = icmp slt i32 %b{}, 0\n  %low{} = select i1 %negative{}, i32 0, i32 %b{}\n", pc, pc, pc, pc, pc));
+    out.append(format_text("  %over{} = icmp ugt i32 %low{}, %length{}\n  %index{} = select i1 %over{}, i32 %length{}, i32 %low{}\n", pc, pc, pc, pc, pc, pc, pc));
+    out.append(format_text("  %next{} = add i32 %length{}, 1\n  %unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %a{}, i32 %next{}, i1 true)\n", pc, pc, pc, array, item.type, array, pc, pc));
+    out.append(format_text("  %data{} = extractvalue {} %unique{}, 2\n  %first{} = zext i32 %index{} to i64\n  %end{} = zext i32 %length{} to i64\n  br label %shift{}\nshift{}:\n", pc, array, pc, pc, pc, pc, pc, pc, pc));
+    out.append(format_text("  %cursor{} = phi i64 [ %end{}, %p{} ], [ %previous{}, %move{} ]\n  %more{} = icmp ugt i64 %cursor{}, %first{}\n  br i1 %more{}, label %move{}, label %insert{}\nmove{}:\n", pc, pc, pc, pc, pc, pc, pc, pc, pc, pc, pc, pc));
+    out.append(format_text("  %previous{} = sub i64 %cursor{}, 1\n  %from{} = getelementptr inbounds {}, ptr %data{}, i64 %previous{}\n  %to{} = getelementptr inbounds {}, ptr %data{}, i64 %cursor{}\n", pc, pc, pc, element, pc, pc, pc, element, pc, pc));
+    out.append(format_text("  %moved{} = load {}, ptr %from{}\n  store {} %moved{}, ptr %to{}\n  br label %shift{}\ninsert{}:\n", pc, element, pc, element, pc, pc, pc, pc));
+    out.append(format_text("  %at{} = getelementptr inbounds {}, ptr %data{}, i64 %first{}\n  store {} %c{}, ptr %at{}\n", pc, element, pc, pc, element, pc, pc));
+    out.append(format_text("  %v{} = insertvalue {} %unique{}, i32 %next{}, 0\n", pc, array, pc, pc));
+    out.append(Store(format_text("%v{}", pc), item.type, "s", item.output));
+    return strings.Join(out, "");
+}
+// Swapping moves two complete initialized values. Their reference counts do
+// not change, including strings and recursively owned records or arrays.
+ArrayReversed :: (item: Instruction, pc: int) -> string {
+    array := abi.ArrayType();
+    element := TypeName(item.type - ArrayType);
+    out := [format_text("  %unique{} = call {} @chibi_array.{}.unique(ptr %ctx, {} %a{}, i32 %length{}, i1 true)\n", pc, array, item.type, array, pc, pc)];
+    out.append(format_text("  %data{} = extractvalue {} %unique{}, 2\n  %count{} = zext i32 %length{} to i64\n  %half{} = lshr i64 %count{}, 1\n  br label %reverse{}\nreverse{}:\n", pc, array, pc, pc, pc, pc, pc, pc, pc));
+    out.append(format_text("  %cursor{} = phi i64 [ 0, %p{} ], [ %next{}, %swap{} ]\n  %more{} = icmp ult i64 %cursor{}, %half{}\n  br i1 %more{}, label %swap{}, label %reversed{}\nswap{}:\n", pc, pc, pc, pc, pc, pc, pc, pc, pc, pc, pc));
+    out.append(format_text("  %last{} = sub i64 %count{}, 1\n  %other{} = sub i64 %last{}, %cursor{}\n", pc, pc, pc, pc, pc));
+    out.append(format_text("  %front{} = getelementptr inbounds {}, ptr %data{}, i64 %cursor{}\n  %back{} = getelementptr inbounds {}, ptr %data{}, i64 %other{}\n", pc, element, pc, pc, pc, element, pc, pc));
+    out.append(format_text("  %ahead{} = load {}, ptr %front{}\n  %behind{} = load {}, ptr %back{}\n  store {} %behind{}, ptr %front{}\n  store {} %ahead{}, ptr %back{}\n", pc, element, pc, pc, element, pc, element, pc, pc, element, pc, pc));
+    out.append(format_text("  %next{} = add i64 %cursor{}, 1\n  br label %reverse{}\nreversed{}:\n", pc, pc, pc, pc));
+    out.append(Store(format_text("%unique{}", pc), item.type, "s", item.output));
+    return strings.Join(out, "");
+}

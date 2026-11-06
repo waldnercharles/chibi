@@ -1,0 +1,17 @@
+{
+  "ps_command": [
+    "ps",
+    "-axo",
+    "pid=,ppid=,command="
+  ],
+  "matching_processes": [],
+  "lsof_command": [
+    "/usr/sbin/lsof",
+    "-nP",
+    "+D",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtimea253-validation"
+  ],
+  "lsof_exit_code": 1,
+  "lsof_stdout": "",
+  "lsof_stderr": ""
+}

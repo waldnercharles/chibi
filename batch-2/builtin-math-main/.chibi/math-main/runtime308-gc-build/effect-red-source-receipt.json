@@ -1,0 +1,29 @@
+{
+  "head": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+  "prior_frozen_math_tree": "706782b1239626574a999d1577aec7ea95018478",
+  "prior_math_patch_sha256": "f69daa55d0e6a9431a14f42dc008bcf2ee0f09b0364e7b940a1e0f0f32474efe",
+  "gc_working_tree": "760543a40bcd78031705557e58dec3ede7c7839a",
+  "gc_working_patch_sha256": "2b89b9ed28f6da85c3517374c0fb024e0aff828ed88eabe725f26f55feb164f7",
+  "source_c_sha256": "70926648c833dc7236021c97a77bb0984f7194e342f11e9a5d86f060188f588c",
+  "test_binary_sha256": "316142a7b1ac398f81eb374757cc70e64c29aa8635a288fe01f76900c71a5301",
+  "recovery_ref": "refs/codex/builtin-math-gc-effect-red-20261028",
+  "recovery_object": "806833552b2350ca2464aa223a0218f2b9564037",
+  "receipt": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/lifecycle-fixed-receipt.json",
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build/lifecycle-fixed-native.log",
+  "failure": "Compiler0 first prepared target, function1(handler): expected kind/effects0/2 WRITE vs authored0/0. Fails same_declarations before authored pressure runtime execution. All assertions retained.",
+  "c_pressure_oracles": {
+    "BYTECODE": {
+      "marks": 850,
+      "mask": 63,
+      "native_getter_calls": 3
+    },
+    "SLJIT": {
+      "marks": 850,
+      "mask": 63,
+      "native_getter_calls": 3
+    }
+  },
+  "production_source_unchanged_from_prior_frozen_math": true,
+  "native_hosts_unchanged": "runtime308-build/receipt.json",
+  "classification": "ScopedTargets rewrites sole p^ uses to ReferencePlace; WriteStep stores WriteFact but no public RecordEffects. Shared/inherited seam attribution awaits independent ordinary-pointer controls and coordinator ownership route. No production edit or seed regeneration."
+}

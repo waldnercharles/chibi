@@ -1,0 +1,39 @@
+package scalar_remainder
+
+Single :: (value: number, divisor: number) -> number { return fmod(value, divisor); }
+Wide :: (value: f64, divisor: f64) -> f64 { return fmod(value, divisor); }
+Next :: (order: ^int, digit: int, value: f64) -> f64 { order^ = order^ * 10 + digit; return value; }
+
+Main :: () -> int {
+    assert(Single(-7.0, 2.5) == -2.0);
+    assert(Wide(f64(-7), f64(2.5)) == f64(-2));
+    assert(fmod(7.5) == 0.5);
+    assert(fmod(f64(7.5)) == f64(0.5));
+    assert(fmod(Divisor: 2.0) == 0.0);
+    assert(fmod(Divisor: f64(2)) == f64(0));
+    assert(fmod(Value: 7.5, Divisor: 2.0) == 1.5);
+    assert(fmod(Divisor: 2.5, Value: -7.0) == -2.0);
+    assert(fmod(i64(16777217), i64(2)) == f64(1));
+    assert(fmod(int(16777217), int(2)) == 0.0);
+    order := 0;
+    observed := fmod(Divisor: Next(&order, 1, f64(2.5)), Value: Next(&order, 2, f64(-7)));
+    assert(observed == f64(-2) && order == 12);
+    phase := Wide(f64(1e20), f64(6.283185307179586476925286766559));
+    assert(phase > f64(1.895589910316636) && phase < f64(1.895589910316639));
+    zero := Single(-0.0, 2.0);
+    assert(zero == 0.0 && 1.0 / zero < 0.0);
+    zero64 := Wide(-f64(0), f64(2));
+    assert(zero64 == f64(0) && f64(1) / zero64 < f64(0));
+    maximum: number = 3.4028234663852886e38;
+    infinity := maximum * maximum;
+    invalid := Single(infinity, 2.0);
+    assert(invalid != invalid);
+    invalid = Single(7.0, 0.0);
+    assert(invalid != invalid);
+    assert(Single(-7.0, infinity) == -7.0);
+    invalid = Single(invalid, 2.0);
+    assert(invalid != invalid);
+    tiny: number = 1.401298464324817e-45;
+    assert(Single(tiny * 3.0, tiny * 2.0) == tiny);
+    return 0;
+}

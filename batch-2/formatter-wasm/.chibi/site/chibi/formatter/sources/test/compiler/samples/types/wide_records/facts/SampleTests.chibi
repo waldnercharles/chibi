@@ -1,0 +1,22 @@
+package facts
+
+// wide records
+@test
+Calls :: () {
+    a4_0: int = 3;
+    r4: i64 = Total(a4_0);
+    e4: i64 = -14999999994;
+    assert(r4 == e4, "Total call 4");
+}
+
+@test
+Records :: () {
+    made := Make(3);
+    assert(made.flag && made.id == 3000000021 && made.small == 3, "Make");
+    assert(made.count == 3 && made.delta == -4999999997 && made.name == "e", "Make rest");
+    assert(Mix(made) == 3000000025, "Mix");
+    start: Entry = {flag: false, id: 18446744073709551614, small: 200, count: -1, delta: -4999999997, name: "x"};
+    bumped := Bump(start);
+    assert(!bumped.flag && bumped.id == 18446744073709551615 && bumped.small == 7, "Bump");
+    assert(bumped.count == -1 && bumped.delta == -9999999994 && bumped.name == "x", "Bump rest");
+}

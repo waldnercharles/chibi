@@ -1,0 +1,108 @@
+package import_probe
+
+import syntax "project:compiler_syntax"
+import strings "core:strings"
+
+ImportRun :: (source: string, mode: int) -> (text: string, needs_semantics: bool, notes: string) {
+    switch syntax.Parse(source) {
+        case .Rejected(diagnostic):
+            print_string(diagnostic.message);
+            assert(false, "import fixture parses");
+            return (source, false, diagnostic.message);
+        case .Parsed(rows, fields, named, extras, root):
+            candidate := ImportSyntax(source, rows, fields, named, root, mode);
+            return (candidate.text, candidate.needs_semantics, candidate.notes);
+    }
+}
+
+ImportCase :: (source: string, expected: string, mode: int) {
+    actual := ImportRun(source, mode);
+    if (actual.text != expected) { print_string(actual.text); }
+    assert(actual.text == expected, "import syntax produces expected source");
+    assert(actual.needs_semantics == (source != expected), "any import edit requires compiler proof");
+    next := ImportRun(actual.text, mode);
+    assert(next.text == actual.text && !next.needs_semantics, "import syntax is a fixed point");
+}
+
+@test
+ImportSortUsesDecodedPathsThenExplicitAliases :: () {
+    ImportCase("package p\nimport z \"core:z\"\nimport beta \"core:a\"\nimport alpha \"core:\\u0061\"\nMain :: () {}\n",
+               "package p\nimport alpha \"core:\\u0061\"\nimport beta \"core:a\"\nimport z \"core:z\"\nMain :: () {}\n", 1);
+}
+
+@test
+ImportTrailingCommentsMoveWithTheirImports :: () {
+    ImportCase("package p\nimport z \"core:z\"; // Z documentation\nimport a \"core:a\"; /* A documentation */\nMain :: () {}\n",
+               "package p\nimport a \"core:a\"; /* A documentation */\nimport z \"core:z\"; // Z documentation\nMain :: () {}\n", 1);
+}
+
+@test
+ImportGroupsHonorBlankLinesAndStandaloneComments :: () {
+    ImportCase("package p\nimport z \"core:z\"\nimport y \"core:y\"\n\n// external packages\nimport x \"core:x\"\nimport w \"core:w\"\nimport v \"core:v\"\n\nimport b \"core:b\"\nimport a \"core:a\"\n",
+               "package p\nimport y \"core:y\"\nimport z \"core:z\"\n\n// external packages\nimport x \"core:x\"\nimport v \"core:v\"\nimport w \"core:w\"\n\nimport a \"core:a\"\nimport b \"core:b\"\n", 1);
+}
+
+@test
+ImportSortNeverCrossesWhenBranches :: () {
+    ImportCase("package p\nimport z \"core:z\"\nwhen true {\nimport b \"core:b\"\nimport a \"core:a\"\n} else {\nimport d \"core:d\"\nimport c \"core:c\"\n}\nimport y \"core:y\"\n",
+               "package p\nimport z \"core:z\"\nwhen true {\nimport a \"core:a\"\nimport b \"core:b\"\n} else {\nimport c \"core:c\"\nimport d \"core:d\"\n}\nimport y \"core:y\"\n", 1);
+}
+
+@test
+ImportSortPreservesFormattingDirectiveRegions :: () {
+    source := "package p\n// chibi fmt: off\nimport z  \"core:z\"\nimport a  \"core:a\"\n// chibi fmt: on\nimport y \"core:y\"\nimport x \"core:x\"\nimport w \"core:w\"\n";
+    actual := ImportRun(source, 1);
+    assert(strings.Contains(actual.text, "// chibi fmt: off\nimport z  \"core:z\"\nimport a  \"core:a\"\n// chibi fmt: on"), "protected imports remain byte exact");
+    assert(strings.Contains(actual.text, "import w \"core:w\"\nimport x \"core:x\""), "later unprotected groups still sort");
+    assert(ImportRun(actual.text, 1).text == actual.text, "directive barriers are fixed points");
+}
+
+@test
+UnusedExplicitImportsBecomeProofRequiredCandidates :: () {
+    ImportCase("package p\nimport unused \"core:unused\"\nimport used \"core:used\"\nMain :: () { used.Call(); }\n",
+               "package p\n\nimport used \"core:used\"\nMain :: () { used.Call(); }\n", 2);
+    ImportCase("package p\nimport unused \"core:unused\"\nMain :: () { text := \"unused\"; /* unused */ }\n",
+               "package p\n\nMain :: () { text := \"unused\"; /* unused */ }\n", 2);
+}
+
+@test
+ImportUsesIncludeUninstantiatedTemplatesAndInactiveBranches :: () {
+    source := "package p\nimport templates \"core:templates\"\nimport alternate \"core:alternate\"\nNeverCalled :: (value: $T) -> T { templates.Call(); return value; }\nwhen false {\nInactive :: () { alternate.Call(); }\n}\n";
+    expected := "package p\nimport alternate \"core:alternate\"\nimport templates \"core:templates\"\nNeverCalled :: (value: $T) -> T { templates.Call(); return value; }\nwhen false {\nInactive :: () { alternate.Call(); }\n}\n";
+    ImportCase(source, expected, 2);
+}
+
+@test
+ImportUsesTreatShadowedSpellingsConservatively :: () {
+    source := "package p\nimport local \"core:local\"\nimport parameter \"core:parameter\"\nMain :: (parameter: int) { local := 3; Use(local, parameter); }\n";
+    ImportCase(source, source, 2);
+}
+
+@test
+ImplicitAndBlankImportsAreNeverGuessedUnused :: () {
+    source := "package p\nimport \"core:a\"\nimport _ \"core:b\"\nMain :: () {}\n";
+    actual := ImportRun(source, 2);
+    assert(actual.text == source && !actual.needs_semantics, "implicit and side effect imports remain");
+    assert(strings.Contains(actual.notes, "dependency headers"), "implicit namespace resolution is reported");
+}
+
+@test
+UnusedConditionalAndDocumentedImportsRemain :: () {
+    source := "package p\n// package integration\nimport documented \"core:documented\"\nimport trailing \"core:trailing\" // keep this reason\nwhen false {\nimport alternate \"core:alternate\"\n}\n";
+    actual := ImportRun(source, 2);
+    assert(actual.text == source, "comments and inactive configuration imports remain");
+    assert(strings.Contains(actual.notes, "conditional") && strings.Contains(actual.notes, "attached comments"), "conservative decisions are explained");
+}
+
+@test
+ImportSortingPreservesSameLineTerminatorsAndCrLf :: () {
+    ImportCase("package p\r\nimport z \"core:z\"; import a \"core:a\";\r\nMain :: () {}\r\n",
+               "package p\r\nimport a \"core:a\"; import z \"core:z\";\r\nMain :: () {}\r\n", 1);
+}
+
+@test
+ImportPreserveModeDoesNoAnalysisOrRewriting :: () {
+    source := "package p\nimport z \"core:z\"\nimport a \"core:a\"\nMain :: () {}\n";
+    actual := ImportRun(source, 0);
+    assert(actual.text == source && !actual.needs_semantics && actual.notes == "", "preserve mode is a no-op");
+}

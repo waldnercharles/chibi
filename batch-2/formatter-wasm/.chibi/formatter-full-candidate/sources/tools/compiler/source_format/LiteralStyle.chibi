@@ -1,0 +1,360 @@
+package source_format
+
+import strings "core:strings"
+import tk "project:source_tokenizer"
+import decoded "project:json_string"
+import encoding "core:encoding/json"
+import directives "project:source_directives"
+
+// Zero values preserve literal spelling. These transforms never interchange
+// a character token and a string token; the language gives them different types.
+pub LiteralPolicies :: struct {
+    numeric_separators: int; // preserve=0, remove=1, group=2
+    decimal_group: int;
+    hex_group: int;
+    fraction_group: int;
+    exponent_group: int;
+    numeric_min_digits: int;
+    hex_case: int; // preserve=0, lower=1, upper=2
+    exponent_case: int;
+    numeric_base: int; // preserve=0, decimal=1, hexadecimal=2; integer tokens only
+    string_escapes: int; // preserve=0, minimal=1, ascii=2
+    char_escapes: int;
+}
+
+pub LiteralDefaults :: () -> LiteralPolicies {
+    return {numeric_separators: 0, decimal_group: 3, hex_group: 4,
+            fraction_group: 0, exponent_group: 0, numeric_min_digits: 5,
+            hex_case: 0, exponent_case: 0, numeric_base: 0, string_escapes: 0, char_escapes: 0};
+}
+
+LiteralDigit :: (byte: int) -> int {
+    if (byte >= 48 && byte <= 57) { return byte - 48; }
+    if (byte >= 65 && byte <= 70) { return byte - 55; }
+    if (byte >= 97 && byte <= 102) { return byte - 87; }
+    return -1;
+}
+
+// Exact unsigned integer parsing is needed only for a requested base change.
+// Separators and letter case are otherwise validated by canonical spelling,
+// including decimal floating literals of any magnitude, without float rounding.
+LiteralMagnitude :: (spelling: string) -> (valid: bool, magnitude: u64) {
+    value := tk.NumericText(spelling);
+    count := strings.ByteLength(value);
+    base := 10;
+    at := 0;
+    if (count > 2 && strings.ByteAt(value, 0) == 48 &&
+        (strings.ByteAt(value, 1) == 120 || strings.ByteAt(value, 1) == 88)) { base = 16; at = 2; }
+    magnitude: u64 = 0;
+    maximum: u64 = 0xffffffffffffffff;
+    if (at == count) { return (false, 0); }
+    while (at < count) {
+        digit := LiteralDigit(strings.ByteAt(value, at));
+        if (digit < 0 || digit >= base || magnitude > (maximum - u64(digit)) / u64(base)) {
+            return (false, 0);
+        }
+        magnitude = magnitude * u64(base) + u64(digit);
+        at += 1;
+    }
+    return (true, magnitude);
+}
+
+LiteralHex :: (magnitude: u64, upper: bool) -> string {
+    alphabet := "0123456789abcdef";
+    prefix := "0x";
+    if (upper) { alphabet = "0123456789ABCDEF"; prefix = "0X"; }
+    digits: string[] = [];
+    value := magnitude;
+    if (value == 0) { digits.append("0"); }
+    while (value != 0) {
+        digits.append(strings.Slice(alphabet, int(value % 16), 1));
+        value = value / 16;
+    }
+    pieces := [prefix];
+    at := length(digits) - 1;
+    while (at >= 0) { pieces.append(digits[at]); at -= 1; }
+    return strings.Concatenate(pieces);
+}
+
+LiteralDigits :: (spelling: string, first: int, last: int, group: int, minimum: int,
+                  from_left: bool, casing: int) -> string {
+    count := last - first;
+    extra := 0;
+    if (group > 0 && count >= minimum && count > 0) { extra = (count - 1) / group; }
+    bytes := resize([u8(0)], count + extra);
+    out := 0;
+    for (index in 0..<count) {
+        boundary := index > 0 && group > 0 && count >= minimum;
+        if (boundary) {
+            if (from_left) { boundary = index % group == 0; }
+            else { boundary = (count - index) % group == 0; }
+        }
+        if (boundary) { bytes[out] = u8(95); out += 1; }
+        byte := strings.ByteAt(spelling, first + index);
+        if (casing == 1 && byte >= 65 && byte <= 90) { byte += 32; }
+        if (casing == 2 && byte >= 97 && byte <= 122) { byte -= 32; }
+        bytes[out] = u8(byte); out += 1;
+    }
+    return text_from_bytes(bytes);
+}
+
+LiteralNumber :: (spelling: string, floating: bool, policy: LiteralPolicies) -> string {
+    value := tk.NumericText(spelling);
+    original_hex := strings.ByteLength(value) > 2 && strings.ByteAt(value, 0) == 48 &&
+                    (strings.ByteAt(value, 1) == 120 || strings.ByteAt(value, 1) == 88);
+    changed_base := !floating && ((policy.numeric_base == 1 && original_hex) ||
+                                  (policy.numeric_base == 2 && !original_hex));
+    if (changed_base) {
+        exact := LiteralMagnitude(value);
+        if (exact.valid) {
+            if (policy.numeric_base == 1) { value = format_text("{}", exact.magnitude); }
+            else { value = LiteralHex(exact.magnitude, policy.hex_case == 2); }
+        } else { changed_base = false; }
+    }
+    count := strings.ByteLength(value);
+    hexadecimal := count > 2 && strings.ByteAt(value, 0) == 48 &&
+                   (strings.ByteAt(value, 1) == 120 || strings.ByteAt(value, 1) == 88);
+    if (hexadecimal) {
+        if (policy.numeric_separators == 0 && !changed_base) {
+            return LiteralCaseSpelling(spelling, true, policy.hex_case);
+        }
+        group := 0;
+        if (policy.numeric_separators == 2) { group = policy.hex_group; }
+        prefix := strings.Slice(value, 0, 2);
+        if (policy.hex_case == 1) { prefix = "0x"; }
+        if (policy.hex_case == 2) { prefix = "0X"; }
+        return strings.Concatenate([prefix, LiteralDigits(value, 2, count, group,
+                                     policy.numeric_min_digits, false, policy.hex_case)]);
+    }
+    dot := strings.IndexByte(value, 46);
+    exponent := strings.IndexByte(value, 101);
+    if (exponent < 0) { exponent = strings.IndexByte(value, 69); }
+    whole_end := count;
+    if (exponent >= 0) { whole_end = exponent; }
+    if (dot >= 0) { whole_end = dot; }
+    whole_group := 0;
+    fraction_group := 0;
+    exponent_group := 0;
+    if (policy.numeric_separators == 2) {
+        whole_group = policy.decimal_group;
+        fraction_group = policy.fraction_group;
+        exponent_group = policy.exponent_group;
+    }
+    pieces := [LiteralDigits(value, 0, whole_end, whole_group, policy.numeric_min_digits, false, 0)];
+    if (dot >= 0) {
+        fraction_end := count;
+        if (exponent >= 0) { fraction_end = exponent; }
+        pieces.append(".");
+        pieces.append(LiteralDigits(value, dot + 1, fraction_end, fraction_group,
+                                   policy.numeric_min_digits, true, 0));
+    }
+    if (exponent >= 0) {
+        marker := strings.Slice(value, exponent, 1);
+        if (policy.exponent_case == 1) { marker = "e"; }
+        if (policy.exponent_case == 2) { marker = "E"; }
+        pieces.append(marker);
+        start := exponent + 1;
+        if (start < count && (strings.ByteAt(value, start) == 43 || strings.ByteAt(value, start) == 45)) {
+            pieces.append(strings.Slice(value, start, 1)); start += 1;
+        }
+        pieces.append(LiteralDigits(value, start, count, exponent_group, policy.numeric_min_digits, false, 0));
+    }
+    normalized := strings.Concatenate(pieces);
+    // A casing-only request preserves the author's separator positions.
+    if (policy.numeric_separators == 0 && !changed_base) { return LiteralCaseSpelling(spelling, false, policy.exponent_case); }
+    return normalized;
+}
+
+LiteralCaseSpelling :: (spelling: string, hexadecimal: bool, casing: int) -> string {
+    if (casing == 0) { return spelling; }
+    bytes := text_bytes(spelling);
+    output := resize([u8(0)], length(bytes));
+    for (index in 0..<length(bytes)) {
+        byte := bytes[index];
+        if (hexadecimal) {
+            if (casing == 1 && byte >= 65 && byte <= 90) { byte += 32; }
+            if (casing == 2 && byte >= 97 && byte <= 122) { byte -= 32; }
+        } else if (byte == 101 || byte == 69) {
+            if (casing == 1) { byte = 101; }
+            if (casing == 2) { byte = 69; }
+        }
+        output[index] = u8(byte);
+    }
+    return text_from_bytes(output);
+}
+
+// Character escapes use JSON's vocabulary too. Raw double quotes within a
+// character are quoted for the shared decoder; apostrophes keep their token kind.
+LiteralDecoded :: (spelling: string, character: bool) -> decoded.Decoded {
+    if (!character) { return decoded.Value(spelling); }
+    size := strings.ByteLength(spelling);
+    if (size < 2) { return {valid: false, value: "", byte_length: 0}; }
+    pieces := ["\""];
+    at := 1;
+    run := at;
+    while (at < size - 1) {
+        byte := strings.ByteAt(spelling, at);
+        if (byte == 92) { at += 2; continue; }
+        if (byte == 34) {
+            pieces.append(strings.Slice(spelling, run, at - run));
+            pieces.append("\\\""); run = at + 1;
+        }
+        at += 1;
+    }
+    pieces.append(strings.Slice(spelling, run, size - 1 - run));
+    pieces.append("\"");
+    return decoded.Value(strings.Concatenate(pieces));
+}
+
+LiteralMinimalQuote :: (value: string, character: bool) -> string {
+    quote := "\"";
+    if (character) { quote = "'"; }
+    pieces := [quote];
+    count := strings.ByteLength(value);
+    run := 0;
+    for (index in 0..<count) {
+        byte := strings.ByteAt(value, index);
+        escaped := "";
+        if (byte == 92) { escaped = "\\\\"; }
+        else if (!character && byte == 34) { escaped = "\\\""; }
+        else if (character && byte == 39) { escaped = "\\u0027"; }
+        else if (byte == 8) { escaped = "\\b"; }
+        else if (byte == 9) { escaped = "\\t"; }
+        else if (byte == 10) { escaped = "\\n"; }
+        else if (byte == 12) { escaped = "\\f"; }
+        else if (byte == 13) { escaped = "\\r"; }
+        else if (byte < 32) {
+            alphabet := "0123456789abcdef";
+            escaped = strings.Concatenate(["\\u00", strings.Slice(alphabet, byte / 16, 1),
+                                           strings.Slice(alphabet, byte % 16, 1)]);
+        }
+        if (escaped != "") {
+            pieces.append(strings.Slice(value, run, index - run)); pieces.append(escaped); run = index + 1;
+        }
+    }
+    pieces.append(strings.Slice(value, run, count - run)); pieces.append(quote);
+    return strings.Concatenate(pieces);
+}
+
+LiteralQuoted :: (spelling: string, character: bool, mode: int) -> (text: string, skipped: bool) {
+    if (mode == 0) { return (spelling, false); }
+    value := LiteralDecoded(spelling, character);
+    if (!value.valid) { return (spelling, true); }
+    if (mode == 1) { return (LiteralMinimalQuote(value.value, character), false); }
+    quoted := encoding.JsonQuote(value.value);
+    // Raw non-Unicode bytes cannot be replaced by Unicode escapes faithfully.
+    if (quoted == "") { return (spelling, true); }
+    if (!character) { return (quoted, false); }
+    interior := strings.Slice(quoted, 1, strings.ByteLength(quoted) - 2);
+    interior = strings.ReplaceAll(interior, "'", "\\u0027");
+    return (strings.Concatenate(["'", interior, "'"]), false);
+}
+
+LiteralEqual :: (a: string, b: string, kind: int) -> bool {
+    if (kind == tk.Integer) {
+        x := LiteralMagnitude(a); y := LiteralMagnitude(b);
+        if (x.valid && y.valid) { return x.magnitude == y.magnitude; }
+        return strings.ToLower(tk.NumericText(a)) == strings.ToLower(tk.NumericText(b));
+    }
+    if (kind == tk.Float) { return strings.ToLower(tk.NumericText(a)) == strings.ToLower(tk.NumericText(b)); }
+    if (kind == tk.String || kind == tk.Char) {
+        x := LiteralDecoded(a, kind == tk.Char); y := LiteralDecoded(b, kind == tk.Char);
+        return x.valid && y.valid && x.value == y.value;
+    }
+    return a == b;
+}
+
+// Both passes use the lexical vocabulary as their narrow proof. Literal edits
+// may change only equivalent literal spellings; comment edits may change only
+// comments. Every implicit/explicit terminator and non-owned token stays exact.
+StyleTokenEquivalent :: (original: string, rewritten: string, literals: bool, comments: bool) -> bool {
+    switch tk.Tokenize(original) {
+        case .Scanned(a_kinds, a_starts, a_ends, a_rows, a_columns, a_errors, a_offsets, a_error_rows, a_error_columns):
+            if (length(a_errors) != 0) { return false; }
+            switch tk.Tokenize(rewritten) {
+                case .Scanned(b_kinds, b_starts, b_ends, b_rows, b_columns, b_errors, b_offsets, b_error_rows, b_error_columns):
+                    if (length(b_errors) != 0) { return false; }
+                    a := 0; b := 0;
+                    while (a < length(a_kinds) && b < length(b_kinds)) {
+                        if (comments && a_kinds[a] == tk.Comment) { a += 1; continue; }
+                        if (comments && b_kinds[b] == tk.Comment) { b += 1; continue; }
+                        if (a_kinds[a] != b_kinds[b]) { return false; }
+                        kind := a_kinds[a];
+                        if (literals && (kind == tk.Integer || kind == tk.Float || kind == tk.String || kind == tk.Char)) {
+                            x := strings.Slice(original, a_starts[a], a_ends[a] - a_starts[a]);
+                            y := strings.Slice(rewritten, b_starts[b], b_ends[b] - b_starts[b]);
+                            if (!LiteralEqual(x, y, kind)) { return false; }
+                        } else {
+                            size := a_ends[a] - a_starts[a];
+                            if (size != b_ends[b] - b_starts[b]) { return false; }
+                            for (offset in 0..<size) {
+                                if (strings.ByteAt(original, a_starts[a] + offset) != strings.ByteAt(rewritten, b_starts[b] + offset)) { return false; }
+                            }
+                        }
+                        a += 1; b += 1;
+                    }
+                    while (comments && a < length(a_kinds) && a_kinds[a] == tk.Comment) { a += 1; }
+                    while (comments && b < length(b_kinds) && b_kinds[b] == tk.Comment) { b += 1; }
+                    return a == length(a_kinds) && b == length(b_kinds);
+            }
+    }
+}
+
+pub LiteralStyle :: (text: string, policy: LiteralPolicies) -> Result {
+    if (policy.numeric_separators < 0 || policy.numeric_separators > 2 ||
+        policy.hex_case < 0 || policy.hex_case > 2 || policy.exponent_case < 0 || policy.exponent_case > 2 ||
+        policy.numeric_base < 0 || policy.numeric_base > 2 || policy.string_escapes < 0 || policy.string_escapes > 2 ||
+        policy.char_escapes < 0 || policy.char_escapes > 2 || policy.decimal_group < 0 || policy.decimal_group > 16 ||
+        policy.hex_group < 0 || policy.hex_group > 16 || policy.fraction_group < 0 || policy.fraction_group > 16 ||
+        policy.exponent_group < 0 || policy.exponent_group > 16 || policy.numeric_min_digits < 0 || policy.numeric_min_digits > 64) {
+        return Result.Rejected("Invalid literal formatting policy");
+    }
+    if (policy.numeric_separators == 0 && policy.hex_case == 0 && policy.exponent_case == 0 &&
+        policy.numeric_base == 0 && policy.string_escapes == 0 && policy.char_escapes == 0) {
+        return Result.Formatted(text, "");
+    }
+    switch tk.Tokenize(text) {
+        case .Scanned(kinds, starts, ends, rows, columns, errors, offsets, error_rows, error_columns):
+            if (length(errors) != 0) { return Result.Rejected("Literal formatting requires valid tokens"); }
+            pieces: string[] = [];
+            copied := 0;
+            verbatim := false;
+            changed := false;
+            skipped := 0;
+            numeric := policy.numeric_separators != 0 || policy.hex_case != 0 || policy.exponent_case != 0 || policy.numeric_base != 0;
+            for (index in 0..<length(kinds)) {
+                kind := kinds[index];
+                if (kind == tk.Comment) {
+                    verbatim = directives.Apply(strings.Slice(text, starts[index], ends[index] - starts[index]), verbatim);
+                    continue;
+                }
+                if (verbatim) { continue; }
+                if (!((numeric && (kind == tk.Integer || kind == tk.Float)) ||
+                      (kind == tk.String && policy.string_escapes != 0) || (kind == tk.Char && policy.char_escapes != 0))) { continue; }
+                spelling := strings.Slice(text, starts[index], ends[index] - starts[index]);
+                replacement := spelling;
+                if (kind == tk.Integer || kind == tk.Float) {
+                    if (kind == tk.Integer && policy.numeric_base != 0 && !LiteralMagnitude(spelling).valid) { skipped += 1; }
+                    replacement = LiteralNumber(spelling, kind == tk.Float, policy);
+                } else {
+                    mode := policy.string_escapes;
+                    if (kind == tk.Char) { mode = policy.char_escapes; }
+                    quoted := LiteralQuoted(spelling, kind == tk.Char, mode);
+                    replacement = quoted.text;
+                    if (quoted.skipped) { skipped += 1; }
+                }
+                if (replacement != spelling) {
+                    if (!LiteralEqual(spelling, replacement, kind)) { return Result.Rejected("Literal style would change a literal value"); }
+                    pieces.append(strings.Slice(text, copied, starts[index] - copied));
+                    pieces.append(replacement); copied = ends[index]; changed = true;
+                }
+            }
+            notes := "";
+            if (skipped > 0) { notes = format_text("Literal style kept {} spelling(s) that cannot be represented with the requested exact-value policy.", skipped); }
+            if (!changed) { return Result.Formatted(text, notes); }
+            pieces.append(strings.Slice(text, copied, strings.ByteLength(text) - copied));
+            rewritten := strings.Concatenate(pieces);
+            if (!StyleTokenEquivalent(text, rewritten, true, false)) { return Result.Rejected("Literal style would change non-literal tokens"); }
+            return Result.Formatted(rewritten, notes);
+    }
+}

@@ -1,0 +1,17 @@
+diff --git a/Source/Core/ElementStyle.cpp b/Source/Core/ElementStyle.cpp
+--- a/Source/Core/ElementStyle.cpp
++++ b/Source/Core/ElementStyle.cpp
+@@ -820,7 +820,12 @@
+ 		auto name_property_pair = *it;
+ 		PropertyId id = name_property_pair.first;
+ 		const Property& property = name_property_pair.second;
+-		if (Any(property.unit & units))
++		// Variable expressions can conceal dp lengths. Restrict conservative
++		// invalidation to ratio changes: REM invalidation is invoked from the
++		// document's font-size callback and must not re-dirty that same font.
++		const bool variable_dp = Any(units & Unit::DP_SCALABLE_LENGTH) &&
++			(property.unit == Unit::VAR_EXPRESSION || property.unit == Unit::SHORTHAND_PLACEHOLDER);
++		if (Any(property.unit & units) || variable_dp)
+ 			DirtyProperty(id);
+ 	}
+ }

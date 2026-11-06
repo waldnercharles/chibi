@@ -1,0 +1,20 @@
+{
+  "command": [
+    "cmake",
+    "--build",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build",
+    "--target",
+    "test_language",
+    "--parallel",
+    "4"
+  ],
+  "status": 0,
+  "wall_seconds": 29.606460083043203,
+  "admitted_command_exact": true,
+  "strict_flags_unchanged": true,
+  "fresh_build": true,
+  "unexpected_producer_diagnostics": [],
+  "binary": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-effects-build/test_language",
+  "binary_bytes": 15479088,
+  "binary_sha256": "ee4572c397aee09ea70473f1d8893e95fd528fc359a3fb3b689343119740d5cf"
+}

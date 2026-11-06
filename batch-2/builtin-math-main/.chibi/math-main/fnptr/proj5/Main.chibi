@@ -1,0 +1,10 @@
+package scalar
+foreign import libc "system:c"
+foreign libc {
+    memset :: (buffer: u8[], value: i32, count: u64) -> rawptr
+}
+Main :: () -> int {
+    buffer: u8[] = [1, 2, 3, 4];
+    done := memset(buffer, 7, 3);
+    return int(buffer[0]) + int(buffer[2]) + int(buffer[3]);
+}

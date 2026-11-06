@@ -1,0 +1,18 @@
+{
+  "eval_name": "seeded-defects",
+  "prompt": "Do a picky engineering review of the latest commit (HEAD) in the Chibi checkout at /Users/cwaldner/Personal/chibi/.worktrees/review-eval/chibi. It adds a call-site census in Chibi and a typed element count in C. Read only, don't change anything. Save the review as review.md.",
+  "assertions": [
+    "The review flags assert(matches++ <= array->count) in pin_array_count_type as a bug because the assert has a side effect that changes the returned count in debug builds.",
+    "The review flags the 'if (!array) return 0;' guard in pin_array_count_type as a silent guard on a state only a bug produces, recommending an assert or removal rather than keeping it.",
+    "The review flags the per-element xstrdup/free inside the pin_array_count_type loop as needless allocation.",
+    "The review flags comparing forest[index].kind against the string \"call_expression\" inside the per-node loop in CollectCalls.",
+    "The review flags LineOf/ColumnOf rescanning the text from the start for every call site (quadratic work) or notes that SnapshotNode already stores row and column, so line/column are duplicated or derivable.",
+    "The review flags CountCallsInForest as a wrapper that only forwards to CollectCalls and should be deleted.",
+    "The review flags the is_dead bool on CallSite (filtered by LiveSites, set by MarkDead) as list membership encoded in a flag, or flags MarkDead's sites-by-removed nested loop.",
+    "The review flags that the commit adds no test (no @test and no C test case) for the new behavior.",
+    "The review flags that the new procedures or the new C function have no callers in the repository (speculative or dead code).",
+    "Every reported finding gives concrete evidence (a count, measurement, named consumer/caller, or failing input) rather than only restating a rule.",
+    "The review does not recommend adding defensive NULL checks, fallback values or extra validation for internal invariants.",
+    "The review does not recommend splitting any function purely because of its length."
+  ]
+}

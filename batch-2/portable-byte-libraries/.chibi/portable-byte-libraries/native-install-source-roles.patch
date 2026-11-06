@@ -1,0 +1,240 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1519c05a4..3e29b0f96 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -234,8 +234,12 @@ if(TARGET chibi)
+     # ../share/chibi, as installed ones do.
+     configure_file("${CMAKE_CURRENT_BINARY_DIR}/sdk/chibi_engine_metadata.json"
+         "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/engine.json" COPYONLY)
+-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/packages/core/strings/Strings.chibi"
+-        "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/core/strings/Strings.chibi" COPYONLY)
++    file(GLOB_RECURSE core_sources CONFIGURE_DEPENDS
++        RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/packages/core" "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/*.chibi")
++    foreach(source IN LISTS core_sources)
++        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/packages/core/${source}"
++            "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/core/${source}" COPYONLY)
++    endforeach()
+     foreach(source markdown/Markdown.chibi site/Site.chibi reference/Reference.chibi grammar/Grammar.chibi)
+         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tools/docs/${source}"
+             "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/docs/${source}" COPYONLY)
+diff --git a/sdk/CMakeLists.txt b/sdk/CMakeLists.txt
+index c40fbb2fb..b717b86a8 100644
+--- a/sdk/CMakeLists.txt
++++ b/sdk/CMakeLists.txt
+@@ -307,8 +307,8 @@ set_target_properties(chibi_text_capabilities PROPERTIES EXPORT_NAME text_capabi
+ chibi_sdk_headers(chibi_text_capabilities PUBLIC runtime/text_format.h runtime/text_definition.h)
+ target_link_libraries(chibi_text_capabilities PUBLIC chibi_native_capabilities)
+ # Authored core collection sources are explicit snapshot inputs for SDK users.
+-install(FILES "${CHIBI_SDK_ROOT}/packages/core/strings/Strings.chibi"
+-    DESTINATION share/chibi/core/strings)
++install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
++    FILES_MATCHING PATTERN "*.chibi")
+ # chibi doc's site generator is authored package source the SDK compiles.
+ install(FILES "${CHIBI_SDK_ROOT}/tools/docs/markdown/Markdown.chibi" DESTINATION share/chibi/docs/markdown)
+ install(FILES "${CHIBI_SDK_ROOT}/tools/docs/site/Site.chibi" DESTINATION share/chibi/docs/site)
+@@ -666,8 +666,6 @@ if(CHIBI_SDK_BUILD_COMPILER AND NOT CHIBI_SDK_COMPILER_HOST_ONLY AND
+     install(DIRECTORY "${CHIBI_SDK_ROOT}/tools/native_aot/" DESTINATION share/chibi/tools/native_aot
+         FILES_MATCHING PATTERN "*.chibi")
+     install(DIRECTORY "${CHIBI_SDK_ROOT}/tools/compiler/" DESTINATION share/chibi/compiler)
+-    install(DIRECTORY "${CHIBI_SDK_ROOT}/packages/core/" DESTINATION share/chibi/core
+-        FILES_MATCHING PATTERN "*.chibi")
+     install(FILES "${CHIBI_SDK_ROOT}/tools/toolchain/Build.chibi"
+         DESTINATION share/chibi/tools/toolchain)
+     install(FILES "${CHIBI_SDK_ROOT}/tools/configure_inputs.py" DESTINATION share/chibi/tools)
+diff --git a/src/runtime/text_definition.c b/src/runtime/text_definition.c
+index 00e5140ab..ff4df853e 100644
+--- a/src/runtime/text_definition.c
++++ b/src/runtime/text_definition.c
+@@ -33,3 +33,16 @@ const native_definition_pack NATIVE_TEXT_DEFINITION_PACK = {
+     .bindings = BINDINGS,
+     .binding_count = NATIVE_COUNT(BINDINGS),
+ };
++
++#define COUNT(KEY, NAME, SOURCE, INPUTS, OUTPUTS, VARIADIC) +1
++enum
++{
++    COMPILER_TEXT_COUNT = 0 NATIVE_COMPILER_TEXT_OPERATIONS(COUNT)
++};
++#undef COUNT
++const native_definition_pack NATIVE_COMPILER_TEXT_DEFINITION_PACK = {
++    .definitions = DEFINITIONS,
++    .definition_count = COMPILER_TEXT_COUNT,
++    .bindings = BINDINGS,
++    .binding_count = COMPILER_TEXT_COUNT,
++};
+diff --git a/src/runtime/text_definition.h b/src/runtime/text_definition.h
+index b046aa33b..2e173f4f4 100644
+--- a/src/runtime/text_definition.h
++++ b/src/runtime/text_definition.h
+@@ -14,6 +14,8 @@
+ #define NATIVE_TEXT_SLICE_SOURCE "text_slice"
+ #define NATIVE_TEXT_BYTES_NAME "Text Bytes"
+ #define NATIVE_TEXT_BYTES_SOURCE "text_bytes"
++#define NATIVE_TEXT_FROM_BYTES_NAME "Text From Bytes"
++#define NATIVE_TEXT_FROM_BYTES_SOURCE "text_from_bytes"
+ #define NATIVE_TEXT_PORT(X, NAME, STORAGE, NOMINAL, FLAGS)                     \
+     X(NAME,                                                                    \
+       NATIVE_PARAMETER_DATA,                                                   \
+@@ -57,7 +59,18 @@
+       SCRIPT_REFERENCE_NONE,                                                   \
+       false,                                                                   \
+       ((pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY }))
+-#define NATIVE_TEXT_OPERATIONS(X)                                              \
++#define NATIVE_TEXT_FROM_BYTES_INPUTS(X)                                       \
++    X("Value",                                                                 \
++      NATIVE_PARAMETER_DATA,                                                   \
++      PIN_U8,                                                                  \
++      "u8",                                                                    \
++      PIN_CONTAINER_ARRAY,                                                     \
++      0,                                                                       \
++      0,                                                                       \
++      SCRIPT_REFERENCE_NONE,                                                   \
++      false,                                                                   \
++      ((pin_value){ .type = PIN_U8, .container = PIN_CONTAINER_ARRAY }))
++#define NATIVE_COMPILER_TEXT_OPERATIONS(X)                                     \
+     X(FORMAT_TEXT,                                                             \
+       NATIVE_FORMAT_TEXT_NAME,                                                 \
+       NATIVE_FORMAT_TEXT_SOURCE,                                               \
+@@ -94,5 +107,16 @@
+       NATIVE_TEXT_VALUE_INPUTS,                                                \
+       NATIVE_TEXT_BYTES_OUTPUTS,                                               \
+       false)
++#define NATIVE_TEXT_OPERATIONS(X)                                              \
++    NATIVE_COMPILER_TEXT_OPERATIONS(X)                                         \
++    X(TEXT_FROM_BYTES,                                                         \
++      NATIVE_TEXT_FROM_BYTES_NAME,                                             \
++      NATIVE_TEXT_FROM_BYTES_SOURCE,                                           \
++      NATIVE_TEXT_FROM_BYTES_INPUTS,                                           \
++      NATIVE_FORMAT_TEXT_OUTPUTS,                                              \
++      false)
+ extern const native_definition_pack NATIVE_TEXT_DEFINITION_PACK;
++/* The compiler seed retains its pinned native catalog. Public packages use
++ * NATIVE_TEXT_DEFINITION_PACK, which also includes binary conversion. */
++extern const native_definition_pack NATIVE_COMPILER_TEXT_DEFINITION_PACK;
+ #endif
+diff --git a/src/runtime/text_format.c b/src/runtime/text_format.c
+index a50387a0e..48501213a 100644
+--- a/src/runtime/text_format.c
++++ b/src/runtime/text_format.c
+@@ -497,6 +497,36 @@ const node_host_call NATIVE_TEXT_BYTE_LENGTH_CALL = { .value = text_byte_length_
+ const node_host_call NATIVE_TEXT_BYTE_AT_CALL = { .value = text_byte_at_call };
+ const node_host_call NATIVE_TEXT_SLICE_CALL = { .value = text_slice_call };
+ const node_host_call NATIVE_TEXT_BYTES_CALL = { .value = text_bytes_call };
++static const char *text_from_bytes_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
++{
++    if (count != 1 || arguments[0].type != PIN_U8 ||
++        arguments[0].container != PIN_CONTAINER_ARRAY) {
++        return "Text From Bytes requires a u8 array";
++    }
++    const pin_array *bytes = arguments[0].ptr;
++    if (!bytes) {
++        return pin_value_text(storage, result, "", 0);
++    }
++    if (!pin_array_valid(bytes) || bytes->element_type != PIN_U8) {
++        return "Invalid Text From Bytes array";
++    }
++    if (bytes->stride == 1) {
++        return pin_value_text(storage, result, bytes->data, (size_t)bytes->count);
++    }
++    char *data = arena_alloc(storage, (size_t)bytes->count + 1);
++    if (!data) {
++        return "Text From Bytes allocation failed";
++    }
++    for (int index = 0; index < bytes->count; index++) {
++        pin_value value = pin_array_get(bytes, index);
++        if (value.type != PIN_U8 || value.container != PIN_CONTAINER_SINGLE) {
++            return "Invalid Text From Bytes element";
++        }
++        data[index] = (char)value.u8;
++    }
++    return pin_value_text(storage, result, data, (size_t)bytes->count);
++}
++const node_host_call NATIVE_TEXT_FROM_BYTES_CALL = { .value = text_from_bytes_call };
+ #define SNAPSHOT(KEY, FN, VARIADIC)                                                                       \
+     static const char *KEY##_snapshot(arena *storage, const pin_value *inputs, int count, pin_value *out) \
+     {                                                                                                     \
+diff --git a/src/runtime/text_format.h b/src/runtime/text_format.h
+index 275a5d722..6168e5308 100644
+--- a/src/runtime/text_format.h
++++ b/src/runtime/text_format.h
+@@ -20,4 +20,7 @@ extern const node_host_call NATIVE_TEXT_EQUAL_HOST, NATIVE_TEXT_EQUAL_CALL;
+ extern const node_host_call NATIVE_TEXT_BYTE_LENGTH_CALL,
+     NATIVE_TEXT_BYTE_AT_CALL, NATIVE_TEXT_SLICE_CALL, NATIVE_TEXT_BYTES_CALL;
+ extern const node_access NATIVE_TEXT_ACCESS;
++/* Copy every u8 into immutable length-carrying text, without Unicode or NUL
++ * conversion. Packed arrays need one copy; boxed arrays use linear scratch. */
++extern const node_host_call NATIVE_TEXT_FROM_BYTES_CALL;
+ #endif
+diff --git a/src/toolchain/compiler_host.c b/src/toolchain/compiler_host.c
+index c27c4ceba..5eca42817 100644
+--- a/src/toolchain/compiler_host.c
++++ b/src/toolchain/compiler_host.c
+@@ -54,7 +54,9 @@ static compiler_host *load(
+         message(error, error_size, "unsupported compiler host backend");
+         return NULL;
+     }
+-    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
++    const native_definition_pack packs[] = { values_only
++                                                 ? NATIVE_TEXT_DEFINITION_PACK
++                                                 : NATIVE_COMPILER_TEXT_DEFINITION_PACK,
+                                              NATIVE_ARRAY_DEFINITION_PACK,
+                                              COMPILER_JSON_DEFINITION_PACK,
+                                              COMPILER_SYNTAX_DEFINITION_PACK };
+@@ -151,7 +153,7 @@ char *compiler_host_values_target_json(size_t *length, char *error, size_t size)
+ }
+ char *compiler_host_compiler_target_json(size_t *length, char *error, size_t size)
+ {
+-    const native_definition_pack packs[] = { NATIVE_TEXT_DEFINITION_PACK,
++    const native_definition_pack packs[] = { NATIVE_COMPILER_TEXT_DEFINITION_PACK,
+                                              NATIVE_ARRAY_DEFINITION_PACK,
+                                              COMPILER_JSON_DEFINITION_PACK,
+                                              COMPILER_SYNTAX_DEFINITION_PACK };
+diff --git a/tools/graph/asset_compiler/Generate.chibi b/tools/graph/asset_compiler/Generate.chibi
+index 314d55af7..2d7be2f21 100644
+--- a/tools/graph/asset_compiler/Generate.chibi
++++ b/tools/graph/asset_compiler/Generate.chibi
+@@ -205,18 +205,8 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
+             }
+         }
+     }
+-    for (relative in Sources(Join([root, "/packages/core"]))) {
+-        path := Join(["/sdk/core/", relative]);
+-        found := false;
+-        for (item in paths) {
+-            if (item == path) {
+-                found = true;
+-            }
+-        }
+-        if (!found) {
+-            paths.append(path);
+-        }
+-    }
++    // Compiler implementation dependencies are explicit in CompilerSources.txt.
++    // Public core sources are packaged below, without entering the seed target.
+     bootstrap_paths := paths;
+     bootstrap_sources := Read(root, bootstrap_paths);
+     for (directory in ["asset_compiler", "asset_source", "asset_packaging"]) {
+@@ -290,6 +280,23 @@ pub Generate :: (root: string, host: string, folder: string, target: string, com
+             return false;
+         }
+     }
++    // Keep the complete public library snapshot separate from compiler inputs.
++    // Retain original compiled source bytes so the final hash check still
++    // rejects a file changed during generation.
++    for (relative in Sources(Join([root, "/packages/core"]))) {
++        path := Join(["/sdk/core/", relative]);
++        found := false;
++        for (item in paths) {
++            if (item == path) {
++                found = true;
++            }
++        }
++        if (!found) {
++            captured := Read(root, [path]);
++            paths.append(path);
++            sources.append(captured[0]);
++        }
++    }
+     library_paths: string[] = [];
+     library_sources: string[] = [];
+     index: int = 0;

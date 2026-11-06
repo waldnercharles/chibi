@@ -1,0 +1,24 @@
+{
+  "head": "9acfa17d029dcb0fbeb744f9e60c0e3d6bcf6f76",
+  "driver_sha256": "9e0d1668c4070ae91dcd55a865f6e952aecd6fe8d83a41736fe52f2b5961fe61",
+  "sources": {
+    "src/authoring/program.c": "494dcd04eb14f697bde26df9112aa4e726deb4554b7cb1d2fb6a72c2aff26e53",
+    "src/execution/function.h": "f1910000d6dcea65a8e715d19e728baa55b8e84b250b1563c3223dd02de8d817",
+    "src/execution/runner.c": "273e76156b80e0960787a8631d68882aa7c335a8327133a406df24bd5e489d61",
+    "test/language/program_session.c": "ea47e9aa84b4e57f3cd3d00563a37fc3f20cf64b89f17ec573007901f37719ad"
+  },
+  "started_utc": "2026-10-29T01:49:20.825664+00:00",
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/language-program-session-scope-inheritance-red.log",
+  "command": [
+    "/Users/cwaldner/Personal/chibi/.worktrees/main-runner-reload/chibi/.chibi/main-runner-reload/native/test/language/test_language",
+    "--program-session"
+  ],
+  "returncode": 1,
+  "wall_seconds": 0.719,
+  "finished_utc": "2026-10-29T01:49:21.544692+00:00",
+  "passed": 8,
+  "failed": 3,
+  "cases": 11,
+  "suites": 0,
+  "assertions": 151
+}

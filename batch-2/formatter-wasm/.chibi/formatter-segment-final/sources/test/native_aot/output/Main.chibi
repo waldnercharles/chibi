@@ -1,0 +1,10 @@
+package native_output
+
+Main :: () {
+    print_string("");
+    print_string(InString: "plain");
+    print_string("λ 日本語");
+    bytes: u8[] = [65, 0, 66];
+    print_string(text_from_bytes(bytes));
+    print_string(format_text("owned {}", int(42)));
+}

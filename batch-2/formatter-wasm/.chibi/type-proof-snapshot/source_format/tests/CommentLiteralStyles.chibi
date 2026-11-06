@@ -1,0 +1,194 @@
+package source_format_tests
+
+import format "project:source_format"
+import strings "core:strings"
+
+LiteralCase :: (source: string, expected: string, policy: format.LiteralPolicies) {
+    switch format.LiteralStyle(source, policy) {
+        case .Rejected(message): assert(false, "style source must be accepted");
+        case .Formatted(text, notes):
+            assert(text == expected, "literal style has the expected exact spelling");
+            assert(notes == "", "supported literal styles need no skipped-site note");
+            switch format.LiteralStyle(text, policy) {
+                case .Rejected(message): assert(false, "style source must be accepted");
+                case .Formatted(again, more): assert(again == text && more == "", "literal style reaches a fixed point");
+            }
+    }
+}
+
+CommentCase :: (source: string, expected: string, policy: format.CommentPolicies) {
+    switch format.CommentStyle(source, policy) {
+        case .Rejected(message): assert(false, "style source must be accepted");
+        case .Formatted(text, notes):
+            assert(text == expected, "comment style has the expected exact spelling");
+            assert(notes == "", "comment style is deterministic prose formatting");
+            switch format.CommentStyle(text, policy) {
+                case .Rejected(message): assert(false, "style source must be accepted");
+                case .Formatted(again, more): assert(again == text && more == "", "comment style reaches a fixed point");
+            }
+    }
+}
+
+@test
+LiteralDefaultsPreserveEverySpelling :: () {
+    source := "value := 1_000; hex := 0XAB_CD; text := \"\\u0061\\/\"; mark := '\\u0062';";
+    LiteralCase(source, source, format.LiteralDefaults());
+}
+
+@test
+NumericGroupsCoverIntegerFractionExponentAndHex :: () {
+    policy := format.LiteralDefaults();
+    policy.numeric_separators = 2;
+    policy.numeric_min_digits = 4;
+    policy.fraction_group = 3;
+    policy.exponent_group = 2;
+    LiteralCase("whole := 1234567; real := 1234.123456e+000006; hex := 0xabcdef00;",
+                "whole := 1_234_567; real := 1_234.123_456e+00_00_06; hex := 0xabcd_ef00;", policy);
+}
+
+@test
+NumericSeparatorRemovalKeepsDigitsAndCase :: () {
+    policy := format.LiteralDefaults();
+    policy.numeric_separators = 1;
+    LiteralCase("a := 1_000.12_34E0_2; b := 0XAB_CD;", "a := 1000.1234E02; b := 0XABCD;", policy);
+}
+
+@test
+NumericLetterCasePreservesExistingGrouping :: () {
+    policy := format.LiteralDefaults();
+    policy.hex_case = 1;
+    policy.exponent_case = 2;
+    LiteralCase("a := 0XAB_CD; b := 1_000.2_5e+0_2;", "a := 0xab_cd; b := 1_000.2_5E+0_2;", policy);
+    policy.hex_case = 2;
+    LiteralCase("a := 0xab_cd;", "a := 0XAB_CD;", policy);
+}
+
+@test
+IntegerBaseChangesHaveExactUnsignedValue :: () {
+    policy := format.LiteralDefaults();
+    policy.numeric_base = 1;
+    LiteralCase("a := 0Xff_ff; b := 0xffffffffffffffff;", "a := 65535; b := 18446744073709551615;", policy);
+    policy.numeric_base = 2;
+    LiteralCase("a := 65535; b := 0; real := 1.5;", "a := 0xffff; b := 0x0; real := 1.5;", policy);
+}
+
+@test
+TooLargeBaseConversionsAreVisibleAndPreserved :: () {
+    policy := format.LiteralDefaults();
+    policy.numeric_base = 2;
+    source := "a := 184467440737095516160;";
+    switch format.LiteralStyle(source, policy) {
+        case .Rejected(message): assert(false, "style source must be accepted");
+        case .Formatted(text, notes):
+            assert(text == source && notes != "", "out-of-range exact base conversion preserves and reports");
+    }
+}
+
+@test
+EscapeStylesPreserveUnicodeNulAndTokenKinds :: () {
+    policy := format.LiteralDefaults();
+    policy.string_escapes = 1;
+    policy.char_escapes = 1;
+    LiteralCase("word := \"\\u00e9 \\ud83d\\udc7e\\/\\u0000\"; mark := '\\u0062';",
+                "word := \"é 👾/\\u0000\"; mark := 'b';", policy);
+    policy.string_escapes = 2;
+    policy.char_escapes = 2;
+    LiteralCase("word := \"é 👾\"; mark := 'é';",
+                "word := \"\\u00e9 \\ud83d\\udc7e\"; mark := '\\u00e9';", policy);
+}
+
+@test
+LiteralPoliciesRespectFormatterDirectivesAndQuotedMarkers :: () {
+    policy := format.LiteralDefaults();
+    policy.numeric_separators = 2;
+    policy.numeric_min_digits = 4;
+    LiteralCase("// chibi fmt: off\na := 123456;\n// chibi fmt: on\nb := 123456;\ntext := \"// chibi fmt: off\";\nc := 123456;",
+                "// chibi fmt: off\na := 123456;\n// chibi fmt: on\nb := 123_456;\ntext := \"// chibi fmt: off\";\nc := 123_456;", policy);
+}
+
+@test
+ProseCommentsWrapWithTheirIndentation :: () {
+    policy := format.CommentDefaults();
+    policy.comment_reflow = 1;
+    policy.comment_width = 40;
+    CommentCase("    // This paragraph explains how the formatter keeps the important words together and wraps prose into bounded lines.\nCall();\n",
+                "    // This paragraph explains how the\n    // formatter keeps the important\n    // words together and wraps prose\n    // into bounded lines.\nCall();\n", policy);
+}
+
+@test
+ProseCommentsJoinAuthoredContinuationLines :: () {
+    policy := format.CommentDefaults();
+    policy.comment_reflow = 1;
+    policy.comment_width = 80;
+    CommentCase("// This is a paragraph whose first line ends before\n// all of its prose has been written.\nCall();",
+                "// This is a paragraph whose first line ends before all of its prose has been\n// written.\nCall();", policy);
+}
+
+@test
+DocumentationHasAnIndependentReflowPolicy :: () {
+    policy := format.CommentDefaults();
+    policy.comment_reflow = 2;
+    policy.comment_width = 36;
+    source := "// This ordinary comment remains exactly as the author wrote it.\n/// This documentation paragraph wraps at the requested width for its reader.\n";
+    CommentCase(source,
+                "// This ordinary comment remains exactly as the author wrote it.\n/// This documentation paragraph\n/// wraps at the requested width for\n/// its reader.\n", policy);
+}
+
+@test
+ReflowProtectsMarkdownCodeUrlsTablesAndAttachedComments :: () {
+    policy := format.CommentDefaults();
+    policy.comment_reflow = 3;
+    policy.comment_width = 24;
+    source := "Call(); // This attached prose comment must remain in place.\n// https://example.com/a/long/path remains authored.\n// | Name | Value |\n//     code with deliberate indentation\n// ~~~chibi\n// a long sentence inside a fenced example should stay as written.\n// ~~~\n//! ~~~chibi\n//! a long sentence inside a fenced documentation example stays authored.\n//! ~~~\n// Section title\n// if ready { Call(); }\n// alpha + beta + gamma + delta + epsilon\n//// A deliberate separator with a descriptive label stays authored.\n// TODO: investigate a long issue before changing this code.\n";
+    CommentCase(source, source, policy);
+}
+
+@test
+ReflowHonorsProtectedRegionsAndCommentOwnership :: () {
+    policy := format.CommentDefaults();
+    policy.comment_reflow = 1;
+    policy.comment_width = 32;
+    source := "// chibi fmt: off\n// This protected paragraph keeps all of its authored whitespace and line breaks.\n// chibi fmt: on\n// This ordinary paragraph can wrap to a shorter line width.\nMain :: () {}\n";
+    CommentCase(source,
+                "// chibi fmt: off\n// This protected paragraph keeps all of its authored whitespace and line breaks.\n// chibi fmt: on\n// This ordinary paragraph can\n// wrap to a shorter line width.\nMain :: () {}\n", policy);
+}
+
+@test
+BlockProseWrapsWithoutRewritingMarkdownParagraphs :: () {
+    policy := format.CommentDefaults();
+    policy.comment_reflow = 3;
+    policy.comment_width = 36;
+    policy.reflow_block_comments = true;
+    CommentCase("    /* A block comment can wrap readable prose while keeping the surrounding code unchanged. */\n",
+                "    /*\n     * A block comment can wrap\n     * readable prose while keeping\n     * the surrounding code\n     * unchanged.\n     */\n", policy);
+    source := "/**\n * This is one prose paragraph.\n *\n * This is another prose paragraph.\n */\n";
+    CommentCase(source, source, policy);
+}
+
+@test
+CommentReflowPreservesCrLfAndTabColumns :: () {
+    policy := format.CommentDefaults();
+    policy.comment_reflow = 1;
+    policy.comment_width = 32;
+    policy.tab_width = 4;
+    CommentCase("\t// This paragraph wraps with tabs counted as indentation columns.\r\n",
+                "\t// This paragraph wraps with\r\n\t// tabs counted as\r\n\t// indentation columns.\r\n", policy);
+}
+
+@test
+LiteralAndCommentProofsRejectChangesOutsideTheirOwnership :: () {
+    // The public passes retain tokens and these direct proof checks pin their
+    // boundary: a comment policy cannot authorize changing executable source.
+    a := format.LiteralDefaults();
+    a.decimal_group = 17;
+    switch format.LiteralStyle("value := 1;", a) {
+        case .Rejected(message): assert(message != "", "invalid grouping is rejected");
+        case .Formatted(text, notes): assert(false, "invalid grouping cannot format");
+    }
+    c := format.CommentDefaults();
+    c.comment_width = 10;
+    switch format.CommentStyle("// A prose paragraph.", c) {
+        case .Rejected(message): assert(message != "", "invalid reflow width rejects");
+        case .Formatted(text, notes): assert(false, "invalid reflow width cannot format");
+    }
+}

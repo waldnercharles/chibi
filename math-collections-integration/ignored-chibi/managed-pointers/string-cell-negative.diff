@@ -1,0 +1,12 @@
+--- retains-or-imports
++++ incorrect-borrow
+@@ -7,8 +7,5 @@
+   call void @chibi_scalar.retain(ptr %owner)
+   ret { ptr, i32, ptr } %value
+ import:
+-  %data = extractvalue { ptr, i32, ptr } %value, 0
+-  %length = extractvalue { ptr, i32, ptr } %value, 1
+-  %owned = call { ptr, i32, ptr } @chibi_text.copy(ptr %ctx, ptr %data, i32 %length)
+-  ret { ptr, i32, ptr } %owned
++  ret { ptr, i32, ptr } %value
+ }

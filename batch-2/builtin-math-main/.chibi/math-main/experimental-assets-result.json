@@ -1,0 +1,28 @@
+{
+  "command": [
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/release/sdk/chibi-build-host",
+    "--compiler",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/tools/compiler",
+    "--compiler-core",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation/packages/core",
+    "--root",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/validation",
+    "--source",
+    "tools/toolchain/AssetCompiler.chibi",
+    "--core",
+    "packages/core",
+    "--collection",
+    "asset_generator=tools/graph/asset_compiler",
+    "--entry",
+    "Build",
+    "--timeout-ms",
+    "600000",
+    "--",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/release/sdk/chibi-compiler-host",
+    "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-assets",
+    "--compiler-timeout-ms=600000"
+  ],
+  "status": 1,
+  "seconds": 283.591,
+  "log": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/experimental-assets-build.log"
+}

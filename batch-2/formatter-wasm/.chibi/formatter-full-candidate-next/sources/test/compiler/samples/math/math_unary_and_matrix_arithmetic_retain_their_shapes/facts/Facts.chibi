@@ -1,0 +1,2 @@
+package facts
+Check :: () -> bool { v := vec2(1, -2); return -v == vec2(-1, 2) && v != vec2(0) && mat2(1) != mat2(0) && (mat2(1) + mat2(2)) * v == vec2(3, -6) && ((mat2(4) - mat2(2)) / 2) * v == v && (-mat2(1)) * v == -v && (2 * mat2(1)) * v == v * 2; }

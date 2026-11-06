@@ -1,0 +1,9 @@
+package facts
+Answer :: () -> int {
+    m: [int: int] = [1: 2];
+    total: int = 0;
+    for (k, v in m) { total += k * 10 + v; }
+    v: int = 3;
+    k: int = 4;
+    return total * 100 + v + k;
+}

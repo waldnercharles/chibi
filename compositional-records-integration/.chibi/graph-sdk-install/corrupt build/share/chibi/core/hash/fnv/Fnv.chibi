@@ -1,0 +1,35 @@
+package fnv
+
+// FNV-1a hashes raw bytes. These hashes are for lookup and change detection,
+// not authentication. Results do not depend on the host's byte order.
+// Parameters: https://www.ietf.org/archive/id/draft-eastlake-fnv-35.html#section-5
+
+// Continues a 32-bit FNV-1a hash. Empty data preserves previous.
+// One pass, constant scalar storage, and no mutation of data.
+pub Update32 :: (previous: u32, data: u8[]) -> u32 {
+    hash := previous;
+    for value in data {
+        hash = (hash ^ u32(value)) * u32(0x01000193);
+    }
+    return hash;
+}
+
+// Continues a 64-bit FNV-1a hash. Empty data preserves previous.
+pub Update64 :: (previous: u64, data: u8[]) -> u64 {
+    hash := previous;
+    for value in data {
+        hash = (hash ^ u64(value)) * u64(0x100000001b3);
+    }
+    return hash;
+}
+
+// Starts with the standard 32-bit offset basis. Multiplication intentionally
+// wraps at 32 bits; development integer reports can report this overflow.
+pub Fnv1a32 :: (data: u8[]) -> u32 {
+    return Update32(0x811c9dc5, data);
+}
+
+// Starts with the standard 64-bit offset basis and wraps at 64 bits.
+pub Fnv1a64 :: (data: u8[]) -> u64 {
+    return Update64(0xcbf29ce484222325, data);
+}

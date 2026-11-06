@@ -1,0 +1,146 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Main compares two text constants: Main :: () -> bool { return a != b; }.
+TextCode :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 13, 0, 0, 0, 0, 0),
+            Code(native.Constant, 13, 1, 0, 0, 0, 1),
+            Code(native.Ne, 13, 2, 0, 1, 0, 0),
+            Code(native.Publish, 1, 0, 2, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+TextTable :: () -> string[] {
+    return ["a\"\\\né", ""];
+}
+// One function over the given tables, with the text table and no records.
+TextEmit :: (result: int, parameters: int[], slots: int[], code: native.Instruction[], texts: string[]) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    names: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    shape: native.Function = Function(result, length(parameters), 0, length(slots), 0, length(code), 0, 0);
+    return native.Emit(abi.LinuxX64(), [shape], parameters, slots, empty, code, empty, records, empty, texts, source, names,
+                       empty, empty, false, 1);
+}
+TextModule :: (code: native.Instruction[]) -> native.Result {
+    empty: int[] = [];
+    return TextEmit(1, empty, [13, 13, 1], code, TextTable());
+}
+ChangedText :: (row: int, item: native.Instruction, message: string) {
+    code := TextCode();
+    code[row] = item;
+    Rejects(TextModule(code), message);
+}
+Outside :: () -> string { return "native constant is outside its type"; }
+Operands :: () -> string { return "native scalar operand type mismatch"; }
+// Strings are views over private NUL-terminated constants, compared by
+// length and then bytes through one shared helper.
+@test
+TextsEmitSharedConstantsAndOneComparisonHelper :: () {
+    assert(abi.TextType() == "{ ptr, i32, ptr }");
+    ir := Emitted(TextModule(TextCode()));
+    assert(strings.Contains(ir, "@chibi_scalar.text.0 = private unnamed_addr constant [7 x i8] c\"a\\22\\5C\\0A\\C3\\A9\\00\"\n"));
+    assert(strings.Contains(ir, "@chibi_scalar.text.1 = private unnamed_addr constant [1 x i8] c\"\\00\"\n"));
+    assert(strings.Contains(ir, "store { ptr, i32, ptr } { ptr @chibi_scalar.text.0, i32 6, ptr null }, ptr %s0"));
+    assert(strings.Contains(ir, "store { ptr, i32, ptr } { ptr @chibi_scalar.text.1, i32 0, ptr null }, ptr %s1"));
+    assert(strings.Contains(ir, "call i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a3, { ptr, i32, ptr } %b3)"));
+    assert(strings.Contains(ir, "xor i1 %e3, true"));
+    assert(strings.Contains(ir, "define internal i1 @chibi_scalar.text_equal({ ptr, i32, ptr } %a, { ptr, i32, ptr } %b) #0 {"));
+}
+@test
+TextOperandsAreChecked :: () {
+    // A text past the table, or before it.
+    ChangedText(2, Code(native.Constant, 13, 1, 0, 0, 0, 2), Outside());
+    ChangedText(2, Code(native.Constant, 13, 1, 0, 0, 0, -1), Outside());
+    // Strings ordered, a sum of strings, which no bool slot holds, and a string compared with a bool.
+    ChangedText(3, Code(19, 13, 2, 0, 1, 0, 0), Operands());
+    ChangedText(3, Code(7, 13, 2, 0, 1, 0, 0), Output());
+    ChangedText(3, Code(native.Ne, 13, 2, 0, 2, 0, 0), Operands());
+}
+@test
+NoStringCrossesTheExportedEntry :: () {
+    empty: int[] = [];
+    one := [TextTable()[0]];
+    returned := [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Constant, 13, 0, 0, 0, 0, 0),
+                 Code(native.Publish, 13, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    Rejects(TextEmit(13, empty, [13], returned, one), Tables());
+    // A library keeps such a function internal and exports no wrapper.
+    records: native.Record[] = [];
+    fields: string[] = [];
+    ids: i64[] = [3];
+    shape := Function(13, 0, 0, 1, 0, 4, 0, 0);
+    kept := Emitted(native.EmitLibrary(abi.LinuxX64(), "Texts", ["Named"], ids, [shape], empty, [13], empty, returned, empty,
+                                       records, empty, one, 1, fields));
+    assert(strings.Contains(kept, "define internal { ptr, i32, ptr } @chibi_scalar.0() #0 {"));
+    assert(!strings.Contains(kept, "@chibi_scalar.export.0"));
+    assert(strings.Contains(kept, "@chibi_scalar.exports = private constant [0 x %chibi.export] []"));
+    assert(strings.Contains(kept, "@chibi_natives_Texts = constant %chibi.manifest { i32 5, i32 0, ptr @chibi_scalar.exports }"));
+    // Nor does one enter as a parameter of the entry.
+    published := [Code(native.Check, 0, 0, 0, 0, 0, 0), Code(native.Constant, 1, 0, 0, 0, 0, 0),
+                  Code(native.Publish, 1, 0, 0, 0, 0, 0), Code(native.Return, 0, 0, 0, 0, 0, 0)];
+    Rejects(TextEmit(1, [13], [1], published, one), "unsupported native scalar parameter");
+}
+@test
+AModuleThatComparesNoStringsDefinesNoComparison :: () {
+    code := TextCode();
+    code[3] = Code(native.Constant, 1, 2, 0, 0, 0, 0);
+    assert(!strings.Contains(Emitted(TextModule(code)), "text_equal"));
+}
+
+// Main holds a string a reference more and gives it back: 0.
+CountedTexts :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 13, 0, 0, 0, 0, 0),
+            Code(native.TextRetain, 13, 0, 0, 0, 0, 0),
+            Code(native.TextRelease, 13, 0, 0, 0, 0, 0),
+            Code(native.Constant, 6, 1, 0, 0, 0, 0),
+            Code(native.Publish, 6, 0, 1, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+CountedModule :: (code: native.Instruction[]) -> native.Result {
+    empty: int[] = [];
+    return TextEmit(6, empty, [13, 6], code, TextTable());
+}
+// A reference is added to, or given back from, a string's owner by the module's
+// helpers, and a null owner has none.
+@test
+TextReferencesCallTheCountingHelpers :: () {
+    ir := Emitted(CountedModule(CountedTexts()));
+    assert(strings.Contains(ir, "define i32 @chibi_scalar(ptr %ctx) #0 {\n"));
+    assert(strings.Contains(ir, "call void @chibi_scalar.retain(ptr %owner2)\n"));
+    assert(strings.Contains(ir, "call void @chibi_scalar.free(ptr %ctx, ptr %owner3)\n"));
+    assert(strings.Contains(ir, "define internal void @chibi_scalar.retain(ptr %owner) {\nentry:\n  %counted = icmp ne ptr %owner, null\n"));
+    assert(strings.Contains(ir, "%before = atomicrmw add ptr %owner, i64 1 monotonic\n"));
+    assert(strings.Contains(ir, "%before = atomicrmw sub ptr %owner, i64 1 acq_rel\n"));
+    assert(strings.Contains(ir, "%at = getelementptr inbounds { ptr, ptr, ptr, ptr, ptr }, ptr %ctx, i32 0, i32 4\n"));
+}
+@test
+TextReferencesNeedAString :: () {
+    code := CountedTexts();
+    code[2] = Code(native.TextRetain, 13, 0, 1, 0, 0, 0);
+    Rejects(CountedModule(code), "native text reference differs from its operand");
+}
+// Main copies an empty array of strings and drops the copy: 0.
+StringArrays :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 1037, 0, 0, 0, 0, 0),
+            Code(native.ArrayCopy, 1037, 1, 0, 0, 0, 0),
+            Code(native.ArrayDrop, 1037, 0, 1, 0, 0, 0),
+            Code(native.ArrayLength, 6, 2, 0, 0, 0, 0),
+            Code(native.Publish, 6, 0, 2, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+// The strings of an array each hold a reference: a copy takes one more for each
+// element, and dropping the array gives each back before the elements go.
+@test
+ArraysOfStringsCountTheirElements :: () {
+    empty: int[] = [];
+    ir := Emitted(TextEmit(6, empty, [1037, 1037, 6], StringArrays(), TextTable()));
+    assert(strings.Contains(ir, "call void @chibi_scalar.retain_range(ptr %fresh2, i32 %length2)\n"));
+    assert(strings.Contains(ir, "call void @chibi_scalar.free_range(ptr %ctx, ptr %data3, i32 %length3)\n"));
+    assert(strings.Contains(ir, "define internal void @chibi_scalar.free_range(ptr %ctx, ptr %data, i32 %count) {\n"));
+}

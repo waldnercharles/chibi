@@ -1,0 +1,12 @@
+package facts
+
+// callable pattern bindings shadow enclosing locals
+@test
+Calls :: () {
+    r1: int = IfPattern();
+    e1: int = 94;
+    assert(r1 == e1, "IfPattern call 1");
+    r2: int = WhilePattern();
+    e2: int = 96;
+    assert(r2 == e2, "WhilePattern call 2");
+}

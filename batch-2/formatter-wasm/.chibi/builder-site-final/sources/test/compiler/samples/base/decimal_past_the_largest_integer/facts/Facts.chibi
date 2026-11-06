@@ -1,0 +1,4 @@
+package facts
+Run :: () -> u64 { return 18446744073709551616.0; }
+
+// error: 2:27: Numeric literal is outside the range of u64

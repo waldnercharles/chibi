@@ -1,0 +1,78 @@
+package llvm_native_calls
+
+import native "project:llvm_native"
+import abi "project:native_abi"
+import strings "core:strings"
+
+// Main returns Check(), whose false assertion fails at bytes [3, 9)
+// of the function with ID 77.
+Failures :: () -> native.Instruction[] {
+    return [Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Call, 6, 0, 1, 0, 0, 0),
+            Code(native.Publish, 6, 0, 0, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0),
+            Code(native.Check, 0, 0, 0, 0, 0, 0),
+            Code(native.Constant, 1, 0, 0, 0, 0, 0),
+            Code(native.Branch, 0, 0, 0, 0, 4, 0),
+            Code(native.Fail, 0, 0, 3, 9, 0, 77),
+            Code(native.Constant, 6, 1, 0, 0, 0, 5),
+            Code(native.Publish, 6, 0, 1, 0, 0, 0),
+            Code(native.Return, 0, 0, 0, 0, 0, 0)];
+}
+FailureModule :: (code: native.Instruction[], main: bool) -> native.Result {
+    empty: int[] = [];
+    records: native.Record[] = [];
+    texts: string[] = [];
+    source: native.Source = {file: "", directory: ""};
+    return native.Emit(abi.LinuxX64(),
+                       [Function(6, 0, 0, 1, 0, 4, 0, 0), Function(6, 0, 1, 2, 4, 7, 0, 0)],
+                       empty, [6, 1, 6], empty, code, empty, records, empty,
+                       texts, source, texts, empty, empty, main, 1);
+}
+// Failure stores the function ID and range in the context. Both the callee
+// and its caller return their zero so the failure reaches the VM's call.
+@test
+FailuresPropagateContextAndReturnZero :: () {
+    text := Emitted(FailureModule(Failures(), false));
+    assert(strings.Contains(text, "@chibi_scalar.failure.1.3 = private unnamed_addr constant { i64, i32, i32 } { i64 77, i32 3, i32 9 }\n"));
+    assert(strings.Contains(text, "define i32 @chibi_scalar(ptr %ctx) #0 {\n"));
+    assert(strings.Contains(text, "  %v1 = call i32 @chibi_scalar.1(ptr %ctx)\n"));
+    assert(strings.Contains(text, "  %failure1.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 0, i32 1\n  %failure1 = load ptr, ptr %failure1.at\n  %failed1 = icmp ne ptr %failure1, null\n  br i1 %failed1, label %failed, label %p2\n"));
+    assert(strings.Contains(text, "define internal i32 @chibi_scalar.1(ptr %ctx) #0 {\n"));
+    assert(strings.Contains(text, "  br i1 %a2, label %p4, label %p3\n"));
+    assert(strings.Contains(text, "p3:\n  %fail3.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 0, i32 1\n  store ptr @chibi_scalar.failure.1.3, ptr %fail3.at\n  br label %failed\n"));
+    assert(strings.Contains(text, "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  unreachable\n}\n\ndefine internal i32 @chibi_scalar.1(ptr %ctx) #0 {\n"));
+    assert(strings.Contains(text, "failed:\n  ret i32 0\ntrap:\n  call void @llvm.trap()\n  unreachable\n}\n\nattributes #0 = { "));
+}
+@test
+NonfallibleCallsOmitFailureAndContext :: () {
+    code := Failures();
+    code[7] = Code(native.Jump, 0, 0, 0, 0, 4, 0);
+    text := Emitted(FailureModule(code, false));
+    assert(!strings.Contains(text, "failed"));
+    assert(!strings.Contains(text, "ptr %ctx"));
+}
+@test
+FailureCanEndFunctionBody :: () {
+    code := Failures();
+    code[10] = code[7];
+    text := Emitted(FailureModule(code, false));
+    assert(strings.Contains(text, "p6:\n  %fail6.at = getelementptr inbounds { ptr, ptr }, ptr %ctx, i32 0, i32 1\n"));
+}
+@test
+NativeProgramCannotFail :: () {
+    Rejects(FailureModule(Failures(), true), "a native program cannot call the runtime yet");
+}
+ChangedFailureRange :: (item: native.Instruction) {
+    code := Failures();
+    code[7] = item;
+    Rejects(FailureModule(code, false), "native failure names no source range");
+}
+@test
+NegativeFailureRangeIsRejected :: () {
+    ChangedFailureRange(Code(native.Fail, 0, 0, -1, 9, 0, 77));
+}
+@test
+ReversedFailureRangeIsRejected :: () {
+    ChangedFailureRange(Code(native.Fail, 0, 0, 3, 2, 0, 77));
+}

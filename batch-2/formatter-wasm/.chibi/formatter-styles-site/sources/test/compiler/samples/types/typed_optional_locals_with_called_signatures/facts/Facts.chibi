@@ -1,0 +1,19 @@
+package facts
+
+Absent :: () -> int? { return nil; }
+Flag :: () -> bool? { return false; }
+Earlier :: () -> int? { return 3; }
+Repeated :: () -> int? { return 5; }
+
+Read :: () -> int {
+    absent: int? = Absent();
+    earlier: int? = Earlier();
+    flag: bool? = Flag();
+    repeated: int? = Repeated();
+    result := 0;
+    if absent == nil { result += 100; }
+    if flag { result += 1; }
+    if earlier { result += 3; }
+    if repeated { result += 5; }
+    return result;
+}

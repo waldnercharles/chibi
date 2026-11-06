@@ -1,0 +1,12 @@
+Loop :: library {
+    Main :: () -> int { return 0; }
+
+    Frame :: () -> int {
+        // A legacy library has no foreign calls for a readiness marker. The
+        // host always calls its Frame before accepting the pending edit.
+        count: retain int = 17;
+        big: retain i64 = 5000000000;
+        count += 1;
+        return 0;
+    }
+}

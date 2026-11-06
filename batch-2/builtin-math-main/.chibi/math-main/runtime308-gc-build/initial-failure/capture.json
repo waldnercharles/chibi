@@ -1,0 +1,70 @@
+{
+  "base": "30837bd5dd057b93b9fa082d456ce9f3b9ec5bb7",
+  "snapshot": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-validation",
+  "build": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-gc-build",
+  "full_working_diff_sha256": "83259b7a437c9beb0700cd40d6a7fec7ac8eb6fe6d23fba5b2e28ff17a924fca",
+  "pressure_only_index_diff_sha256": "cecb9b597f8d4bac1f513512eba4fe4cc4245576848695e57200519e6739d7d4",
+  "pressure_only_index_numstat": [
+    "153\t81\ttest/language/package_compiler_chibi.c"
+  ],
+  "old_staged_tree": "706782b1239626574a999d1577aec7ea95018478",
+  "old_staged_patch_sha256": "f69daa55d0e6a9431a14f42dc008bcf2ee0f09b0364e7b940a1e0f0f32474efe",
+  "old_proof_receipt": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/receipt.json",
+  "old_proof_receipt_sha256": "2cd33936835421c2f7110a87e1ce17baca2a342b22848a87c42df924ed22daa6",
+  "old_source_manifest_sha256": "6bcaf38f83423b215f29f2ddb885021719dbabd54f0e4af111ca9ffcc9557f8c",
+  "old_source_sha256": "8e99a1d3c4a1d9ac9b0f45e213fe633b3ff30920dd2c261ee7770efa9bfb4559",
+  "new_source_sha256": "404f48acb258b11705d2ecc8441771c17950aa1fe13c3758a32f2721555394bc",
+  "only_source_delta_from_runtime308": [
+    "test/language/package_compiler_chibi.c"
+  ],
+  "old_binaries": {
+    "test_language": {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/test_language",
+      "bytes": 15479088,
+      "sha256": "ea8c848adee80c6284d70d25570e7c3580af12caef58bfa0f026a81e9ff34835"
+    },
+    "chibi-build-host": {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-build-host",
+      "bytes": 1969120,
+      "sha256": "670096ae8a352164f3571815deba00bddaaa2b4764118012b76361587032043e"
+    },
+    "chibi-compiler-host": {
+      "path": "/Users/cwaldner/Personal/chibi/.worktrees/builtin-math-main/chibi/.chibi/math-main/runtime308-build/sdk/chibi-compiler-host",
+      "bytes": 1350592,
+      "sha256": "813f3162e4ea1facf0854832c528a085f88f4f83e61be438afc85c52f0b89b67"
+    }
+  },
+  "old_evidence_files_sha256": {
+    "capture.json": "7d8ceaafe8e216c29a2293a1b80b17ae3bafc253a3b03692fb1740f353a6832d",
+    "math-source.patch": "f69daa55d0e6a9431a14f42dc008bcf2ee0f09b0364e7b940a1e0f0f32474efe",
+    "source-files.json": "6bcaf38f83423b215f29f2ddb885021719dbabd54f0e4af111ca9ffcc9557f8c",
+    "configure.json": "f8872486d37d418645c2f8cb571a9afe1b83cc0ebe083a32dfa62a399d9ad9ce",
+    "configure.log": "4c58375922c55143879166d69ce919b0d0bbdb8b5389fddb3da47240331e830d",
+    "build.json": "a3cb803a87fe42e820166b0c43b1b621e4fd346f7bdb7f76d63667215dce30e9",
+    "build.log": "a5a50f6efca4d4852936a6de4540a189f484869536ebc96172712f949b017357",
+    "compile_commands.json": "144ee0331aa52efbc481794d7691f6ae75252e1fab422930d273232888ee4dc2",
+    "matched-runtime-compile-commands.json": "42d298fdea5b71dcea34aa67f2c75ac8ef6b1d5720ecf5245fe358380c1b9c08",
+    "target.json": "da01568aa036f6307fe67a4f274ab253d91f00ebf6d080db85e2428383167767",
+    "target-json.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "target-comparison.json": "5760d697a8c762392ed5670e5a702e0091b6c8fca8a9d351d7cf9324498f61ae",
+    "bootstrap-inputs.json": "213a906f5cfedc693fe24525d1f9ba37fc6c92114fe26161ad919106d2301955",
+    "selected-tests.json": "a33a56908e92729099d376d1b7e3d06c784041bafd4be95e0b7e85fb193257f8",
+    "semantic.log": "ae55c4a3458b9afb524e35ad3bfa4fdb526696ac218768f1d6f86e6dd5855669",
+    "program.log": "dc8a8f92e817ed7aceb6b2b5cd61655306eda7fb65ec0dcddc9a94c3f0abbf1c",
+    "native-calls.log": "c16c0236e6a1a7980e96cdda58605cf827197696e8242c852239f789292bb2dc",
+    "record-values.log": "c62edc4394386c28b59ac3212cf12fb8182d344b24100faf5c86937c4c7f12b2",
+    "record-compatibility.log": "5efa2d443cafc532700be00cd9c0d1f8b7e8ad5fd5e2709346a8e664fab71da9",
+    "asset-packaging-chibi.log": "7f424efa9914ca00c5530e35a9915d2de89e2731592d70a5e883a075a765a2f3",
+    "package-tests.log": "da9e801c7f6b43e20ba121ead85600be86731d90d67c6dd4c1c8b536b62c3f4b",
+    "package-compiler-chibi-types.log": "7d78726b844bee355ad5b92f66cd083aae44a6556c3f178a59dce1f60cd13421",
+    "record-prepared.log": "f3ff5abf6a78cc0cf9891b8afd3cc7dc1fc2a522c44a604c83253a64f72e5bae",
+    "borrow.log": "5e613669e87d35b0ab3bed882adca4521b009ea7cba4d1a39713257f6089164c",
+    "component-write.log": "8f81b43b9ad65db953364a4cb947ef7885de354cbca097f00dc84cbd12c19d1d",
+    "component-write-layout.log": "2a7ce5b2f8dd471378f576e271aedbb21bbe51439f3c12234bd316a4ad72ad72",
+    "package-compiler-chibi-sharing.log": "d30044232071e2af704d24a08d136e476c4528f4390e407a3e8baabd6d6eab38"
+  },
+  "helper_patches": [],
+  "source_file_count": 3472,
+  "source_files_manifest_sha256": "705daedcc22112056d1ae5e6134e4fad069014ce868f9c6a56e6c32a42e8424e",
+  "capture_wall_seconds": 3.898466791957617
+}

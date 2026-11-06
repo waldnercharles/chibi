@@ -1,0 +1,1261 @@
+{
+  "manifest": {
+    "format": 1,
+    "version": 7,
+    "minimum": 6,
+    "revision": "experimental-math-7c6-source-tree8e97cbaf",
+    "entry": "0x140a9546d9e8c296",
+    "closure": {
+      "file": "compiler.chibip",
+      "bytes": 22469206,
+      "sha256": "f1a6bdffc9d8bec2de2b55f61bad48a2d8593c2a8ab1fc21cca42f46a6497c9c"
+    },
+    "project": "/project",
+    "core": "/sdk/core",
+    "sources": [
+      {
+        "path": "package_compiler/Compile.chibi",
+        "bytes": 150444,
+        "sha256": "360b53e36073e5355e817652d559d429a5414fe8f698965f1967f203fbdecf0d"
+      },
+      {
+        "path": "package_compiler/Body.chibi",
+        "bytes": 180925,
+        "sha256": "5a7f9dc60a56264fc55a98baa63c864150e80e5ce35055da726453a2fa405614"
+      },
+      {
+        "path": "package_compiler/Steps.chibi",
+        "bytes": 312902,
+        "sha256": "7f46d8000590d367884ba8bbf8162fd2fb099cab16cf3ceed5491a32da9d59f0"
+      },
+      {
+        "path": "package_compiler/Maps.chibi",
+        "bytes": 29459,
+        "sha256": "351d13270cdfffcda31f35026681b33933e9fde05babb221fc963976061add00"
+      },
+      {
+        "path": "package_compiler/References.chibi",
+        "bytes": 40733,
+        "sha256": "d73825ac0b16dd082005650699e2bd6a35987592103a553f76fd0b5783414852"
+      },
+      {
+        "path": "package_compiler/Pointers.chibi",
+        "bytes": 52385,
+        "sha256": "b33a3530e4c4d3cc955d8e5332e4a0946c2b6aa3beeb7018d17e0f974fa34b48"
+      },
+      {
+        "path": "package_compiler/Tasks.chibi",
+        "bytes": 11882,
+        "sha256": "43c5ec60e6a9d87490dabe19a2ce379cc0a57c40c2d88d9ffeebaa60c0700970"
+      },
+      {
+        "path": "package_compiler/TaskResults.chibi",
+        "bytes": 10463,
+        "sha256": "dfb8db278474f39ccec2c5066ae13137d885eca76c430b32dcfe0cc3b86bfef1"
+      },
+      {
+        "path": "package_compiler/Tree.chibi",
+        "bytes": 2578,
+        "sha256": "3bd2e4e95811ca0e87b169b37d4ce64d89aefbb33f8623b65a553e740ef2d31a"
+      },
+      {
+        "path": "package_compiler/Number.chibi",
+        "bytes": 29513,
+        "sha256": "ee35041c17a0ac6bd76502dac8ecccac765f29dc562bb7408dcfbe5bd807a0e2"
+      },
+      {
+        "path": "package_compiler/Optional.chibi",
+        "bytes": 20734,
+        "sha256": "7314b48d92d2daa35348c30ed467b8976189cc83ca36ba31c408678c2604f3a0"
+      },
+      {
+        "path": "package_compiler/Sequences.chibi",
+        "bytes": 61586,
+        "sha256": "d963c2f14a2350de551c17a71e758bccbab188b6d4b8ea1a929dedf157cafb97"
+      },
+      {
+        "path": "package_compiler/Queries.chibi",
+        "bytes": 93003,
+        "sha256": "772064ffa7540a34d1beb7070da58d208b5d51e6b5111e9bd23e6fb7648c1b28"
+      },
+      {
+        "path": "package_compiler/QueryLoops.chibi",
+        "bytes": 12308,
+        "sha256": "6d731bf9a6a97533119dc83c186119f4ff9070a681bb5be890e9d432198be588"
+      },
+      {
+        "path": "package_compiler/Behavior.chibi",
+        "bytes": 57051,
+        "sha256": "18ee4b37aaf54288c4be665fecf1fff2bb95e4153dcad0821e82a21e91e30083"
+      },
+      {
+        "path": "package_compiler/Scalar.chibi",
+        "bytes": 115064,
+        "sha256": "56b16ed77fde1029905871c4d60a873e7bee8f4f29143be3bfa5b02404b8ad6b"
+      },
+      {
+        "path": "package_compiler/Math.chibi",
+        "bytes": 75387,
+        "sha256": "7fa30b00f73316cef388177d0d8120419cd9648f5cb1e48c9ef05411eaf6d691"
+      },
+      {
+        "path": "syntax_diagnostics/Diagnostics.chibi",
+        "bytes": 2282,
+        "sha256": "dc105eb98b6953ff601b06f111e6074e5c0d7303a8905a80940e05b6700032b1"
+      },
+      {
+        "path": "/sdk/core/strings/Strings.chibi",
+        "bytes": 16404,
+        "sha256": "3f0fae1a91331d27503b669db1a57b40591166a16390c2053f288399ff1958df"
+      },
+      {
+        "path": "source_snapshot/Snapshot.chibi",
+        "bytes": 15871,
+        "sha256": "bb662e8df68092ad8365084ee3d3ba325637373a7549b5d41545aafa0f6ca622"
+      },
+      {
+        "path": "compiler_syntax/Syntax.chibi",
+        "bytes": 1529,
+        "sha256": "04b72db15e4f4792a7ea6d50104fe30fa0b05b8e6118320e11221a42b7f6c5c4"
+      },
+      {
+        "path": "package_routes/Routes.chibi",
+        "bytes": 7736,
+        "sha256": "2de8725453c78db7f8cd5887e66e618dcc8416fa2cdfa68fb2b76505fe156228"
+      },
+      {
+        "path": "package_syntax/Extract.chibi",
+        "bytes": 4276,
+        "sha256": "df4c6779fac436805397db0a9d70916532c21a97e2f08802445cf9e7a49a9146"
+      },
+      {
+        "path": "package_graph/Graph.chibi",
+        "bytes": 13271,
+        "sha256": "e5f06724c34b2166fdd847bd35497f09da95142f5f5034448bb26e328a5ea8da"
+      },
+      {
+        "path": "package_paths/Paths.chibi",
+        "bytes": 2274,
+        "sha256": "3c59a5bcac930313ae83fd7fe98e12915f3be613870548ddfd3d57c66757da30"
+      },
+      {
+        "path": "lexical_binding/Binding.chibi",
+        "bytes": 8673,
+        "sha256": "d39acdf6f1aaa3f7a43f7505daee4676401288f4b7ea9934a587e3f2e01a52a1"
+      },
+      {
+        "path": "prepared_writer/Writer.chibi",
+        "bytes": 40444,
+        "sha256": "2dcc3d41a4feb3e95855d9de860eaf36b1347ae96bdab0d7bd3280720a838081"
+      },
+      {
+        "path": "math_types/Types.chibi",
+        "bytes": 9036,
+        "sha256": "db0a52e91c89b97fa91d121d745c3b5607ecee7f76cf4cb6cda8d4173b592e68"
+      },
+      {
+        "path": "math_types/Functions.chibi",
+        "bytes": 4634,
+        "sha256": "745e16490fa4c2fed8980a347a65a5a2debcac0699b8b3aad31bcccf54865d64"
+      },
+      {
+        "path": "scalar_facts/Facts.chibi",
+        "bytes": 16982,
+        "sha256": "7f8d083b28ff13aa99e881ff715b503fafcf6244a150852ec7fb0e8f0b3e7f50"
+      }
+    ],
+    "target": [
+      {
+        "pointer_storage": 9,
+        "pointer_size": 8,
+        "value_size": 48,
+        "payload_offset": 8,
+        "arguments_offset": 168,
+        "delta_seconds_offset": 344,
+        "results_offset": 208,
+        "error_status_offset": 496,
+        "type_offset": 0,
+        "container_offset": 16,
+        "name_offset": 24,
+        "record_offset": 32,
+        "schema_offset": 40,
+        "count_offset": 24,
+        "items_offset": 32,
+        "data_offset": 40,
+        "stride_offset": 48,
+        "map_count_offset": 96,
+        "data_failure": 4,
+        "argument_failure": 7,
+        "assert_failure": 3
+      },
+      750639905608983243,
+      [
+        "CONSTANT",
+        "VARIABLE",
+        "DELTA",
+        "ARGUMENT",
+        "LOCAL",
+        "PRESENT",
+        "TYPE_NAME",
+        "OWNER",
+        "WORLD",
+        "CONTEXT",
+        "STORAGE_NAME",
+        "ARRAY",
+        "QUERY_VARIABLE",
+        "QUERY",
+        "HOST_SLOT",
+        "HOST_SERVICE",
+        "COMMAND_SERVICE",
+        "COMMAND_RESULT",
+        "OWN_NAME",
+        "COPY_STRING",
+        "COPY_ARRAY",
+        "INTERN_STRING",
+        "STRING_EQUAL",
+        "STATE_SELECT",
+        "RANDOM",
+        "ADD",
+        "SUB",
+        "MUL",
+        "DIV",
+        "MOD",
+        "NEG",
+        "ABS",
+        "MIN",
+        "MAX",
+        "CONVERT",
+        "CAST",
+        "FLAGS",
+        "LT",
+        "LE",
+        "GT",
+        "GE",
+        "EQ",
+        "NE",
+        "SELECT",
+        "BIT_AND",
+        "BIT_OR",
+        "BIT_XOR",
+        "BIT_NOT",
+        "SHL",
+        "SHR",
+        "SIN",
+        "COS",
+        "TAN",
+        "ASIN",
+        "ACOS",
+        "ATAN",
+        "EXP",
+        "LOG",
+        "LOG10",
+        "FRACT",
+        "SIGN",
+        "SQRT",
+        "FLOOR",
+        "CEIL",
+        "ROUND",
+        "POW",
+        "ATAN2",
+        "MOD_F32",
+        "MOD_F64",
+        "HYPOT",
+        "FMA",
+        "RANDOM_RANGE",
+        "ENTITY",
+        "COMPONENT",
+        "COMPONENT_READ",
+        "COLUMN",
+        "COLUMN_TRY",
+        "ROW",
+        "INDEX",
+        "LOAD",
+        "READ",
+        "RETRIGGER",
+        "STORE",
+        "STORE_VALUE",
+        "RESULT",
+        "SAVE",
+        "RESULT_PRESENT",
+        "RESULT_TYPE_NAME",
+        "RESULT_ARRAY",
+        "STORE_HEADER",
+        "STORE_TYPE_NAME",
+        "REQUIRE",
+        "ASSERT",
+        "WRITE",
+        "COMPONENT_WRITE",
+        "COMMAND_ARGUMENT",
+        "COMMAND_OUTPUT",
+        "COMMAND",
+        "COMMAND_BEGIN",
+        "HOST_CALL",
+        "INVOKE",
+        "SUSPEND",
+        "DELAY",
+        "POINT",
+        "WATCH_BEGIN",
+        "WATCH_RESET",
+        "WATCH_VALUE",
+        "WATCH_PRESENT",
+        "WATCH_END",
+        "TRACE",
+        "CHECK",
+        "CALL_CHECK",
+        "ENTER",
+        "LEAVE",
+        "FAIL",
+        "JUMP",
+        "BRANCH",
+        "RETURN",
+        "SOURCE_POINT",
+        "SOURCE_WATCH",
+        "END"
+      ],
+      [
+        {
+          "name": "format_text",
+          "first": 0,
+          "parameters": 2,
+          "results": 1,
+          "variadic": true,
+          "effects": 0
+        },
+        {
+          "name": "text_equal",
+          "first": 3,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 0
+        },
+        {
+          "name": "text_byte_length",
+          "first": 6,
+          "parameters": 1,
+          "results": 1,
+          "variadic": false,
+          "effects": 0
+        },
+        {
+          "name": "text_byte_at",
+          "first": 8,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 0
+        },
+        {
+          "name": "text_slice",
+          "first": 11,
+          "parameters": 3,
+          "results": 1,
+          "variadic": false,
+          "effects": 0
+        },
+        {
+          "name": "text_bytes",
+          "first": 15,
+          "parameters": 1,
+          "results": 1,
+          "variadic": false,
+          "effects": 0
+        },
+        {
+          "name": "make_array",
+          "first": 17,
+          "parameters": 1,
+          "results": 1,
+          "variadic": true,
+          "effects": 1
+        },
+        {
+          "name": "get",
+          "first": 19,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "length",
+          "first": 22,
+          "parameters": 1,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "last_index",
+          "first": 24,
+          "parameters": 1,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "is_empty",
+          "first": 26,
+          "parameters": 1,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "is_not_empty",
+          "first": 28,
+          "parameters": 1,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "is_valid_index",
+          "first": 30,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "contains",
+          "first": 33,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "find",
+          "first": 36,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "identical",
+          "first": 39,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "append",
+          "first": 42,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "add_unique",
+          "first": 45,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "extend",
+          "first": 48,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "set_array_elem",
+          "first": 51,
+          "parameters": 3,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "insert",
+          "first": 55,
+          "parameters": 3,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "remove_index",
+          "first": 59,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "remove_item",
+          "first": 62,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "clear",
+          "first": 65,
+          "parameters": 1,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "reverse",
+          "first": 67,
+          "parameters": 1,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "swap",
+          "first": 69,
+          "parameters": 3,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "resize",
+          "first": 73,
+          "parameters": 2,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "slice",
+          "first": 76,
+          "parameters": 3,
+          "results": 1,
+          "variadic": false,
+          "effects": 1
+        },
+        {
+          "name": "compiler_json_string",
+          "first": 80,
+          "parameters": 1,
+          "results": 3,
+          "variadic": false,
+          "effects": 0
+        },
+        {
+          "name": "compiler_json_value_string",
+          "first": 84,
+          "parameters": 1,
+          "results": 3,
+          "variadic": false,
+          "effects": 0
+        },
+        {
+          "name": "compiler_syntax_parse",
+          "first": 88,
+          "parameters": 1,
+          "results": 15,
+          "variadic": false,
+          "effects": 0
+        }
+      ],
+      [
+        {
+          "name": "Format",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Arg0",
+          "storage": -2,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Result",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "A",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "B",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Result",
+          "storage": 1,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Value",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Result",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Value",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Index",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Result",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Value",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Start",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Count",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Result",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Value",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Result",
+          "storage": 6,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Item",
+          "storage": 0,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Index",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Item",
+          "storage": 0,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Return Value",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Return Value",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Return Value",
+          "storage": 1,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Return Value",
+          "storage": 1,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Index",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Return Value",
+          "storage": 1,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Item",
+          "storage": 0,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Return Value",
+          "storage": 1,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Item",
+          "storage": 0,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Return Value",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Other Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Return Value",
+          "storage": 1,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Item",
+          "storage": 0,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Item",
+          "storage": 0,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Other Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Index",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Item",
+          "storage": 0,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Index",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Item",
+          "storage": 0,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Index",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Item",
+          "storage": 0,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Index",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Other Index",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Index",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "Start",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Count",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "Array",
+          "storage": 0,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "literal",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "valid",
+          "storage": 1,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "value",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "byte_length",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "literal",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "valid",
+          "storage": 1,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "value",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "byte_length",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "text",
+          "storage": 13,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "root",
+          "storage": 6,
+          "container": 0,
+          "c_string": false
+        },
+        {
+          "name": "kinds",
+          "storage": 13,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "starts",
+          "storage": 6,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "ends",
+          "storage": 6,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "rows",
+          "storage": 6,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "columns",
+          "storage": 6,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "parents",
+          "storage": 6,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "first_children",
+          "storage": 6,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "next_siblings",
+          "storage": 6,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "errors",
+          "storage": 1,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "missing",
+          "storage": 1,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "has_errors",
+          "storage": 1,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "fields",
+          "storage": 13,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "is_named",
+          "storage": 1,
+          "container": 1,
+          "c_string": false
+        },
+        {
+          "name": "is_extra",
+          "storage": 1,
+          "container": 1,
+          "c_string": false
+        }
+      ],
+      [
+        11766263161483317927,
+        2488592934114488867,
+        2253635698253073560,
+        11057670614599135794,
+        9751228472515978090,
+        16063057558298538155,
+        17242165570387488779,
+        12343909921556459566,
+        17083074289450012770,
+        11058014659850463058,
+        1683859838082548203,
+        16323488948382029418,
+        9113434692769582988,
+        5467248588562738232,
+        13611205187560399313,
+        13680434747823500096,
+        10031281214538873543,
+        9030429985650009275,
+        15392606041591830683,
+        17387169772646433363,
+        10131322737650309994,
+        1063631936535020129,
+        16727144441193224855,
+        6605004713616652801,
+        11519237158948198813,
+        17906106193223333194,
+        3978275859795887710,
+        2864553297212340903,
+        18085313995829699436,
+        14978198957586829996,
+        10923784612712179670,
+        14875510901342301758,
+        894073180469776815,
+        16023555187956048836,
+        8687968834157511617,
+        16577023619922528936,
+        10791124252785537111,
+        773185895515206741,
+        4384905729313988471,
+        8010233377337498195,
+        8746412179663267998,
+        7399617057581346390,
+        17840489223285925927,
+        1067702335548618913,
+        11088276214961122186,
+        6743002519690195990,
+        4051959292006589208,
+        17046019287460786684,
+        11477201415349259395,
+        18048060469725558740,
+        13246221053306855936,
+        2721077971776083750,
+        14634955569547237247,
+        10669239291351873401,
+        9047479961286963383,
+        7536676735324318578,
+        2237180186179475025,
+        7549062905279916309,
+        9759211591336674878,
+        7549062905279916309,
+        7774473451661455710,
+        17716896529171580466
+      ]
+    ]
+  },
+  "manifest_sha256": "25e11f25b9c4cd71a48bdc4a907df76df3ddf2191d75eb1651862d5b3214f73c",
+  "authoritative_bootstrap_unchanged": true,
+  "recovered_same": true,
+  "snapshot_artifact_delta": "only ignored validation snapshot tools/compiler/bootstrap pair; authoritative candidate and frozen19ad unchanged"
+}

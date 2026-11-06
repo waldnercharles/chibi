@@ -299,7 +299,6 @@ static void finish_reference_iteration(const script_effect_facts *out, script_di
             continue;
         }
         const script_statement *body = &out->statements[loop->body];
-        const script_expression *source = &out->expressions[loop->expression];
         bool unsafe = (body->effects & (SCRIPT_EFFECT_SUSPEND | SCRIPT_EFFECT_HOST |
                                         SCRIPT_EFFECT_STRUCTURAL)) != 0;
         for (int j = 0; j < out->expression_count; j++) {
@@ -307,15 +306,14 @@ static void finish_reference_iteration(const script_effect_facts *out, script_di
             if (e->range.start < body->range.start || e->range.end > body->range.end) {
                 continue;
             }
-            /* While borrowed, the source can only be reached through item.
-             * Other bindings hold snapshots, not aliases to its mutable bank. */
-            unsafe |= e->kind == SCRIPT_EXPR_SYMBOL && e->symbol == source->symbol;
+            /* Logical references resolve their original owner and index on
+             * each access, so source aliases cannot stale a buffer address. */
             unsafe |= e->kind == SCRIPT_EXPR_CALL &&
                       (e->effects & SCRIPT_EFFECT_WRITE);
         }
         if (unsafe) {
             script_diagnostic d = { .range = loop->range };
-            snprintf(d.message, sizeof d.message, "Reference iteration cannot suspend, start tasks, call mutating procedures or access its borrowed source binding");
+            snprintf(d.message, sizeof d.message, "Reference iteration cannot suspend, start tasks or call mutating procedures");
             apush(*diagnostics, d);
         }
     }

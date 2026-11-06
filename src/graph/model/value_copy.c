@@ -15,14 +15,23 @@ static arena *storage(graph *g)
 }
 pin_array *pin_array_clone_to_graph(graph *g, const pin_array *src)
 {
-    return g && src ? pin_array_snapshot_to_arena(storage(g), src) : NULL;
+    if (!g || !src) {
+        return NULL;
+    }
+    pin_value source = { .type = src->element_type,
+                         .type_name = src->type_name,
+                         .record = src->record,
+                         .container = PIN_CONTAINER_ARRAY,
+                         .ptr = (void *)src },
+              copy;
+    return pin_value_capture_to_arena(storage(g), &copy, &source) ? NULL : copy.ptr;
 }
 int pin_value_copy_to_graph(graph *g, pin_value *dst, const pin_value *src)
 {
     if (!g || !dst || !src) {
         return -1;
     }
-    return pin_value_snapshot_to_arena(storage(g), dst, src);
+    return pin_value_capture_to_arena(storage(g), dst, src);
 }
 
 pin_value graph_text_value(graph *g, const char *bytes, size_t length)

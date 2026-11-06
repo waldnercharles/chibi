@@ -189,6 +189,7 @@ static bool key_value(unsigned char **key, const pin_value *value, int depth)
                    key_bytes(key, text.bytes, text.length);
         }
         case PIN_STRUCT: return key_struct(key, value, depth);
+        case PIN_POINTER: return !value->ptr && key_word(key, 0);
         case PIN_UNION: {
             const pin_union *tagged = value->ptr;
             if (!key_word(key, tagged != NULL)) {

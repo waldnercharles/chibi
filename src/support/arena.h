@@ -8,6 +8,8 @@
 typedef struct arena_block arena_block;
 typedef struct arena_allocation arena_allocation;
 typedef struct arena_page arena_page;
+typedef struct arena_cleanup arena_cleanup;
+typedef struct arena_resource arena_resource;
 typedef void (*arena_marker)(void *user, const void *address);
 typedef void (*arena_tracer)(const void *value, const void *shape, arena_marker mark, void *user);
 typedef struct arena
@@ -19,10 +21,14 @@ typedef struct arena
     arena_page *pages;             /* Live values by each page they touch. */
     size_t page_capacity;          /* Index slots, a power of two. */
     size_t page_count;             /* Occupied index slots. */
-    size_t allocated;              /* Collectable bytes since the last sweep. */
-    size_t kept;                   /* Collectable bytes the last sweep kept. */
-    const void *copied_from;       /* Source of the last copy remembered. */
-    const void *copy;              /* That copy, which this arena holds. */
+    size_t allocated; /* Value and new resource bytes since the last sweep. */
+    size_t kept;      /* Value and resource bytes the last sweep kept. */
+    arena_cleanup *cleanups; /* Ordinary allocations with external ownership. */
+    arena_resource *resources; /* Unique resources retained by live allocations. */
+    size_t resource_capacity, resource_count, retained_bytes;
+    size_t cleanup_count;
+    const void *copied_from; /* Source of the last copy remembered. */
+    const void *copy;        /* That copy, which this arena holds. */
     bool collectable;
 } arena;
 
@@ -42,6 +48,19 @@ uint64_t arena_block_allocations();
  * Values no collection marks become reusable; live addresses stay stable. */
 void arena_init_collectable(arena *a);
 void arena_set_trace(arena *a, const void *value, arena_tracer trace, const void *shape);
+/* Transfers one retained reference to an allocation. Attach at most once, using
+ * its starting address and non-null resource/release. Release runs exactly once
+ * when that allocation retires, before its storage is reused or freed. It must
+ * not mutate this arena or depend on other arena allocations remaining live.
+ * Shared resource identities must report the same retained_bytes; accounting
+ * charges their bytes once per arena until the last attachment retires. */
+void arena_set_cleanup(
+    arena *a,
+    const void *allocation,
+    void (*release)(void *),
+    void *resource,
+    size_t retained_bytes
+);
 /* One mark and sweep over collectable arenas whose values may point into one
  * another. A mark finds its value by address in logarithmic time, and each
  * marked value is traced once. The arenas must outlive the collection. */

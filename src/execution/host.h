@@ -73,6 +73,11 @@ typedef struct
      * produce the same outputs until behavior state or host state changes.
      * Allows reuse during uninterrupted, unobserved execution. */
     bool reusable;
+    /* Trusted language sequence kernel: opaque managed values stay in the
+     * caller heap. The callback handles views and opaque managed pointers
+     * safely; retained values require owned capture or managed roots. Only
+     * service-free value callbacks may opt in; this policy is part of the ABI. */
+    bool language_values;
 } node_host_call;
 /* Synchronous commands may append deferred host effects, but cannot dispatch
  * graphs, flush structural effects or invalidate behavior/column storage. The

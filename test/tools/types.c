@@ -5,6 +5,7 @@
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/map.h"
+#include "types/pointer.h"
 #include "types/record.h"
 #include "types/text.h"
 #include "types/trace.h"
@@ -232,9 +233,14 @@ type_catalog_pack type_catalog_pack_at(int index)
 static arena snapshots;
 static pin_array *source;
 static av_doc *source_document;
+static bool pointer_project_catalog;
 
 static void release_values()
 {
+    if (pointer_project_catalog) {
+        type_catalog_set_project(NULL);
+        pointer_project_catalog = false;
+    }
     pin_array_free(source);
     source = NULL;
     arena_free(&snapshots);
@@ -1076,9 +1082,42 @@ TEST_CASE(types_authored_record_document_uses_nested_native_layout)
     );
     return true;
 }
+TEST_CASE(types_nested_pointer_records_require_owned_layout_support)
+{
+    typedef struct
+    {
+        pin_pointer *alias;
+    } pointer_row;
+    static const type_field nested_fields[] = {
+        { .name = "alias",
+          .type = PIN_POINTER,
+          .type_name = "test.pointer.string",
+          .offset = offsetof(pointer_row, alias),
+          .size = sizeof(pin_pointer *) }
+    };
+    static const type_desc nested = { .name = "test.pointer.row",
+                                      .size = sizeof(pointer_row),
+                                      .fields = nested_fields,
+                                      .field_count = 1 };
+    static const type_desc *const types[] = { &nested };
+    static const type_catalog_pack pack = { .types = types, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    pointer_project_catalog = true;
+    const type_field fields[] = {
+        { .name = "nested", .type = PIN_STRUCT, .type_name = "test.pointer.row" }
+    };
+    REQUIRE(!pin_record_create(&snapshots, "test.pointer.outer", 9872, fields, 1));
+    REQUIRE(!type_is_plain(&nested));
+    /* A flat record owns its pointer-field spelling and layout without a
+     * mutable nested catalog descriptor. This supported case still succeeds. */
+    const pin_record *flat = pin_record_create(&snapshots, "test.pointer.flat", 9873, nested_fields, 1);
+    REQUIRE(flat && pin_record_valid(flat));
+    return true;
+}
 void test_tool_types()
 {
     pu_setup(NULL, release_values);
+    RUN_TEST_CASE(types_nested_pointer_records_require_owned_layout_support);
     RUN_TEST_CASE(types_document_array_collection_retains_split_payloads);
     RUN_TEST_CASE(types_authored_record_document_uses_nested_native_layout);
     RUN_TEST_CASE(types_catalog_composes_ordered_packs);

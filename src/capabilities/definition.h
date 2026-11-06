@@ -76,7 +76,7 @@ typedef struct
     const char *component_type, *component_field, *aggregate_type;
     int component_entity, component_value; /* Filtered DATA ordinals. */
     script_catalog_flow flow;              /* Filtered DATA/EXEC ordinals. */
-    bool pure, variadic, variadic_optional, numeric_aggregate, event_sender;
+    bool pure, variadic, variadic_optional, numeric_aggregate, event_sender, language_values;
 } native_capability_definition;
 typedef enum
 {

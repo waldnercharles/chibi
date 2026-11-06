@@ -7,6 +7,7 @@
 #include "support/xalloc.h"
 #include "types/catalog.h"
 #include "types/map.h"
+#include "types/record.h"
 #include "types/union.h"
 
 #include <assert.h>
@@ -242,6 +243,22 @@ static uint64_t context_abi()
                               offsetof(pin_value, container),
                               offsetof(pin_value, type_name),
                               offsetof(pin_value, record),
+                              sizeof(pin_string),
+                              offsetof(pin_string, bytes),
+                              offsetof(pin_string, length),
+                              offsetof(pin_string, owner),
+                              PIN_CONTAINER_VIEW,
+                              sizeof(node_host_call),
+                              offsetof(node_host_call, language_values),
+                              sizeof(pin_record),
+                              offsetof(pin_record, type),
+                              offsetof(pin_record, native),
+                              offsetof(pin_record, frozen),
+                              sizeof(type_desc),
+                              offsetof(type_desc, alias),
+                              offsetof(type_desc, carrier),
+                              sizeof(type_field),
+                              offsetof(type_field, layout),
                               sizeof(pin_array),
                               offsetof(pin_array, element_type),
                               offsetof(pin_array, type_name),
@@ -251,6 +268,9 @@ static uint64_t context_abi()
                               offsetof(pin_array, items),
                               offsetof(pin_array, data),
                               offsetof(pin_array, stride),
+                              offsetof(pin_array, storage),
+                              offsetof(pin_array, owner),
+                              offsetof(pin_array, offset),
                               sizeof(pin_map),
                               offsetof(pin_map, key_type),
                               offsetof(pin_map, value_type),

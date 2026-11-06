@@ -14,6 +14,7 @@
 #include "types/catalog.h"
 #include "types/record.h"
 #include "types/text.h"
+#include "types/trace.h"
 
 #include <assert.h>
 #include <math.h>
@@ -369,7 +370,7 @@ const char *entities_global_name_at(const entities *entities, int index)
 
 static bool global_value_header_valid(const pin_value *value)
 {
-    if (!value || value->type <= PIN_FLOW || value->type > PIN_UNION ||
+    if (!value || value->type <= PIN_FLOW || value->type >= PIN_POINTER ||
         value->container < PIN_CONTAINER_SINGLE ||
         value->container > PIN_CONTAINER_MAP) {
         return false;
@@ -387,7 +388,7 @@ static bool global_value_type_matches(const pin_value *left, const pin_value *ri
     bool named = left->type == PIN_STRUCT || left->type == PIN_ENUM ||
                  left->type == PIN_HANDLE;
     return left->type == right->type && left->container == right->container &&
-           pin_record_same(left->record, right->record) &&
+           pin_value_layout_same(left, right) &&
            (!named || (!left->type_name && !right->type_name) ||
             (left->type_name && right->type_name &&
              !strcmp(left->type_name, right->type_name)));
@@ -496,7 +497,8 @@ int entities_get_global_value(const entities *entities, const char *name, arena 
 
 int entities_set_global_value(entities *entities, const char *name, const pin_value *value)
 {
-    if (!entities || !name || !name[0] || !global_value_header_valid(value)) {
+    if (!entities || !name || !name[0] || !global_value_header_valid(value) ||
+        pin_value_has_managed_pointer(value)) {
         return -1;
     }
     const global_binding *binding = find_global_binding_const(entities, name);
@@ -522,7 +524,7 @@ int entities_set_global_value(entities *entities, const char *name, const pin_va
     /* Validate/copy before changing the namespace or retiring the old owner. */
     arena replacement = { 0 };
     pin_value snapshot;
-    if (pin_value_snapshot_to_arena(&replacement, &snapshot, &coerced)) {
+    if (pin_value_capture_to_arena(&replacement, &snapshot, &coerced)) {
         arena_free(&replacement);
         return -1;
     }
@@ -648,14 +650,15 @@ int entities_request_event(entities *entities, ecs_entity target, const char *na
         return FLOW_ERR_ARGUMENT;
     }
     for (int i = 0; i < inputs.count; i++) {
-        if (inputs.values[i].container != PIN_CONTAINER_SINGLE) {
+        if (inputs.values[i].container != PIN_CONTAINER_SINGLE ||
+            pin_value_has_managed_pointer(&inputs.values[i])) {
             return FLOW_ERR_ARGUMENT;
         }
     }
     event_request event = { .target = target, .name = xstrdup(name) };
     for (int i = 0; i < inputs.count; i++) {
         pin_value copy;
-        if (pin_value_snapshot_to_arena(&event.storage, &copy, &inputs.values[i]) != 0) {
+        if (pin_value_capture_to_arena(&event.storage, &copy, &inputs.values[i]) != 0) {
             release_event(&event);
             return FLOW_ERR_ARGUMENT;
         }

@@ -57,7 +57,8 @@ static void field(execution_wire *wire, execution_module_event_field_info *f)
     execution_wire_value(wire, &f->initial);
     if (!wire->error &&
         (f->initial.type <= PIN_FLOW || f->initial.type > PIN_ENUM ||
-         f->initial.container > PIN_CONTAINER_MAP ||
+         f->initial.container > PIN_CONTAINER_VIEW ||
+         (f->initial.container == PIN_CONTAINER_VIEW && f->initial.ptr) ||
          (f->default_owner && (!f->has_default || f->initial.type != PIN_HANDLE ||
                                f->initial.container != PIN_CONTAINER_SINGLE)))) {
         wire->error = "Event catalog payload storage or owner default is "

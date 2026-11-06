@@ -332,11 +332,14 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
         if (Is(forest, member, "state_declaration")) {
             name := Text(forest, source, Field(forest, member, "name"));
             declared := ReadType(forest, source, declared_types, no_names, 0, Field(forest, member, "type"));
+            value := Field(forest, member, "value");
+            if (declared.container == ViewContainer && (value < 0 || Is(forest, value, "nil"))) {
+                return Result.Rejected(Diagnose(forest, member, 0, "view state requires an initial value"));
+            }
             if (!Numeric(declared.storage) || declared.container != 0) {
                 return Result.Rejected(Diagnose(forest, member, 0, "state needs a number type"));
             }
             bits: uint64 = 0;
-            value := Field(forest, member, "value");
             if (value >= 0 && Floating(declared.storage)) {
                 literal := Typed(-1, NumberStorage, 0, value);
                 if (!Is(forest, value, "number") && !Is(forest, value, "unary_expression")) {

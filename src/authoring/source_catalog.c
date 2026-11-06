@@ -1092,7 +1092,7 @@ static script_catalog_parameter *parameters(
                 if (type) {
                     value.type_name = type->name;
                 }
-                values[i].has_default = !pin_value_snapshot_to_arena(
+                values[i].has_default = !pin_value_capture_to_arena(
                     &c->storage,
                     &values[i].default_value,
                     &value
@@ -1213,7 +1213,7 @@ static const script_compile_binding *own_compile_bindings(
     for (int i = 0; i < count; i++) {
         owned[i] = bindings[i];
         owned[i].name = (char *)own(c, bindings[i].name);
-        if (!bindings[i].value.is_type && pin_value_snapshot_to_arena(
+        if (!bindings[i].value.is_type && pin_value_capture_to_arena(
                                               &c->storage,
                                               &owned[i].value.value,
                                               &bindings[i].value.value
@@ -1493,7 +1493,7 @@ static bool export_specializations(
         if (value.binding_count && !value.bindings) {
             continue;
         }
-        if (!value.result.is_type && pin_value_snapshot_to_arena(
+        if (!value.result.is_type && pin_value_capture_to_arena(
                                          &c->storage,
                                          &value.result.value,
                                          &input->result.value

@@ -712,7 +712,7 @@ pub CompileFlags :: (source_root: string, build_dir: string, target: string, pro
 SourceFlags :: (source_root: string, build_dir: string, target: string, file: string, profile: Profile,
                 target_flags: string[]) -> string[] {
     language := Language(file);
-    flags := target_flags;
+    flags := slice(target_flags, 0, length(target_flags));
     if (length(SourceIncludes(target, file)) > 0 || length(SourceDefines(target, file)) > 0 || language != "c") {
         flags = CompileFlags(source_root, build_dir, target, profile, file, language);
     }
@@ -870,7 +870,7 @@ Add :: (names: string[], name: string) -> string[] {
             return names;
         }
     }
-    added := names;
+    added := slice(names, 0, length(names));
     added.append(name);
     return added;
 }

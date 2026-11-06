@@ -22,6 +22,7 @@ typedef struct
     double min, max;     /* Numeric range; unbounded when equal. */
     bool range_contract; /* Clamp on owning writes; false means slider hint. */
     double range_default; /* NaN replacement, clamped too; zero when unspecified. */
+    const struct type_desc *layout; /* Frozen nested struct layout, when owned. */
 } type_field;
 
 typedef struct type_desc
@@ -30,7 +31,9 @@ typedef struct type_desc
     size_t size;
     const type_field *fields;
     int field_count;
-    const char *alias_of; /* optional underlying nominal type name */
+    const char *alias_of;          /* optional underlying nominal type name */
+    const struct type_desc *alias; /* Frozen alias target, when owned. */
+    const pin_record *carrier; /* Internal owned layout carrier, otherwise NULL. */
 } type_desc;
 
 /* Payload-free presence marker. Its one-byte backing is canonical zero. */
@@ -44,6 +47,9 @@ typedef struct
     void *user;
 } type_resolver;
 const type_desc *type_resolve(type_resolver, const char *name);
+/* Carried layouts take precedence over a potentially newer catalog. */
+const type_desc *type_field_type(const type_field *, type_resolver);
+const type_desc *type_alias_type(const type_desc *, type_resolver);
 
 typedef struct
 {

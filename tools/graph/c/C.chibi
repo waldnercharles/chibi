@@ -78,7 +78,7 @@ Record :: (output: string) -> string {
 }
 RecordText :: (command: string, inputs: string[], output: string) -> string {
     lines := [command, ""];
-    recorded := inputs;
+    recorded := slice(inputs, 0, length(inputs));
     recorded.append(output);
     for (input in recorded) {
         lines.extend([input, build.file_stamp(input)]);
@@ -218,7 +218,7 @@ pub Start :: (tools: Tools, target: Library, flags: string[], source: string) ->
     object := Object(target, source);
     build.make_directory(strings.Slice(object, 0, strings.LastIndex(object, "/")));
     command := Command(tools, target, flags, source);
-    started := command;
+    started := slice(command, 0, length(command));
     if (tools.launcher != "") {
         started = [tools.launcher];
         started.extend(command);
@@ -277,7 +277,7 @@ pub StageHeaders :: (root: string, headers: string[], destination: string, kept:
             return false;
         }
     }
-    listed := headers;
+    listed := slice(headers, 0, length(headers));
     listed.extend(kept);
     return !build.file_exists(destination) || RemoveUnlisted(destination, "", listed);
 }
@@ -358,7 +358,7 @@ pub CompileEntry :: (tools: Tools, target: Library, flags: string[], source: str
 // on failure.
 pub Link :: (tools: Tools, output: string, objects: string[], flags: string[], libraries: string[]) -> int {
     command := LinkCommand(tools, output, objects, flags, libraries);
-    inputs := objects;
+    inputs := slice(objects, 0, length(objects));
     for (linked in libraries) {
         if (strings.HasPrefix(linked, "/")) {
             inputs.append(linked);

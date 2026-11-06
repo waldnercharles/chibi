@@ -157,7 +157,7 @@ int pin_set_add_owned(arena *storage, pin_array **set, const pin_value *item)
         *set = array;
     }
     bool nominal = item->type == PIN_ENUM || item->type == PIN_HANDLE ||
-                   item->type == PIN_STRUCT;
+                   item->type == PIN_STRUCT || item->type == PIN_POINTER;
     if (item->type != array->element_type || array->count == INT_MAX ||
         (nominal &&
          strcmp(item->type_name ? item->type_name : "", array->type_name ? array->type_name : ""))) {

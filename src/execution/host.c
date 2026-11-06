@@ -1,8 +1,11 @@
 #include "execution/definition.h"
+#include "execution/intrinsics.h"
 #include "execution/service.h"
 #include "support/arena.h"
 #include "support/array.h"
 #include "support/xalloc.h"
+#include "types/array.h"
+#include "types/trace.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -103,7 +106,8 @@ void behavior_function_prepare_data(
         for (int i = 0; i < acount(f->host_calls); i++) {
             apush(
                 data->calls,
-                ((behavior_data_binding){ .invoke = f->host_calls[i].call->invoke,
+                ((behavior_data_binding){ .capability_abi = f->host_calls[i].capability_abi,
+                                          .invoke = f->host_calls[i].call->invoke,
                                           .value = f->host_calls[i].call->value,
                                           .context = f->host_calls[i].call->context,
                                           .action = f->host_calls[i].call->action })
@@ -245,6 +249,90 @@ void behavior_function_rebind_host(
     }
 }
 
+static bool language_values(const behavior_function_host_call *spec,
+                            const behavior_data_binding *binding)
+{
+    const node_host_call *call = spec->call;
+    return call->language_values && call->value && !call->service &&
+           spec->capability_abi && binding->capability_abi == spec->capability_abi &&
+           binding->invoke == call->invoke && binding->value == call->value &&
+           binding->context == call->context && binding->action == call->action;
+}
+const char *behavior_function_host_arguments(behavior_function_context *ctx, int target)
+{
+    const behavior_function *f = ctx->data->function;
+    assert(target >= 0 && target < acount(f->host_calls));
+    const behavior_function_host_call *spec = &f->host_calls[target];
+    const behavior_data_binding *binding = &ctx->data->calls[target];
+    const node_host_call *canonical = execution_intrinsic_resolve(spec->capability_id);
+    if (canonical &&
+        spec->capability_abi == execution_intrinsic_abi(spec->capability_id) &&
+        binding->invoke == canonical->invoke && binding->value == canonical->value &&
+        binding->context == canonical->context && binding->action == canonical->action) {
+        return NULL;
+    }
+    bool language = language_values(spec, binding);
+    for (int i = spec->first; i < spec->result_first; i++) {
+        const char *error = language
+          ? (ctx->managed_heap
+              ? behavior_managed_storage_owner_error(&ctx->managed_heap->storage, &ctx->data->values[i])
+              : "Language sequence requires a managed heap")
+          : pin_value_managed_boundary_error(&ctx->data->values[i]);
+        if (error) {
+            return error;
+        }
+    }
+    return NULL;
+}
+const char *behavior_function_host_results(behavior_function_context *ctx, int target)
+{
+    const behavior_function *f = ctx->data->function;
+    assert(target >= 0 && target < acount(f->host_calls));
+    const behavior_function_host_call *spec = &f->host_calls[target];
+    const behavior_data_binding *binding = &ctx->data->calls[target];
+    const node_host_call *canonical = execution_intrinsic_resolve(spec->capability_id);
+    bool intrinsic = canonical &&
+                     spec->capability_abi ==
+                         execution_intrinsic_abi(spec->capability_id) &&
+                     binding->invoke == canonical->invoke &&
+                     binding->value == canonical->value &&
+                     binding->context == canonical->context &&
+                     binding->action == canonical->action;
+    pin_value *results = ctx->data->values + spec->result_first;
+    bool language = language_values(spec, binding);
+    if (!intrinsic && !language) {
+        for (int i = 0; i < spec->result_count; i++) {
+            const char *error = pin_value_managed_boundary_error(&results[i]);
+            if (error) {
+                memset(results, 0, (size_t)spec->result_count * sizeof *results);
+                return error;
+            }
+        }
+    }
+    if (language) {
+        for (int i = 0; i < spec->result_count; i++) {
+            const char *error = ctx->managed_heap
+              ? behavior_managed_storage_value_error(&ctx->managed_heap->storage, &results[i])
+              : "Language sequence requires a managed heap";
+            if (error) {
+                memset(results, 0, (size_t)spec->result_count * sizeof *results);
+                return error;
+            }
+        }
+    }
+    behavior_function_context imported = { .managed_heap = ctx->managed_heap,
+                                           .arguments = results,
+                                           .argument_count = spec->result_count };
+    const char *error = behavior_function_import_arguments(&imported);
+    if (error) {
+        memset(results, 0, (size_t)spec->result_count * sizeof *results);
+        return error;
+    }
+    if (imported.arguments != results) {
+        memcpy(results, imported.arguments, (size_t)spec->result_count * sizeof *results);
+    }
+    return NULL;
+}
 const char *behavior_function_host_action(behavior_function_context *ctx, int target, uint64_t node_id)
 {
     const behavior_function *f = ctx->data->function;
@@ -252,6 +340,10 @@ const char *behavior_function_host_action(behavior_function_context *ctx, int ta
     const behavior_function_host_call *spec = &f->host_calls[target];
     behavior_data_binding *binding = &ctx->data->calls[target];
     assert(binding->action && spec->outcome_count > 0);
+    const char *argument_error = behavior_function_host_arguments(ctx, target);
+    if (argument_error) {
+        return argument_error;
+    }
     int selected = -1;
     ctx->node_id = node_id;
     ctx->returned_outcome = 0;

@@ -98,6 +98,9 @@ static bool include_type(exports_builder *b, uint64_t id)
 }
 static bool include_signature(exports_builder *b, script_type type)
 {
+    if (type.collection && !include_type(b, type.collection)) {
+        return false;
+    }
     if (!type.nominal) {
         return true;
     }
@@ -107,7 +110,8 @@ static bool include_signature(exports_builder *b, script_type type)
     if (capability_by_id(b, type.nominal)) {
         return include_capability(b, type.nominal);
     }
-    if ((type.storage == PIN_STRUCT || type.storage == PIN_UNION) &&
+    if ((type.storage == PIN_STRUCT || type.storage == PIN_UNION ||
+         type.storage == PIN_POINTER) &&
         !(type.flags & SCRIPT_TYPE_GENERIC)) {
         return reject(b, "Package export references missing nominal type metadata");
     }
@@ -241,6 +245,8 @@ static bool closure(exports_builder *b)
             /* Appending the worklist can move it; retain a shallow value. */
             script_catalog_type type = b->types[type_index++];
             if (!include_signature(b, type.type) ||
+                !include_signature(b, type.element_type) ||
+                !include_signature(b, type.key_type) ||
                 !fields(b, type.fields, type.field_count)) {
                 return false;
             }
@@ -313,7 +319,7 @@ source_package_exports *source_package_exports_new(
             retained[i].name = own(owner, retained[i].name);
             retained[i].unit = own(owner, retained[i].unit);
             if (retained[i].kind == SCRIPT_PACKAGE_CONSTANT &&
-                pin_value_snapshot_to_arena(
+                pin_value_capture_to_arena(
                     &owner->storage,
                     &retained[i].value,
                     &b.members[i].value

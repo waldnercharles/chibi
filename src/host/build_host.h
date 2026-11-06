@@ -5,6 +5,7 @@
 #include "execution/function.h"
 
 #include <signal.h>
+#include <stddef.h>
 
 /* Raise with the Makefile's `build` gate whenever tools/toolchain/Build.chibi
  * needs a capability or syntax that an older host lacks. */
@@ -35,6 +36,15 @@ typedef struct
 {
     chibi_build_compiler *compiler; /* Borrowed for this synchronous invocation. */
     const char *root, *source_path, *source_text, *entry;
+    /* Alternative closed CHIBICLO input; no compiler or source collections.
+     * source_path names its origin for build.program_directory. Borrowed only
+     * during this call; decoded modules own their runtime storage. */
+    const void *artifact;
+    size_t artifact_size;
+    /* Source mode only: validate entry and atomically export the compiled
+     * closure without executing it. Relative paths resolve below root; the
+     * parent directory must exist. No invocation arguments are accepted. */
+    const char *output_artifact;
     const char *core; /* Absolute core collection directory, or NULL for none. */
     const chibi_build_collection *collections; /* Besides core. */
     int collection_count;
@@ -44,8 +54,9 @@ typedef struct
     uintptr_t instruction_budget; /* Zero for the host's default. */
     double deadline;              /* Absolute chibi_build_now() seconds. */
     const volatile sig_atomic_t *cancelled;
-    /* Optional caller lifecycle hook, after compilation and binding but before
-     * authored execution or build children. Not called on preparation failure. */
+    /* Optional caller lifecycle hook after loading and entry validation (and
+     * binding for execution), before publication or authored execution. Not
+     * called on preparation failure. */
     void (*prepared)();
 } chibi_build_options;
 

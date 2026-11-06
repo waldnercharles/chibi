@@ -20,6 +20,9 @@ ROOT = Path(__file__).resolve().parents[1]
 GRAPH_REFERENCE = str(ROOT / os.environ.get('CHIBI_GRAPH_REFERENCE',
                                             'build-cmake' if sys.platform == 'darwin' else 'build'))
 PROCESS_GROUP = 'CHIBI_RUNNER_PROCESS_GROUP'
+# Process tables can take seconds to enumerate on a loaded host. Bound a stuck
+# inspection separately from the caller's test timeout.
+PROCESS_INSPECTION_SECONDS = 5
 TOOLS = {
     'types': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--types'],
     'fixture-format': [str(ROOT / os.environ.get('CHIBI_TOOLS_BUILD_DIR', 'build/test/tools') / 'test_tools'), '--fixture-format',
@@ -322,6 +325,8 @@ TOOLS = {
                                                  '--package-compiler-chibi-behaviors'],
     'language-package-compiler-chibi-behaviors-rest': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                       '--package-compiler-chibi-behaviors-rest'],
+    'language-package-compiler-chibi-queries': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
+                                             '--package-compiler-chibi-queries'],
     'language-package-compiler-chibi-sharing': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
                                                '--package-compiler-chibi-sharing'],
     'language-package-compiler-chibi-debug-free': [str(ROOT / os.environ.get('CHIBI_LANGUAGE_BUILD_DIR', 'build/test/language') / 'test_language'),
@@ -507,7 +512,7 @@ GROUPS = {
     'materials': ['material-destruction', 'material-fluids', 'material-mpm', 'material-thermal',
                   'material-simulation', 'material-ecs', 'material-render', 'material-benchmark',
                   'contact-benchmark'],
-    'language': ['language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-incremental', 'language-ranges', 'language-scalarize', 'language-component-write', 'script-benchmark',
+    'language': ['language', 'language-semantic', 'language-wasm', 'language-execution', 'language-program', 'language-query-program', 'language-incremental', 'language-ranges', 'language-scalarize', 'language-component-write', 'script-benchmark',
                  'language-activation-benchmark', 'language-binding-benchmark', 'language-borrow-benchmark', 'language-incremental-benchmark',
                  'language-binding-schedule', 'language-borrow', 'language-activation-cache', 'language-reductions',
                  'language-headless', 'language-format', 'language-navigation', 'language-publication', 'language-modules', 'language-runtime-attribution',
@@ -547,7 +552,7 @@ def process_children():
     probe = subprocess.Popen(['ps', '-A', '-o', 'pid=,ppid='],
                              stdout=subprocess.PIPE, text=True)
     try:
-        rows, _ = probe.communicate(timeout=1)
+        rows, _ = probe.communicate(timeout=PROCESS_INSPECTION_SECONDS)
     finally:
         if probe.poll() is None:
             probe.kill()
@@ -582,7 +587,7 @@ def cleanup_reader(subreaper):
     try:
         process_children()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
-        raise RuntimeError('test cleanup unavailable: no usable proc children reader or ps; no test started') from error
+        raise RuntimeError(f'test cleanup unavailable: no usable proc children reader or ps ({error}); no test started') from error
     return lambda: process_children().get(os.getpid(), [])
 
 

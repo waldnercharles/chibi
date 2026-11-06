@@ -9,7 +9,8 @@ typedef enum
     BEHAVIOR_ADDRESS,
     BEHAVIOR_REFERENCE,
     /* Immutable invocation-owned UTF-8 snapshot, consumed only by intrinsics. */
-    BEHAVIOR_STRING_CURSOR
+    BEHAVIOR_STRING_CURSOR,
+    BEHAVIOR_QUERY_CURSOR
 } behavior_value_kind;
 typedef enum
 {

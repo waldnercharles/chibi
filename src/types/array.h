@@ -23,6 +23,7 @@ typedef struct pin_array
      * snapshot; owned runtime sets update it on append. */
     int *buckets;
     unsigned bucket_mask;
+    const pin_schema *schema; /* Owned native element layouts, including empty arrays. */
 } pin_array;
 
 bool pin_array_valid(const pin_array *);

@@ -1,5 +1,224 @@
 # Chibi toolchain consolidation and self-hosting
 
+## Flat typed query iterators, approved 2026-10-22
+
+Summary: Replace system-only query spellings with one flat typed query
+description, usable by scheduled systems and explicit iteration. Keep the
+existing ECS term planner and system tuple continuation identity.
+
+Context: Native queries already separate plans from cursors. The managed
+pointer dependency is integrated locally; component references must survive
+relocation and suspension through relookup of their original incarnation.
+The original checkout's design-notes edit remains there and will be reconciled
+with the completed implementation documentation.
+
+System impact: A query has an immutable typed description and captured values;
+each iteration owns its cursor. A row evaluator creates read-only component
+values, managed component references, generator identities and pure computed
+values in source order. Guards short-circuit later computations. Scheduled
+systems retain independent continuations per complete root/target tuple.
+
+Changes and ownership:
+- Grammar and authoring formatter: shared flat lists of component parameters,
+  generators, computed bindings and `if` guards; `query(...)` expressions.
+- Native compiler: query and row types, capture analysis, ordered evaluators,
+  read-only value bindings, managed reference access, iterator lowering and
+  implicit body-local `dt` in systems.
+- Runtime: reusable typed descriptors and independent iteration, managed
+  component locations with permanent invalidation on removal, precise tracing and
+  prepared-format validation.
+- Self-hosted compiler: the same system, query, iterator and prepared contracts.
+- Migration: project 33 to 34 rewrites old live component parameters to
+  pointers, merges joins, turns filters into `if` guards and removes system
+  Tick payload headers. Old behavior event handlers retain their contract.
+- Remove replaced `join`, `without`, query-filter `where`, system Tick header
+  and obsolete query-declaration implementations. Grouped bindings remain
+  deferred; no compatibility aliases are introduced.
+
+Verification: Build native drivers and products; cover syntax rejection,
+left-to-right guards, inferred intermediates, value/reference behavior,
+independent/nested/repeated iteration and cleanup, capture lifetime, pointer
+identity/removal/re-add/world teardown, continuation identity, migration
+idempotence/refusal and native/self-hosted parity on VM/JIT. Run relevant
+authoring/project checks, the five required Make groups, compiler bootstrap
+recovery and formatting on the final candidate. Report any unexecuted coverage.
+
+Status: implementation and focused Release checks pass. Independent compiler,
+runtime, schema and migration reviews found defects that are now fixed and
+covered by regressions. Required broad groups and matching query bootstrap /
+recovery remain pending; the local candidate is not ready to merge.
+
+Focused verification on 2026-10-22 (bytecode and compiled backend where selected):
+- Authored query compiler: 11/11 cases, 65,210 assertions, 186.327 seconds.
+- Query values: 15/15 cases, 1,458 assertions, 0.649 seconds; includes scheduled
+  row-header collection during suspension and nested native array captures.
+- Runtime execution: 55/55 cases, 4,760 assertions, 0.414 seconds; includes
+  native schema retirement and forged nested collection identity rejection.
+- Authored effects: 4/4 cases, 83,656 assertions, 0.761 seconds.
+- Query migration: 8/8 cases, 114 assertions, 0.587 seconds.
+- Source systems: 11/11 cases, 334 assertions, 1.137 seconds.
+- Preview source publication: 4/4 cases, 55 assertions, 1.134 seconds.
+- Process runner: 17/17 cases, 173 assertions, 24.075 seconds. The coordinated
+  isolated inspection patch preserves cleanup and failure-before-launch rules.
+- `make check-format`: passes, 76.0 seconds. Source package preparation,
+  canonical formatting and `git diff --check` also pass.
+
+Times above are measured test commands, excluding builds; the last incremental
+Release graph build took 6.3 seconds. Logs are retained under the ignored
+`.chibi/query-validation/` directory. Earlier broad-group failures were repaired,
+but their required rerun and bootstrap work are queued behind the coordinated
+workspace validation jobs. No unrun group is reported as passing.
+
+Integration boundary: this worktree's prepared ABI 22 is local to the query
+candidate. The concurrent value/CoW candidate also uses the number 22 with a
+different intrinsic registry and value layout; they are not compatible builds.
+Reconcile that registry, shared value schema and the resulting bootstrap before
+combining either candidate with the ABI 20 cutover.
+The coordinated intrinsic reservation is 46-50 for existing pointer operations,
+51-61 for collection operations and 80-95 for query operations; 62-79 remain
+unallocated. This candidate uses query operations 80-88.
+The owner selected invalid-target failure for removed components:
+removing a component, entity or world permanently invalidates its original cell;
+replacement never redirects an existing pointer. This replaces the earlier
+detached-final-value implementation and passes the focused lifetime checks here.
+The current runtime reports that failure and stops the affected activation.
+Authored recovery requires typed values/results; its checked access API remains
+undecided with the pointer owner. The owner has ruled out try/catch permanently.
+This query candidate adds no recovery API and does not establish authored recovery.
+No merge, push or installed SDK update has occurred here.
+
+Coordinated lifetime follow-up, approved in the pointer chat on 2026-10-22:
+operations bound to an original component/entity will cancel by default when
+that target is removed, with removal at safe execution boundaries, short
+protected access, cleanup and typed cancellation outcomes. Merely storing a
+pointer must not cancel unrelated work. Sequencing uses task followups or
+`after`; `destroy_after`, force-unsafe removal and try/catch are excluded.
+The pointer owner owns task semantics and common runtime coordination. Query
+owns target-hook integration after the shared interface is agreed. This does
+not change the frozen candidate or establish the new behavior as implemented.
+
+The existing canonical `ecs_component_cell` is the target identity seam. True
+invalidation passes through `invalidate_cells` or the missing-column branch of
+`ecs_component_cell_value`. Generic `cell_unlink` also disposes unused identities
+while their component is alive, so it must not itself imply cancellation.
+Retained cell liveness can be checked at resume boundaries; event callbacks, if
+chosen, must queue bound operation identities and avoid execution/ECS mutation
+inside removal or world destruction. Query structural tuple loss already
+cancels that tuple, while a false value filter preserves suspended work.
+
+### Task lifetime runtime increment
+
+Source work continues in the separate `query-lifetime` checkout, seeded from
+the frozen query product tree below. Its private C entry point installs a
+deduplicated set of retained original component cells before eager task
+execution. Children retain the union of their parent's bound targets and
+their own, including when a successful parent later releases its ownership.
+Target loss cancels through the existing task path, so child cancellation,
+pending-request detachment and typed `Cancelled` delivery share one lifecycle.
+An empty target list preserves ordinary eager task calls. Pointer values alone
+do not create a lifetime dependency, and successful completed tasks retain
+their recorded outcome after later target removal.
+
+The implementation and ten C regression cases are source-ready; independent
+review is clear after fixing continuation-error cleanup. No build or execution
+claim applies to this increment yet. Cases include invalid-at-start targets,
+world admission, duplicate ownership, never-completing and immediately-ready
+host requests, independent awaiters, child inheritance, success gating and
+teardown. Six changed C translation units pass syntax checks (0.740 seconds),
+using this checkout's source headers and the frozen checkout's generated and
+dependency includes. Changed C/header formatting and `git diff --check` pass.
+The product manifest is `.chibi/query-validation/lifetime-source.sha256`:
+eight product files differ from the original 2,411-file frozen manifest, whose
+hashes remain unchanged. This is a source freeze, not an execution proof. The
+pointer owner is implementing the authored compiler's existing task operations
+as a prerequisite. The owner rejected an authored call-site marker and asked
+for inference; the distinction between possible component use and passive
+pointer storage remains under discussion there. This C hook accepts the
+producer's target set and does not select an inference rule or public spelling.
+The owner explored dependencies that change as execution progresses, then
+rejected allowing unrelated post-await effects before discovering a removed
+target. The final lifetime decision keeps an inferred dependency until its
+task completes, even after the last component access. For example, removing
+health while Poison waits cancels its pending sound despite no later health
+access. Compiler liveness must not end the dependency early. Earlier completed
+effects are not rolled back. Independent copied-value work must actually be
+independent of the cancelled task; ordinary child cancellation still applies.
+The fixed-set start hook fits this rule but does not establish the inference
+producer or binding semantics for targets selected later. No dynamic target
+API is implemented here. The pointer owner's review
+of product tree `b2c82d244774c095feb9d4c223740a1a85265099` found no additional
+runtime gate or ownership defect; execution validation remains unrun.
+
+The workspace coordinator selected one later validation candidate containing
+the reviewed query and lifetime work, the agreed shared representation and an
+eligible current main revision. Preserve the original focused evidence as
+historical; do not repeat its final bootstrap as if that superseded freeze were
+the final candidate. Shared-machine build and test work remains queued. Held
+collection source and its test restriction stay outside this increment.
+
+### Common/main integration preparation
+
+This is a source integration plan, not a compatibility or execution claim.
+The focused query candidate remains frozen at review tree
+`4c3d1d844eec07fa02791d7b1b1f0b65d834a5a3`, with product hashes in
+`.chibi/query-validation/candidate-source.sha256`.
+
+| Source | Contract and evidence boundary |
+| --- | --- |
+| Query HEAD `cbed73d23` plus frozen feature tree | Pointer foundation plus query/schema/component-lifetime extensions; local prepared ABI 22. Focused query evidence above. |
+| Common `22dc0d935b1478b519801597f16d547974d30c67` | Pointer ABI 21, main #660 compiler/build support and pointer compiler fixes; separate pointer artifact. Its pointer runtime/type/arena foundation matches query HEAD before the query delta. |
+| Main `5c28191b3ea53afa232c34e37b14fd9b01024aef` | ABI 20; #660 build compilation, #664 named results/resource-only builds, #665 per-attempt record validation. No managed pointer/query ABI. |
+| Collection draft | Source-only checkpoint with an explicit test restriction; its ABI 22 differs from this query ABI 22. No combined execution evidence. |
+
+Read-only collection comparison identified these reconciliation requirements:
+
+| Boundary | Required common contract |
+| --- | --- |
+| Snapshot/purity | Collection snapshots share storage. They cannot retain query's current proof that a snapshot owns fresh payload. Prove an independent value shell and its mutation barrier; a private header alone does not permit writes through captured aliases. |
+| Native layout | Select one immutable carrier for exact native layouts. Query's schema sidecar and the collection draft's frozen native record carrier cannot remain competing equality/resolution/codec paths. Preserve native/authored distinction and retired-catalog behavior. |
+| Arenas/tracing | Reconcile finalizers with resource cleanup, module retention, cursor cleanup and component-cell accounting. Release external owners once; preserve scheduled row-header roots and heap-family checks. |
+| Calls | Reconcile owned arguments/results with full-header return copying, error-text ownership and scalar storage-free contexts. Validate ownership provenance and include every new callback flag in canonical identity/ABI checks. |
+| Component views | Resolve original component incarnations on access, keep identity-based equality and permanent removal/world-destruction invalidation. A raw logical-cell reader cannot bypass component-location checks. |
+| Wire/registry | Combine query tables, ownership cells, layouts, enum bounds and both writers under a fresh coordinated ABI if collections join. Fix the stale 51-60 query-header comment to match the reserved 51-61 range. Do not reuse either standalone ABI22 artifact. |
+
+After the coordinator selects an integration candidate:
+
+1. Start a separate checkout from the selected main revision, merge the common
+   pointer source, and reconcile #664/#665 there. Do not replace pointer/query
+   runtime files with main's older value ABI or import a standalone bootstrap.
+2. Apply only the query delta from `cbed73d23` to the frozen feature tree.
+   Preserve the original candidate and its evidence. Resolve authored compiler
+   contracts before regenerating parser/build outputs.
+3. Reconcile #660's compiler-generation loader, cancellation, source-package I/O,
+   protocol 8 and SDK graph with query source/header exports. Its
+   `compiler_target_effects_json`, `CompileWithEffects` and
+   `CompileClosureWithEffects` interfaces must agree with query's native-effect
+   metadata; keep one authoritative effect source and transitive summaries.
+4. Merge #664's `Body.Emitted` effects, `Start.Begun` cells/hosts and target-aware
+   `Prologue`, named-result cells and return lowering. Preserve query evaluator
+   dispatch, captures, readonly snapshots, physical Tick payload arguments,
+   root-only context `dt` and exact current-row nominal headers. Named pointer
+   results do not become supported as a side effect of this merge.
+5. Merge #665's bounded successful-record validation cache while retaining
+   query intrinsic validation, provenance and carried-schema encoding. Verify
+   that a cached record proof cannot substitute for validation under a different
+   carried native schema. Failed proofs stay uncached; scratch is charged and
+   caches remain confined to one preparation/catalog scope.
+6. Keep immutable schemas, incarnation cells, permanent invalidation, finalizers,
+   tracing, external-byte accounting, evaluator ownership and ordered purity.
+   Pointer IDs 46-50 and query IDs 80-88 stay assigned; collection IDs 51-61,
+   including reserved 54, remain separate. Authored recovery is still undecided;
+   this integration adds no recovery API or try/catch.
+7. Reconcile any later authorized collection integration separately before
+   freezing a common header/wire contract. Its existing test restriction remains
+   in force. Matching ABI numbers alone are never compatibility evidence.
+8. Generate target metadata and one matching compiler artifact from the final
+   contract. Run affected pointer/query/schema/effects, named-result,
+   resource-only, cache/budget, build-cancellation and migration checks, then
+   self-reproduction, isolated recovery and the required groups on that exact
+   candidate. SDK consumers and platform checks need their own matching build;
+   focused evidence from either standalone branch does not transfer.
+
 ## Coordinated behavior-state support, 2026-10-22
 
 The local setup chat owns authored behavior state for bool, entity and string,

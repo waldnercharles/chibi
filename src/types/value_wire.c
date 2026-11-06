@@ -7,6 +7,7 @@
 #include "types/map.h"
 #include "types/record.h"
 #include "types/scalar.h"
+#include "types/schema.h"
 #include "types/text.h"
 #include "types/trace.h"
 #include "types/union.h"
@@ -253,15 +254,15 @@ static bool same_name(const char *a, const char *b)
 {
     return !strcmp(a ? a : "", b ? b : "");
 }
-static bool valid_field(const type_desc *type, const type_field *field)
+static bool valid_field(const type_desc *type, const type_field *field, type_resolver resolver)
 {
     if (!((field->type >= PIN_BOOL && field->type <= PIN_ENUM) ||
-          field->type == PIN_POINTER) ||
+          field->type == PIN_POINTER || field->type == PIN_QUERY) ||
         field->offset > type->size || field->size > type->size - field->offset) {
         return false;
     }
     if (field->type == PIN_STRUCT) {
-        const type_desc *nested = type_catalog_find(field->type_name);
+        const type_desc *nested = type_resolve(resolver, field->type_name);
         return nested && nested->size == field->size;
     }
     if (field->type == PIN_ENUM) {
@@ -339,7 +340,11 @@ static void structure(value_codec *c, pin_value *v, unsigned depth, void *destin
         fail(w, "Prepared struct type is unavailable");
         return;
     }
-    uint64_t layout = type_layout_hash(type), expected = layout;
+    type_resolver resolver = v->schema ? pin_schema_resolver(v->schema)
+                                       : (type_resolver){ 0 };
+    uint64_t layout = v->schema ? pin_schema_layout_type(v->schema, type)
+                                : type_layout_hash(type);
+    uint64_t expected = layout;
     execution_wire_u64(w, &layout);
     if (w->error) {
         return;
@@ -382,7 +387,7 @@ static void structure(value_codec *c, pin_value *v, unsigned depth, void *destin
     }
     for (int i = 0; i < fields && !w->error; i++) {
         const type_field *field = &type->fields[i];
-        if (!valid_field(type, field)) {
+        if (!valid_field(type, field, resolver)) {
             fail(w, "Prepared reflected field exceeds linked layout");
             return;
         }
@@ -409,6 +414,9 @@ static void structure(value_codec *c, pin_value *v, unsigned depth, void *destin
             if (error) {
                 fail(w, error);
                 return;
+            }
+            if (member.type == PIN_STRUCT) {
+                member.schema = v->schema;
             }
         }
         pin_value target = { .type = field->type,
@@ -645,7 +653,7 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
     if (!w->reading && v->record && !c->resolve) {
         fail(w, "Authored record requires a prepared layout table");
     }
-    if (!w->reading && (v->type < PIN_FLOW || v->type > PIN_POINTER ||
+    if (!w->reading && (v->type < PIN_FLOW || v->type > PIN_QUERY ||
                         v->container < PIN_CONTAINER_SINGLE ||
                         v->container > PIN_CONTAINER_MAP ||
                         (v->type == PIN_FLOW && v->container))) {
@@ -669,7 +677,7 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
     if (w->error) {
         return;
     }
-    if (tag < PIN_FLOW || tag > PIN_POINTER || container < PIN_CONTAINER_SINGLE ||
+    if (tag < PIN_FLOW || tag > PIN_QUERY || container < PIN_CONTAINER_SINGLE ||
         container > PIN_CONTAINER_MAP || (tag == PIN_FLOW && container)) {
         fail(w, "Prepared value tag is invalid");
         return;
@@ -743,8 +751,8 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
     if (w->error) {
         return;
     }
-    if (tag == PIN_POINTER && bits) {
-        fail(w, "Managed pointers cannot be persisted");
+    if ((tag == PIN_POINTER || tag == PIN_QUERY) && bits) {
+        fail(w, tag == PIN_QUERY ? "Queries cannot be persisted" : "Managed pointers cannot be persisted");
         return;
     }
     if ((tag == PIN_HANDLE || tag == PIN_TASK || tag == PIN_FLOW) && bits) {
@@ -775,6 +783,7 @@ static void value_into(value_codec *c, pin_value *v, unsigned depth, const pin_v
                 memcpy(&decoded.e, &narrow, sizeof narrow);
                 break;
             }
+            case PIN_QUERY:
             case PIN_POINTER: decoded.ptr = NULL; break;
             case PIN_HANDLE:
             case PIN_TASK: decoded.u64 = 0; break;

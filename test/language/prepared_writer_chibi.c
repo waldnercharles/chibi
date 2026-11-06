@@ -88,6 +88,21 @@ static const char BEHAVIOR[] = "Counter :: behavior {\n"
                                "        steps += amount\n"
                                "    }\n"
                                "}\n";
+static const char QUERY_BEHAVIOR[] = "Counter :: behavior {\n"
+                                     "    on Add :: (amount: int) {\n"
+                                     "        matches := query(tally: ^Tally, "
+                                     "if tally.value > amount)\n"
+                                     "        for (row in matches) {\n"
+                                     "            row.tally.value += amount\n"
+                                     "            break\n"
+                                     "        }\n"
+                                     "    }\n"
+                                     "}\n";
+static const char QUERY_SYSTEM[] = "Count :: system(\n"
+                                   "    tally: ^Tally,\n"
+                                   "    if tally.value > 0,\n"
+                                   "    amount := tally.value * 2,\n"
+                                   ") { tally.value += amount }\n";
 enum
 {
     TALLY = 101,
@@ -112,7 +127,8 @@ typedef struct
     pin_value *wide, *values, *ints, *requirements, *fields, *events,
         *event_fields, *imports, *functions, *spans, *roots, *instructions,
         *locals, *parameters, *frames, *sources, *results, *data, *hosts,
-        *calls, *references, *components, *points, *watches, *states, *entries;
+        *calls, *references, *components, *points, *watches, *states, *entries,
+        *queries, *descriptions;
     const behavior_function **order;
     const execution_module_plan *plan;
     int backend;
@@ -175,6 +191,10 @@ static int wide(model *m, uint64_t n)
 static int value_rows(model *m, const pin_value *values, int count);
 static uint64_t scalar_bits(pin_value v)
 {
+    if (v.type == PIN_QUERY) {
+        assert(!v.ptr);
+        return 0;
+    }
     if (v.type == PIN_F32) {
         uint32_t bits;
         memcpy(&bits, &v.f, sizeof bits);
@@ -657,7 +677,13 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         order(m, p->functions[i].body);
         order(m, p->functions[i].subscription);
     }
-    REQUIRE(!p->binding_count && !p->query_count);
+    REQUIRE(!p->binding_count && !p->action_count);
+    for (int i = 0; i < p->query_count; i++) {
+        order(m, p->queries[i].predicate);
+    }
+    for (int i = 0; i < p->description_count; i++) {
+        order(m, p->descriptions[i].evaluate);
+    }
     for (int i = 0; i < p->type_count; i++) {
         const execution_type_requirement *v = &p->types[i];
         pin_value row = record(m, "Requirement");
@@ -748,6 +774,30 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         put_int(&row, "subscription", reference(m, v->subscription));
         apush(m->entries, row);
     }
+    for (int i = 0; i < p->query_count; i++) {
+        const execution_module_query *v = &p->queries[i];
+        pin_value row = record(m, "Query");
+        put_int(&row, "kind", v->kind);
+        put_bool(&row, "required", v->required);
+        put_int(&row, "component_id", wide(m, v->component));
+        put_int(&row, "source_relationship", wide(m, v->source_relationship));
+        put_int(&row, "source_traversal", v->source_traversal);
+        put_int(&row, "source_variable", v->source_variable);
+        put_int(&row, "target_variable", v->target_variable);
+        put_int(&row, "predicate", v->predicate ? reference(m, v->predicate) : -1);
+        put_int(&row, "first", ints(m, v->children, v->child_count));
+        put_int(&row, "count", v->child_count);
+        apush(m->queries, row);
+    }
+    for (int i = 0; i < p->description_count; i++) {
+        const execution_module_query_description *v = &p->descriptions[i];
+        pin_value row = record(m, "QueryDescription");
+        put_int(&row, "query_root", v->query);
+        put_int(&row, "query_variable_count", v->query_variable_count);
+        put_int(&row, "row_type", value(m, &v->row_type));
+        put_int(&row, "evaluate", reference(m, v->evaluate));
+        apush(m->descriptions, row);
+    }
     pin_value payload[] = {
         { .type = PIN_U64, .u64 = p->id },
         { .type = PIN_U64, .u64 = p->owner_type },
@@ -779,6 +829,12 @@ static bool marshal(model *m, const execution_module *module, uint64_t abi, pin_
         rows(m, "Watch", PIN_STRUCT, m->watches),
         rows(m, "State", PIN_STRUCT, m->states),
         rows(m, "Entry", PIN_STRUCT, m->entries),
+        rows(m, "Query", PIN_STRUCT, m->queries),
+        { .type = PIN_I32, .i = p->query },
+        { .type = PIN_I32, .i = p->query_variable_count },
+        { .type = PIN_I32, .i = p->query_filter },
+        rows(m, "QueryDescription", PIN_STRUCT, m->descriptions),
+        { .type = PIN_I32, .i = p->system_description },
     };
     uint64_t tables = tag(m->backend, "Module", "Tables");
     REQUIRE(tables);
@@ -816,6 +872,8 @@ static void model_free(model *m)
     afree(m->watches);
     afree(m->states);
     afree(m->entries);
+    afree(m->queries);
+    afree(m->descriptions);
     afree(m->order);
 }
 static size_t first_difference(const unsigned char *a, size_t a_size, const pin_array *b)
@@ -906,7 +964,7 @@ static bool resolve_owner(void *, uint64_t id, behavior_function_instruction *ou
 }
 /* BEHAVIOR's module, lowered against a catalog of its component, events and
  * owner, while the component's type is registered. */
-static execution_module *behavior_module()
+static execution_module *source_module(const char *source)
 {
     static const script_catalog_field value = { .id = 811,
                                                 .name = "value",
@@ -944,22 +1002,26 @@ static execution_module *behavior_module()
                                      .global_count = 1,
                                      .entity_type = ENTITY,
                                      .tick_event = TICK };
-    script_syntax *syntax = script_parse(BEHAVIOR);
+    script_syntax *syntax = script_parse(source);
     script_analysis *analysis = script_analyze(syntax, &catalog);
     const script_lower_bindings bindings = { .global = resolve_owner };
     execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
     for (int i = 0; i < analysis->diagnostic_count; i++) {
-        fprintf(stderr, "behavior semantic: %s\n", analysis->diagnostics[i].message);
+        fprintf(
+            stderr,
+            "prepared writer semantic: %s\n",
+            analysis->diagnostics[i].message
+        );
     }
     for (int i = 0; i < plan->diagnostic_count; i++) {
-        fprintf(stderr, "behavior lowering: %s\n", plan->diagnostics[i].message);
+        fprintf(stderr, "prepared writer lowering: %s\n", plan->diagnostics[i].message);
     }
     char error[192] = { 0 };
     execution_module *module = analysis->diagnostic_count || plan->diagnostic_count
                                  ? NULL
                                  : execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
     if (!module) {
-        fprintf(stderr, "behavior finish: %s\n", error);
+        fprintf(stderr, "prepared writer finish: %s\n", error);
     }
     execution_module_plan_free(plan);
     script_analysis_free(analysis);
@@ -992,13 +1054,38 @@ TEST_CASE(prepared_writer_reproduces_native_modules)
     const type_desc *const reflected[] = { &tally_type };
     const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
     type_catalog_set_project(&pack);
-    execution_module *behavior = behavior_module();
+    execution_module *behavior = source_module(BEHAVIOR);
     const execution_module_plan *p = behavior ? &behavior->plan : NULL;
     bool covered = p && p->state_count == 1 && p->event_count == 2 &&
                    p->function_count == 2 && writes_component(p);
     bool written = covered && writes_like_native(0, behavior, "behavior") &&
                    writes_like_native(1, behavior, "behavior");
     execution_module_free(behavior);
+    type_catalog_set_project(NULL);
+    REQUIRE(covered);
+    REQUIRE(written);
+    return true;
+}
+TEST_CASE(prepared_writer_reproduces_native_queries)
+{
+    REQUIRE(prepare_corpus());
+    const type_desc *const reflected[] = { &tally_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    const char *const sources[] = { QUERY_BEHAVIOR, QUERY_SYSTEM };
+    bool covered = true, written = true;
+    for (int i = 0; i < 2; i++) {
+        execution_module *module = source_module(sources[i]);
+        const execution_module_plan *p = module ? &module->plan : NULL;
+        bool has_query = p && p->query_count > 0 && p->description_count == 1 &&
+                         p->system_description == i && p->descriptions[0].evaluate &&
+                         p->descriptions[0].row_type.type == PIN_QUERY &&
+                         p->descriptions[0].evaluate->argument_count == (i ? 0 : 1);
+        covered &= has_query;
+        written &= has_query && writes_like_native(0, module, "query") &&
+                   writes_like_native(1, module, "query");
+        execution_module_free(module);
+    }
     type_catalog_set_project(NULL);
     REQUIRE(covered);
     REQUIRE(written);
@@ -1102,6 +1189,7 @@ void test_language_prepared_writer_chibi()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(prepared_writer_reproduces_native_modules);
+    RUN_TEST_CASE(prepared_writer_reproduces_native_queries);
     RUN_TEST_CASE(prepared_writer_fingerprints_and_closes_modules);
     pu_clear_setup();
 }

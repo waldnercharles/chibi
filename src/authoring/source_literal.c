@@ -395,6 +395,8 @@ static bool value(literal *l, script_type expected, const pin_value *v, int dept
         case PIN_STRUCT: return aggregate(l, expected, v, depth);
         case PIN_POINTER:
             return fail(l, "Managed pointers cannot be written as source literals");
+        case PIN_QUERY:
+            return fail(l, "Queries and query rows cannot be written as source literals");
         case PIN_FLOW:
         case PIN_HANDLE:
             return fail(l, "Runtime handles and services cannot be written as source literals");

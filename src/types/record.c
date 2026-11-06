@@ -1,8 +1,10 @@
 #include "types/record.h"
 
 #include "support/arena.h"
+#include "types/array.h"
 #include "types/catalog.h"
 #include "types/scalar.h"
+#include "types/schema.h"
 
 #include <string.h>
 
@@ -11,8 +13,9 @@ _Static_assert(sizeof(pin_record) % _Alignof(type_field) == 0, "record fields mu
 static size_t field_size(const type_field *field)
 {
     pin_type type = field->type;
-    if ((type >= PIN_BOOL && type <= PIN_F64) || type == PIN_STR || type == PIN_NAME ||
-        type == PIN_ENUM || type == PIN_HANDLE || type == PIN_POINTER) {
+    if ((type >= PIN_BOOL && type <= PIN_F64) || type == PIN_STR ||
+        type == PIN_NAME || type == PIN_ENUM || type == PIN_HANDLE ||
+        type == PIN_POINTER || type == PIN_QUERY) {
         return behavior_scalar_size(type);
     }
     const type_desc *nested = type == PIN_STRUCT ? type_catalog_find(field->type_name)
@@ -315,6 +318,14 @@ bool pin_record_current(const pin_record *record)
     }
     return true;
 }
+bool pin_value_record_current(const pin_value *value)
+{
+    return value->record && value->record->layout &&
+           (value->schema
+                ? pin_schema_layout_type(value->schema, &value->record->type) ==
+                      value->record->layout
+                : pin_record_current(value->record));
+}
 bool pin_record_same(const pin_record *a, const pin_record *b)
 {
     if (a == b) {
@@ -338,5 +349,12 @@ const type_desc *pin_value_type(const pin_value *value)
                  ? &value->record->type
                  : NULL;
     }
-    return type_catalog_find(value->type_name);
+    const pin_schema *schema = value->schema;
+    if (!schema &&
+        (value->container == PIN_CONTAINER_ARRAY || value->container == PIN_CONTAINER_SET) &&
+        value->ptr) {
+        schema = ((const pin_array *)value->ptr)->schema;
+    }
+    return schema ? pin_schema_type(schema, value->type_name)
+                  : type_catalog_find(value->type_name);
 }

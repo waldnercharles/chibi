@@ -319,6 +319,9 @@ authoring_source_presentation *authoring_source_presentation_new(
         }
         if (s->kind == SCRIPT_COMPONENT) {
             const script_catalog_type *type = source_view_type(&p, s->type.nominal);
+            if (type && s->type.storage == PIN_POINTER) {
+                type = source_view_type(&p, type->element_type.nominal);
+            }
             if (type && type->key) {
                 behavior_asset_add_component_parameter(
                     out->view,

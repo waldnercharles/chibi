@@ -13,3 +13,36 @@ Oiliness {
 Reset {
     (array)sources "R"
 }
+CameraLeft {
+    (array)sources "A"
+}
+CameraRight {
+    (array)sources "D"
+}
+CameraUp {
+    (array)sources "W"
+}
+CameraDown {
+    (array)sources "S"
+}
+OrbitLeft {
+    (array)sources "Arrow Left"
+}
+OrbitRight {
+    (array)sources "Arrow Right"
+}
+TiltUp {
+    (array)sources "Arrow Up"
+}
+TiltDown {
+    (array)sources "Arrow Down"
+}
+ZoomIn {
+    (array)sources "Q"
+}
+ZoomOut {
+    (array)sources "E"
+}
+ResetCamera {
+    (array)sources "C"
+}

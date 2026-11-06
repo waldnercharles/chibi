@@ -1,0 +1,64 @@
+ClayCamera :: behavior {
+    on Tick {
+        if input.ResetCamera.held {
+            self.Transform = vec2(0, 0)
+            self.Camera.width = 320
+            self.Camera.height = 180
+            self.Camera.yaw = 0
+            self.Camera.pitch = 0.35
+            self.Camera.target_elevation = 12
+            return
+        }
+
+        turn := 0.0
+        tilt := 0.0
+        zoom := 0.0
+        horizontal := 0.0
+        vertical := 0.0
+        if input.OrbitLeft.held {
+            turn -= 1
+        }
+        if input.OrbitRight.held {
+            turn += 1
+        }
+        if input.TiltUp.held {
+            tilt += 1
+        }
+        if input.TiltDown.held {
+            tilt -= 1
+        }
+        if input.ZoomIn.held {
+            zoom -= 1
+        }
+        if input.ZoomOut.held {
+            zoom += 1
+        }
+        if input.CameraLeft.held {
+            horizontal -= 1
+        }
+        if input.CameraRight.held {
+            horizontal += 1
+        }
+        if input.CameraUp.held {
+            vertical -= 1
+        }
+        if input.CameraDown.held {
+            vertical += 1
+        }
+
+        self.Camera.yaw += turn * 0.9 * dt
+        self.Camera.pitch = clamp(self.Camera.pitch + tilt * 0.75 * dt, 0, 1.35)
+        self.Camera.width = clamp(self.Camera.width * pow(2, zoom * dt), 64, 960)
+        self.Camera.height = self.Camera.width * 0.5625
+
+        // Pan along the current screen axes, at a speed relative to the zoom.
+        distance := self.Camera.width * 0.5 * dt
+        cy := cos(self.Camera.yaw)
+        sy := sin(self.Camera.yaw)
+        cp := cos(self.Camera.pitch)
+        sp := sin(self.Camera.pitch)
+        self.Transform.x += (cy * horizontal + sy * cp * vertical) * distance
+        self.Transform.y += (-sy * horizontal + cy * cp * vertical) * distance
+        self.Camera.target_elevation -= sp * vertical * distance
+    }
+}

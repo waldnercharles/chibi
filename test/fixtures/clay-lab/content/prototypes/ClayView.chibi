@@ -3,6 +3,9 @@ ClayView :: prototype {
         x: 0,
         y: 0
     }
+    Input {
+        move: { x: 0, y: 0 }
+    }
     Camera {
         width: 320,
         height: 180,
@@ -14,4 +17,5 @@ ClayView :: prototype {
         sdf_normal_mode: "Tetrahedral",
         sdf_pixel_error: 0.25
     }
+    behaviors: [ClayCamera]
 }

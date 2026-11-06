@@ -5,6 +5,7 @@
 #include "render/shader_catalog.h"
 #include "render/shader_parameters.h"
 #include "render/shader_publish.h"
+#include "runtime/camera.h"
 #include "runtime/component_catalog.h"
 #include "runtime/native_prepared.h"
 #include "support/array.h"
@@ -18,9 +19,10 @@
 #include <string.h>
 #include <sys/stat.h>
 
-/* One checked-in project preparation and bytecode player; eight specimens,
- * 26 fixed simulation steps plus the initial zero-time boundary, and at most
- * 208 model/material snapshot pairs. Source admission is capped before parsing:
+/* Each case prepares the checked-in project and a player. The preset case
+ * runs 26 fixed simulation steps and each camera case runs 24, each after
+ * an initial zero-time boundary. Both inspect all eight specimens each step.
+ * Source admission is capped before parsing:
  * 24 files, 32 total directory entries, depth three, 128 KiB combined text.
  * Prepared resources are embedded shader/model/value/part records only, at most
  * 16 records/1 MiB and 8 MiB decoded resource storage. The production resource
@@ -28,8 +30,7 @@
  * GPU upload, window, child process, sleep, screenshot, or timed assertion.
  * Sixteen reflected test-input writes and eight row commits change spacing
  * and dirty before Reset;
- * the full sequence performs exactly 24 model setter validations.
- * New selector execution requires independent workload admission. */
+ * the preset sequence performs exactly 24 model setter validations. */
 enum
 {
     SPECIMENS = 8,
@@ -64,12 +65,14 @@ static const double defaults[] = { 1, 1, .68, .06, 2.4 };
 static const float pigments[][3] = { { .46f, .43f, .38f }, { .52f, .16f, .08f } };
 static const ecs_component_desc *settings;
 static ecs_entity specimens[SPECIMENS];
+static ecs_entity view_entity;
 static native_capabilities *native;
 static authoring_graph_catalog *palette;
 static const registry_pack **previous_packs;
 static bool palette_installed;
 static authoring_project_artifact artifact;
 static player *runtime;
+static behavior_backend backend = BEHAVIOR_BYTECODE;
 static player_resource_host resources;
 static int steps, files, entries, staged;
 static size_t source_bytes;
@@ -161,12 +164,12 @@ static void *stage(void *context, const player_asset *assets, int count, size_t 
 
 static bool programs_valid()
 {
-    const char *const names[] = { "ClayControls", "ApplyClay" };
+    const char *const names[] = { "ClayControls", "ApplyClay", "ClayCamera" };
     source_registry *sources = world_sources(player_world(runtime));
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 3; i++) {
         execution_program *program = source_program(sources, names[i]);
         REQUIRE(program);
-        REQUIRE(execution_module_backend(execution_program_module(program)) == BEHAVIOR_BYTECODE);
+        REQUIRE(execution_module_backend(execution_program_module(program)) == backend);
         const execution_program_failure *failure = execution_program_error(program);
         if (failure) {
             fprintf(stderr, "%s: %s\n", names[i], failure->message);
@@ -178,6 +181,8 @@ static bool programs_valid()
 
 static bool prepare()
 {
+    steps = files = entries = staged = 0;
+    source_bytes = 0;
     /* Graph defaults need the shader vector pack as well as native ECS types. */
     const type_desc *vector = type_catalog_find("ShaderVec3");
     REQUIRE(vector && vector->size == 3 * sizeof(float) && vector->field_count == 3);
@@ -248,7 +253,7 @@ static bool prepare()
         .resources = resources,
     };
     host.resources.stage = stage;
-    runtime = player_prepared_read(artifact.data, artifact.size, &host, BEHAVIOR_BYTECODE, error, sizeof error);
+    runtime = player_prepared_read(artifact.data, artifact.size, &host, backend, error, sizeof error);
     if (!runtime) {
         fprintf(stderr, "Clay lab player: %s\n", error);
     }
@@ -265,6 +270,12 @@ static bool prepare()
     const scene_instance *instance = player_scene(runtime);
     const scene *scene = scene_instance_scene(instance);
     REQUIRE(scene_object_count(scene) == SCENE_OBJECTS);
+    REQUIRE(!strcmp(scene_object_name(scene, 0), "View"));
+    REQUIRE(scene_object_behavior_count(scene, 0) == 1);
+    REQUIRE(!strcmp(scene_object_behavior(scene, 0, 0), "ClayCamera"));
+    view_entity = scene_instance_entity(instance, 0);
+    REQUIRE(Input_get_const(ecs, view_entity));
+    REQUIRE(Camera_get_const(ecs, view_entity));
     for (int i = 0; i < SPECIMENS; i++) {
         REQUIRE(!strcmp(scene_object_name(scene, i + 3), specimen_names[i]));
         REQUIRE(scene_object_behavior_count(scene, i + 3) == 1);
@@ -429,11 +440,168 @@ TEST_CASE(clay_lab_authored_controls_apply_presets_and_reset)
     return true;
 }
 
+static uint64_t control(Control key)
+{
+    return UINT64_C(1) << key;
+}
+
+static bool camera_snapshot(engine_viewport_view *view)
+{
+    world *world = player_world(runtime);
+    REQUIRE(camera_view(world_ecs(world), world_engine(world), view) == 1);
+    REQUIRE(view->width >= 64 && view->width <= 960);
+    REQUIRE(fabsf(view->height - view->width * 9 / 16) < 1e-5f);
+    REQUIRE(view->pitch >= 0 && view->pitch <= 1.35f);
+    return true;
+}
+
+static bool camera_matches(const engine_viewport_view *actual, const engine_viewport_view *expected)
+{
+    REQUIRE(fabsf(actual->center_x - expected->center_x) < 1e-5f);
+    REQUIRE(fabsf(actual->center_y - expected->center_y) < 1e-5f);
+    REQUIRE(fabsf(actual->width - expected->width) < 1e-5f);
+    REQUIRE(fabsf(actual->height - expected->height) < 1e-5f);
+    REQUIRE(fabsf(actual->yaw - expected->yaw) < 1e-5f);
+    REQUIRE(fabsf(actual->pitch - expected->pitch) < 1e-5f);
+    REQUIRE(fabsf(actual->target_elevation - expected->target_elevation) < 1e-5f);
+    return true;
+}
+
+static bool camera_controls()
+{
+    REQUIRE(prepare());
+    REQUIRE(step(0, true, defaults));
+    engine_viewport_view initial, first, held, released, reversed, opposed;
+    REQUIRE(camera_snapshot(&initial));
+    const engine_viewport_view reset = { .width = 320,
+                                         .height = 180,
+                                         .pitch = .35f,
+                                         .target_elevation = 12 };
+    REQUIRE(camera_matches(&initial, &reset));
+    uint64_t forward = control(CONTROL_A) | control(CONTROL_W) |
+                       control(CONTROL_ARROW_LEFT) | control(CONTROL_ARROW_UP) |
+                       control(CONTROL_Q);
+    uint64_t backward = control(CONTROL_D) | control(CONTROL_S) |
+                        control(CONTROL_ARROW_RIGHT) |
+                        control(CONTROL_ARROW_DOWN) | control(CONTROL_E);
+    REQUIRE(step(forward, false, defaults));
+    REQUIRE(camera_snapshot(&first));
+    REQUIRE(first.center_x < initial.center_x);
+    REQUIRE(first.center_y > initial.center_y);
+    REQUIRE(first.yaw < initial.yaw && first.pitch > initial.pitch);
+    REQUIRE(first.width < initial.width);
+    REQUIRE(step(forward, false, defaults));
+    REQUIRE(camera_snapshot(&held));
+    REQUIRE(held.center_x < first.center_x && held.center_y > first.center_y);
+    REQUIRE(held.yaw < first.yaw && held.pitch > first.pitch);
+    REQUIRE(held.width < first.width);
+    REQUIRE(step(0, false, defaults));
+    REQUIRE(camera_snapshot(&released));
+    REQUIRE(camera_matches(&released, &held));
+    REQUIRE(step(backward, false, defaults));
+    REQUIRE(camera_snapshot(&reversed));
+    REQUIRE(reversed.center_x > released.center_x);
+    REQUIRE(reversed.center_y < released.center_y);
+    REQUIRE(reversed.yaw > released.yaw && reversed.pitch < released.pitch);
+    REQUIRE(reversed.width > released.width);
+    REQUIRE(step(forward | backward, false, defaults));
+    REQUIRE(camera_snapshot(&opposed));
+    REQUIRE(camera_matches(&opposed, &reversed));
+    REQUIRE(step(0, false, defaults));
+
+    /* Start just inside each limit so one real sampled input crosses it.
+     * Repeating the held key must keep the camera at that limit. */
+    ecs_world *ecs = world_ecs(player_world(runtime));
+    Camera *camera = Camera_get(ecs, view_entity);
+    REQUIRE(camera);
+    camera->pitch = 1.35f - .001f;
+    REQUIRE(ecs_component_modified(ecs, view_entity, COMPONENT_Camera.id) == ECS_OK);
+    REQUIRE(step(control(CONTROL_ARROW_UP), false, defaults));
+    REQUIRE(camera_snapshot(&first));
+    REQUIRE(fabsf(first.pitch - 1.35f) < 1e-6f);
+    REQUIRE(step(control(CONTROL_ARROW_UP), false, defaults));
+    REQUIRE(camera_snapshot(&held));
+    REQUIRE(camera_matches(&held, &first));
+    camera = Camera_get(ecs, view_entity);
+    camera->pitch = .001f;
+    REQUIRE(ecs_component_modified(ecs, view_entity, COMPONENT_Camera.id) == ECS_OK);
+    REQUIRE(step(control(CONTROL_ARROW_DOWN), false, defaults));
+    REQUIRE(camera_snapshot(&first));
+    REQUIRE(first.pitch == 0);
+    REQUIRE(step(control(CONTROL_ARROW_DOWN), false, defaults));
+    REQUIRE(camera_snapshot(&held));
+    REQUIRE(camera_matches(&held, &first));
+    REQUIRE(step(0, false, defaults));
+
+    camera = Camera_get(ecs, view_entity);
+    camera->width = 64.01f;
+    camera->height = camera->width * 9 / 16;
+    REQUIRE(ecs_component_modified(ecs, view_entity, COMPONENT_Camera.id) == ECS_OK);
+    REQUIRE(step(control(CONTROL_Q), false, defaults));
+    REQUIRE(camera_snapshot(&first));
+    REQUIRE(first.width == 64);
+    REQUIRE(step(control(CONTROL_Q), false, defaults));
+    REQUIRE(camera_snapshot(&held));
+    REQUIRE(camera_matches(&held, &first));
+    camera = Camera_get(ecs, view_entity);
+    camera->width = 959.99f;
+    camera->height = camera->width * 9 / 16;
+    REQUIRE(ecs_component_modified(ecs, view_entity, COMPONENT_Camera.id) == ECS_OK);
+    REQUIRE(step(control(CONTROL_E), false, defaults));
+    REQUIRE(camera_snapshot(&first));
+    REQUIRE(first.width == 960);
+    REQUIRE(step(control(CONTROL_E), false, defaults));
+    REQUIRE(camera_snapshot(&held));
+    REQUIRE(camera_matches(&held, &first));
+    REQUIRE(step(0, false, defaults));
+
+    uint64_t material_controls = control(CONTROL_F) | control(CONTROL_G) |
+                                 control(CONTROL_V) | control(CONTROL_O);
+    const double disabled_settings[] = { 0, 0, .5, 0, 2.4 };
+    REQUIRE(step(material_controls, true, disabled_settings));
+    REQUIRE(camera_snapshot(&held));
+    REQUIRE(camera_matches(&held, &first));
+    REQUIRE(step(forward | control(CONTROL_C), false, disabled_settings));
+    REQUIRE(camera_snapshot(&first));
+    REQUIRE(camera_matches(&first, &reset));
+    const Transform *position = Transform_get_const(ecs, view_entity);
+    REQUIRE(position && position->x == 0 && position->y == 0);
+    REQUIRE(step(forward | control(CONTROL_C), false, disabled_settings));
+    REQUIRE(camera_snapshot(&held));
+    REQUIRE(camera_matches(&held, &reset));
+    REQUIRE(step(0, false, disabled_settings));
+    REQUIRE(step(backward, false, disabled_settings));
+    REQUIRE(camera_snapshot(&first));
+    REQUIRE(step(control(CONTROL_R), true, defaults));
+    REQUIRE(camera_snapshot(&held));
+    REQUIRE(camera_matches(&held, &first));
+    REQUIRE(step(0, false, defaults));
+    REQUIRE(camera_snapshot(&released));
+    REQUIRE(camera_matches(&released, &held));
+    REQUIRE(steps == 24);
+    return true;
+}
+
+TEST_CASE(clay_lab_camera_held_input_bounds_and_independent_reset)
+{
+    backend = BEHAVIOR_BYTECODE;
+    return camera_controls();
+}
+
+TEST_CASE(clay_lab_camera_native_player_backend)
+{
+    backend = behavior_default_backend();
+    return camera_controls();
+}
+
 void test_clay_lab()
 {
-    steps = files = entries = staged = 0;
-    source_bytes = 0;
+    backend = BEHAVIOR_BYTECODE;
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(clay_lab_authored_controls_apply_presets_and_reset);
+    RUN_TEST_CASE(clay_lab_camera_held_input_bounds_and_independent_reset);
+    if (behavior_default_backend() != BEHAVIOR_BYTECODE) {
+        RUN_TEST_CASE(clay_lab_camera_native_player_backend);
+    }
     pu_clear_setup();
 }

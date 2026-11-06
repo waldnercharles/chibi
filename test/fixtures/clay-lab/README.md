@@ -20,8 +20,8 @@ lower-frequency roughness variation is separate. Fingerprints are an analytic
 height pattern, not a scanned fingerprint or imported texture. No time or
 random value enters either graph.
 
-Eight `.chibi` assets own the component, input behavior, change-only system and
-five prototypes. Eight KDL files own the manifest, input bindings, scene, four
+Nine `.chibi` assets own the component, specimen and camera behaviors, change-only
+system and five prototypes. Eight KDL files own the manifest, input bindings, scene, four
 models and material. No executable behavior is authored as a KDL graph.
 The existing GPU expressions remain inside the declarative model/material
 contracts; this is not a new `.chibi` shader language.
@@ -35,6 +35,19 @@ The same keys affect all eight specimens while playing:
 - V: roughness variation off/on
 - O: roughness 0.68/0.50, an artistic oiliness comparison using one existing lobe
 - R: restore form 1, fingerprints 1, roughness 0.68, variation 0.06 and spacing 2.4
+
+The camera has separate held-key controls:
+
+- Left/right arrows: rotate around the view target
+- Up/down arrows: tilt between overhead and a low angle
+- WASD: pan along the current screen axes
+- Q/E: zoom in/out
+- C: reset the camera, including its position, angle and zoom
+
+Release a key to stop moving. Opposing keys cancel. Camera reset takes priority
+over movement while C is held; R only resets the clay settings. Zoom preserves
+the 16:9 authored span and stays between widths 64 and 960. Camera changes are
+temporary and use the existing planar renderer's orbit projection.
 
 Controls use existing named action handlers (`on Form`, `on Fingerprints`,
 `on Variation`, `on Oiliness`, `on Reset`), dispatched on pressed edges. Holding
@@ -99,7 +112,7 @@ close-up quality and moving-camera acceptance remain to be verified.
   there is no arbitrary distance noise, sampled volume, VDB bridge, persistent
   dent history, collision component, SDF collider or physical deformation.
 - The fixture does not implement pose cadence, surface-update events, shadow
-  or antialiasing toggles, replay recording, metrics or camera choreography.
+  or antialiasing toggles, replay recording, metrics or scripted camera choreography.
   Those are later checkpoints, not hidden controls. No second backend or
   representative performance target has been established.
 
@@ -134,9 +147,20 @@ See the [baseline](../../../docs/clay-sdf-baseline.md) for the other checks and
 publication requirements. The fixed source preflight includes this README in
 its 24-file, 32-entry, depth-three and 128-KiB total limits.
 
-Pixels remain unverified after the failed preview. Visible geometry, framing
-and broad shading/lighting need image inspection; close-up detail,
-moving-camera behavior, scene3d depth/picking and material parity remain separate
-gates. Final exact-head validation is still pending. Do not label P0/G0, G1 or
-P3/G3 complete from these CPU results. Full native/render/Studio suites remain
-quarantined, disabled and not passed.
+At that checkpoint, pixels remained unverified after the failed preview.
+Do not label P0/G0, G1 or P3/G3 complete from those CPU results.
+
+On 25 October 2026, the local camera change passed three focused cases and
+26,049 assertions in 0.73 seconds. These exercise the original presets, camera
+input through bytecode, and the native player's SLJIT backend. Held/released and
+opposing keys, view bounds, reset priority and material independence passed.
+The test-driver build took 12.0 seconds including configuration; this is separate
+from test execution. Canonical asset formatting also passed.
+
+A hidden 640×360 Metal preview with yaw 0.55, pitch 0.8 and span 260×146.25
+rendered and was inspected. It used one simulation step, one GPU warmup and one
+output frame, taking 0.76 seconds including startup. This confirms changed
+framing and visible geometry. It does not establish close-up material fidelity,
+moving-camera temporal quality, scene3d depth/picking or material parity. These
+are local working-tree checks, not merged or published results; broader suites
+were not run for the camera change.

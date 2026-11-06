@@ -1,4 +1,4 @@
-# SDK, LLVM archives and scoped C-host validation accepted; CLI gate remains failed
+# SDK and scoped build artifacts accepted; CLI gate remains failed
 
 ## Full SDK installation suite: accepted
 
@@ -84,12 +84,32 @@ Three genuine instrumented original-case-4 interactions passed unchanged asserti
 
 Independent review reconciled owner elapsed time of 31.631693464005366 seconds, ECHILD/EOF, no remaining children and six exact copies quarantined to 0600. Neither the historical stopped-child-result ordering nor an invalid A consume followed by an actual stop was witnessed. Three instrumented passes are finite non-reproduction, not a causal explanation, reliability estimate, repair or full-suite pass. The uninstrumented iteration-2 failure and original aggregate case-4 failure/case-5 NOT_RUN remain unresolved. Repeated-sample acceptance SHA256: `e73fe6bc3ab042b224675ec346f68a9153751cb1edbea32a12fef3197f6ec34f`.
 
+## Current-source test_tools and reflection build: artifacts accepted, aggregate failed
+
+The genuine Graph build used current source `d97d5362e2b368b385b3b5a52abd6dbc2150324a` and the accepted Graph supplier built at `a661626d48172e3bfcda82c9dcde3018edf53eef`, with relevant source equivalence separately verified. It produced 136 C objects across 38 targets, with all 136 exact compile arrays, seven actual link/native rows and 13 intentional `-UNDEBUG` rows preserved. Genuine native compiler, asset compiler/archive, cached build helper, reflection-generated sources, C compiler host, compile tool and full `test_tools` products were independently checked. All nine executable roles were quarantined to 0600.
+
+Native Graph exited zero, but the original outer exit remains 1 and owner status remains failed after 227.85253264100174 seconds. The inventory oracle omitted the empty `src/runtime/component_ids.tsv.lock` deliberately retained by `tools/reflect/reflect.c` to keep its lock inode stable. All 5,869 original source/runtime/vendor/evidence bindings remained unchanged. The failed adapter produced neither a successful build result nor a post-quiescence snapshot. Whole-owner ECHILD/EOF and cleanup were independently reconciled.
+
+A separate data-only review accepted the retained products with exactly that owner-owned, regular, single-link, zero-byte, nonexecutable lock allowed. It did not weaken source hashes, use a general lock exemption, rerun native work or convert the failed aggregate into a pass. This establishes the actual scoped build products, not full integration or selector success. Retained-artifact acceptance SHA256: `d5fed6c97130a41a0e52c0a7697d4b5631c03bfa00d6482d04cd047a71dd0ff2` (7,964 bytes).
+
+## Registered compiler bootstrap: independently accepted
+
+The unchanged registered `compiler-bootstrap` selector completed on Linux with native and outer exits zero, 14 cases, 94 assertions and zero failures. Owner status was `ownership_passed`, with ECHILD/EOF and no survivors, after 14.624869404986384 seconds. Stdout was 1,195 bytes; the 3,900-byte stderr contained expected rejection diagnostics. Independent review verified all 4,406 bound inputs unchanged and both private images quarantined to 0600. This accepts the registered selector only, not recovery or full integration. Acceptance-review SHA256: `f8bcc081b0d50a6569f272cf4905f63e27a9372f5e235e18a56f761c3e134480` (5,008 bytes).
+
+## Registered bootstrap recovery: independently accepted
+
+The unchanged registered `bootstrap-recovery` selector passed both authored cases, `bootstrap_validates_without_recovering` and `bootstrap_recovers_from_a_clean_checkout`, in order: two cases, nine assertions and zero failures. Native, outer and worker statuses were zero. Whole-owner elapsed wall time was 433.2721424449992 seconds, within the separately reserved 720 productive seconds plus 30 cleanup seconds, with the original 600-second inner recovery deadline preserved. Pico prints CPU-clock test times, not child-recovery wall times; no separate child wall-time measurement is retained.
+
+The complete 263-byte stdout matched the authored result. The 158-byte stderr was the expected rejection of a deliberately damaged seed. Independent review reconciled ECHILD/EOF, no survivors, all 4,406 bound inputs unchanged and both private executable copies quarantined to 0600. Tests and assertions remain unmodified.
+
+The recovery case genuinely exported the compiler/core sources from Git HEAD into a clean fixture and required successful recovery, an authored recovery diagnostic and nonempty recovered bytes. Authored cleanup removed the fixture and recovered closure, so no recovered bytes remain for independent inspection. Retained stdout does not identify which allowed recovery diagnostic branch ran. Previously accepted direct fixed-point recovery remains separate evidence; this selector result does not newly establish an independent direct fixed-point comparison or full integration. Acceptance-review SHA256: `4025cfd6f05bb148a34aebaa0441ef7de00ff4fd03039834ca36c6f14f077c74` (6,546 bytes).
+
 ## Remaining gates and unchanged holds
 
-These actual outcomes supersede earlier pending SDK/CLI descriptions, without changing earlier failed attempts or accepting full current-head integration. The [earlier CLI r3 failure](CLI-AND-C-PREFLIGHT.md) and [separate C-object evidence](C-OBJECT-VALIDATION.md) remain scoped historical records. Separate C evidence does not establish all 88 C files compiled in one integrated build.
+These actual outcomes supersede earlier pending SDK/CLI descriptions, without changing earlier failed attempts or accepting full current-head integration. The [earlier CLI r3 failure](CLI-AND-C-PREFLIGHT.md) and [separate C-object evidence](C-OBJECT-VALIDATION.md) remain scoped historical records. The earlier separate C evidence did not establish an integrated build. The current-source build products above are separately accepted; their original aggregate remains failed.
 
 The approved LLVM alternative supersedes the GNU/libdep provenance blocker for the accepted LLVM archive route; the GNU archive route remains unvalidated. The [investigation checkpoint](CLI-JOB-CONTROL-INVESTIGATION.md#additional-validation-checkpoint) records the checked package/runtime evidence, accepted focused regressions for the root-directory correction, resource-contract clarification and separately scoped control results.
 
-The 16 LLVM archives and subsequent C-host link/static ELF are accepted separately; host startup/target serialization and narrow bootstrap validation are accepted separately. Direct fixed-point recovery is also accepted for its exact sources, while broader runtime integration remains unvalidated. Actual Windows validation, full current-head integration, ordinary VM/SLJIT/native differential and excluded native 16-byte union/corpus acceptance are not established. PR #1331, terminal-unknown c5 bootstrap and stronger per-Capture descendant proof remain held or unproven. No merge or release readiness is claimed.
+The 16 LLVM archives and subsequent C-host link/static ELF are accepted separately; host startup/target serialization and narrow bootstrap validation are accepted separately. Direct fixed-point recovery is also accepted for its exact sources. Current-source build products are separately accepted. Both registered compiler-bootstrap and bootstrap-recovery selectors are independently accepted. Broader runtime integration remains unvalidated. Actual Windows validation, full current-head integration, ordinary VM/SLJIT/native differential and excluded native 16-byte union/corpus acceptance are not established. PR #1331, terminal-unknown c5 bootstrap and stronger per-Capture descendant proof remain held or unproven. The next controlled CLI diagnostic remains explicitly held; instrumented samples are not a demonstrated repair. No merge or release readiness is claimed.
 
 This documentation-only checkpoint publishes no binaries, private workspace paths or raw proof archives. The adjacent [JSON](sdk-cli-validation-results.json) records exact scoped outcomes and limitations.

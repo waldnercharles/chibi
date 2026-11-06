@@ -191,7 +191,7 @@ owner is implementing this policy; its concrete failure representation and
 public recovery API must be documented before claiming full recovery support.
 
 The owner subsequently approved prevention through task lifetime binding.
-An operation explicitly bound to that original target cancels if the target is
+An operation bound to that original target cancels if the target is
 removed; its children cancel through the existing task tree. Surviving independent
 awaiters receive the existing typed `Cancelled` result; owned child waiters
 cancel with their parent. Completed successful tasks remain successful if their
@@ -199,16 +199,40 @@ former target is removed later. Unrelated tasks can hold the same pointer
 without acquiring that dependency. Retaining a pointer does not delay deletion,
 and replacement does not revive a bound operation.
 
-Children inherit the explicit lifetime dependencies when they start. A child
+Children inherit the lifetime dependencies when they start. A child
 that continues after its parent completes retains those dependencies itself;
 later target removal cancels the child without changing the parent's retained
 successful result.
 
-Select the binding at the call site and register it before the task's first
-instruction. The same task declaration can therefore run with different
-lifetime dependencies. Do not infer a dependency from pointer arguments,
-captures, or ordinary pointer access. Exact public spelling remains separate
-from this approved placement and runtime contract.
+The owner subsequently rejected requiring a call-site marker and asked for
+inferred dependencies. This supersedes the earlier explicit call-site choice;
+the proposed `on health` spelling is rejected. Merely storing a handle must be
+distinguished from work that requires its target. The private runtime interface
+accepts resolved targets before the task's first instruction; the compiler
+producer remains to be implemented.
+
+After exploring dependencies that change as execution progresses, the owner
+rejected waiting until a conditional access to detect removal: unrelated
+post-await side effects might already have run. While a task may still access
+the component, a future conditional access counts as a dependency. Removal must
+cancel before the authored continuation resumes, even if that branch would
+have been skipped. Earlier effects are not rolled back. This applies to
+removable engine-owned targets used by tasks or behaviors, not only systems;
+ordinary managed pointers retain their allocations.
+
+The owner then approved keeping an inferred dependency until the task finishes,
+even after its final component access. For example, `Poison(health)` applies
+damage, waits, then plays a completion sound without reading health again.
+Removing health during that wait cancels the sound and the rest of Poison.
+Copying a component value inside an already-bound task does not detach the task.
+A surviving caller can start separate work using copied values; ordinary child
+task cancellation still applies, so spawning a child does not let it escape its
+parent's cancellation. Completed successful tasks retain their results.
+
+The inference representation and handling of targets selected later remain to
+be specified. Compiler optimizations must not end a dependency early or change
+observable cancellation timing. The runtime's fixed target-set prototype is
+not proof of complete authored inference.
 
 Removal takes effect at safe execution boundaries. A bound operation must not
 consume a pending request's result or execute another authored continuation

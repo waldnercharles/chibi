@@ -916,6 +916,11 @@ static const sample samples[] = {
                  { .function = "Grouped", .arguments = "[]", .expected = "[4]" },
                  { .function = "Widened", .arguments = "[]", .expected = "[5]" },
                  { .function = "WholeArray", .arguments = "[]", .expected = "[390]" } } },
+    { .name = "nullable pointer condition observes its original type",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nNullTest :: () -> int { p: ^int? = nil; "
+                "if p == nil { return 1; } return 0; }",
+      .calls = { { .function = "NullTest", .arguments = "[]", .expected = "[1]" } } },
     { .name = "imported references",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nimport lib \"project:lib\"\n"
@@ -2362,6 +2367,9 @@ static bool arguments_for(
     REQUIRE(put(&args[6], "value_size", (int)sizeof(pin_value)));
     REQUIRE(put(&args[6], "payload_offset", (int)offsetof(pin_value, d)));
     REQUIRE(put(&args[6], "results_offset", (int)offsetof(behavior_function_context, results)));
+    REQUIRE(
+        put(&args[6], "error_status_offset", (int)offsetof(behavior_function_context, error_status))
+    );
     REQUIRE(put(&args[6], "type_offset", (int)offsetof(pin_value, type)));
     REQUIRE(put(&args[6], "container_offset", (int)offsetof(pin_value, container)));
     REQUIRE(put(&args[6], "name_offset", (int)offsetof(pin_value, type_name)));
@@ -4764,6 +4772,157 @@ TEST_CASE(package_compiler_keeps_text_state_per_owner)
     type_catalog_set_project(NULL);
     return true;
 }
+/* Task results keep cancellation distinct from valid zero/false/empty values.
+ * Start runs up to its first yield; joining a completed/cancelled task continues
+ * synchronously, and direct await preserves the ordinary return type. */
+TEST_CASE(package_compiler_runs_task_sequencing_and_cancellation)
+{
+    REQUIRE(prepare());
+    const type_desc *const reflected[] = { &spot_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    const char *source =
+        "Tasks :: behavior { started: int = 0; initial: int = 0; zero: int = "
+        "99; "
+        "flags: int = 0; cancelled: int = 0; done: int = 0; failures: int = 0; "
+        "Number :: (value: int) -> int { started += 1; yield; return value } "
+        "Flag :: () -> bool { yield; return false } "
+        "Text :: () -> string { yield; return \"\" } "
+        "Label :: () -> string { yield; return \"ret\\u0000ained\" } "
+        "ReadSpot :: () -> Spot { yield; return self.Spot } "
+        "Void :: () { yield } "
+        "Child :: () { yield; failures += 1000 } "
+        "Parent :: () { Child(); await Delay(100) } "
+        "Run :: () { n := Number(0); initial = started; r := await n; "
+        "if r is Cancelled { failures += 1 } else { "
+        "if (r) is not Cancelled { yield; if r is not Cancelled { zero = r } } "
+        "} "
+        "b := Flag(); br := await b; if br is not Cancelled { if !br { flags "
+        "+= 1 } } "
+        "t := Text(); tr := await t; if tr is not Cancelled { if tr == \"\" { "
+        "flags += 2 } } "
+        "label := Label(); lr := await label; if lr is not Cancelled { "
+        "if lr == \"ret\\u0000ained\" { flags += 32 } } "
+        "s := ReadSpot(); sr := await s; if sr is not Cancelled { "
+        "if sr.w == 9 { flags += 16 } } "
+        "bad := Number(9); cancel bad; cr := await bad; "
+        "if cr is Cancelled { cancelled += 1 } else { failures += cr } "
+        "late := Number(8); cancel late after 0; dr := await late; "
+        "if dr is not Cancelled { failures += dr } else { cancelled += 1 } "
+        "parent := Parent(); cancel parent; pr := await parent; "
+        "if pr is Cancelled { cancelled += 1 } "
+        "v := Void(); vr := await v; if vr is Cancelled { failures += 1 } else "
+        "{ if vr is not Cancelled { flags += 4 } } "
+        "direct := await Number(3); flags += direct; await Delay(0); done = 1 "
+        "} "
+        "on Tick :: () { Run() } }";
+    const char *const states[] = { "initial", "zero",     "flags",  "cancelled",
+                                   "done",    "failures", "started" };
+    const int expected[] = { 1, 0, 58, 3, 1, 0, 4 };
+    for (int b = 0; b < 2; b++) {
+        execution_module *module = NULL;
+        REQUIRE(stage_one_behavior(b, "Tasks", source, &module));
+        player p = { 0 };
+        REQUIRE(play(module, &p));
+        const pin_value delta = { .type = PIN_F32, .f = 1.0f };
+        REQUIRE(execution_instance_dispatch(p.instance, TICK, &delta, 1, 0, 0, 10000) == FLOW_OK);
+        const pin_value *initial = execution_instance_state(
+            p.instance,
+            script_catalog_id("symbol", "Tasks:1:initial")
+        );
+        REQUIRE(initial && initial->type == PIN_I32 && initial->i == 1);
+        for (int frame = 1; frame <= 32 && execution_instance_pending(p.instance);
+             frame++) {
+            REQUIRE(execution_program_update(p.program, frame, 1, 10000) == FLOW_OK);
+        }
+        for (size_t i = 0; i < sizeof expected / sizeof *expected; i++) {
+            char identity[96];
+            snprintf(identity, sizeof identity, "Tasks:1:%s", states[i]);
+            const pin_value *value = execution_instance_state(
+                p.instance,
+                script_catalog_id("symbol", identity)
+            );
+            if (!value || value->type != PIN_I32 || value->i != expected[i]) {
+                fprintf(
+                    stderr,
+                    "task backend %d state %s: type %d value %d expected %d\n",
+                    b,
+                    states[i],
+                    value ? value->type : -1,
+                    value ? value->i : -1,
+                    expected[i]
+                );
+            }
+            REQUIRE(value && value->type == PIN_I32 && value->i == expected[i]);
+        }
+        REQUIRE(execution_instance_pending(p.instance) == 0);
+        stop(&p);
+        execution_module_free(module);
+    }
+    type_catalog_set_project(NULL);
+    return true;
+}
+
+TEST_CASE(package_compiler_rejects_unhandled_task_result_shapes)
+{
+    REQUIRE(prepare());
+    const behavior_rejection rejected[] = {
+        { "B :: behavior { Pair :: () -> (a: int, b: int) { yield; return (1, "
+          "2) } "
+          "on Tick :: () { task := Pair() } }",
+          "task handles with multiple results are not supported yet",
+          false },
+        { "B :: behavior { value: int = 0; F :: () -> int { yield; return 1 } "
+          "Run :: () { t := F(); r := await t; if r is not Cancelled { yield; "
+          "value = r } } "
+          "on Tick :: () { Run() } }",
+          "assigned value differs from its local",
+          false },
+        { "B :: behavior { value: int = 0; F :: () -> int { yield; return 1 } "
+          "Run :: () { t := F(); other := F(); r := await t; if r is not "
+          "Cancelled { "
+          "await other; value = r } } on Tick :: () { Run() } }",
+          "assigned value differs from its local",
+          false },
+        { "B :: behavior { on Tick :: () { cancel 1 } }",
+          "task operation needs a task handle",
+          false },
+        { "B :: behavior { on Tick :: () { n: int = 1; r := await n } }",
+          "await needs a task handle or authored call",
+          false },
+    };
+    for (int b = 0; b < 2; b++) {
+        for (size_t i = 0; i < sizeof rejected / sizeof *rejected; i++) {
+            REQUIRE(rejects(b, &rejected[i]));
+        }
+        pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS], out, message;
+        REQUIRE(arguments(b, false, NULL, 0, compile));
+        args[0] = text("MissingTargetFact");
+        args[1] = text("B :: behavior { on Tick :: () { yield } }");
+        memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);
+        REQUIRE(put(&args[2], "error_status_offset", 0));
+        REQUIRE(game_arguments(b, &args[8]));
+        REQUIRE(compiler_fixture_call(
+            &fixture,
+            b,
+            PACKAGE,
+            "CompileBehavior",
+            args,
+            BEHAVIOR_ARGUMENTS,
+            COMPILE_BUDGET,
+            &detached,
+            &out
+        ));
+        REQUIRE(out.type == PIN_UNION && out.ptr);
+        const pin_union *result = out.ptr;
+        REQUIRE(result->tag == tag(b, "Rejected"));
+        REQUIRE(get(&result->values[0], "message", &message));
+        REQUIRE(!strcmp(pin_text(message).bytes, "task lowering needs the target error-status offset"));
+        arena_free(&detached);
+    }
+    return true;
+}
+
 void test_language_package_compiler_chibi()
 {
     pu_setup(NULL, cleanup);
@@ -4835,6 +4994,8 @@ void test_language_package_compiler_chibi_behaviors_rest()
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_compiles_the_other_behaviors);
     RUN_TEST_CASE(package_compiler_keeps_text_state_per_owner);
+    RUN_TEST_CASE(package_compiler_runs_task_sequencing_and_cancellation);
+    RUN_TEST_CASE(package_compiler_rejects_unhandled_task_result_shapes);
     pu_clear_setup();
 }
 void test_language_package_compiler_chibi_sharing()

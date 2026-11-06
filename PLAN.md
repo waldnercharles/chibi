@@ -188,20 +188,29 @@ remaining lifetime questions; the new changes are not yet implemented.
 
 #### Component lifetime and task cancellation, 2026-10-22
 
-Approved: operations explicitly bound to an original component or entity cancel
-when that target is removed. Select the binding at the call site and install it
-before the first task instruction. Removal respects safe execution boundaries;
-an ordinary stored pointer does not create a task dependency. Reuse task-tree
-cancellation and typed `Cancelled` results. Resource cleanup means pending
-requests and captured values; no authored cleanup callback is implied.
+Approved: operations bound to an original component or entity cancel when that
+target is removed. Removal respects safe execution boundaries and reuses
+task-tree cancellation and typed `Cancelled` results. The owner subsequently
+rejected a public call-site marker and requested inferred dependencies. The
+latest direction retains inferred dependencies until task completion, even
+after the final target access. Conditional access also creates a dependency;
+removal cancels at a safe boundary before further authored continuation,
+including unrelated post-await effects in that task. This applies to removable
+component/entity targets, not ordinary managed allocations. Copying values does
+not detach an already-bound task; independent value-only work belongs in a
+separate task and remains subject to ordinary parent/child cancellation. Targets
+selected later still need a precise binding rule. No dependency inference is
+implemented by this task prerequisite. Resource cleanup means
+pending requests and captured values; no authored cleanup callback is implied,
+and earlier effects are not rolled back.
 
-The query owner implements the runtime seam in a separate query-lifetime
+The query owner implements the private runtime seam in a separate query-lifetime
 increment, preserving its frozen query candidate. `program_tasks.c` owns
 retained target bindings and cancellation; `program_activation.c` checks
 validity before consuming a request result or executing a continuation. `ecs.c`
 remains the source of original component identity. Sweep pending tasks even
-when their requests never complete. Public call-site spelling follows this
-runtime contract; do not infer dependency from arguments or captures.
+when their requests never complete. Dependency analysis and authored lowering
+follow the settled semantics; no public modifier is implemented.
 
 Use task sequencing for followup actions. The owner rejected `destroy_after()`.
 `await` followed by an explicit successful-result case already works; current
@@ -213,6 +222,23 @@ same pointer, child cancellation, typed waiter results, pending-request cleanup,
 world teardown and successful followups. Shared collection/query representation
 and artifact work follows [the integration contract](docs/value-runtime-integration.md)
 under each owner's existing validation restrictions.
+
+##### Self-hosted task prerequisite
+
+Implemented existing task behavior in the Chibi package compiler before authored
+dependency inference: identify await/yield in authored bodies, preserve the
+runtime invocation task flag, encode existing task command banks, and lower yield,
+await, cancellation and deadlines through the existing registry. Call arguments
+are evaluated once in source order, with typed success distinct from `Cancelled`.
+Unsupported task result shapes and native asynchronous calls are rejected.
+Focused checks pass for task sequencing/cancellation and invalid forms, ordinary
+packages/behaviors, collection pointer guards, bounded compilation, and native
+writer equivalence with empty command banks. Task execution includes bytecode
+and compiled backends, text with embedded NUL, and record-valued results.
+This local source increment does not change the prepared ABI, introduce target
+binding, or regenerate an artifact. Current-main/game-compiler integration,
+component-lifetime runtime execution, and authored dependency inference remain
+separate work; these focused results do not establish their correctness.
 
 The current prerequisite is the approved byte-preserving string representation:
 one immutable public `string` carrying bytes and length, with explicit UTF-8

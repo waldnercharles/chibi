@@ -636,6 +636,8 @@ MutatedNames :: (forest: snapshot.SnapshotNode[], text: string, node: int, refer
         target: int = -1;
         if (Is(forest, at, "assignment") || Is(forest, at, "delete_statement")) {
             target = Field(forest, at, "target");
+        } else if (Is(forest, at, "reference_argument")) {
+            target = Field(forest, at, "value");
         } else if (Is(forest, at, "call_expression") && Is(forest, Field(forest, at, "function"), "member_expression") &&
                    ChangingMethod(Text(forest, text, Field(forest, Field(forest, at, "function"), "member")))) {
             target = Field(forest, at, "function");
@@ -2180,6 +2182,8 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             step = OperatorStep(forest, text, document, values, value_top, item, ops, at);
         } else if (item.phase == ReferencePhase) {
             step = ReferenceArgumentStep(forest, text, document, types, members, names, item, ops, target, at);
+        } else if (kind == "reference_argument") {
+            step = Fail(forest, item.node, document, "ref argument requires a reference parameter");
         } else if (item.phase == AggregatePhase) {
             step = AggregateStep(forest, text, document, types, members, operators, values, value_top, item, ops,
                                  target, at);

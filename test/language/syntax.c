@@ -565,6 +565,21 @@ TEST_CASE(language_query_generators_preserve_authored_order)
     return true;
 }
 
+TEST_CASE(language_ref_arguments_are_only_call_values)
+{
+    static const char *invalid[] = {
+        "R :: library { F :: () { x := ref y; } }",
+        "R :: library { F :: () { return ref y; } }",
+        "R :: library { F :: () { G(x: int from ref y = z); } }",
+        "R :: library { F :: () { G(x: int split ref y = z); } }",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof *invalid; i++) {
+        parse(invalid[i]);
+        REQUIRE(original->diagnostic_count);
+    }
+    return true;
+}
+
 TEST_CASE(language_obsolete_declaration_tokens_rejected)
 {
     parse("Old :: library { function Compute() { return 1 } }");
@@ -869,6 +884,7 @@ void test_language_syntax()
     RUN_TEST_CASE(language_query_header_and_cancel_deadline);
     RUN_TEST_CASE(language_query_generators_preserve_authored_order);
     RUN_TEST_CASE(language_obsolete_declaration_tokens_rejected);
+    RUN_TEST_CASE(language_ref_arguments_are_only_call_values);
     RUN_TEST_CASE(language_expressions_precedence_and_continuation);
     RUN_TEST_CASE(language_invalid_source_has_positioned_diagnostics);
     RUN_TEST_CASE(language_incremental_snapshot_matches_fresh);

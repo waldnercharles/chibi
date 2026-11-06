@@ -1690,7 +1690,7 @@ TEST_CASE(borrow_argument_sharing_copies_around_reference_writes)
     REQUIRE(authored(
         "Share :: library {"
         "Root :: (input: string[]) -> int { local := input; return "
-        "Write(local, local); }"
+        "Write(local, ref local); }"
         "Write :: (values: string[], target: ref string[]) -> int { target[0] "
         "= \"z\";"
         "if values[0] == \"a\" { return 1; } return 0; } }"

@@ -1277,12 +1277,16 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     next: Work[] = [];
     marks: int[] = [];
     if (item.phase == 0) {
+        marked := FirstReferenceArgument(forest, item.node);
         callee := Field(forest, item.node, "function");
         sum_type: int = -1;
         if (Is(forest, callee, "member_expression")) {
             sum_type = UnionOf(forest, text, types, names, package, callee);
         }
         if (sum_type >= 0) {
+            if (marked >= 0) {
+                return Fail(forest, marked, document, "ref argument requires a reference parameter");
+            }
             // A variant with a payload: each argument is a payload field, in order.
             member := Text(forest, text, Field(forest, callee, "member"));
             variant := FindVariant(types, sum_type, member);
@@ -1319,6 +1323,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             method = ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member")));
         }
         if (method >= 0) {
+            if (marked >= 0) {
+                return Fail(forest, marked, document, "ref argument requires a reference parameter");
+            }
             if (ArrayChanger(natives, method) &&
                 ChangedArray(forest, text, names, natives, ports, forest[item.node].parent) < 0) {
                 return Fail(forest, callee, document,
@@ -1371,6 +1378,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             conversion = ScalarStorage(callee_name);
         }
         if (Integer(conversion)) {
+            if (marked >= 0) {
+                return Fail(forest, marked, document, "ref argument requires a reference parameter");
+            }
             // `T(value)` fails when the value does not fit; `T(wrap: value)`
             // keeps its low bits and `T(clamp: value)` saturates.
             argument := FirstMember(forest, Field(forest, item.node, "arguments"));
@@ -1405,6 +1415,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         // zero's intrinsic does.
         if (qualifier < 0 && found < 0 && NameMatches("assert", callee_name) &&
             FindNative(natives, callee_name) >= 0) {
+            if (marked >= 0) {
+                return Fail(forest, marked, document, "ref argument requires a reference parameter");
+            }
             condition: int = -1;
             message: int = -1;
             index: int = 0;
@@ -1461,6 +1474,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         } else if (qualifier >= 0) {
             return Fail(forest, callee, document, format_text("Unknown function '{}'", callee_name));
         } else {
+            if (marked >= 0) {
+                return Fail(forest, marked, document, "ref argument requires a reference parameter");
+            }
             native = FindNative(natives, callee_name);
             if (native == -2) {
                 return Fail(forest, callee, document, format_text("Ambiguous function '{}'", callee_name));
@@ -1492,10 +1508,27 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         count: int = 0;
         argument := FirstMember(forest, Field(forest, item.node, "arguments"));
         while (argument >= 0) {
+            if (Is(forest, argument, "named_argument")) {
+                return Fail(forest, argument, document, "named arguments are not supported yet");
+            }
+            if (Is(forest, argument, "typed_argument")) {
+                return Fail(forest, argument, document, "typed arguments are not supported yet");
+            }
+            marker := ReferenceArgumentNode(forest, argument);
             expected := Visit(argument);
             if (found >= 0 && count < expected_count) {
                 param := params[callables[found].first + count];
-                expected = Expect(argument, param.storage, param.container, param.record);
+                if (param.reference && marker < 0) {
+                    return Fail(forest, argument, document, "Reference parameter requires an explicit ref argument");
+                }
+                if (!param.reference && marker >= 0) {
+                    return Fail(forest, marker, document, "ref argument requires a reference parameter");
+                }
+                value := argument;
+                if (marker >= 0) {
+                    value = Field(forest, marker, "value");
+                }
+                expected = Expect(value, param.storage, param.container, param.record);
                 if (param.reference) {
                     expected.phase = ReferencePhase;
                 }
@@ -1503,6 +1536,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                        ports[NativePort(natives[native], count)].storage > 0) {
                 port := ports[NativePort(natives[native], count)];
                 expected = Expect(argument, port.storage, port.container, -1);
+            }
+            if (marker >= 0 && (found < 0 || count >= expected_count)) {
+                return Fail(forest, marker, document, "ref argument requires a reference parameter");
             }
             next.append(expected);
             count += 1;

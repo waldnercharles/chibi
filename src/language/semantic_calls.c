@@ -114,6 +114,17 @@ int script_analyzer_authored_parameter_index(
     }
     return -1;
 }
+/* Keep an explicit ref wrapper until its parameter has been resolved. */
+TSNode script_analyzer_call_argument(TSNode argument)
+{
+    if (!script_analyzer_is(argument, "named_argument") &&
+        !script_analyzer_is(argument, "typed_argument")) {
+        return argument;
+    }
+    TSNode value = script_analyzer_field(argument, "value");
+    return ts_node_is_null(value) ? script_analyzer_field(argument, "source") : value;
+}
+
 int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_catalog_parameter *parameter)
 {
     char *name = script_analyzer_qualified_name(a, node);
@@ -641,7 +652,7 @@ static int fallback_expression(analyzer *a, TSNode node, script_type expected)
             continue;
         }
         TSNode name_node = script_analyzer_field(argument, "name");
-        TSNode value = script_analyzer_field(argument, "value");
+        TSNode value = script_analyzer_call_argument(argument);
         int ordinal = 0;
         if (!ts_node_is_null(name_node)) {
             char *name = script_analyzer_name_copy(a, name_node);
@@ -736,7 +747,7 @@ static int state_access(analyzer *a, TSNode node, const script_catalog_capabilit
     TSNode argument = script_analyzer_named_count(arguments)
                         ? ts_node_named_child(arguments, 0)
                         : (TSNode){ 0 };
-    TSNode value = script_analyzer_field(argument, "value");
+    TSNode value = script_analyzer_call_argument(argument);
     if (ts_node_is_null(value)) {
         value = argument;
     }
@@ -815,6 +826,19 @@ static bool field_argument(
     script_type type = capability
                          ? capability->parameters[parameter].type
                          : a->out->symbols[function->parameters[parameter]].type;
+    if (type.flags & SCRIPT_TYPE_REFERENCE) {
+        TSNode value = script_analyzer_call_argument(argument);
+        bool explicit_ref = script_analyzer_is(value, "reference_argument");
+        script_analyzer_diagnostic(
+            a,
+            value,
+            explicit_ref
+                ? "Reference argument requires a writable value"
+                : "Reference parameter requires an explicit ref argument"
+        );
+        seen[parameter] = true;
+        return true;
+    }
     if ((type.flags & SCRIPT_TYPE_UNTYPED) ||
         (type.storage == PIN_STRUCT && !type.nominal)) {
         for (int i = 0; capability && i < acount(call->arguments); i++) {
@@ -868,7 +892,7 @@ static bool field_argument(
         script_analyzer_diagnostic(a, argument, "Whole and field arguments cannot be combined");
         return true;
     }
-    TSNode value = script_analyzer_field(argument, "value");
+    TSNode value = script_analyzer_call_argument(argument);
     if (ts_node_is_null(value)) {
         value = script_analyzer_field(argument, "source");
     }
@@ -956,6 +980,9 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
                     if (ts_node_is_null(value)) {
                         value = script_analyzer_field(argument, "source");
                     }
+                    if (script_analyzer_is(value, "reference_argument")) {
+                        value = script_analyzer_field(value, "value");
+                    }
                     (*values)[i] = script_analyzer_expression(
                         a,
                         value,
@@ -989,6 +1016,22 @@ static int overloaded_capability(analyzer *a, const char *name, TSNode arguments
         }
     }
     return found;
+}
+
+static void require_reference_type(analyzer *a, TSNode node, script_type expected, script_type actual)
+{
+    if (((expected.flags | actual.flags) & SCRIPT_TYPE_ERROR) ||
+        script_type_equal(
+            script_catalog_canonical_type(a->catalog, expected),
+            script_catalog_canonical_type(a->catalog, actual)
+        )) {
+        return;
+    }
+    if (!script_catalog_type_assignable(a->catalog, expected, actual)) {
+        script_analyzer_require(a, node, expected, actual);
+        return;
+    }
+    script_analyzer_diagnostic(a, node, "Reference argument requires the exact parameter type");
 }
 
 /* The local a reference argument names, or -1. A task can outlive the
@@ -1259,7 +1302,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             }
             if (script_analyzer_named_count(arguments)) {
                 TSNode argument = ts_node_named_child(arguments, 0);
-                TSNode value = script_analyzer_field(argument, "value");
+                TSNode value = script_analyzer_call_argument(argument);
                 if (ts_node_is_null(value)) {
                     value = argument;
                 }
@@ -1492,7 +1535,7 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
             continue;
         }
         TSNode name_node = script_analyzer_field(argument, "name"),
-               value = script_analyzer_field(argument, "value");
+               value = script_analyzer_call_argument(argument);
         int parameter = ordinal++;
         if (!ts_node_is_null(name_node)) {
             char *argument_name = script_analyzer_qualified_name(a, name_node);
@@ -1543,11 +1586,29 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 type.nominal = component->id;
             }
         }
+        bool requires_ref = (type.flags & SCRIPT_TYPE_REFERENCE) != 0;
+        bool explicit_ref = script_analyzer_is(value, "reference_argument");
+        if (explicit_ref != requires_ref) {
+            script_analyzer_diagnostic(
+                a,
+                value,
+                requires_ref
+                    ? "Reference parameter requires an explicit ref argument"
+                    : "ref argument requires a reference parameter"
+            );
+        }
+        if (explicit_ref) {
+            value = script_analyzer_field(value, "value");
+        }
         TSNode annotation = script_analyzer_field(argument, "type");
         if (!ts_node_is_null(annotation)) {
             script_type annotated = script_analyzer_type_node(a, annotation);
-            script_analyzer_require(a, annotation, type, annotated);
-            type = annotated;
+            if (requires_ref) {
+                require_reference_type(a, annotation, type, annotated);
+            } else {
+                script_analyzer_require(a, annotation, type, annotated);
+                type = annotated;
+            }
         }
         bool reference = capability && parameter >= 0 && parameter < parameter_count &&
                          capability->parameters[parameter].reference_kind !=
@@ -1593,7 +1654,12 @@ int script_analyzer_call_expression(analyzer *a, TSNode node, script_type expect
                 script_analyzer_diagnostic(a, argument, "Argument supplied more than once");
             }
             seen[parameter] = true;
-            script_analyzer_require(a, value, type, script_analyzer_expr_type(a, expression_index));
+            script_type actual = script_analyzer_expr_type(a, expression_index);
+            if (requires_ref) {
+                require_reference_type(a, value, type, actual);
+            } else {
+                script_analyzer_require(a, value, type, actual);
+            }
             if ((type.flags & SCRIPT_TYPE_REFERENCE) &&
                 !a->out->expressions[expression_index].writable) {
                 script_analyzer_diagnostic(a, value, "Reference argument requires a writable value");

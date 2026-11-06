@@ -179,6 +179,77 @@ TEST_CASE(language_pub_marks_only_package_declarations)
     }
     return true;
 }
+TEST_CASE(language_ref_calls_require_explicit_mutable_arguments)
+{
+    parse(
+        "Refs :: library { Bump :: (value: ref int) { value += 1; } "
+        "Relay :: (value: ref int) { Bump(value: ref value); } "
+        "Run :: () -> int { value := 4; Relay(ref value); return value; } }"
+    );
+    REQUIRE(!syntax->diagnostic_count && analysis->valid);
+    static const struct
+    {
+        const char *source, *message, *argument;
+        int offset;
+    } cases[] = {
+        { "R :: library { F :: (n: ref int) {} Run :: () { n := 1; F(n); } }",
+          "Reference parameter requires an explicit ref argument",
+          "F(n)",
+          2 },
+        { "R :: library { Value :: (n: int) {} Run :: () { n := 1; Value(ref "
+          "n); } }",
+          "ref argument requires a reference parameter",
+          "Value(ref n)",
+          6 },
+        { "R :: library { F :: (n: ref int) {} Run :: () { F(ref 1); } }",
+          "Reference argument requires a writable value",
+          "F(ref 1)",
+          6 },
+        { "R :: library { F :: (n: ref int) {} Run :: () { Frozen :: 1; F(ref "
+          "Frozen); } }",
+          "Reference argument requires a writable value",
+          "F(ref Frozen)",
+          6 },
+        { "R :: library { F :: (n: ref int) {} Run :: () { flag := true; F(ref "
+          "flag); } }",
+          "Incompatible types: expected int, got bool",
+          "F(ref flag)",
+          6 },
+        { "R :: library { F :: (n: ref int64) {} Run :: () { n: int = 1; F(ref "
+          "n); } }",
+          "Reference argument requires the exact parameter type",
+          "F(ref n)",
+          6 },
+        { "R :: library { F :: (n: ref int64) {} Run :: () { n: int = 1; F(n: "
+          "int = ref n); } }",
+          "Reference argument requires the exact parameter type",
+          "F(n: int = ref n)",
+          5 },
+        { "R :: library { F :: (row: ref Position) {} Run "
+          ":: () { F(row.x: 1.0); } }",
+          "Reference parameter requires an explicit ref argument",
+          "F(row.x: 1.0)",
+          9 },
+        { "R :: library { F :: (row: ref Position) {} Run "
+          ":: () { n: float = 1; F(row.x: ref n); } }",
+          "Reference argument requires a writable value",
+          "F(row.x: ref n)",
+          9 },
+    };
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        parse(cases[i].source);
+        REQUIRE(!syntax->diagnostic_count && !analysis->valid);
+        const script_diagnostic *error = diagnostic(cases[i].message);
+        REQUIRE(error);
+        const char *argument = strstr(cases[i].source, cases[i].argument);
+        REQUIRE(
+            argument && error->range.start ==
+                            (int)(argument - cases[i].source) + cases[i].offset
+        );
+    }
+    return true;
+}
+
 /* `has` names a map method only on a value; an authored `has` stays a call. */
 TEST_CASE(language_authored_map_method_names_preserve_callable_identity)
 {
@@ -1820,7 +1891,8 @@ TEST_CASE(language_units_reject_callable_mismatches)
           "distance "
           "= elapsed; } }",
           "Units differ: u = s" },
-        { "M :: library { Bad :: (body: Body) { Later(body.speed); } Later :: "
+        { "M :: library { Bad :: (body: Body) { Later(ref body.speed); } Later "
+          ":: "
           "(distance: ref float u) {} }",
           "Units differ: u argument u/s" },
         { "M :: library { Bad :: (elapsed: ref number s) -> ref number u { "
@@ -2258,6 +2330,7 @@ void test_language_semantic()
     RUN_TEST_CASE(language_pub_marks_only_package_declarations);
     RUN_TEST_CASE(language_literals_are_typed_by_spelling);
     RUN_TEST_CASE(language_authored_map_method_names_preserve_callable_identity);
+    RUN_TEST_CASE(language_ref_calls_require_explicit_mutable_arguments);
     RUN_TEST_CASE(language_retained_bindings_preserve_owner_and_value_type);
     RUN_TEST_CASE(language_system_retention_rejects_non_system_owners_and_tasks);
     RUN_TEST_CASE(language_system_invocation_locals_cross_calls_only_as_arguments);

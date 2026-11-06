@@ -4451,6 +4451,10 @@
                     },
                     {
                       "type": "SYMBOL",
+                      "name": "reference_argument"
+                    },
+                    {
+                      "type": "SYMBOL",
                       "name": "_expression"
                     }
                   ]
@@ -4474,6 +4478,10 @@
                           {
                             "type": "SYMBOL",
                             "name": "typed_argument"
+                          },
+                          {
+                            "type": "SYMBOL",
+                            "name": "reference_argument"
                           },
                           {
                             "type": "SYMBOL",
@@ -4509,6 +4517,23 @@
         }
       ]
     },
+    "reference_argument": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "ref"
+        },
+        {
+          "type": "FIELD",
+          "name": "value",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expression"
+          }
+        }
+      ]
+    },
     "named_argument": {
       "type": "PREC_DYNAMIC",
       "value": 1,
@@ -4531,8 +4556,17 @@
             "type": "FIELD",
             "name": "value",
             "content": {
-              "type": "SYMBOL",
-              "name": "_expression"
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "SYMBOL",
+                  "name": "reference_argument"
+                },
+                {
+                  "type": "SYMBOL",
+                  "name": "_expression"
+                }
+              ]
             }
           }
         ]
@@ -4605,8 +4639,17 @@
                             "type": "FIELD",
                             "name": "value",
                             "content": {
-                              "type": "SYMBOL",
-                              "name": "_expression"
+                              "type": "CHOICE",
+                              "members": [
+                                {
+                                  "type": "SYMBOL",
+                                  "name": "reference_argument"
+                                },
+                                {
+                                  "type": "SYMBOL",
+                                  "name": "_expression"
+                                }
+                              ]
                             }
                           }
                         ]
@@ -4629,8 +4672,17 @@
                     "type": "FIELD",
                     "name": "value",
                     "content": {
-                      "type": "SYMBOL",
-                      "name": "_expression"
+                      "type": "CHOICE",
+                      "members": [
+                        {
+                          "type": "SYMBOL",
+                          "name": "reference_argument"
+                        },
+                        {
+                          "type": "SYMBOL",
+                          "name": "_expression"
+                        }
+                      ]
                     }
                   }
                 ]
@@ -6678,6 +6730,10 @@
     [
       "_single_type",
       "_expression"
+    ],
+    [
+      "_single_type",
+      "reference_argument"
     ],
     [
       "argument_list",

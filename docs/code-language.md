@@ -179,7 +179,7 @@ Example :: library {
 ```
 
 Parameters normally receive value copies. A `ref` parameter writes to the
-caller's mutable value. A call needs no address-of operator.
+caller's mutable value. Mark that argument with `ref` at the call site too.
 
 ```chibi
 // chibi-mit-example: reference-parameter
@@ -189,8 +189,23 @@ Example :: library {
     AddScore :: (score: ref int, points: int) {
         score += points
     }
+
+    Run :: () -> int {
+        score := 10
+        AddScore(ref score, 5)
+        return score // 15
+    }
 }
 ```
+
+The argument must be a writable value of the parameter's exact type. Missing
+`ref`, or using it with a value parameter, is a compile error. Forwarding a
+reference to another function also requires `ref`. Native compilation also
+accepts named arguments such as `AddScore(score: ref score, points: 5)`;
+the Chibi-written compiler currently requires positional calls.
+
+Copy avoidance and ownership transfers are compiler details. Calling a function
+does not require a `move` keyword or invalidate an ordinary value.
 
 The compiler infers effects and purity. Functions need no separate `pure`
 keyword. Runtime calls have a shared depth limit of 64.

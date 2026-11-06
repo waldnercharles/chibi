@@ -1682,6 +1682,28 @@ TEST_CASE(source_format_authored_prototypes_and_relationships)
     return true;
 }
 
+TEST_CASE(source_format_preserves_explicit_reference_arguments)
+{
+    REQUIRE(format(
+        "Refs::library{Bump::(v:ref int){v+=1;}Run::(){n:=1;"
+        "Bump(ref n);Bump(v:ref n);Bump(ref /*caller*/ n);}}"
+    ));
+    REQUIRE(strstr(text, "Bump(ref n)"));
+    REQUIRE(strstr(text, "Bump(v: ref n)"));
+    REQUIRE(strstr(text, "Bump(ref /*caller*/ n)"));
+    state_after = script_analyze_document(formatted, &catalog, "Refs");
+    REQUIRE(state_after->valid);
+    cleanup();
+    REQUIRE(minimize_valid(
+        &catalog,
+        "Refs :: library { Bump :: (v: ref int) { v += 1; } "
+        "Run :: () { n: int = 1; Bump(v: ref n); } }",
+        "Refs :: library { Bump :: (v: ref int) { v += 1 } "
+        "Run :: () { n := 1; Bump(ref n) } }"
+    ));
+    return true;
+}
+
 void test_language_root_state()
 {
     pu_setup(NULL, cleanup);
@@ -1705,6 +1727,7 @@ void test_language_format()
     RUN_TEST_CASE(source_format_hugs_struct_braces);
     RUN_TEST_CASE(source_format_options_preserve_defaults);
     RUN_TEST_CASE(source_format_generic_types_maps_and_reference_iteration);
+    RUN_TEST_CASE(source_format_preserves_explicit_reference_arguments);
     RUN_TEST_CASE(source_format_authored_prototypes_and_relationships);
     RUN_TEST_CASE(source_format_configures_indentation);
     RUN_TEST_CASE(source_format_reflows_lists_and_records);

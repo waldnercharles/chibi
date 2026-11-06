@@ -599,41 +599,101 @@ static const sample samples[] = {
                  { "Copies", "[]", "[\"0=v0;1=v1;2=v2;|0=changed;1=v1;\"]" } } },
     { .name = "references",
       .group = COLLECTION_SAMPLES,
-      .source = "package facts\n"
-                "Point :: struct { x: int; y: int; }\n"
-                "Bump :: (v: ref int) { v += 1; }\n"
-                "Set :: (v: ref int, to: int) { v = to; }\n"
-                "Twice :: (v: ref int) { Bump(v); Bump(v); }\n"
-                "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
-                "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
-                "Grow :: (xs: ref int[]) { xs = append(xs, int(7)); }\n"
-                "Inc :: (k: int) -> int { Bump(k); return k; }\n"
-                "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(p.x); }\n"
-                "Count :: () -> int { c: int = 2; c += 3; Bump(c); c = c * 2; "
-                "return c; }\n"
-                "Run :: () -> int {\n"
-                "    n: int = 1;\n    Bump(n);\n    Twice(n);\n    Set(n, n * "
-                "10);\n"
-                "    name: string = \"a\";\n    Rename(name);\n"
-                "    p: Point = {x: 1, y: 2};\n    Swap(p);\n    Bump(p.x);\n"
-                "    xs: int[] = [1];\n    Grow(xs);\n"
-                "    total := n + p.x * 100 + p.y * 1000 + length(xs) * 10000 "
-                "+ Inc(5) * 1000000;\n"
-                "    if (name == \"a!\") { total += 100000; }\n"
-                "    return total;\n}\n"
-                "Moved :: () -> int { p: Point = {x: 1, y: 2}; Nudge(p); "
-                "return p.x * 100 + p.y; }",
+      .source =
+          "package facts\n"
+          "Point :: struct { x: int; y: int; }\n"
+          "Bump :: (v: ref int) { v += 1; }\n"
+          "Set :: (v: ref int, to: int) { v = to; }\n"
+          "Twice :: (v: ref int) { Bump(ref v); Bump(ref v); }\n"
+          "Rename :: (s: ref string) { s = format_text(\"{}!\", s); }\n"
+          "Swap :: (p: ref Point) { p = {x: p.y, y: p.x}; }\n"
+          "Grow :: (xs: ref int[]) { xs = append(xs, int(7)); }\n"
+          "Inc :: (k: int) -> int { Bump(ref k); return k; }\n"
+          "Nudge :: (p: ref Point) { p.x = 9; p.y += 5; Bump(ref p.x); }\n"
+          "Count :: () -> int { c: int = 2; c += 3; Bump(ref c); c = c * 2; "
+          "return c; }\n"
+          "Run :: () -> int {\n"
+          "    n: int = 1;\n    Bump(ref n);\n    Twice(ref n);\n    Set(ref "
+          "n, n * "
+          "10);\n"
+          "    name: string = \"a\";\n    Rename(ref name);\n"
+          "    p: Point = {x: 1, y: 2};\n    Swap(ref p);\n    Bump(ref p.x);\n"
+          "    xs: int[] = [1];\n    Grow(ref xs);\n"
+          "    total := n + p.x * 100 + p.y * 1000 + length(xs) * 10000 "
+          "+ Inc(5) * 1000000;\n"
+          "    if (name == \"a!\") { total += 100000; }\n"
+          "    return total;\n}\n"
+          "Moved :: () -> int { p: Point = {x: 1, y: 2}; Nudge(ref p); "
+          "return p.x * 100 + p.y; }",
       .calls = { { "Run", "[]", "[6121340]" },
                  { "Inc", "[1]", "[2]" },
                  { "Count", "[]", "[12]" },
                  { "Moved", "[]", "[1007]" } } },
+    { .name = "imported references",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Forward :: (value: ref int) { lib.Bump(ref value); }\n"
+                "Run :: () -> int { value: int = 4; Forward(ref value); "
+                "lib.Bump(ref value); return value; }",
+      .library = "package lib\npub Bump :: (value: ref int) { value += 3; }",
+      .calls = { { "Run", "[]", "[10]" } } },
+    { .name = "reference marker missing",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () "
+                "{\n    n: int = 1;\n    Bump(n);\n}",
+      .message = "Reference parameter requires an explicit ref argument",
+      .line = 5,
+      .column = 10 },
+    { .name = "reference forwarded marker missing",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nBump :: (v: ref int) { v += 1; }\nForward :: "
+                "(v: ref int) {\n    Bump(v);\n}",
+      .message = "Reference parameter requires an explicit ref argument",
+      .line = 4,
+      .column = 10 },
+    { .name = "reference marker on value parameter",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nRead :: (v: int) -> int { return v; }\nRun :: "
+                "() -> int {\n    n: int = 1;\n    return Read(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 5,
+      .column = 17 },
+    { .name = "reference marker on conversion",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nRun :: () -> int64 {\n    n: int = 1;\n    "
+                "return int64(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 4,
+      .column = 18 },
+    { .name = "reference marker on native",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nRun :: () -> string {\n    n: int = 1;\n    "
+                "return format_text(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 4,
+      .column = 24 },
+    { .name = "reference marker on union constructor",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nU :: union { A(value: int) }\nRun :: () -> U "
+                "{\n    n: int = 1;\n    return U.A(ref n);\n}",
+      .message = "ref argument requires a reference parameter",
+      .line = 5,
+      .column = 16 },
+    { .name = "reference imported marker missing",
+      .group = COLLECTION_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\nRun :: () {\n    "
+                "n: int = 1;\n    lib.Bump(n);\n}",
+      .library = "package lib\npub Bump :: (v: ref int) { v += 1; }",
+      .message = "Reference parameter requires an explicit ref argument",
+      .line = 5,
+      .column = 14 },
     { .name = "reference literal",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
-                "Bump(3); }",
+                "Bump(ref 3); }",
       .message = "Reference argument requires a writable value",
       .line = 3,
-      .column = 18 },
+      .column = 22 },
     { .name = "reference default",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int = 1) { v += 1; }",
@@ -643,10 +703,10 @@ static const sample samples[] = {
     { .name = "reference type",
       .group = COLLECTION_SAMPLES,
       .source = "package facts\nBump :: (v: ref int) { v += 1; }\nRun :: () { "
-                "n: int64 = 1; Bump(n); }",
+                "n: int64 = 1; Bump(ref n); }",
       .message = "reference argument differs from the parameter's type",
       .line = 3,
-      .column = 32 },
+      .column = 36 },
     { .name = "unions",
       .group = TYPE_SAMPLES,
       .source = "package facts\n"

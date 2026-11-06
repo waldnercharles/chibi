@@ -390,7 +390,10 @@ static bool extract(
             valid = source_refactor_fail(error, size, "Captured value has no resolved source expression");
             break;
         }
-        source_refactor_append(&call, "%s%s", i ? ", " : "", input);
+        const script_symbol *symbol = &a->symbols[inputs[i]];
+        bool reference = symbol->writable ||
+                         (symbol->type.flags & SCRIPT_TYPE_REFERENCE);
+        source_refactor_append(&call, "%s%s%s", i ? ", " : "", reference ? "ref " : "", input);
         free(input);
     }
     source_refactor_append(&call, ");\n");

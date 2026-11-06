@@ -1393,6 +1393,10 @@ int script_analyzer_expression(analyzer *a, TSNode node, script_type expected)
                                  .range = script_analyzer_range(a, node) }
         );
     }
+    if (script_analyzer_is(node, "reference_argument")) {
+        script_analyzer_diagnostic(a, node, "ref argument requires a reference parameter");
+        node = script_analyzer_field(node, "value");
+    }
     a->depth++;
     int result = script_analyzer_expression_inner(a, node, expected);
     const script_expression *resolved = &a->out->expressions[result];

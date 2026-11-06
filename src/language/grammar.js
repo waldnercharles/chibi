@@ -130,6 +130,7 @@ module.exports = grammar({
     [$._public_record, $._name],
     [$.event_declaration, $.builtin_reference],
     [$._single_type, $._expression],
+    [$._single_type, $.reference_argument],
     [$.argument_list, $.parenthesized_expression],
     [$.parameter, $._expression],
     [$.constant_declaration, $.local_declaration, $.label_statement],
@@ -617,14 +618,15 @@ module.exports = grammar({
       seq(
         "(",
         optional(
-          comma(choice($.named_argument, $.typed_argument, $._expression)),
+          comma(choice($.named_argument, $.typed_argument, $.reference_argument, $._expression)),
         ),
         ")",
       ),
+    reference_argument: ($) => seq(K.ref, field("value", $._expression)),
     named_argument: ($) =>
       // A bare identifier after ':' is a value. Type annotations with '=' or
       // 'from'/'split' remain unambiguous even when the value is also a type name.
-      prec.dynamic(1, seq(field("name", $.argument_name), ":", field("value", $._expression))),
+      prec.dynamic(1, seq(field("name", $.argument_name), ":", field("value", choice($.reference_argument, $._expression)))),
     typed_argument: ($) =>
       prec.dynamic(2, seq(
         field("name", $.argument_name),
@@ -632,8 +634,8 @@ module.exports = grammar({
         field("type", $.type),
         choice(
           seq(choice(K.from, K.split), field("source", $._expression),
-            optional(seq("=", field("value", $._expression)))),
-          seq("=", field("value", $._expression)),
+            optional(seq("=", field("value", choice($.reference_argument, $._expression))))),
+          seq("=", field("value", choice($.reference_argument, $._expression))),
         ),
       )),
     argument_name: ($) => seq($._member_name, repeat(seq(".", $._member_name))),

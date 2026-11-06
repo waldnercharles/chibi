@@ -430,16 +430,23 @@ data cell, as stage zero keeps every local. Stage one still refuses:
 - Odin `^T`, Rust `&mut T`, C# `ref`, Zig `*T` and C pointers; Python and
   Ruby use generators.
 
-A call does not mark a reference argument either: `Nudge(v)` may write `v`,
-and only the callee's declaration says so. The version 29 migration
-collects every authored callable with a `ref` parameter to learn whether a
-call can change a parameter. C# (`ref v`), Swift (`&v`), Rust (`&mut v`),
-Odin and Zig (`&v`) all mark the call site, so readers and tools see the
-write.
+Calls now mark reference arguments: `Nudge(ref v)` may write `v`. Both
+compiler stages reject an omitted marker or a marker on a value parameter.
+This follows C#'s explicit `ref v` at the declaration and call; Swift (`&v`),
+Rust (`&mut v`), Odin and Zig (`&v`) also mark the call site. The native
+compiler accepts `Nudge(value: ref v)`; general named calls remain a
+stage-one gap.
+
+Authoring refuses to inline a callable with `ref` parameters. Its expansion
+would declare a local `ref` initialized from the argument's value, but local
+declaration lowering does not create a reference to that argument. Supporting
+local reference aliases is a prerequisite for preserving caller mutation when
+inlining these calls; the original call remains intact.
 
 Suggestion: `core:strings` gains Odin's iterators, then stage one compiles
-references to elements and entries. Consider marking reference arguments at
-the call site.
+references to elements and entries. Keep ownership transfers automatic:
+ordinary library users should never need a `move` keyword. Resource-handle
+sharing and cleanup still need their own API decisions.
 
 ### Library growth spends the compiler tests' budgets
 

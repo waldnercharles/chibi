@@ -200,6 +200,7 @@ int script_analyzer_authored_parameter_index(
     const char *name
 );
 int script_analyzer_reference_argument(analyzer *a, TSNode node, const script_catalog_parameter *parameter);
+TSNode script_analyzer_call_argument(TSNode argument);
 int script_analyzer_symbol_reference(analyzer *, TSNode, script_type);
 int script_analyzer_member_expression(analyzer *a, TSNode node, script_type expected);
 int script_analyzer_map_operation(analyzer *, TSNode, script_expression_kind, int map, TSNode key);

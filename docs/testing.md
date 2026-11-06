@@ -177,10 +177,13 @@ These counts describe coverage and do not record a pass.
   10,000-instruction per-call budget.
 - `language-record-document`: five cases, adding three tiny JSON roundtrips,
   four malformed byte tags and one rejected NUL name.
-- `language-record-prepared`: seven cases, adding a four-byte wire roundtrip,
-  budget failure, metadata rejection and invalid field markers. A native-field
-  size check uses an 81-byte stack string and a nearly exhausted logical budget
-  with a hash sink; it allocates no large output buffer.
+- `language-record-prepared`: eleven cases, including a four-byte wire roundtrip,
+  budget failure, metadata rejection and invalid field markers. Shared-layout
+  validation uses one 128-field record and 256 headers under the default work
+  limit; tiny decoded definitions check distinct invalid layouts, later headers,
+  retries and native catalog replacement. A native-field size check uses an
+  81-byte stack string and a nearly exhausted logical budget with a hash sink;
+  it allocates no large output buffer.
 - `build-process`: thirty-seven cases. The new helper case adds seven operations
   on at most seven bytes and no processes. Existing invocation and child limits
   remain unchanged; binary-output and file assertions replace text rejection.
@@ -3154,3 +3157,30 @@ after source integration. Prepared-mode no-op recovery never uploads missing
 assets without a live source binding. Rebuilt archives require a new release
 tag, including after source, main or PR changes. The original artifacts and
 release digests remain the authority for an original-job retry.
+
+## Paired Studio SDK verification
+
+The registered CI workflow accepts an optional `studio_sha` dispatch input. Use
+a reviewed full lowercase 40-character commit SHA from the public
+`waldnercharles/chibi-studio` repository. This adds the distinct paired Studio
+native/Web verification job; the normal CI jobs keep their existing conditions
+and still run. Dispatch the reviewed engine branch at its frozen commit and
+retain the resulting run's engine and Studio source identities.
+
+The paired job packages a native Linux Debug SDK and a serial Emscripten 6.0.10
+Release SDK from that engine, compiles the exact Studio revision against each,
+and opens an external copy of the starter project for two hidden native frames.
+Sibling source checkouts stay clean while startup upgrades the disposable copy.
+SDK inventories, manifest identities, consumed CMake SDK bindings, source/format
+agreement and nonempty native/Web products are checked. The retained artifact
+records source revisions/trees, SDK manifests, compiler version, startup log and
+product hashes; failures retain evidence collected before the failed step.
+
+The default Studio CI job also uses sibling checkouts and an external starter
+copy, and retains clean SDK identity and consumer binding evidence. Its Studio
+revision follows that repository's default branch; use the paired job for an
+exact cross-repository candidate.
+
+The two hidden frames cover starter project startup. Web compilation does not
+establish browser execution, Studio UI interaction or visual acceptance. These
+checks do not publish packages or clear renderer, deployment or PR holds.

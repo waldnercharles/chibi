@@ -182,6 +182,23 @@ bindings to move. `StageOne.chibi` still uses the C catalog for input export and
 final game assembly. Native runtime construction, SDK/full-engine and Wasm builds, Studio
 consumers and command-parity checks retain their current CMake responsibilities.
 
+`chibi-compile --stage-one-input FILE` writes the unchanged behavior-compiler
+argument array and reports its executable source count on stdout. For zero
+sources, `StageOne.chibi` invokes `chibi-compile --resources-only --output FILE`
+with the project root before recovering or invoking the behavior compiler.
+This mode assembles scenes, prototypes and resources with no supplied modules;
+it rescans the project and refuses any executable source. Nonempty projects
+retain the existing compiler and `--modules FILE` assembly route. Empty compiler
+results and empty `--modules` files remain failures; CHIBICLO still requires a
+root and at least one module.
+
+The `game-equivalence-empty` C dispatcher case builds a disposable resource-only
+project through that route with an unavailable behavior-compiler host. It checks
+zero modules, artifact and resource-manifest equality with native preparation,
+and CPU play traces through frame 30. It also checks that resource-only assembly
+refuses a behavior source while preserving prior output, and that malformed or
+empty module closures cannot produce an artifact.
+
 ## Installed build program
 
 `tools/toolchain/Build.chibi` owns native profile selection, compiler and SDK

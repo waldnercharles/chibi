@@ -2244,6 +2244,255 @@ static const sample samples[] = {
                  { .function = "Make", .arguments = "[2]", .expected = "[{\"tag\":10337135207335990755,\"values\":[{\"x\":4,\"y\":6}]}]" },
                  { .function = "Make", .arguments = "[3]", .expected = "[{\"tag\":16893218631787042844,\"values\":[\"tri\",[1,2,3]]}]" },
                  { .function = "Make", .arguments = "[4]", .expected = "[{\"tag\":16895435817925979816,\"values\":[]}]" } } },
+    { .name = "exported generic functions",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Identity :: (value: int) -> int { return value + 100; }\n"
+                "Main :: (value: int) -> int { return lib.Repeated(value) + "
+                "lib.Identity(value); }\n"
+                "Wide :: (value: i64) -> i64 { return lib.Identity(value); }\n"
+                "First :: () -> int { values: int[] = [7, 2]; return "
+                "lib.First(values); }\n"
+                "Scaled :: () -> int { return lib.Scale(5, 1 + 2) + "
+                "lib.Scale(2, 4); }\n"
+                "Enabled :: () -> int { return lib.Maybe(7, true) + "
+                "lib.Maybe(7, false); }\n",
+      .library = "package lib\n"
+                 "pub Identity :: (value: $T) -> T { local: T = value; return "
+                 "local; }\n"
+                 "pub Repeated :: (value: $T) -> T { return "
+                 "Hidden(Identity(value)); }\n"
+                 "Hidden :: (value: $T) -> T { return value + value; }\n"
+                 "pub First :: (values: $T[]) -> T { return values[0]; }\n"
+                 "pub Scale :: (value: $T, $N: int) -> T { return value * N; "
+                 "}\n"
+                 "pub Maybe :: (value: int, $Enabled: bool) -> int { "
+                 "if Enabled { return value; } return 0; }\n",
+      .calls = { { .function = "Main", .arguments = "[7]", .expected = "[21]" },
+                 { .function = "Wide", .arguments = "[9007199254740993]", .expected = "[9007199254740993]" },
+                 { .function = "First", .arguments = "[]", .expected = "[7]" },
+                 { .function = "Scaled", .arguments = "[]", .expected = "[23]" },
+                 { .function = "Enabled", .arguments = "[]", .expected = "[7]" } } },
+    { .name = "non-escaping callable algorithms",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Less :: (a: int, b: int) -> bool { return a < b; }\n"
+                "Positive :: (value: int) -> bool { return value > 0; }\n"
+                "Named :: () -> int { values: int[] = [3, 1, 2]; sorted := "
+                "lib.Sorted(values, Less); "
+                "if lib.Any(sorted, Positive) { return values[0] * 1000 + "
+                "sorted[0] * 100 + sorted[1] * 10 + sorted[2]; } return 0; }\n"
+                "Inline :: () -> int { values: int[] = [3, 1, 2]; sorted := "
+                "lib.Sorted(values, (a: int, b: int) => a > b); "
+                "if lib.Any(sorted, (value: int) => value == 2) { return "
+                "sorted[0] * 100 + sorted[1] * 10 + sorted[2]; } return 0; }\n"
+                "Gain :: (input: number) -> number { return input * 2.0; }\n"
+                "ShaderHelper :: () -> number { return lib.Remap(0.25, Gain); "
+                "}\n"
+                "LoopShadow :: () -> int { item := 9; return lib.Remap(3, "
+                "(value: int) { total := 0; for item in 0..<value { total += "
+                "item; } return total; }) + item; }\n",
+      .library = "package lib\n"
+                 "pub Sorted :: (values: $T[], less: fn(a: T, b: T) -> bool) "
+                 "-> T[] {\n"
+                 "  result := values; i := 1; while i < length(result) { j := "
+                 "i; "
+                 "while j > 0 && less(result[j], result[j - 1]) { item: T = "
+                 "result[j]; result[j] = result[j - 1]; result[j - 1] = item; "
+                 "j -= 1; } i += 1; } return result; }\n"
+                 "pub Any :: (values: $T[], predicate: fn(value: T) -> bool) "
+                 "-> bool { return AnyInternal(values, predicate); }\n"
+                 "AnyInternal :: (values: $T[], predicate: fn(value: T) -> "
+                 "bool) -> bool { for value in values { if predicate(value) { "
+                 "return true; } } return false; }\n"
+                 "pub Remap :: (value: $T, transform: (fn(value: T) -> T)) -> "
+                 "T { return transform(value: value); }\n",
+      .calls = { { .function = "Named", .arguments = "[]", .expected = "[3123]" },
+                 { .function = "Inline", .arguments = "[]", .expected = "[321]" },
+                 { .function = "ShaderHelper", .arguments = "[]", .expected = "[0.5]" },
+                 { .function = "LoopShadow", .arguments = "[]", .expected = "[12]" } } },
+    { .name = "callable capture rejection",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Main :: (limit: int) -> bool { return lib.Apply(3, (value: "
+                "int) => value > limit); }\n",
+      .library = "package lib\npub Apply :: (value: int, predicate: fn(value: "
+                 "int) -> bool) -> bool { return predicate(value); }\n",
+      .message = "Inline functions cannot capture enclosing locals",
+      .line = 3,
+      .column = 76 },
+    { .name = "callable pattern bindings shadow enclosing locals",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Choice :: union { Some(amount: int) | None }\n"
+                "IfPattern :: () -> int { payload := 90; return lib.Remap(3, "
+                "(value: int) { choice := Choice.Some(value); if choice is "
+                ".Some(payload) && payload > 0 { return payload + 1; } return "
+                "0; }) + payload; }\n"
+                "WhilePattern :: () -> int { payload := 90; return "
+                "lib.Remap(3, "
+                "(value: int) { choice := Choice.Some(value); total := 0; "
+                "while "
+                "choice is .Some(payload) && payload > 0 { total += payload; "
+                "choice = Choice.Some(payload - 1); } return total; }) + "
+                "payload; }\n",
+      .library = "package lib\npub Remap :: (value: int, transform: fn(value: "
+                 "int) -> int) -> int { return transform(value); }\n",
+      .calls = { { .function = "IfPattern", .arguments = "[]", .expected = "[94]" },
+                 { .function = "WhilePattern", .arguments = "[]", .expected = "[96]" } } },
+    { .name = "callable single result names do not change signature",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Named :: () -> (answer: int) { return 7; }\n"
+                "Unnamed :: () -> int { return 11; }\n"
+                "Main :: () -> int { return lib.UnnamedContract(Named) * 100 + "
+                "lib.NamedContract(Unnamed); }\n"
+                "Inline :: () -> int { answer := 90; return "
+                "lib.UnnamedContract(() -> (answer: int) { answer = 13; "
+                "return; }) + "
+                "lib.NamedContract(() => 17) + answer; }\n",
+      .library = "package lib\n"
+                 "pub UnnamedContract :: (function: fn() -> int) -> int { "
+                 "return function(); }\n"
+                 "pub NamedContract :: (function: fn() -> (expected: int)) -> "
+                 "int { return function(); }\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[711]" },
+                 { .function = "Inline", .arguments = "[]", .expected = "[120]" } } },
+    { .name = "compile-time arguments retain lexical constant scope",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Factor :: 3;\n"
+                "Scale :: (value: int, $N: int) -> int { return value * N; }\n"
+                "Maybe :: (value: int, $Flag: bool) -> int { if Flag { return "
+                "value; } return 0; }\n"
+                "Forward :: ($Flag: bool) -> int { return Maybe(1, Flag); }\n"
+                "Main :: () -> int { return Scale(2, Factor) + Maybe(4, "
+                "true) + Scale(1, lib.Factor) + Forward(true); }\n",
+      .library = "package lib\npub Factor :: 5;\n",
+      .calls = { { .function = "Main", .arguments = "[]", .expected = "[16]" } } },
+    { .name = "compile-time argument cannot use shadowing parameter",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nFactor :: 3;\n"
+                "Scale :: (value: int, $N: int) -> int { return value * N; }\n"
+                "Main :: (Factor: int) -> int { return Scale(2, Factor); }\n",
+      .message = "constant value must be an integer expression",
+      .oracle_message = "Compile-time evaluation: only constant values and "
+                        "types are available",
+      .same_rejection = true },
+    { .name = "compile-time argument cannot use shadowing local",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nFactor :: 3;\n"
+                "Scale :: (value: int, $N: int) -> int { return value * N; }\n"
+                "Main :: () -> int { Factor := 5; return Scale(2, Factor); }\n",
+      .message = "constant value must be an integer expression",
+      .oracle_message = "Compile-time evaluation: only constant values and "
+                        "types are available",
+      .same_rejection = true },
+    { .name = "compile-time argument cannot use shadowed import alias",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Options :: struct { Factor: int; }\n"
+                "Scale :: (value: int, $N: int) -> int { return value * N; }\n"
+                "Main :: (lib: Options) -> int { return Scale(2, lib.Factor); "
+                "}\n",
+      .library = "package lib\npub Factor :: 3;\n",
+      .message = "constant value must be an integer expression",
+      .oracle_message = "Compile-time evaluation: only constant values and "
+                        "types are available",
+      .same_rejection = true },
+    { .name = "boolean compile-time argument cannot use shadowing parameter",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Maybe :: (value: int, $Flag: bool) -> int { if Flag { return "
+                "value; } return 0; }\n"
+                "Main :: (Enabled: bool) -> int { return Maybe(2, Enabled); "
+                "}\n",
+      .message = "A boolean compile-time argument requires a constant boolean "
+                 "value",
+      .oracle_message = "Compile-time evaluation: only constant values and "
+                        "types are available",
+      .same_rejection = true },
+    { .name = "boolean compile-time argument cannot use shadowing local",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\n"
+                "Maybe :: (value: int, $Flag: bool) -> int { if Flag { return "
+                "value; } return 0; }\n"
+                "Forward :: ($Enabled: bool) -> int { if true { Enabled := "
+                "false; return Maybe(2, Enabled); } return 0; }\n"
+                "Main :: () -> int { return Forward(true); }\n",
+      .message = "A boolean compile-time argument requires a constant boolean "
+                 "value",
+      .oracle_message = "Compile-time evaluation: only constant values and "
+                        "types are available",
+      .same_rejection = true },
+    { .name = "callable pattern binding cannot escape consequence",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Choice :: union { Some(amount: int) | None }\n"
+                "Main :: (payload: int) -> int { return lib.Remap(3, (value: "
+                "int) { choice := Choice.Some(value); if choice is "
+                ".Some(payload) "
+                "{ return value; } return payload; }); }\n",
+      .library = "package lib\npub Remap :: (value: int, transform: fn(value: "
+                 "int) -> int) -> int { return transform(value); }\n",
+      .message = "Inline functions cannot capture enclosing locals",
+      .line = 4,
+      .column = 151 },
+    { .name = "callable capture respects lexical scopes",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\noffset :: 1;\nimport lib \"project:lib\"\n"
+                "Main :: (offset: int) -> int { return lib.Remap(3, (value: "
+                "int) { if false { offset := 9; } return value + offset; }); "
+                "}\n",
+      .library = "package lib\npub Remap :: (value: int, transform: fn(value: "
+                 "int) -> int) -> int { return transform(value); }\n",
+      .message = "Inline functions cannot capture enclosing locals",
+      .line = 4,
+      .column = 108 },
+    { .name = "callable signature rejection",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Wrong :: (value: int) -> int { return value; }\n"
+                "Main :: () -> bool { return lib.Apply(3, Wrong); }\n",
+      .library = "package lib\npub Apply :: (value: int, predicate: fn(value: "
+                 "int) -> bool) -> bool { return predicate(value); }\n",
+      .message = "Function argument does not match the callable parameter "
+                 "signature",
+      .line = 4,
+      .column = 42 },
+    { .name = "callable inferred result rejects contextual widening",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Main :: () -> number { return lib.Apply(2.0, (value: number) "
+                "=> 1); }\n",
+      .library = "package lib\npub Apply :: (value: number, transform: "
+                 "fn(value: number) -> number) -> number { return "
+                 "transform(value); }\n",
+      .message = "Function argument does not match the callable parameter "
+                 "signature",
+      .line = 3,
+      .column = 46 },
+    { .name = "callable consumer cannot suspend",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "One :: () -> int { return 1; }\nMain :: () { pending := "
+                "lib.Apply(One); }\n",
+      .library = "package lib\npub Apply :: (function: fn() -> int) -> int { "
+                 "yield; return function(); }\n",
+      .message = "Non-escaping callable parameters require synchronous "
+                 "function bodies",
+      .line = 2,
+      .column = 1 },
+    { .name = "callable invocation cannot inherit target defaults",
+      .group = IMPORT_SAMPLES,
+      .source = "package facts\nimport lib \"project:lib\"\n"
+                "Pair :: (a: int = 1, b: int = 2) -> int { return a + b; "
+                "}\nMain :: () -> int { return lib.Apply(Pair); }\n",
+      .library = "package lib\npub Apply :: (function: fn(a: int, b: int) -> "
+                 "int) -> int { return function(b: 5); }\n",
+      .message = "call has the wrong number of arguments",
+      .line = 2,
+      .column = 68 },
     { .name = "imports",
       .group = IMPORT_SAMPLES,
       .source = "package facts\n"
@@ -3952,11 +4201,46 @@ static bool same_point(const behavior_source_point *x, const behavior_source_poi
  * statement points, as many of each, in any order. */
 static bool same_points(const execution_module *expected, const execution_module *actual)
 {
+    if (expected->plan.function_count != actual->plan.function_count) {
+        fprintf(
+            stderr,
+            "function count module %016llx: stage zero=%d stage one=%d\n",
+            (unsigned long long)execution_module_id(actual),
+            expected->plan.function_count,
+            actual->plan.function_count
+        );
+        for (int i = 0; i < expected->plan.function_count; i++) {
+            fprintf(
+                stderr,
+                "  stage zero function %016llx\n",
+                (unsigned long long)expected->plan.functions[i].id
+            );
+        }
+        for (int i = 0; i < actual->plan.function_count; i++) {
+            fprintf(
+                stderr,
+                "  stage one function %016llx\n",
+                (unsigned long long)actual->plan.functions[i].id
+            );
+        }
+    }
     REQUIRE(expected->plan.function_count == actual->plan.function_count);
     bool all_alike = true;
     for (int i = 0; i < expected->plan.function_count; i++) {
-        const behavior_function *x = expected->plan.functions[i].body,
-                                *y = actual->plan.functions[i].body;
+        const behavior_function *x = expected->plan.functions[i].body, *y = NULL;
+        for (int j = 0; !y && j < actual->plan.function_count; j++) {
+            if (actual->plan.functions[j].id == expected->plan.functions[i].id) {
+                y = actual->plan.functions[j].body;
+            }
+        }
+        if (!y) {
+            fprintf(
+                stderr,
+                "stage one lacks function %016llx\n",
+                (unsigned long long)expected->plan.functions[i].id
+            );
+        }
+        REQUIRE(y);
         int count = acount(y->source_points);
         bool *used = xcalloc((size_t)count + 1, sizeof *used);
         bool alike = true;
@@ -4050,8 +4334,20 @@ static bool same_watches(const execution_module *expected, const execution_modul
     REQUIRE(expected->plan.function_count == actual->plan.function_count);
     bool all_alike = true;
     for (int i = 0; i < expected->plan.function_count; i++) {
-        const behavior_function *x = expected->plan.functions[i].body,
-                                *y = actual->plan.functions[i].body;
+        const behavior_function *x = expected->plan.functions[i].body, *y = NULL;
+        for (int j = 0; !y && j < actual->plan.function_count; j++) {
+            if (actual->plan.functions[j].id == expected->plan.functions[i].id) {
+                y = actual->plan.functions[j].body;
+            }
+        }
+        if (!y) {
+            fprintf(
+                stderr,
+                "stage one lacks function %016llx\n",
+                (unsigned long long)expected->plan.functions[i].id
+            );
+        }
+        REQUIRE(y);
         int count = acount(y->source_watches);
         bool *used = xcalloc((size_t)count + 1, sizeof *used);
         bool alike = count == acount(x->source_watches);
@@ -10719,6 +11015,28 @@ static const char
     SCALAR_SOURCE[] = "package scalar\n"
                       "Main :: () -> int { return Pick(7, true); }\n"
                       "Pick :: (x: int, b: bool) -> int { return x; }\n";
+/* Two concrete Remap instances, one with a named function and one with an
+ * inline function. Main's independent arithmetic oracle is 50 + 150 = 200. */
+static const char CASES_PACKAGE[] = "project:scalar_cases";
+static const char GENERIC_SCALAR_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return int(Named(0.25) * 100) + int(Inline(0.5) "
+         "* 100); }\n"
+         "Named :: (sample: number) -> number { return Remap(sample, Gain); }\n"
+         "Inline :: (sample: number) -> number { return Remap(sample, (value: "
+         "number) => value * 3); }\n"
+         "Remap :: (sample: $T, transform: fn(value: T) -> T) -> T { return "
+         "transform(value: sample); }\n"
+         "Gain :: (input: number) -> number { return input * 2; }\n";
+static const char GENERIC_INTEGER_SCALAR_SOURCE
+    [] = "package scalar\n"
+         "Main :: () -> int { return Named(25) + Inline(50); }\n"
+         "Named :: (sample: int) -> int { return Remap(sample, Gain); }\n"
+         "Inline :: (sample: int) -> int { return Remap(sample, (value: int) "
+         "=> value * 3); }\n"
+         "Remap :: (sample: $T, transform: fn(value: T) -> T) -> T { return "
+         "transform(value: sample); }\n"
+         "Gain :: (input: int) -> int { return input * 2; }\n";
 /* A guarded module as CollectScalar gives it: Pick's guard compares its
  * parameters and its arm calls Id. */
 static const char GUARD_SOURCE[] = "package scalar\n"
@@ -11942,6 +12260,56 @@ static bool unioned_rows(const pin_value *rows)
     REQUIRE(scalar_field(guard_row(rows, UNION_H_PAYLOAD), "value").i == 1);
     return true;
 }
+/* Every produced call names a concrete numeric function, and erased
+ * callable arguments never become runtime parameters or operand rows. */
+static bool generic_scalar_rows(const pin_value *rows)
+{
+    const pin_array *array = rows->ptr;
+    REQUIRE(array->count > 1);
+    pin_value *document = guard_row(rows, 1);
+    if (scalar_field(document, "kind").i == SCALAR_REJECTION_ROW) {
+        fprintf(
+            stderr,
+            "generic scalar: %s\n",
+            pin_text(scalar_field(document, "text")).bytes
+        );
+    }
+    REQUIRE(array->count > 2);
+    pin_value *first = guard_row(rows, 2);
+    REQUIRE(scalar_field(first, "kind").i == SCALAR_FUNCTION_ROW);
+    pin_value *functions[8];
+    int count = 0, calls = 0;
+    for (int i = 2; i < array->count; i++) {
+        pin_value *row = guard_row(rows, i);
+        if (scalar_field(row, "kind").i != SCALAR_FUNCTION_ROW) {
+            continue;
+        }
+        REQUIRE(count < 8);
+        functions[count++] = row;
+        REQUIRE(scalar_field(row, "literal").i64 == 0);
+        REQUIRE(scalar_field(row, "count").i <= 1);
+    }
+    REQUIRE(count == 7);
+    for (int i = 2; i < array->count; i++) {
+        pin_value *row = guard_row(rows, i);
+        if (scalar_field(row, "kind").i != SCALAR_CALL_ROW) {
+            continue;
+        }
+        int target = scalar_field(row, "value").i;
+        REQUIRE(target >= 0 && target < count);
+        REQUIRE(
+            scalar_field(row, "count").i ==
+            scalar_field(functions[target], "count").i
+        );
+        REQUIRE(pin_text_equal(
+            pin_text(scalar_field(row, "name")),
+            pin_text(scalar_field(functions[target], "name"))
+        ));
+        calls++;
+    }
+    REQUIRE(calls == 6);
+    return true;
+}
 /* CollectScalar's rows own their shape and strings: they outlive the
  * producer's packages and inputs, and a consumer prepared afterwards emits
  * them as LLVM IR that keeps the call, and validates guarded and arithmetic
@@ -11951,17 +12319,19 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
     REQUIRE(prepare());
     pin_value produced[2], guarded[2], computed[2], widened[2], controlled[2],
         looped[2], switched[2], recorded[2], unioned[2], stringed[2], texted[2],
-        formatted[2], asserted[2];
-    const char *const texts[] = { SCALAR_SOURCE,       GUARD_SOURCE,
-                                  ARITHMETIC_SOURCE,   WIDTH_SOURCE,
-                                  CONTROL_ROWS_SOURCE, LOOP_ROWS_SOURCE,
-                                  SWITCH_ROWS_SOURCE,  RECORD_ROWS_SOURCE,
-                                  UNION_ROWS_SOURCE,   STRING_ROWS_SOURCE,
-                                  TEXT_ROWS_SOURCE,    FORMAT_ROWS_SOURCE,
-                                  ASSERT_ROWS_SOURCE };
-    pin_value *outputs[] = { produced, guarded,   computed, widened, controlled,
-                             looped,   switched,  recorded, unioned, stringed,
-                             texted,   formatted, asserted };
+        formatted[2], asserted[2], specialized[2], specialized_integer[2];
+    const char *const texts[] = {
+        SCALAR_SOURCE,      GUARD_SOURCE,          ARITHMETIC_SOURCE,
+        WIDTH_SOURCE,       CONTROL_ROWS_SOURCE,   LOOP_ROWS_SOURCE,
+        SWITCH_ROWS_SOURCE, RECORD_ROWS_SOURCE,    UNION_ROWS_SOURCE,
+        STRING_ROWS_SOURCE, TEXT_ROWS_SOURCE,      FORMAT_ROWS_SOURCE,
+        ASSERT_ROWS_SOURCE, GENERIC_SCALAR_SOURCE, GENERIC_INTEGER_SCALAR_SOURCE
+    };
+    pin_value *outputs[] = { produced, guarded,     computed,
+                             widened,  controlled,  looped,
+                             switched, recorded,    unioned,
+                             stringed, texted,      formatted,
+                             asserted, specialized, specialized_integer };
     for (int b = 0; b < 2; b++) {
         pin_value args[SCALAR_ARGUMENTS];
         REQUIRE(scalar_arguments(b, "Scalar.chibi", text(SCALAR_SOURCE), args));
@@ -11984,7 +12354,26 @@ TEST_CASE(package_compiler_scalar_rows_outlive_the_producer)
     arena_free(&input);
     const source_package_input sources[] = { SCALAR_CONSUMER_SOURCE_INPUTS };
     REQUIRE(compiler_fixture_prepare(&consumer, sources, (int)(sizeof sources / sizeof *sources)));
+    const source_package_input oracle[] = { SCALAR_CASES_SOURCE_INPUTS };
+    REQUIRE(compiler_fixture_prepare(&corpus, oracle, (int)(sizeof oracle / sizeof *oracle)));
     for (int b = 0; b < 2; b++) {
+        REQUIRE(generic_scalar_rows(&specialized[b]));
+        REQUIRE(validated(b, &specialized[b], ""));
+        REQUIRE(generic_scalar_rows(&specialized_integer[b]));
+        REQUIRE(validated(b, &specialized_integer[b], ""));
+        pin_value expected;
+        REQUIRE(compiler_fixture_call(
+            &corpus,
+            b,
+            CASES_PACKAGE,
+            "Value",
+            &specialized_integer[b],
+            1,
+            COMPILE_BUDGET,
+            &input,
+            &expected
+        ));
+        REQUIRE(expected.type == PIN_I64 && expected.i64 == 200);
         const pin_array *rows = produced[b].ptr;
         REQUIRE(produced[b].container == PIN_CONTAINER_ARRAY && arena_contains(&detached, rows));
         REQUIRE(rows->count == 12 && arena_contains(&detached, rows->record));
@@ -12903,7 +13292,6 @@ TEST_CASE(package_compiler_native_emitter_checks_calls)
     REQUIRE(compiler_fixture_tests(&consumer));
     return true;
 }
-static const char CASES_PACKAGE[] = "project:scalar_cases";
 /* A shared wrong result is not an oracle. Each executed value must match
  * the fixture's literal, including Main's value. */
 static bool scalar_results_match(const int64_t values[4], int64_t expected)

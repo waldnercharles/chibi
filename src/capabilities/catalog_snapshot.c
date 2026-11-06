@@ -51,7 +51,7 @@ static bool parameters(
 static bool compile_value_copy(arena *storage, script_compile_value *out, const script_compile_value *value)
 {
     *out = *value;
-    if (value->is_type) {
+    if (value->is_type || value->is_callable) {
         out->value = (pin_value){ 0 };
         return true;
     }
@@ -79,6 +79,7 @@ static bool generic_metadata(arena *storage, const script_catalog *source, scrip
             parameters[j] = templates[i].parameters[j];
             parameters[j].name = text(storage, parameters[j].name);
             parameters[j].binder = text(storage, parameters[j].binder);
+            parameters[j].callable_type = text(storage, parameters[j].callable_type);
         }
         templates[i].parameters = parameters;
     }

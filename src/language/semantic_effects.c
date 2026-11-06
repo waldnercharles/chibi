@@ -91,6 +91,7 @@ static bool waits(const analyzer *a, TSNode node)
         TSNode child = ts_node_named_child(node, i);
         /* A nested function waits for itself, not for its parent. */
         if (!script_analyzer_is(child, "function_declaration") &&
+            !script_analyzer_is(child, "lambda_expression") &&
             !script_analyzer_is(child, "macro_declaration") && waits(a, child)) {
             return true;
         }
@@ -124,6 +125,7 @@ static bool readonly_syntax(const analyzer *a, TSNode node, bool *active)
         script_analyzer_is(node, "event_declaration") ||
         script_analyzer_is(node, "bind_declaration") ||
         script_analyzer_is(node, "function_declaration") ||
+        script_analyzer_is(node, "lambda_expression") ||
         script_analyzer_is(node, "macro_declaration") ||
         script_analyzer_is(node, "member_expression")) {
         return false;
@@ -791,6 +793,7 @@ static bool calls(analyzer *a, TSNode node, int symbol)
     for (uint32_t i = 0; i < script_analyzer_named_count(node); i++) {
         TSNode child = ts_node_named_child(node, i);
         if (!script_analyzer_is(child, "function_declaration") &&
+            !script_analyzer_is(child, "lambda_expression") &&
             !script_analyzer_is(child, "macro_declaration") &&
             calls(a, child, symbol)) {
             return true;

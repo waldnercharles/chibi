@@ -3,6 +3,11 @@
 
 #include "language/signature_reader.h"
 
+/* A callable parameter has an unmodified function signature. Parentheses do
+ * not change it; arrays, optional values and pointers require stored values. */
+TSNode script_callable_type_node(TSNode);
+bool script_callable_type_annotation(TSNode);
+
 typedef struct
 {
     script_signature_facts signature;

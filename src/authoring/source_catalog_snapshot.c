@@ -20,8 +20,11 @@ static bool same_type(script_type a, script_type b)
 }
 static bool same_compile_value(script_compile_value a, script_compile_value b)
 {
-    if (a.is_type != b.is_type) {
+    if (a.is_type != b.is_type || a.is_callable != b.is_callable) {
         return false;
+    }
+    if (a.is_callable) {
+        return a.callable == b.callable;
     }
     if (a.is_type) {
         return same_type(a.type, b.type);
@@ -186,7 +189,8 @@ bool source_catalog_metadata_equal(const script_catalog *a, const script_catalog
                                             *q = &y->parameters[j];
             if (!same_text(p->name, q->name) || !same_text(p->binder, q->binder) ||
                 !same_type(p->type, q->type) || p->comptime != q->comptime ||
-                p->type_value != q->type_value || p->binds_type != q->binds_type) {
+                p->type_value != q->type_value || p->binds_type != q->binds_type ||
+                !same_text(p->callable_type, q->callable_type)) {
                 return false;
             }
         }

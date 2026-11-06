@@ -351,7 +351,7 @@ void script_analyzer_require_values(analyzer *a, TSNode node, int target, int va
 }
 script_named_facts script_analyzer_named_facts(const analyzer *a)
 {
-    return (script_named_facts){
+    script_named_facts facts = {
         .lexical = script_lexical_view(a->out, acount(a->out->symbols)),
         .catalog = a->catalog,
         .native = a->native,
@@ -364,6 +364,12 @@ script_named_facts script_analyzer_named_facts(const analyzer *a)
         .uses = a->out->uses,
         .use_count = acount(a->out->uses)
     };
+    const imported_environment *environment = script_analyzer_environment(a);
+    if (environment) {
+        facts.lexical.identity = environment->environment->identity;
+        facts.package_scope = environment->scope;
+    }
+    return facts;
 }
 static script_type named_resolution(analyzer *a, script_named_resolution result)
 {

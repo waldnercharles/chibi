@@ -256,12 +256,13 @@ bool script_catalog_values_key(const script_catalog *catalog, unsigned char **ou
     }
     for (int i = 0; i < catalog->specialization_count; i++) {
         const script_catalog_specialization *specialization = &catalog->specializations[i];
-        if (!specialization->result.is_type &&
+        if (!specialization->result.is_type && !specialization->result.is_callable &&
             !key_value(out, &specialization->result.value, 0)) {
             goto unavailable;
         }
         for (int j = 0; j < specialization->binding_count; j++) {
             if (!specialization->bindings[j].value.is_type &&
+                !specialization->bindings[j].value.is_callable &&
                 !key_value(out, &specialization->bindings[j].value.value, 0)) {
                 goto unavailable;
             }

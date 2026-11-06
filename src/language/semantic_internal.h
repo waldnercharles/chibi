@@ -59,9 +59,17 @@ typedef struct
 } generic_instance;
 typedef struct
 {
+    const script_package_environment *environment;
+    int scope, document;
+} imported_environment;
+typedef struct
+{
     const script_syntax *syntax;
     const script_package_document *documents;
     int document_count, package_scope;
+    script_package_document *imported_documents;
+    script_package_import *imported_imports;
+    imported_environment *environments;
     const script_catalog *catalog, *native;
     const script_package_import *imports;
     int import_count;
@@ -96,11 +104,21 @@ typedef struct
     int query_description; /* Active one-based description. */
 } analyzer;
 
+int script_analyzer_lambda(analyzer *, TSNode);
+TSNode script_callable_type_node(TSNode);
+bool script_analyzer_callable_argument(analyzer *, TSNode, TSNode, compile_binding *, int, compile_value *);
+void script_analyzer_generic_check_callables(analyzer *);
+/* -2 means the symbol is not a callable parameter binding. */
+int script_analyzer_callable_parameter_index(analyzer *, int symbol, const char *name);
+
 script_named_facts script_analyzer_named_facts(const analyzer *);
 script_range script_analyzer_range(const analyzer *, TSNode);
 const script_syntax *script_analyzer_syntax(const analyzer *, TSNode);
 const script_syntax *script_analyzer_document_syntax(const analyzer *, int document);
 bool script_analyzer_package_metadata(analyzer *);
+const script_catalog_template *script_analyzer_package_template(analyzer *, TSNode, const char *);
+int script_analyzer_package_specialize(analyzer *, TSNode, const char *, int **);
+const imported_environment *script_analyzer_environment(const analyzer *);
 bool script_analyzer_package_import(analyzer *, TSNode);
 void script_analyzer_package_imports_check(analyzer *, bool declarations);
 int script_analyzer_find_type(analyzer *, TSNode, const char *);

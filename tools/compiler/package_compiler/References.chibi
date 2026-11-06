@@ -37,6 +37,11 @@ AnyReference :: (params: Param[]) -> bool {
 // The function a call names, of this package or an import, -1 for any other.
 CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: ResolvedNative[], aliases: Name[],
                    package: int, call: int) -> int {
+    for (resolved in aliases) {
+        if (resolved.place == GenericCallPlace && resolved.node == call) {
+            return resolved.index;
+        }
+    }
     callee := Field(forest, call, "function");
     qualifier: int = -1;
     if (Is(forest, callee, "member_expression")) {
@@ -48,6 +53,10 @@ CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
         return -1;
     }
     if (qualifier < 0) {
+        local := Lookup(aliases, Text(forest, text, callee));
+        if (local >= 0 && aliases[local].place == GenericFunctionPlace) {
+            return aliases[local].index;
+        }
         return SourceCallable(callables, natives, aliases, home, Text(forest, text, callee));
     }
     return QualifiedCallable(callables, natives, aliases, home, Text(forest, text, callee),

@@ -5,7 +5,23 @@ implementation. The owner approved this program on 2026-10-20, chose fidelity
 separately for each package, and asked that useful language features be
 implemented before the ports that need them.
 
-## Current checkpoint
+## Portable batch, 2026-10-27
+
+The owner approved the [portable batch](package-portable-batch.md): bytes,
+endian, strict UTF-8, slash paths, concrete bits, FNV/Adler32/CRC32 and strict
+hex/Base64. Source and authored tests are implemented locally on
+`codex/portable-core-library-20261027`, initially based on `c086475d5` and now integrated with accepted main `4981e9733`; publication and
+combined validation remain pending. Public fallible APIs follow ordinary named
+values plus a final typed optional error. Sibling compiler work owns nominal
+`char` and optional/named-result parity. `strings.Bytes` remains `int[]`.
+
+The earlier checkpoints below are historical. The current
+[numeric contract](package-numeric-contract.md) supersedes their checked
+arithmetic and invalid-shift proposals. Runtime integers wrap; narrowing clamps
+unless explicitly wrapping. There is no additional checked-arithmetic gate for
+portable hashes.
+
+## Historical foundations checkpoint
 
 - Planning base: `4a751bd5fb2bb414ec867f089acae9b9736e1d9e` in `chibi`.
 - Branch: `codex/odin-package-foundations-20261020`.
@@ -85,7 +101,7 @@ features can wait for another package to demonstrate the need.
 | --- | --- | --- | --- |
 | Package privacy in both compiler stages | Every public package and its internal helpers | Existing `pub` contract | First implementation |
 | Length-carrying strings, embedded NUL handling and byte conversions | Strings, UTF-8, codecs and compiler text | String invariant approved; API signatures remain proposed in foundations | Before expanding text APIs |
-| Checked arithmetic with explicit wrapping | Hashes, checksums, sizes and random generators | Default behavior already approved; edge cases documented in numeric proposal | Before new overflow-dependent algorithms |
+| Defined widths, wrapping and conversion behavior | Hashes, checksums and output sizes | Current runtime contract in package-numeric-contract.md | Check output sizes explicitly; hashes use wrapping |
 | Record fields that compose value types | Builders and containers holding byte arrays or records | Needs a separate concrete design, including copies and prepared layouts | Before those stateful APIs |
 | Exported generic specialization | Slice algorithms and generic containers | Needs a separate design and visibility/identity rules | Before generic package APIs |
 | Non-capturing procedure values | Comparator/predicate APIs | Needs a separate lifetime and capability design | Before callback-based algorithms |

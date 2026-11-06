@@ -1,6 +1,13 @@
 # Package foundations decision record
 
-Status: string invariant approved on 2026-10-21; detailed APIs remain proposed. The owner selected
+Current decision: the [portable package batch](package-portable-batch.md) was
+approved on 2026-10-27 and owns its selected APIs. It uses `u8[]`, preserves
+`strings.Bytes -> int[]`, adds typed conversions in `core:bytes`, and uses
+ordinary named values plus a final typed optional error for fallible operations.
+
+The remaining sections retain the earlier foundation proposals and evidence.
+Status at that earlier checkpoint: string invariant approved on 2026-10-21;
+detailed APIs remained proposed. The owner selected
 immutable, length-carrying, byte-preserving strings with explicit UTF-8 operations and embedded NUL.
 The merged string design specifies one public `string` type and a descriptor behind the existing
 pointer, followed by shared slices. The descriptor implementation is local to
@@ -49,7 +56,7 @@ stability/access policy. Generic core must work without a world, renderer or gam
 ## Approved string model and considered alternative
 
 Approved on 2026-10-21: immutable, length-carrying, byte-preserving `string`, with explicit UTF-8 operations.
-Arbitrary binary buffers use `byte[]`. Both admit NUL. This follows existing byte-oriented compiler/string
+Arbitrary binary buffers use `u8[]`. Both admit NUL. This follows existing byte-oriented compiler/string
 algorithms and avoids making all native inputs, source files and filesystem names valid Unicode as a global
 precondition. Exact encoded equality is not Unicode normalization.
 
@@ -75,7 +82,7 @@ upstream inclusions need package approval.
 | --- | --- |
 | `strings.ByteLength(s)` | O(1) encoded byte count. `int` index domain; reject unsupported lengths at creation before overflow. |
 | `strings.ByteAt(s, i)` | Preserve current `int` result, `0..255` or `-1` outside bounds. It must become O(1). This avoids changing sentinel callers just to add packages. |
-| `strings.Bytes(s)` | Independent `byte[]` copy, including zero bytes. Intentional signature migration from `int[]`. |
+| `strings.Bytes(s)` | Independent `u8[]` copy, including zero bytes. Intentional signature migration from `int[]`. |
 | `strings.FromBytes(data)` | Independent string copy of every byte, without UTF-8 validation. No NUL truncation. |
 | `strings.Slice(s, start, count)` | Preserve current clamping and independent value semantics, including cuts inside UTF-8. Negative start/count clamp to zero, start past end clamps to end, excessive count to remaining length. |
 | `strings.Index` / `LastIndex` | Exact byte-substring search; `-1` if absent. Empty needle at zero / byte length respectively. No normalization or locale rules. |
@@ -114,8 +121,8 @@ conversion. U+0000 is data.
 
 | Proposed operation | Results and errors |
 | --- | --- |
-| `utf8.Validate(data: byte[])` | Success and first invalid byte offset; offset `-1` on success. Empty data succeeds. |
-| `utf8.Decode(data: byte[], offset: int)` | Scalar, width, status: success, end, malformed, truncated, invalid offset. Failure width is zero; scalar U+0000 is ignored unless success. |
+| `utf8.Validate(data: u8[])` | Success and first invalid byte offset; offset `-1` on success. Empty data succeeds. |
+| `utf8.Decode(data: u8[], offset: int)` | Scalar, width, status: success, end, malformed, truncated, invalid offset. Failure width is zero; scalar U+0000 is ignored unless success. |
 | `utf8.Encode(value: char)` | One to four bytes; every legal `char` succeeds. |
 | `utf8.Count(text: string)` | Count plus success/error offset; arbitrary strings need validation during decoding. It is O(n). |
 
@@ -140,7 +147,7 @@ retain value semantics; pointer-parameter operations mutate only the caller's va
 O(n) Build, rather than repeated prefix copies. Zero-copy Take and explicit allocators need separate lifetime
 policy.
 
-An authored builder record containing `byte[]` needs container-valued record fields and correct copy/pointer
+An authored builder record containing `u8[]` needs container-valued record fields and correct copy/pointer
 behavior in both stages. Approve that prerequisite before its dependent builder. If it is a large step, ship
 codecs and byte-array append helpers first. Do not add temporary opaque native builder handles.
 
@@ -151,7 +158,7 @@ forgiving offset/count semantics separately; its spelling does not imply Odin or
 support. Record and approve that behavior change.
 
 Required compatibility audit: native string storage/copy/free, prepared values, serialization, formatting,
-hashing/equality and C bridges; compiler/tokenizer `Bytes` consumers changing `int[]` to `byte[]`; any new
+hashing/equality and C bridges; compiler/tokenizer `Bytes` consumers changing `int[]` to `u8[]`; any new
 strict index API callers; and NUL handling throughout host calls. Existing Slice/Split/Count semantics remain
 explicit fidelity choices, not accidental Unicode promises. Rewrite repeated format_text assembly after
 builder support. Follow AGENTS.md's direct asset migration rule; only bump project version for a named used
@@ -240,7 +247,7 @@ current proof is limited to literal and parenthesized uses within its supported
 constant subset. Runtime adapters validate unknown values before native effects.
 
 New package operations follow their own semantic reviews. In particular,
-changing `strings.Bytes` from `int[]` to `byte[]`, adding `FromBytes`, and
+changing `strings.Bytes` from `int[]` to `u8[]`, adding `FromBytes`, and
 choosing UTF-8 decoder result signatures remain proposed. They are not implicit
 parts of the representation approval. Builders need their own approved API
 and container-valued record fields before implementation.
@@ -256,7 +263,7 @@ Conceptual proposed calls, not compilable fixtures: APIs, result destructuring a
 still require verification/implementation.
 
 ```chibi
-bytes := strings.Bytes("Aé")              // byte[]; three bytes
+bytes := strings.Bytes("Aé")              // u8[]; three bytes
 part := strings.Slice("Aé", 1, 1)         // one byte; invalid UTF-8 allowed
 valid, badOffset := utf8.Validate(bytes)  // true, -1
 text := strings.FromBytes([65, 0, 66])    // three bytes, embedded NUL
@@ -276,7 +283,7 @@ strings.Reset(&builder)                  // label remains stable
 | Ownership — shared-slice direction recorded in merged design | Immutable values; slices retain backing ownership; copying can stage the migration | Public borrowed views still need a separate lifetime contract |
 | Native C-string interior NUL — approved 2026-10-21 | Diagnose known-invalid uses during compilation; validate unknown values before native effects; expose recoverable errors in new public APIs | Do not truncate or abort the process on invalid input |
 | Malformed iteration — no replacement approved | Preserve current strict failure; explicit Decode proposal is also strict | U+FFFD and one-byte advance after a separate decision |
-| Byte/string conversion signatures — proposed | Review `Bytes -> byte[]` and `FromBytes` with package consumers | Retain current `Bytes -> int[]` until that review |
+| Byte/string conversion signatures — proposed | Review `Bytes -> u8[]` and `FromBytes` with package consumers | Retain current `Bytes -> int[]` until that review |
 | Characters | Existing char; preserve one-scalar-string loop result initially | Change loop yield to char with byte offset after caller audit |
 | Builder | Value record, pointer-parameter mutation, Build copy; container fields first | Byte-array append helpers until builder record support |
 | Base/allocators | Private runtime hooks, runtime-managed values | Public expert base and explicit allocation policy with concrete consumers |

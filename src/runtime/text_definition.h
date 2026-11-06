@@ -14,6 +14,8 @@
 #define NATIVE_TEXT_SLICE_SOURCE "text_slice"
 #define NATIVE_TEXT_BYTES_NAME "Text Bytes"
 #define NATIVE_TEXT_BYTES_SOURCE "text_bytes"
+#define NATIVE_TEXT_FROM_BYTES_NAME "Text From Bytes"
+#define NATIVE_TEXT_FROM_BYTES_SOURCE "text_from_bytes"
 #define NATIVE_TEXT_PORT(X, NAME, STORAGE, NOMINAL, FLAGS)                     \
     X(NAME,                                                                    \
       NATIVE_PARAMETER_DATA,                                                   \
@@ -57,7 +59,18 @@
       SCRIPT_REFERENCE_NONE,                                                   \
       false,                                                                   \
       ((pin_value){ .type = PIN_I32, .container = PIN_CONTAINER_ARRAY }))
-#define NATIVE_TEXT_OPERATIONS(X)                                              \
+#define NATIVE_TEXT_FROM_BYTES_INPUTS(X)                                       \
+    X("Value",                                                                 \
+      NATIVE_PARAMETER_DATA,                                                   \
+      PIN_U8,                                                                  \
+      "u8",                                                                    \
+      PIN_CONTAINER_ARRAY,                                                     \
+      0,                                                                       \
+      0,                                                                       \
+      SCRIPT_REFERENCE_NONE,                                                   \
+      false,                                                                   \
+      ((pin_value){ .type = PIN_U8, .container = PIN_CONTAINER_ARRAY }))
+#define NATIVE_COMPILER_TEXT_OPERATIONS(X)                                     \
     X(FORMAT_TEXT,                                                             \
       NATIVE_FORMAT_TEXT_NAME,                                                 \
       NATIVE_FORMAT_TEXT_SOURCE,                                               \
@@ -94,5 +107,16 @@
       NATIVE_TEXT_VALUE_INPUTS,                                                \
       NATIVE_TEXT_BYTES_OUTPUTS,                                               \
       false)
+#define NATIVE_TEXT_OPERATIONS(X)                                              \
+    NATIVE_COMPILER_TEXT_OPERATIONS(X)                                         \
+    X(TEXT_FROM_BYTES,                                                         \
+      NATIVE_TEXT_FROM_BYTES_NAME,                                             \
+      NATIVE_TEXT_FROM_BYTES_SOURCE,                                           \
+      NATIVE_TEXT_FROM_BYTES_INPUTS,                                           \
+      NATIVE_FORMAT_TEXT_OUTPUTS,                                              \
+      false)
 extern const native_definition_pack NATIVE_TEXT_DEFINITION_PACK;
+/* The compiler seed retains its pinned native catalog. Public packages use
+ * NATIVE_TEXT_DEFINITION_PACK, which also includes binary conversion. */
+extern const native_definition_pack NATIVE_COMPILER_TEXT_DEFINITION_PACK;
 #endif

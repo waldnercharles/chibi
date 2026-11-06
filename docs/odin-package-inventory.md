@@ -42,7 +42,16 @@ must not silently replace this pin.
 
 ## Coverage, waves, and gates
 
-Coverage is **N** (no corresponding public Chibi package) for every row except
+The original inventory checkpoint below predates the approved
+[portable batch](package-portable-batch.md). That batch implements partial
+subsets locally for bytes, endian, UTF-8, slashpath, bits, hashes and hex/Base64;
+combined validation, installation and main integration remain separate claims.
+Its ten public package directories do not change the upstream counting rule.
+Rows marked P for this batch mean partial local implementation, not a shipped
+or fully verified package. The three public hash packages map to core/hash;
+core:utf8 maps to core/unicode/utf8.
+
+At the original inventory checkpoint, coverage was **N** for every row except
 `core/strings`, which is **P** (partial). The public package root currently
 contains only [`packages/core/strings/Strings.chibi`](../packages/core/strings/Strings.chibi).
 Runtime C facilities, private build-host operations, and compiler implementation
@@ -98,7 +107,7 @@ and [`language-friction.md`](language-friction.md) before opening language work.
 | Upstream source directory | Role | Coverage | Family | Earliest wave | Gates |
 | --- | --- | --- | --- | --- | --- |
 | [core/bufio](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/bufio) | Candidate | N | Text/IO | W2 | G1, G2 |
-| [core/bytes](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/bytes) | Candidate | N | Text/IO | W1 | G1, G2 |
+| [core/bytes](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/bytes) | Candidate | P | Text/IO | W1 | G1, G2 |
 | [core/c](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/c) | Candidate | N | Memory/ABI | W3 | G3, G5, G6 |
 | [core/c/libc](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/c/libc) | Candidate | N | Memory/ABI | W3 | G3, G5, G6 |
 | [core/c/libc/tests](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/c/libc/tests) | Test/example | N | Memory/ABI | W3 | G3, G5, G6 |
@@ -188,13 +197,13 @@ and [`language-friction.md`](language-friction.md) before opening language work.
 | [core/dynlib/example](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/dynlib/example) | Test/example | N | Memory/ABI | W3 | G3, G5, G6 |
 | [core/encoding/asn1](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/asn1) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
 | [core/encoding/base32](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/base32) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
-| [core/encoding/base64](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/base64) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
+| [core/encoding/base64](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/base64) | Candidate | P | Data/codec | W2 | G1, G2, G3, G4 |
 | [core/encoding/cbor](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/cbor) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
 | [core/encoding/csv](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/csv) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
-| [core/encoding/endian](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/endian) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
+| [core/encoding/endian](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/endian) | Candidate | P | Data/codec | W2 | G1, G2, G3, G4 |
 | [core/encoding/entity](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/entity) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
 | [core/encoding/entity/example](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/entity/example) | Test/example | N | Data/codec | W2 | G1, G2, G3, G4 |
-| [core/encoding/hex](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/hex) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
+| [core/encoding/hex](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/hex) | Candidate | P | Data/codec | W2 | G1, G2, G3, G4 |
 | [core/encoding/hxa](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/hxa) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
 | [core/encoding/ini](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/ini) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
 | [core/encoding/json](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/encoding/json) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
@@ -207,7 +216,7 @@ and [`language-friction.md`](language-friction.md) before opening language work.
 | [core/flags](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/flags) | Candidate | N | Text/IO | W2 | G1, G2 |
 | [core/flags/example](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/flags/example) | Test/example | N | Text/IO | W2 | G1, G2 |
 | [core/fmt](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/fmt) | Candidate | N | Text/IO | W2 | G1, G2 |
-| [core/hash](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/hash) | Candidate | N | Collections | W1 | G1, G3, G4 |
+| [core/hash](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/hash) | Candidate | P | Collections | W1 | G1, G3, G4 |
 | [core/hash/xxhash](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/hash/xxhash) | Candidate | N | Collections | W1 | G1, G3, G4 |
 | [core/image](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/image) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
 | [core/image/bmp](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/image/bmp) | Candidate | N | Data/codec | W2 | G1, G2, G3, G4 |
@@ -220,7 +229,7 @@ and [`language-friction.md`](language-friction.md) before opening language work.
 | [core/log](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/log) | Candidate | N | Text/IO | W2 | G1, G2 |
 | [core/math](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math) | Candidate | N | Numeric | W2 | G3, G4 |
 | [core/math/big](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/big) | Candidate | N | Numeric | W2 | G3, G4 |
-| [core/math/bits](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/bits) | Candidate | N | Numeric | W2 | G3, G4 |
+| [core/math/bits](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/bits) | Candidate | P | Numeric | W2 | G3, G4 |
 | [core/math/cmplx](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/cmplx) | Candidate | N | Numeric | W2 | G3, G4 |
 | [core/math/ease](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/ease) | Candidate | N | Numeric | W2 | G3, G4 |
 | [core/math/fixed](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/math/fixed) | Candidate | N | Numeric | W2 | G3, G4 |
@@ -245,7 +254,7 @@ and [`language-friction.md`](language-friction.md) before opening language work.
 | [core/os](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/os) | Candidate | N | Host/platform | W3 | G2, G5, G6 |
 | [core/path](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/path) | Candidate | N | Text/IO | W1 | G1, G2 |
 | [core/path/filepath](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/path/filepath) | Candidate | N | Text/IO | W1 | G1, G2 |
-| [core/path/slashpath](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/path/slashpath) | Candidate | N | Text/IO | W1 | G1, G2 |
+| [core/path/slashpath](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/path/slashpath) | Candidate | P | Text/IO | W1 | G1, G2 |
 | [core/prof/spall](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/prof/spall) | Candidate | N | Host/platform | W3 | G2, G5, G6 |
 | [core/reflect](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/reflect) | Candidate | N | Compiler/tooling | W5 | G1, G3, G5, G9 |
 | [core/relative](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/relative) | Candidate | N | Memory/ABI | W3 | G3, G5, G6 |
@@ -366,7 +375,7 @@ and [`language-friction.md`](language-friction.md) before opening language work.
 | [core/unicode/tools](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/unicode/tools) | Tool/generated | N | Text/IO | W1 | G1, G2, G3 |
 | [core/unicode/tools/ucd](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/unicode/tools/ucd) | Tool/generated | N | Text/IO | W1 | G1, G2, G3 |
 | [core/unicode/utf16](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/unicode/utf16) | Candidate | N | Text/IO | W1 | G1, G2, G3 |
-| [core/unicode/utf8](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/unicode/utf8) | Candidate | N | Text/IO | W1 | G1, G2, G3 |
+| [core/unicode/utf8](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/unicode/utf8) | Candidate | P | Text/IO | W1 | G1, G2, G3 |
 | [core/unicode/utf8/utf8string](https://github.com/odin-lang/Odin/tree/779c8c0a4778f994389e2a681ffc7b3cbd6c1f65/core/unicode/utf8/utf8string) | Candidate | N | Text/IO | W1 | G1, G2, G3 |
 
 ## Vendor source directories (80)

@@ -81,6 +81,33 @@ The package README maps every migrated row and documents retained native
 boundaries and independent oracles. Native byte ownership, copy/read counters,
 metadata and binary/hash witnesses stay in C.
 
+### Portable core package regressions
+
+`python3 tools/test_policy.py tool language-package-portable` embeds the actual
+sources and adjacent `@test` files from the ten selected portable core package
+directories. It uses explicit core-collection discovery and the shared authored
+executor on bytecode and SLJIT. Default `chibi test` project discovery remains
+project-only. Native cases cover byte/string conversion representations and
+ownership, private/public compiler text profiles, and exact collection selection.
+
+`language-package-portable-compiler` separately compiles the shared public
+consumer through the authored compiler and executes its closure on both
+backends. A native-front-end pass does not satisfy this route. Both selectors
+are in the language aggregate and own their inner execution resources.
+
+`language-package-portable-costs` is an explicit opt-in measurement route,
+excluded from the correctness aggregate. Twelve calls cover UTF-8 validation
+and counting, KMP search and Base64 encoding at two input sizes on both
+backends. Compilation/input construction precede timing. Selected same-thread
+copy counters include result detachment and do not count every allocation or
+memory operation. No elapsed-time assertion is used.
+
+The CMake test-driver option `CHIBI_TEST_ASSET_COMPILER_HOST` defaults to ON.
+Setting it OFF can build focused native-front-end checks without source-built
+asset-host integration. Such a run does not validate asset-host generation or a
+full compiler-enabled distribution. Report the selected boundary explicitly.
+See [the portable package decision](package-portable-batch.md) for APIs and gates.
+
 ## CI profiles and release validation
 
 Ordinary pull requests and pushes to `main` use **Debug O1 without ASan/UBSan**

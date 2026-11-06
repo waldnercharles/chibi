@@ -319,6 +319,16 @@ the tokenizer writes `c == 34` for `'"'` (#518).
 Suggestion: stage one types character literals from context as stage zero
 does, then those sources replace their codes.
 
+The approved portable batch adds a concrete consumer: `core:utf8` takes and
+returns `char`. Merely mapping the spelling to integer storage would erase its
+nominal distinction and checked scalar conversion. On the `c086475d5` base,
+`utf8.Encode(value: char)` makes the authored build host reject even unrelated
+build programs while it analyzes the expanded core snapshot. The coordinator's
+char-parity work owns this prerequisite; package code preserves the approved
+signature. The library lane does not change package reachability rules as a
+workaround. Optional errors and named array/text outputs have a separate owner.
+
+
 ## Strings have no indexing or slicing syntax
 
 Language. Byte access goes through `strings.ByteAt`, `strings.ByteLength` and

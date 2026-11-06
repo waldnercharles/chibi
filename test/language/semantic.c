@@ -576,8 +576,8 @@ TEST_CASE(language_reductions_require_system_component_fields)
     const char *invalid_targets[] = {
         "Motion :: system() { total := 0; reduce total += 1; }",
         "Motion :: system() { if true { total := 0; reduce total += 1; } }",
-        "Motion :: system(position: ^Position) { reduce position^ += "
-        "position^; }",
+        ("Motion :: system(position: ^Position) { reduce position^ += "
+         "position^; }"),
         "Motion :: system(position: ^Placement) { reduce position.x += 1; }",
         "Motion :: system(position: ^Position?) { reduce position.x += 1; }",
     };
@@ -1118,8 +1118,9 @@ TEST_CASE(language_emit_sends_events_to_their_target)
                                     .entity_type = 40 };
     const char *valid[] = {
         "L :: library { F :: (other: entity) { emit other.Damage(3) } }",
-        "L :: library { F :: (other: entity) { emit Damage(other, Amount: 3) } "
-        "}",
+        ("L :: library { F :: (other: entity) { emit Damage(other, Amount: 3) "
+         "} "
+         "}"),
         /* An event send never calls the function its event shares a name with. */
         "L :: library { Damage :: (other: entity) { emit Damage(other, 3) } }",
     };

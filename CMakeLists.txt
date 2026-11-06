@@ -234,8 +234,12 @@ if(TARGET chibi)
     # ../share/chibi, as installed ones do.
     configure_file("${CMAKE_CURRENT_BINARY_DIR}/sdk/chibi_engine_metadata.json"
         "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/engine.json" COPYONLY)
-    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/packages/core/strings/Strings.chibi"
-        "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/core/strings/Strings.chibi" COPYONLY)
+    file(GLOB_RECURSE core_sources CONFIGURE_DEPENDS
+        RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}/packages/core" "${CMAKE_CURRENT_SOURCE_DIR}/packages/core/*.chibi")
+    foreach(source IN LISTS core_sources)
+        configure_file("${CMAKE_CURRENT_SOURCE_DIR}/packages/core/${source}"
+            "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/core/${source}" COPYONLY)
+    endforeach()
     foreach(source markdown/Markdown.chibi site/Site.chibi reference/Reference.chibi grammar/Grammar.chibi)
         configure_file("${CMAKE_CURRENT_SOURCE_DIR}/tools/docs/${source}"
             "${CMAKE_CURRENT_BINARY_DIR}/share/chibi/docs/${source}" COPYONLY)

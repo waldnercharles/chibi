@@ -11,6 +11,12 @@
 #include <stddef.h>
 #include <yyjson.h>
 
+/* Whether the input lists a type: every one that is not internal or a union.
+ * Stage zero requires each of them but the namespaces. */
+static bool exported(const script_catalog_type *t)
+{
+    return !t->internal && !(t->type.flags & SCRIPT_TYPE_UNION);
+}
 /* A port's storage as Compile takes it: 0 for a generic port, whose call
  * infers its type, -2 for a wildcard, which takes each argument's own type,
  * and -1 for a type the compiler cannot pass. */
@@ -25,6 +31,45 @@ static int port_storage(script_type type)
     }
     return type.flags || type.nominal || type.storage == PIN_FLOW ? -1
                                                                   : (int)type.storage;
+}
+/* A fixed native type, including every alias it follows, must have an
+ * exported native declaration of the same storage and target layout. */
+static bool native_port_type(const script_catalog *catalog, script_type type)
+{
+    const script_catalog_type *first = script_catalog_type_by_id(catalog, type.nominal);
+    const script_catalog_type *at = first;
+    for (int i = 0; i < catalog->type_count; i++) {
+        if (!at || !exported(at) || at->authored_record || at->type.flags ||
+            at->type.container != PIN_CONTAINER_SINGLE || at->type.collection ||
+            at->type.storage != type.storage || at->type.nominal != at->id ||
+            !at->size || at->size != first->size || at->layout != first->layout ||
+            (type.storage == PIN_STRUCT && !at->layout)) {
+            return false;
+        }
+        if (!at->underlying) {
+            return true;
+        }
+        at = script_catalog_type_by_id(catalog, at->underlying);
+    }
+    return false;
+}
+/* CatalogPort adds fixed native records and handles to the bootstrap ports.
+ * Nested collections, nominal arrays and other nominal types stay unsupported. */
+static int catalog_port_storage(const script_catalog *catalog, script_type type)
+{
+    if (type.collection || (type.container != PIN_CONTAINER_SINGLE &&
+                            type.container != PIN_CONTAINER_ARRAY)) {
+        return -1;
+    }
+    if (!type.nominal) {
+        return port_storage(type);
+    }
+    if (type.flags || type.container != PIN_CONTAINER_SINGLE ||
+        (type.storage != PIN_STRUCT && type.storage != PIN_HANDLE) ||
+        !native_port_type(catalog, type)) {
+        return -1;
+    }
+    return (int)type.storage;
 }
 /* Whether a capability is a native the compiler calls: a data function with
  * no flow, outcomes or suspension. */
@@ -51,7 +96,7 @@ static int native_index(const script_catalog *catalog, uint64_t id)
     return -1;
 }
 /* The callable natives of catalog, with their ports and identities. */
-static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const script_catalog *catalog)
+static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const script_catalog *catalog, bool catalog_ports)
 {
     yyjson_mut_val *natives = yyjson_mut_arr_add_arr(doc, target);
     yyjson_mut_val *ports = yyjson_mut_arr_add_arr(doc, target);
@@ -74,9 +119,15 @@ static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const scrip
                                                          : &c->results[j - c->parameter_count];
             yyjson_mut_val *port = yyjson_mut_arr_add_obj(doc, ports);
             yyjson_mut_obj_add_str(doc, port, "name", declared->name ? declared->name : "");
-            yyjson_mut_obj_add_int(doc, port, "storage", port_storage(declared->type));
+            int storage = catalog_ports
+                            ? catalog_port_storage(catalog, declared->type)
+                            : port_storage(declared->type);
+            yyjson_mut_obj_add_int(doc, port, "storage", storage);
             yyjson_mut_obj_add_int(doc, port, "container", (int)declared->type.container);
             yyjson_mut_obj_add_bool(doc, port, "c_string", declared->c_string);
+            if (catalog_ports) {
+                yyjson_mut_obj_add_uint(doc, port, "nominal", declared->type.nominal);
+            }
         }
         yyjson_mut_arr_add_uint(doc, identities, c->id);
         yyjson_mut_arr_add_uint(doc, identities, script_catalog_capability_abi(catalog, c));
@@ -84,7 +135,7 @@ static void add_natives(yyjson_mut_doc *doc, yyjson_mut_val *target, const scrip
 }
 /* The value layout, prepared ABI, instruction names and natives, appended to
  * `target`. */
-static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const script_catalog *catalog)
+static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const script_catalog *catalog, bool catalog_ports)
 {
     const struct
     {
@@ -118,7 +169,7 @@ static void add_target(yyjson_mut_doc *doc, yyjson_mut_val *target, const script
     for (int i = 0; i < execution_prepared_instruction_count(); i++) {
         yyjson_mut_arr_add_str(doc, names, execution_prepared_instruction_name(i));
     }
-    add_natives(doc, target, catalog);
+    add_natives(doc, target, catalog, catalog_ports);
 }
 static char *written(yyjson_mut_doc *doc, size_t *length)
 {
@@ -132,21 +183,25 @@ char *compiler_target_json(const script_catalog *catalog, size_t *length)
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *target = yyjson_mut_arr(doc);
     yyjson_mut_doc_set_root(doc, target);
-    add_target(doc, target, catalog);
+    add_target(doc, target, catalog, false);
     return written(doc, length);
 }
 
+static void add_effects(yyjson_mut_doc *doc, yyjson_mut_val *effects, const script_catalog *catalog)
+{
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *capability = &catalog->capabilities[i];
+        if (callable(capability)) {
+            yyjson_mut_arr_add_uint(doc, effects, capability->effects);
+        }
+    }
+}
 char *compiler_target_effects_json(const script_catalog *catalog, size_t *length)
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
     yyjson_mut_val *root = yyjson_mut_arr(doc);
     yyjson_mut_doc_set_root(doc, root);
-    for (int i = 0; i < catalog->capability_count; i++) {
-        const script_catalog_capability *capability = &catalog->capabilities[i];
-        if (callable(capability)) {
-            yyjson_mut_arr_add_uint(doc, root, capability->effects);
-        }
-    }
+    add_effects(doc, root, catalog);
     return written(doc, length);
 }
 /* Each event, with a range of payload fields, then the fields. */
@@ -177,12 +232,6 @@ static void add_events(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_c
             yyjson_mut_obj_add_bool(doc, field, "default_owner", parameter->default_owner);
         }
     }
-}
-/* Whether the input lists a type: every one that is not internal or a union.
- * Stage zero requires each of them but the namespaces. */
-static bool exported(const script_catalog_type *t)
-{
-    return !t->internal && !(t->type.flags & SCRIPT_TYPE_UNION);
 }
 /* The index among the exported types of the type `id`; -1 for none. */
 static int type_index(const script_catalog *catalog, uint64_t id)
@@ -311,12 +360,13 @@ static void add_globals(yyjson_mut_doc *doc, yyjson_mut_val *root, const script_
         );
     }
 }
-char *compiler_behavior_input_json(
+static char *behavior_input_json(
     const script_catalog *catalog,
     const char *const *identities,
     const char *const *sources,
     int count,
-    size_t *length
+    size_t *length,
+    bool catalog_ports
 )
 {
     yyjson_mut_doc *doc = yyjson_mut_doc_new(NULL);
@@ -328,12 +378,35 @@ char *compiler_behavior_input_json(
         yyjson_mut_arr_add_str(doc, named, identities[i]);
         yyjson_mut_arr_add_str(doc, texts, sources[i]);
     }
-    add_target(doc, root, catalog);
+    add_target(doc, root, catalog, catalog_ports);
     add_events(doc, root, catalog);
     add_types(doc, root, catalog);
     yyjson_mut_arr_add_uint(doc, root, catalog->entity_type);
     add_operators(doc, root, catalog);
     add_globals(doc, root, catalog);
     add_makes(doc, root, catalog);
+    if (catalog_ports) {
+        add_effects(doc, yyjson_mut_arr_add_arr(doc, root), catalog);
+    }
     return written(doc, length);
+}
+char *compiler_behavior_input_json(
+    const script_catalog *catalog,
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    size_t *length
+)
+{
+    return behavior_input_json(catalog, identities, sources, count, length, false);
+}
+char *compiler_behavior_catalog_input_json(
+    const script_catalog *catalog,
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    size_t *length
+)
+{
+    return behavior_input_json(catalog, identities, sources, count, length, true);
 }

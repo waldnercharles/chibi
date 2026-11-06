@@ -156,6 +156,20 @@ Value :: struct {
     container: int;
     record: int;
 }
+// The resolved singleton result of a native call in this body. Its AST node
+// identifies the original selection even through local aliases.
+NativeCallFact :: struct {
+    node: int;
+    native: int;
+    storage: int;
+    container: int;
+    record: int;
+}
+// An initializer's call and the names visible when that call was declared.
+CallSource :: struct {
+    node: int;
+    visible: int;
+}
 // A name in scope: a locals-bank value, a record or array held in a data
 // cell, a record or array parameter read in place, or a behavior's state or
 // owner. Pattern bindings are not writable.
@@ -283,6 +297,8 @@ ComponentAssignPhase: int : 8;
 CombinePhase: int : 9;
 // The phase of `return (a, b)` once each named result's value is ready.
 ReturnsPhase: int : 10;
+// A private directive: publish the resolved native without emitting code.
+NativeCallPhase: int : -2;
 
 // The FNV-1a mix of the eight bytes of `value`, low first, as the SDK mixes
 // a word into an identity.
@@ -567,6 +583,10 @@ Instruction :: (op: int, type: int, output: int, left: int, right: int, target: 
 }
 Visit :: (node: int) -> Work {
     return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: 0, container: 0, record: -1};
+}
+RecordNativeCall :: (node: int, native: int, result: Value) -> Work {
+    return {node: node, phase: NativeCallPhase, a: native, b: 0, c: 0,
+            storage: result.storage, container: result.container, record: result.record};
 }
 Expect :: (node: int, storage: int, container: int, record: int) -> Work {
     return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: storage, container: container, record: record};
@@ -1407,7 +1427,7 @@ NextArm :: (forest: snapshot.SnapshotNode[], node: int) -> int {
 // The index of a native's result named `name`, matched as natives are: an
 // exact name first, else the one name that matches loosely; -1 for none and
 // -2 when several match.
-FindResult :: (ports: Port[], native: Native, name: string) -> int {
+FindResult :: (ports: ResolvedPort[], native: Native, name: string) -> int {
     found: int = -1;
     index: int = 0;
     while (index < native.results) {
@@ -1438,7 +1458,7 @@ NativePort :: (native: Native, index: int) -> int {
 // 0 for a push, 1 for an extension and -1 for any other statement. As in stage
 // zero, the native is recognized by its capability identity.
 InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
-                  ports: Port[], identities: uint64[], names: Name[], package: int, found: int, destination: int,
+                  ports: ResolvedPort[], identities: uint64[], names: Name[], package: int, found: int, destination: int,
                   value: int) -> int {
     updated := names[found];
     if (updated.place != CellPlace || updated.container != ArrayContainer || !updated.writable ||
@@ -1472,7 +1492,7 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
 
 // The array function a method call on an array runs, with the array first.
 // -1 for none.
-ArrayMethod :: (natives: Native[], ports: Port[], name: string) -> int {
+ArrayMethod :: (natives: Native[], ports: ResolvedPort[], name: string) -> int {
     index: int = 0;
     for (native in natives) {
         if (native.parameters > 0 && ports[native.first].container == ArrayContainer && NameMatches(native.name, name)) {
@@ -1496,7 +1516,7 @@ ArrayChanger :: (natives: Native[], native: int) -> bool {
 }
 // The array an expression statement's method call changes, as `xs.append(x)`
 // changes xs: the receiver, a name of an array, or -1.
-ChangedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: Native[], ports: Port[],
+ChangedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: Native[], ports: ResolvedPort[],
                  statement: int) -> int {
     call := FirstMember(forest, statement);
     function := Field(forest, call, "function");
@@ -1620,7 +1640,7 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
 }
 EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
+             constants: ConstDecl[], natives: Native[], ports: ResolvedPort[], identities: uint64[],
              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
              solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[],
              mutated: string[], built: int[], ops: Ops, target: Target) -> Body {
@@ -1651,6 +1671,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             named = begun_named;
     }
     values: Value[] = [];
+    native_calls: NativeCallFact[] = [];
     loops: Loop[] = [];
     breaks: int[] = [];
     continues: int[] = [];
@@ -1667,6 +1688,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     while (work_top > 0) {
         work_top -= 1;
         item := work[work_top];
+        if (item.phase == NativeCallPhase) {
+            fact: NativeCallFact = {node: item.node, native: item.a, storage: item.storage,
+                                    container: item.container, record: item.record};
+            native_calls.append(fact);
+            continue;
+        }
         node := forest[item.node];
         kind := node.kind;
         // Items this one schedules, in the order they run.
@@ -2257,7 +2284,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
-                             names, callable.package, values, value_top, item, ops, target, at);
+                             native_calls, names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, built, item, ops, target, at);
         } else if (kind == "map_expression") {
@@ -2406,6 +2433,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             while (at_result < count) {
                 storage: int = 0;
                 container: int = 0;
+                record: int = -1;
                 if (produced.storage == FunctionResultsStorage) {
                     called := callables[produced.record];
                     storage = params[called.first + called.count + at_result].storage;
@@ -2413,14 +2441,19 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     linked := natives[produced.record];
                     storage = ports[linked.first + linked.parameters + at_result].storage;
                     container = ports[linked.first + linked.parameters + at_result].container;
+                    record = ports[linked.first + linked.parameters + at_result].record;
                 }
                 address: Slot = {storage: target.pointer_storage, kind: AddressKind};
                 loaded: Slot = {storage: SlotStorage(storage, container, target), kind: SlotKind(storage, container)};
                 slots.extend([address, loaded]);
                 code.extend(CellRead(loaded.storage, produced.slot + at_result, ops, target, length(slots) - 2,
                                      node));
-                code.append(WatchCode(ops, length(slots) - 1, storage, container, -1, at_result, true, node,
+                code.append(WatchCode(ops, length(slots) - 1, storage, container, record, at_result, true, node,
                                       target));
+                if (produced.storage == ResultsStorage && Pointer(storage, container)) {
+                    root: Root = {slot: length(slots) - 1, storage: storage, container: container, record: record};
+                    roots.append(root);
+                }
                 at_result += 1;
             }
         }

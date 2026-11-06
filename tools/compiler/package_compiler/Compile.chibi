@@ -152,6 +152,49 @@ pub Port :: struct {
     container: int;
     c_string: bool;
 }
+// Rich game ports preserve the nominal identity erased by the pure bootstrap
+// catalog. The game wrapper resolves it before any body is emitted.
+pub CatalogPort :: struct {
+    name: string;
+    storage: int;
+    container: int;
+    c_string: bool;
+    nominal: uint64;
+}
+ResolvedPort :: struct {
+    name: string;
+    storage: int;
+    container: int;
+    c_string: bool;
+    record: int;
+}
+LegacyPorts :: (ports: Port[]) -> ResolvedPort[] {
+    resolved: ResolvedPort[] = [];
+    for (port in ports) {
+        row: ResolvedPort = {name: port.name, storage: port.storage, container: port.container,
+                             c_string: port.c_string, record: -1};
+        resolved.append(row);
+    }
+    return resolved;
+}
+NativeInputValid :: (natives: Native[], ports: ResolvedPort[], identities: uint64[], effects: int[]) -> bool {
+    if (length(identities) != 2 * length(natives) || length(effects) != length(natives)) {
+        return false;
+    }
+    for (effect in effects) {
+        if (effect < 0 || effect > NativeEffectsMask) {
+            return false;
+        }
+    }
+    for (native in natives) {
+        if (native.first < 0 || native.parameters < 0 || native.results < 0 || native.first > length(ports) ||
+            native.parameters > length(ports) - native.first ||
+            native.results > length(ports) - native.first - native.parameters) {
+            return false;
+        }
+    }
+    return true;
+}
 AnyPort: int : -2;
 UnsupportedPort: int : -1;
 // A declared type. A record's fields and a variant's payload are
@@ -1249,7 +1292,7 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
 Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
          files_of: int[], root: int, order: int[], edges: graph.Edge[], links: graph.Binding[],
          callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-         constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], native_effects: int[], ops: Ops,
+         constants: ConstDecl[], natives: Native[], ports: ResolvedPort[], identities: uint64[], native_effects: int[], ops: Ops,
          target: Target, abi: uint64) -> Result {
     // Each package's identity and module ID, and the fingerprint of its module.
     package_names: string[] = [];
@@ -1360,7 +1403,7 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
 Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int, first_document: int,
              package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
              links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
-             members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
+             members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: ResolvedPort[],
              identities: uint64[], native_effects: int[], callable_effects: int[], ops: Ops, target: Target,
              abi: uint64, game: Game) -> Assembly {
     identity := package_names[package];
@@ -1881,18 +1924,8 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
                            sources: string[], debug: bool, target: Target, abi: uint64, names: string[], natives: Native[],
                            ports: Port[], identities: uint64[], native_effects: int[]) -> Result {
     ops := ResolveOps(names, debug);
-    complete := length(identities) == 2 * length(natives) && length(native_effects) == length(natives);
-    for (effect in native_effects) {
-        if (effect < 0 || effect > NativeEffectsMask) {
-            complete = false;
-        }
-    }
-    for (native_row in natives) {
-        if (native_row.first < 0 || native_row.parameters < 0 || native_row.results < 0 ||
-            native_row.first + native_row.parameters + native_row.results > length(ports)) {
-            complete = false;
-        }
-    }
+    resolved_ports := LegacyPorts(ports);
+    complete := NativeInputValid(natives, resolved_ports, identities, native_effects);
     if (abi == 0 || !Complete(ops) || !complete || length(paths) == 0 || length(paths) != length(sources) ||
         length(collection_names) != length(collection_paths)) {
         return InputFailure(-1, "unsupported compiler input or target");
@@ -1930,7 +1963,7 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
                             return Result.Rejected(diagnostic);
                         case .Collected(callables, params, types, members, constants):
                             return Link(nodes, documents, packages, files_of, file_packages[0], order, edges, links,
-                                        callables, params, types, members, constants, natives, ports, identities, native_effects, ops, target,
+                                        callables, params, types, members, constants, natives, resolved_ports, identities, native_effects, ops, target,
                                         abi);
                     }
             }

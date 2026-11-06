@@ -239,7 +239,7 @@ InferredNumberStorage :: (forest: snapshot.SnapshotNode[], text: string, node: i
 // returns, from scheduling to the value's store.
 // A function's named results are locals from `named` on.
 StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-                  params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: Port[],
+                  params: Param[], types: TypeDecl[], members: TypeMember[], natives: Native[], ports: ResolvedPort[],
                   identities: uint64[], names: Name[], scope: int, package: int, values: Value[], top: int,
                   function: int, named: int, referenced: string[], mutated: string[], built: int[], item: Work,
                   ops: Ops, target: Target, at: Bases) -> Step {
@@ -854,7 +854,8 @@ StatementStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, 
 // Literals, names, parentheses, field reads and element reads.
 ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
               params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[],
-              ports: Port[], names: Name[], package: int, values: Value[], top: int, item: Work, ops: Ops,
+              ports: ResolvedPort[], native_calls: NativeCallFact[], names: Name[], package: int,
+              values: Value[], top: int, item: Work, ops: Ops,
               target: Target, at: Bases) -> Step {
     node := forest[item.node];
     kind := node.kind;
@@ -1039,13 +1040,14 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         // A global's keyed field, such as a scene binding, a native reads by
         // its key.
         field := members[KeyedMember(forest, text, types, members, names, item.node)];
-        key: Value = {slot: at.slot, storage: ports[natives[field.read].first].storage, container: 0, record: -1};
+        port := ports[natives[field.read].first];
+        key: Value = {slot: at.slot, storage: port.storage, container: port.container, record: port.record};
         constant := ConstantCode(ops, key.storage, 0, at.slot, node);
         constant.text = field.read_key;
         constant.has_text = true;
         shifted: Bases = {pc: at.pc + 1, slot: at.slot + 1, local: at.local, cell: at.cell, host: at.host,
                           call: at.call};
-        switch NativeReadStep(key, field, ops, target, shifted, node) {
+        switch NativeReadStep(forest, document, item.node, types, natives, ports, key, field, ops, target, shifted) {
             case .Failed(diagnostic):
                 return Step.Failed(diagnostic);
             case .Emitted(read_code, read_slots, read_locals, read_cells, read_hosts, read_roots, read_calls,
@@ -1094,6 +1096,28 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         if (member == "") {
             return Fail(forest, Field(forest, item.node, "member"), document, "Invalid string or embedded NUL");
         }
+        source := ResultSourceCall(forest, text, names, Field(forest, item.node, "object"));
+        origin := FindNativeCall(native_calls, source.node);
+        if (origin >= 0 && FindResult(ports, natives[native_calls[origin].native], member) == 0) {
+            // Naming the sole output projects the call's ordinary value.
+            // A local can have widened it since the initializer was emitted.
+            fact := native_calls[origin];
+            projected := Typed(object.slot, fact.storage, fact.container, fact.record);
+            if (!NativeTakes(types, projected, object)) {
+                numeric := object.container == 0 && fact.container == 0 &&
+                           object.record < 0 && fact.record < 0 &&
+                           (Integer(object.storage) || Floating(object.storage)) &&
+                           (Integer(fact.storage) || Floating(fact.storage));
+                if (!numeric) {
+                    return Fail(forest, item.node, document, "named result differs from its declared type");
+                }
+                slots = NumberSlots(object.storage, fact.storage);
+                code = NumberCode(ops, object.storage, fact.storage, object.slot, at.slot, node);
+                projected.slot = at.slot + length(slots) - 1;
+            }
+            return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1, projected,
+                                NoValue(), marks);
+        }
         if (Single(object, ResultsStorage)) {
             // One of a native's results, read from its cell.
             called := natives[object.record];
@@ -1115,11 +1139,11 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
             read.offset = target.payload_offset;
             code.append(read);
             if (Pointer(port.storage, port.container)) {
-                root: Root = {slot: at.slot + 1, storage: port.storage, container: port.container, record: -1};
+                root: Root = {slot: at.slot + 1, storage: port.storage, container: port.container, record: port.record};
                 roots.append(root);
             }
             return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, 1,
-                                Typed(at.slot + 1, port.storage, port.container, -1), NoValue(), marks);
+                                Typed(at.slot + 1, port.storage, port.container, port.record), NoValue(), marks);
         }
         if (Single(object, FunctionResultsStorage)) {
             // One of a function's named results, read from its cell.
@@ -1150,7 +1174,7 @@ ValueStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, call
         field := members[found];
         if (field.read >= 0) {
             // A native reads the field, such as an input action's `pressed`.
-            return NativeReadStep(object, field, ops, target, at, node);
+            return NativeReadStep(forest, document, item.node, types, natives, ports, object, field, ops, target, at);
         }
         if (field.c_string) {
             return NativeTextReadStep(object, field, ops, target, at, node);
@@ -1404,7 +1428,7 @@ CStringMessage :: (forest: snapshot.SnapshotNode[], text: string, node: int, bou
 // cells and the result comes back in one. A native's inferred ports all take
 // the one type its arguments give them.
 CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, callables: Callable[],
-             params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
+             params: Param[], types: TypeDecl[], members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: ResolvedPort[],
              makes: NativeMake[], make_fields: int[], names: Name[], package: int, values: Value[], top: int,
              built: int[], item: Work, ops: Ops, target: Target, at: Bases) -> Step {
     node := forest[item.node];
@@ -1493,7 +1517,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 expected := Visit(argument);
                 if (count < natives[method].parameters && ports[NativePort(natives[method], count)].storage > 0) {
                     port := ports[NativePort(natives[method], count)];
-                    expected = Expect(argument, port.storage, port.container, -1);
+                    expected = Expect(argument, port.storage, port.container, port.record);
                 }
                 next.append(expected);
                 if (count == 0) {
@@ -1665,7 +1689,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             } else if (native >= 0 && (count < expected_count || natives[native].variadic) &&
                        ports[NativePort(natives[native], count)].storage > 0) {
                 port := ports[NativePort(natives[native], count)];
-                expected = Expect(argument, port.storage, port.container, -1);
+                expected = Expect(argument, port.storage, port.container, port.record);
             }
             next.append(expected);
             count += 1;
@@ -1858,7 +1882,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
     if (item.c == 4) {
         // An overloaded native: the one whose parameters take the arguments.
         callee := Field(forest, item.node, "function");
-        chosen = Overload(natives, ports, natives[item.a].name, values, first, count);
+        chosen = Overload(types, natives, ports, natives[item.a].name, values, first, count);
         if (chosen < 0) {
             return Fail(forest, callee, document, "no overload of this native takes these arguments, or several do");
         }
@@ -1919,7 +1943,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                     return Fail(forest, argument_node, document, message);
                 }
             }
-            expected = Typed(-1, port.storage, port.container, -1);
+            expected = NativePortType(port);
             if (port.storage == AnyPort && argument.storage > 0) {
                 expected = argument;
             } else if (port.storage == 0) {
@@ -1938,8 +1962,17 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
                 expected = Typed(-1, ReferenceStorage, 0, -1);
             }
         }
-        if (!SameType(expected.storage, expected.container, expected.record, argument)) {
+        takes := SameType(expected.storage, expected.container, expected.record, argument);
+        if (linked) {
+            takes = NativeTakes(types, expected, argument);
+        }
+        if (!takes) {
             return Fail(forest, item.node, document, "argument differs from its parameter type");
+        }
+        if (linked) {
+            // A fixed native port's declared header survives compatible aliases.
+            argument = Typed(argument.slot, expected.storage, expected.container, expected.record);
+            arguments[index] = argument;
         }
         cell: Cell = {storage: argument.storage, container: argument.container, record: argument.record, constant: 0, variant: -1,
                       kind: ValueKind};
@@ -1960,7 +1993,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             if (port.storage <= 0) {
                 return Fail(forest, item.node, document, "native result type is not known");
             }
-            cell: Cell = {storage: port.storage, container: port.container, record: -1, constant: 0, variant: -1,
+            cell: Cell = {storage: port.storage, container: port.container, record: port.record, constant: 0, variant: -1,
                           kind: ValueKind};
             cells.append(cell);
             at_result += 1;
@@ -1969,7 +2002,7 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
         result = Typed(at.cell + total, ResultsStorage, 0, chosen);
     } else if (linked && natives[chosen].results == 1) {
         port := ports[first_port + natives[chosen].parameters];
-        result = Typed(-1, port.storage, port.container, -1);
+        result = NativePortType(port);
         if (port.storage == 0) {
             if (inferred.storage == 0) {
                 return Fail(forest, item.node, document, "native result type is not known");
@@ -2048,6 +2081,9 @@ CallStep :: (forest: snapshot.SnapshotNode[], text: string, document: int, calla
             roots.append(root);
         }
         result.slot = b + total + 1;
+    }
+    if (linked && result_count == 1) {
+        next.append(RecordNativeCall(item.node, chosen, result));
     }
     return Step.Emitted(code, slots, locals, cells, hosts, roots, calls, bound, next, count, result, NoValue(), marks);
 }
@@ -2837,18 +2873,22 @@ ComponentMakeStep :: (before: Code[], types: TypeDecl[], component: int, next: W
 Canonical :: (types: TypeDecl[], record: int) -> int {
     at := record;
     steps: int = 0;
-    while (types[at].kind == NativeDecl && types[at].parent >= 0 && steps < length(types)) {
+    while (at >= 0 && at < length(types) && steps < length(types)) {
+        if (types[at].kind != NativeDecl || types[at].parent < 0) {
+            return at;
+        }
         at = types[at].parent;
         steps += 1;
     }
-    return at;
+    return -1;
 }
 // The write of `self.C = v` and `self.C op= v`: the record, of a type that
 // stands for the same one as the component's, types[item.b], through the
 // reference at slot item.a.
 ComponentAssignStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], value: Value, item: Work,
                         ops: Ops, target: Target, at: Bases, node: snapshot.SnapshotNode) -> Step {
-    if (!Single(value, StructStorage) || Canonical(types, value.record) != Canonical(types, item.b)) {
+    canonical := Canonical(types, value.record);
+    if (!Single(value, StructStorage) || canonical < 0 || canonical != Canonical(types, item.b)) {
         return Fail(forest, item.node, document, "assigned value differs from its component");
     }
     locals: Slot[] = [];
@@ -2985,6 +3025,43 @@ NamedResult :: (params: Param[], called: Callable, name: string) -> int {
             return index;
         }
         index += 1;
+    }
+    return -1;
+}
+// Follow declaration initializers, narrowing the visible prefix at each
+// alias. A member consumes its source, so a projection is recognized once.
+ResultSourceCall :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], node: int) -> CallSource {
+    visible := names;
+    at := Unparenthesized(forest, node);
+    remaining := length(names) + 1;
+    while (at >= 0 && remaining > 0) {
+        remaining -= 1;
+        if (Is(forest, at, "call_expression")) {
+            return {node: at, visible: length(visible)};
+        }
+        if (!Is(forest, at, "identifier")) {
+            return {node: -1, visible: 0};
+        }
+        found := Lookup(visible, Text(forest, text, at));
+        if (found < 0 || visible[found].node < 0) {
+            return {node: -1, visible: 0};
+        }
+        declaration := forest[visible[found].node].parent;
+        if (!Is(forest, declaration, "local_declaration")) {
+            return {node: -1, visible: 0};
+        }
+        at = Unparenthesized(forest, Field(forest, declaration, "value"));
+        visible = slice(visible, 0, found);
+    }
+    return {node: -1, visible: 0};
+}
+FindNativeCall :: (facts: NativeCallFact[], node: int) -> int {
+    index := length(facts) - 1;
+    while (index >= 0) {
+        if (facts[index].node == node) {
+            return index;
+        }
+        index -= 1;
     }
     return -1;
 }
@@ -3257,27 +3334,94 @@ NativeTextReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Targe
                         Typed(at.slot + 11, TextStorage, 0, -1), NoValue(), []);
 }
 // `v.f`, where natives[f.read] reads the field: a call of it on `v`.
-NativeReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, at: Bases,
-                   node: snapshot.SnapshotNode) -> Step {
+NativeReadStep :: (forest: snapshot.SnapshotNode[], document: int, site: int, types: TypeDecl[], natives: Native[],
+                   ports: ResolvedPort[], object: Value, field: TypeMember, ops: Ops, target: Target, at: Bases) -> Step {
+    node := forest[site];
+    called := natives[field.read];
+    if (!Supported(ports, called) || called.parameters != 1 || called.results != 1) {
+        return Fail(forest, site, document, "field getter's native is not supported yet");
+    }
+    input := ports[called.first];
+    argument := NativePortType(input);
+    inferred := NoValue();
+    if (input.storage == AnyPort) {
+        argument = object;
+    } else if (input.storage == 0) {
+        if (object.storage <= 0 || object.container != input.container) {
+            return Fail(forest, site, document, "field getter's value differs from its parameter type");
+        }
+        inferred = Typed(-1, object.storage, 0, object.record);
+        argument = object;
+    }
+    if (!NativeTakes(types, argument, object)) {
+        return Fail(forest, site, document, "field getter's value differs from its parameter type");
+    }
+    argument.slot = object.slot;
+    output := ports[called.first + called.parameters];
+    result := NativePortType(output);
+    if (output.storage == 0) {
+        if (inferred.storage == 0) {
+            return Fail(forest, site, document, "field getter's result type is not known");
+        }
+        result = Typed(-1, inferred.storage, output.container, inferred.record);
+    }
+    field_type := Typed(-1, field.storage, 0, field.record);
+    if (!NativeTakes(types, result, field_type)) {
+        return Fail(forest, site, document, "field getter's result differs from its field type");
+    }
     locals: Slot[] = [];
     roots: Root[] = [];
     calls: Invocation[] = [];
     bound: Name[] = [];
     next: Work[] = [];
     marks: int[] = [];
-    arguments: Value[] = [object];
-    read: Cell = {storage: field.storage, container: 0, record: field.record, constant: 0, variant: -1,
+    arguments: Value[] = [argument];
+    read: Cell = {storage: result.storage, container: result.container, record: result.record, constant: 0, variant: -1,
                   kind: ValueKind};
     host: Host = {intrinsic: 0, linked: field.read, first: at.cell, result_first: at.cell + 1, result_count: 1,
                   written: false};
     value: Slot = {storage: SlotStorage(field.storage, 0, target), kind: SlotKind(field.storage, 0)};
     code := CallCode(arguments, at.cell, at.host, value.storage, at.slot, ops, target, node);
+    if (Pointer(field.storage, 0)) {
+        root: Root = {slot: at.slot + 2, storage: field.storage, container: 0, record: field.record};
+        roots.append(root);
+    }
     return Step.Emitted(code, CallSlots(1, value, target), locals, CallCells(arguments, read), [host], roots, calls,
-                        bound, next, 1, Typed(at.slot + 2, field.storage, 0, -1), NoValue(), marks);
+                        bound, next, 1, Typed(at.slot + 2, field.storage, 0, field.record), NoValue(), marks);
+}
+// The type a fixed native port declares, including its catalog identity.
+NativePortType :: (port: ResolvedPort) -> Value {
+    return Typed(-1, port.storage, port.container, port.record);
+}
+// Native aliases pass the same underlying value. Distinct nominal types
+// sharing a storage code do not become compatible.
+NativeTakes :: (types: TypeDecl[], expected: Value, value: Value) -> bool {
+    if (expected.storage != value.storage || expected.container != value.container) {
+        return false;
+    }
+    if ((expected.record >= length(types)) || (value.record >= length(types))) {
+        return false;
+    }
+    if (expected.record >= 0 && types[expected.record].kind == NativeDecl &&
+        !CatalogRecordValid(types, expected.record)) {
+        return false;
+    }
+    if (value.record >= 0 && types[value.record].kind == NativeDecl &&
+        !CatalogRecordValid(types, value.record)) {
+        return false;
+    }
+    if (expected.record == value.record) {
+        return expected.record < 0 || Canonical(types, expected.record) >= 0;
+    }
+    if (expected.record < 0 || value.record < 0) {
+        return false;
+    }
+    canonical := Canonical(types, expected.record);
+    return canonical >= 0 && canonical == Canonical(types, value.record);
 }
 // Whether the compiler passes each of a native's ports: a result takes a
 // known or inferred type, never each value's own.
-Supported :: (ports: Port[], called: Native) -> bool {
+Supported :: (ports: ResolvedPort[], called: Native) -> bool {
     port := called.first;
     while (port < called.first + called.parameters + called.results) {
         if (ports[port].storage == UnsupportedPort ||
@@ -3300,7 +3444,7 @@ Overloaded :: (natives: Native[], name: string) -> bool {
 }
 // The one native named `name` whose parameters each take the argument of
 // `values[first, first + count)` in its position; -1 for none or several.
-Overload :: (natives: Native[], ports: Port[], name: string, values: Value[], first: int, count: int) -> int {
+Overload :: (types: TypeDecl[], natives: Native[], ports: ResolvedPort[], name: string, values: Value[], first: int, count: int) -> int {
     found: int = -1;
     index: int = 0;
     while (index < length(natives)) {
@@ -3311,7 +3455,7 @@ Overload :: (natives: Native[], ports: Port[], name: string, values: Value[], fi
             port := ports[candidate.first + at];
             value := values[first + at];
             takes = port.storage != UnsupportedPort &&
-                    (port.storage <= 0 || (port.storage == value.storage && port.container == value.container));
+                    (port.storage <= 0 || NativeTakes(types, NativePortType(port), value));
             at += 1;
         }
         if (takes && found >= 0) {
@@ -3389,6 +3533,7 @@ MakeStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], 
     slots.extend([address, address]);
     made := at.slot + length(slots) - 1;
     roots: Root[] = [{slot: made, storage: StructStorage, container: 0, record: record}];
+    next.append(RecordNativeCall(call, make.native, Typed(made, StructStorage, 0, record)));
     return Step.Emitted(code, slots, locals, cells, [host], roots, calls, bound, next, count,
                         Typed(made, StructStorage, 0, record), NoValue(), marks);
 }
@@ -3396,11 +3541,7 @@ MakeStep :: (forest: snapshot.SnapshotNode[], document: int, types: TypeDecl[], 
 CallCells :: (arguments: Value[], result: Cell) -> Cell[] {
     cells: Cell[] = [];
     for (argument in arguments) {
-        record: int = -1;
-        if (argument.storage == StructStorage) {
-            record = argument.record;
-        }
-        cell: Cell = {storage: argument.storage, container: argument.container, record: record, constant: 0,
+        cell: Cell = {storage: argument.storage, container: argument.container, record: argument.record, constant: 0,
                       variant: -1, kind: ValueKind};
         cells.append(cell);
     }

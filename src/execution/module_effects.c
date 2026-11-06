@@ -1607,7 +1607,9 @@ execution_cost_summary execution_module_costs(const execution_module *m)
  * snapshots, constructors and authored returns are fresh while the copied
  * headers keep their declared types: the verifier rejects direct writes to a
  * cell's type and container, a return checks its results' headers, and
- * `retyped` covers the writes neither can place. */
+ * `retyped` covers the writes neither can place. Reads through a reference
+ * keep the taint of the reference and, for value references, of the cell it
+ * holds, since the type a reference copies by is tied to nothing. */
 enum
 {
     SHARE_NONE = -2,
@@ -1800,9 +1802,16 @@ static void share_host(share_flow *s, int pc)
             case EXECUTION_INTRINSIC_SNAPSHOT:
             case EXECUTION_INTRINSIC_CONSTRUCT:
             case EXECUTION_INTRINSIC_UNION_MAKE:
-            case EXECUTION_INTRINSIC_REFERENCE_READ:
                 output = s->retyped && inputs;
                 break;
+            /* A read copies by the type its reference was made with, which
+             * the schema ties to nothing, so the copy keeps the taint of the
+             * reference and, for a value reference, of the cell it holds. */
+            case EXECUTION_INTRINSIC_REFERENCE_READ: {
+                int contents = s->contents[host->first];
+                output = share_cell(s, host->first) || share_cell(s, contents);
+                break;
+            }
             case EXECUTION_INTRINSIC_UNION_TEST:
             case EXECUTION_INTRINSIC_VALUE_EQUAL:
             case EXECUTION_INTRINSIC_LOCAL_RELEASE: output = false; break;

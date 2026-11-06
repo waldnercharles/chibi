@@ -86,8 +86,9 @@
   "remaining": [
     "CLI full-suite success and demonstrated root cause remain unestablished.",
     "LLVM archive route accepted; GNU archive route remains unvalidated.",
-    "C-host link/static ELF, startup/target serialization, narrow bootstrap validation and exact-source direct fixed-point recovery accepted separately. Current-source test_tools build products independently accepted; original aggregate remains failed. Both registered compiler-bootstrap and bootstrap-recovery selectors independently accepted. Broader runtime integration remains unvalidated.",
-    "Actual Windows, full current-head integration and ordinary VM/SLJIT/native differential remain unestablished."
+    "C-host link/static ELF, startup/target serialization, narrow bootstrap validation and exact-source direct fixed-point recovery accepted separately. Current-source test_tools build products independently accepted; original aggregate remains failed. Registered compiler-bootstrap, bootstrap-recovery, bootstrap-load and three C-runtime selectors independently accepted. Broader runtime integration remains unvalidated.",
+    "Actual Windows, full current-head integration and ordinary VM/SLJIT/native differential remain unestablished.",
+    "program-sdk independently accepted, distinct from graph-sdk-install. Seven registered test_tools selectors total 64 cases and 5,318 assertions; not full-project integration. Fresh test_language source staging and commands-only emission independently accepted at 3549b60df81b0c149cf247be92e3fa292266d275 using the accepted a661626d Graph supplier: 131 complete compile arrays and six link/native arrays. No compiler, reflection, full build or selector execution established."
   ],
   "holds": [
     "PR1331",
@@ -409,5 +410,162 @@
     "full_integration_accepted": false,
     "independent_acceptance_review_bytes": 6546,
     "independent_acceptance_sha256": "4025cfd6f05bb148a34aebaa0441ef7de00ff4fd03039834ca36c6f14f077c74"
+  },
+  "registered_C_runtime_selectors": {
+    "status": "independently_accepted_three_actual_selectors",
+    "bound_inputs_unchanged": 4405,
+    "per_run_outer_and_native_exit_code": 0,
+    "per_run_stderr_bytes": 0,
+    "exact_authored_case_order": true,
+    "whole_owner_echild_and_eof": true,
+    "remaining_children": [],
+    "quarantined_private_images_mode_0600_per_run": 1,
+    "failures": 0,
+    "selectors": {
+      "types": {
+        "cases": 42,
+        "assertions": 5103,
+        "owner_wall_seconds": 1.668269916990539
+      },
+      "persistent-store": {
+        "cases": 1,
+        "assertions": 46,
+        "backends": [
+          "bytecode",
+          "SLJIT"
+        ],
+        "owner_wall_seconds": 1.7730385479953839
+      },
+      "box3d": {
+        "cases": 2,
+        "assertions": 30,
+        "owner_wall_seconds": 1.4535320799914189
+      }
+    },
+    "full_integration_or_native_parity_accepted": false,
+    "acceptance_bytes": 15260,
+    "acceptance_sha256": "25af814e92f6fb84ac335815bab4485d975a95255f72655dd4e32a7705198e7c"
+  },
+  "registered_bootstrap_load": {
+    "status": "independently_accepted_actual_registered_selector",
+    "selector": "bootstrap-load",
+    "cases": 1,
+    "assertions": 19,
+    "failures": 0,
+    "outer_exit_code": 0,
+    "native_exit_code": 0,
+    "owner_status": "ownership_passed",
+    "owner_wall_seconds": 145.56350434900378,
+    "stdout_bytes": 437,
+    "stderr_bytes": 0,
+    "whole_owner_echild_and_eof": true,
+    "remaining_children": [],
+    "bound_inputs_unchanged": 4405,
+    "quarantined_private_images_mode_0600": 1,
+    "home_and_tmp_empty": true,
+    "work_seconds": 1800,
+    "cleanup_seconds": 60,
+    "deadline_qualification": "Unchanged cooperative registry deadline, not a hard whole-command bound.",
+    "original_fixtures_and_assertions_preserved": true,
+    "genuine_source_export_edit_recovery_and_cache_reuse": true,
+    "executed_markers": [
+      37,
+      41
+    ],
+    "sparse_fixtures": {
+      "count": 2,
+      "logical_bytes_each": 1073741824,
+      "oldest_evicted": true,
+      "exact_logical_peak_measured": false,
+      "physical_allocation_measured": false,
+      "peak_usage_bound_claimed": false
+    },
+    "diagnostic_reported_recovery": {
+      "changed_sources": 62,
+      "compiler_bytes": 15942750,
+      "compiler_sha256": "2ba61ed6066c1ecf9d32aa0a9db9c1f0c04872619bead86a3e60d4345a71d439",
+      "independently_rehashed_retained_artifact": false
+    },
+    "recovered_compiler_and_fixtures_retained": false,
+    "retention_qualification": "Authored cleanup removed fixtures and recovered compiler; reported identity comes from the diagnostic.",
+    "full_integration_accepted": false,
+    "acceptance_bytes": 7907,
+    "acceptance_sha256": "4e40d352600690536d4c2798d1df963695a41083c21ff001d71cea498962f7a2"
+  },
+  "registered_program_sdk": {
+    "status": "independently_accepted_actual_direct_registered_selector",
+    "selector": "program-sdk",
+    "cases": 2,
+    "assertions": 17,
+    "failures": 0,
+    "outer_exit_code": 0,
+    "native_exit_code": 0,
+    "worker_exit_code": 0,
+    "owner_status": "ownership_passed",
+    "owner_wall_seconds": 6.565544757002499,
+    "stdout_bytes": 301,
+    "stderr_bytes": 0,
+    "exact_authored_case_order": true,
+    "whole_owner_echild_and_eof": true,
+    "remaining_children": [],
+    "bound_inputs_unchanged": 4406,
+    "quarantined_private_images_mode_0600": 2,
+    "home_and_tmp_empty": true,
+    "genuine_asset_compiler_service_path": true,
+    "invalid_compile_diagnostic_and_previous_program_preservation_passed": true,
+    "healthy_retained_cache_frame_bytes": [
+      569,
+      602,
+      721
+    ],
+    "empty_cache_lock_retained": true,
+    "temporary_residue_remaining": false,
+    "exact_service_launch_and_cache_hit_counts_measured": false,
+    "service_stream_qualification": "Authored service streams redirected to /dev/null; no exact service-start or cache-hit count inferred.",
+    "productive_limit_seconds": 600,
+    "cleanup_reserve_seconds": 30,
+    "deadline_qualification": "Admitted cooperative direct-selector limits; no toolchain runner scheduling or timeout validation.",
+    "distinct_from_accepted_graph_sdk_install": true,
+    "acceptance_bytes": 1254,
+    "acceptance_sha256": "2ae4ca5652614a8c595400516b88011a335eab733af18ca5e3b2e55a9208bf25"
+  },
+  "registered_test_tools_summary": {
+    "selectors": [
+      "compiler-bootstrap",
+      "bootstrap-recovery",
+      "types",
+      "persistent-store",
+      "box3d",
+      "bootstrap-load",
+      "program-sdk"
+    ],
+    "selector_count": 7,
+    "cases": 64,
+    "assertions": 5318,
+    "status": "independently_accepted_scoped_selector_results",
+    "full_project_integration_or_native_parity": false
+  },
+  "additional_test_language_build": {
+    "status": "source_staging_and_commands_only_independently_accepted",
+    "source_commit": "3549b60df81b0c149cf247be92e3fa292266d275",
+    "Graph_supplier_source_commit": "a661626d48172e3bfcda82c9dcde3018edf53eef",
+    "relevant_supplier_source_equivalence_verified": true,
+    "fresh_Graph_compilation": false,
+    "commands_emission_established": true,
+    "complete_compile_arrays": 131,
+    "complete_link_native_arrays": 6,
+    "commands_outer_exit_code": 0,
+    "commands_native_exit_code": 0,
+    "commands_owner_wall_seconds": 1.5271922389947576,
+    "commands_whole_owner_echild_and_eof": true,
+    "commands_cleanup_passed": true,
+    "compiler_or_reflection_executed": false,
+    "commands_acceptance_bytes": 6127,
+    "commands_acceptance_sha256": "be5af6d95615620af02763ebcf57682437785322b8632d95178ed2e03725cd68",
+    "Graph_or_compiler_construction_established": false,
+    "full_build_accepted": false,
+    "selector_pass_established": false,
+    "artifact_accepted": false,
+    "staging_acceptance_sha256": "b9f58e7307e9effdaf33346959972f0c491b002775c48a26192c8b979e23f543"
   }
 }

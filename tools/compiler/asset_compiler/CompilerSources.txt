@@ -14,6 +14,9 @@ package_compiler/Queries.chibi
 package_compiler/QueryLoops.chibi
 package_compiler/Behavior.chibi
 package_compiler/Scalar.chibi
+package_compiler/Math.chibi
+math_types/Types.chibi
+math_types/Functions.chibi
 syntax_diagnostics/Diagnostics.chibi
 /sdk/core/strings/Strings.chibi
 source_snapshot/Snapshot.chibi

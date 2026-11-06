@@ -12,7 +12,8 @@ static uint64_t component_target(const script_effect_facts *out, int index)
     int remaining = out->expression_count;
     while (index >= 0 && remaining--) {
         const script_expression *e = &out->expressions[index];
-        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_DEREFERENCE) {
+        if (e->kind == SCRIPT_EXPR_MEMBER || e->kind == SCRIPT_EXPR_DEREFERENCE ||
+            (e->kind == SCRIPT_EXPR_MATH && e->math_op == SCRIPT_MATH_SWIZZLE)) {
             if (e->read || e->write || e->type.container != PIN_CONTAINER_SINGLE) {
                 return 0;
             }

@@ -10,6 +10,7 @@
 #include "execution/state.h"
 #include "execution/task.h"
 #include "language/identity.h"
+#include "language/math_types.h"
 #include "scalar_lowering_reference.h"
 #include "support/array.h"
 #include "support/xalloc.h"
@@ -1788,6 +1789,7 @@ static bool index_needs_snapshot(const lower *l, const script_expression *e)
 static bool owns_expression_value(const lower *l, const script_expression *e)
 {
     switch (e->kind) {
+        case SCRIPT_EXPR_MATH:
         case SCRIPT_EXPR_CALL:
         case SCRIPT_EXPR_ARRAY:
         case SCRIPT_EXPR_MAP:
@@ -5147,6 +5149,8 @@ static void debug_input(lower *l, const script_expression *e, int ordinal, int v
     }
     debug_watch(l, (int)((address - start) / sizeof *e), value, type, false, ordinal);
 }
+#include "math_lower.h"
+
 static int expression_value(lower *l, int index)
 {
     if (index < 0 || index >= l->a->expression_count) {
@@ -5168,6 +5172,7 @@ static int expression_value(lower *l, int index)
         debug_point(l, SCRIPT_RECORD_SYMBOL, e->symbol, e->range);
     }
     switch (e->kind) {
+        case SCRIPT_EXPR_MATH: return vector_value(l, e);
         case SCRIPT_EXPR_SEQUENCE: {
             pin_value headers[] = { initial(l, l->a->expressions[e->left].type),
                                     { .type = PIN_I32 },
@@ -6520,6 +6525,11 @@ static void assign(lower *l, const script_statement *s)
 {
     int index = s->expression;
     const script_expression *target = index >= 0 ? &l->a->expressions[index] : NULL;
+    if (target && target->kind == SCRIPT_EXPR_MATH &&
+        target->math_op == SCRIPT_MATH_SWIZZLE) {
+        math_swizzle_assign(l, s);
+        return;
+    }
     const script_catalog_capability *native = target
                                                 ? native_member_access(l, target, true)
                                                 : NULL;
@@ -6570,6 +6580,8 @@ static void assign(lower *l, const script_statement *s)
     int destination = direct ? -1 : reference(l, index);
     const script_expression *rhs = &l->a->expressions[s->second];
     bool compound = s->op != SCRIPT_OP_NONE;
+    compound |= rhs->kind == SCRIPT_EXPR_MATH &&
+                rhs->math_op == SCRIPT_MATH_OPERATOR && rhs->left == index;
     if (rhs->kind == SCRIPT_EXPR_CALL && rhs->argument_count) {
         compound |= rhs->arguments[0].value == index;
     }
@@ -7687,6 +7699,7 @@ static void dependency_expressions(lower *l, int index, bool *visited, int **out
             dependency_expressions(l, e->left, visited, out);
             dependency_expressions(l, e->right, visited, out);
             return;
+        case SCRIPT_EXPR_MATH:
         case SCRIPT_EXPR_SEQUENCE:
             dependency_expressions(l, e->left, visited, out);
             dependency_expressions(l, e->right, visited, out);
@@ -8501,7 +8514,8 @@ static int storage_root(const script_analysis *a, int index)
 {
     while (index >= 0) {
         const script_expression *e = &a->expressions[index];
-        if (e->kind != SCRIPT_EXPR_MEMBER && e->kind != SCRIPT_EXPR_INDEX) {
+        if (e->kind != SCRIPT_EXPR_MEMBER && e->kind != SCRIPT_EXPR_INDEX &&
+            !(e->kind == SCRIPT_EXPR_MATH && e->math_op == SCRIPT_MATH_SWIZZLE)) {
             return e->kind == SCRIPT_EXPR_SYMBOL ? e->symbol : -1;
         }
         index = e->left;
@@ -9087,7 +9101,8 @@ static bool merge_record(lower *l, script_catalog_type **types, int index)
         if (!record_overlaps(&(*types)[i], record)) {
             continue;
         }
-        if (match >= 0 || !same_record(&(*types)[i], record)) {
+        if (match >= 0 || (!same_record(&(*types)[i], record) &&
+                           !script_math_layout_equivalent(&(*types)[i], record))) {
             goto conflict;
         }
         match = i;

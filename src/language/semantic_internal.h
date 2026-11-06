@@ -2,6 +2,7 @@
 #define CHIBI_LANGUAGE_SEMANTIC_INTERNAL_H
 
 #include "language/constant_proof.h"
+#include "language/math_types.h"
 #include "language/named_binding.h"
 #include "language/signature_reader.h"
 #include "types/text.h"
@@ -95,6 +96,13 @@ typedef struct
     bool query;            /* Analyzing an ordered query header. */
     int query_description; /* Active one-based description. */
 } analyzer;
+
+void script_analyzer_math_prepare(analyzer *, TSNode);
+script_type script_analyzer_math_type(analyzer *, TSNode, script_math_kind);
+int script_analyzer_math_call(analyzer *, TSNode, const char *, int **analyzed);
+bool script_analyzer_math_operator(analyzer *, TSNode, script_expression *);
+bool script_analyzer_math_swizzle(analyzer *, TSNode, int, const char *, script_expression *);
+bool script_analyzer_math_write(analyzer *, TSNode, const script_expression *);
 
 script_named_facts script_analyzer_named_facts(const analyzer *);
 script_range script_analyzer_range(const analyzer *, TSNode);

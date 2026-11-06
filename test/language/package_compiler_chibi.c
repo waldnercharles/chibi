@@ -97,7 +97,8 @@ typedef enum
     BASE_SAMPLES,
     TYPE_SAMPLES,
     IMPORT_SAMPLES,
-    COLLECTION_SAMPLES
+    COLLECTION_SAMPLES,
+    MATH_SAMPLES
 } sample_group;
 /* `source` is package facts, and `more` another file of it when present;
  * `library` is package lib when present, and `core` adds core:strings. A
@@ -140,6 +141,7 @@ typedef struct
     const char *message;
     const char *oracle_message;
     int line, column;
+    int oracle_line, oracle_column;
 } sample;
 static const char *cstring_probe(arena *storage, const pin_value *arguments, int, pin_value *result)
 {
@@ -4109,6 +4111,360 @@ enum
 {
     SAMPLES = sizeof samples / sizeof *samples
 };
+/* Source-level contracts use literal answers. They do not ask the constant
+ * evaluator or either compiler to calculate the expected result. */
+static const sample math_samples[] = {
+    { .name = "math unary and matrix arithmetic retain their shapes",
+      .source = "package facts\nCheck :: () -> bool { v := vec2(1, -2); "
+                "return -v == vec2(-1, 2) && v != vec2(0) && mat2(1) != "
+                "mat2(0) && "
+                "(mat2(1) + mat2(2)) * v == vec2(3, -6) && "
+                "((mat2(4) - mat2(2)) / 2) * v == v && "
+                "(-mat2(1)) * v == -v && (2 * mat2(1)) * v == v * 2; }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math sign saturate and round use scalar component rules",
+      .source = "package facts\nCheck :: () -> bool { "
+                "return sign(vec3(-2, 0, 3)) == vec3(-1, 0, 1) && "
+                "saturate(vec3(-1, 0.5, 2)) == vec3(0, 0.5, 1) && "
+                "round(vec3(0.5, 1.5, -2.5)) == vec3(1, 2, -3); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math modulo follows divisor sign and powers preserve order",
+      .source = "package facts\nCheck :: () -> bool { "
+                "return mod(vec2(-3, 3), 2) == vec2(1, 1) && "
+                "mod(vec2(-3, 3), -2) == vec2(-1, -1) && "
+                "pow(vec3(2, 3, 4), 2) == vec3(4, 9, 16) && "
+                "sqrt(vec3(4, 9, 16)) == vec3(2, 3, 4); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math exponential and logarithm functions keep f32 results",
+      .source = "package facts\nCheck :: () -> bool { "
+                "a := exp(vec2(0, 1)); b := log(vec2(1, 2.7182818)); "
+                "return a.x == 1.0 && abs(a.y - 2.7182818) < 0.000001 && "
+                "b.x == 0.0 && abs(b.y - 1.0) < 0.000001 && "
+                "exp2(vec3(-1, 0, 1)) == vec3(0.5, 1, 2) && "
+                "log2(vec3(0.5, 1, 4)) == vec3(-1, 0, 2); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math trigonometric functions use radians and atan2 y x order",
+      .source = "package facts\nCheck :: () -> bool { "
+                "a := sin(vec2(0, 1.5707963)); b := cos(vec2(0, 1.5707963)); "
+                "c := atan2(vec2(0, 1), vec2(1, 0)); "
+                "return a.x == 0.0 && abs(a.y - 1.0) < 0.000001 && "
+                "b.x == 1.0 && abs(b.y) < 0.000001 && c.x == 0.0 && "
+                "abs(c.y - 1.5707963) < 0.000001 && "
+                "tan(vec2(0)) == vec2(0) && asin(vec2(0)) == vec2(0) && "
+                "acos(vec2(1)) == vec2(0) && atan(vec2(0)) == vec2(0); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math pointer receiver calls run once before the rhs",
+      .source = "package facts\n"
+                "Pick :: (v: ^vec3, calls: ^int) -> ^vec3 { "
+                "calls^ = calls^ * 10 + 1; return v; }\n"
+                "Right :: (calls: ^int) -> vec2 { calls^ = calls^ * 10 + 2; "
+                "return vec2(7, 8); }\n"
+                "Check :: () -> (calls: int, x: number, y: number, z: number) "
+                "{ "
+                "v := vec3(1, 2, 3); total: int = 0; Pick(&v, &total).yx = "
+                "Right(&total); "
+                "return (total, v.x, v.y, v.z); }\n",
+      .calls = { { "Check", "[]", "[12,8.0,7.0,3.0]" } } },
+    { .name = "math swizzles preserve copied map values",
+      .source = "package facts\n"
+                "Check :: () -> (x: number, y: number, z: number, sx: number, "
+                "sy: number, sz: number) { "
+                "rows: [int: vec3] = [1: vec3(1, 2, 3)]; "
+                "before := rows; rows[1].yx = rows[1].xy; "
+                "return (rows[1].x, rows[1].y, rows[1].z, before[1].x, "
+                "before[1].y, before[1].z); }\n",
+      .calls = { { "Check", "[]", "[2.0,1.0,3.0,1.0,2.0,3.0]" } } },
+    { .name = "math constructor splats concatenation and function returns",
+      .source = "package facts\n"
+                "Foo :: () -> vec3 { return vec3(2, 4, 8); }\n"
+                "Check :: () -> bool { v := Foo(); a := vec4(v.xy, v.z, 16); "
+                "b := vec3(3); c := vec4(vec2(1, 2), vec2(3, 4)); "
+                "return v == vec3(2, 4, 8) && a == vec4(2, 4, 8, 16) && "
+                "b == vec3(3, 3, 3) && c == vec4(1, 2, 3, 4); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math explicit f64 narrowing rounds at f32 width",
+      .source = "package facts\n"
+                "Check :: () -> bool { wide: f64 = 16777217.0; "
+                "v := vec3(f32(wide), 2, 3); return v.x == 16777216.0 && "
+                "v.y == 2.0 && v.z == 3.0; }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math broadcasts preserve subtraction and division order",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec3(2, 4, 8); "
+                "return 2 - v == vec3(0, -2, -6) && v - 2 == vec3(0, 2, 6) && "
+                "16 / v == vec3(8, 4, 2) && v / 2 == vec3(1, 2, 4) && "
+                "2 + v == vec3(4, 6, 10) && v * 2 == vec3(4, 8, 16) && "
+                "v * vec3(3, 2, 1) == vec3(6, 8, 8); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math swizzle writes snapshot aliased values",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec4(1, 2, 3, 4); "
+                "v.xy = v.yx; a := v.xxy; v.ba = v.rb; "
+                "return v == vec4(2, 1, 2, 3) && a == vec3(2, 2, 1); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math compound swizzles preserve untouched components",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec4(1, 2, 3, 4); "
+                "v.yx += vec2(5, 6); v.zw *= 2; "
+                "return v == vec4(7, 7, 6, 8); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math swizzles write through pointers and array elements",
+      .source = "package facts\n"
+                "Set :: (p: ^vec3) { p.yx = vec2(7, 8); }\n"
+                "Check :: () -> bool { v := vec3(1, 2, 3); Set(&v); "
+                "rows: vec3[] = [vec3(2, 4, 6), vec3(8, 10, 12)]; "
+                "rows[0].yx = rows[0].xy; return v == vec3(8, 7, 3) && "
+                "rows[0] == vec3(4, 2, 6) && rows[1] == vec3(8, 10, 12); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math swizzle receiver and rhs execute once in source order",
+      .source = "package facts\n"
+                "Index :: (calls: ^int) -> int { calls^ = calls^ * 10 + 1; "
+                "return 0; }\n"
+                "Right :: (rows: ^(vec4[]), calls: ^int) -> vec2 { "
+                "calls^ = calls^ * 10 + 2; rows^[0].w = 9; return rows^[0].yx; "
+                "}\n"
+                "Check :: () -> bool { calls: int = 0; "
+                "rows: vec4[] = [vec4(1, 2, 3, 4), vec4(5, 6, 7, 8)]; "
+                "rows[Index(&calls)].xy = Right(&rows, &calls); return calls "
+                "== 12 && "
+                "rows[0] == vec4(2, 1, 3, 9) && rows[1] == vec4(5, 6, 7, 8); "
+                "}\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math column matrix products do not commute",
+      .source = "package facts\n"
+                "Check :: () -> bool { a := mat2(vec2(1, 2), vec2(0, 1)); "
+                "b := mat2(2, 0, 0, 3); v := vec2(1, 1); "
+                "left := (a * b) * v; right := (b * a) * v; "
+                "return left == vec2(2, 7) && right == vec2(2, 9) && "
+                "a * (b * v) == left && mat2(1) * v == v; }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math homogeneous matrix columns carry translations",
+      .source = "package facts\n"
+                "Check :: () -> bool { translate := mat3(1, 0, 0, 0, 1, 0, 5, "
+                "7, 1); "
+                "scale := mat3(2, 0, 0, 0, 3, 0, 0, 0, 1); v := vec3(2, 3, 1); "
+                "return (translate * scale) * v == vec3(9, 16, 1) && "
+                "(scale * translate) * v == vec3(14, 30, 1) && "
+                "mat4(1) * vec4(v, 1) == vec4(2, 3, 1, 1); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math quaternion Hamilton products retain their order",
+      .source = "package facts\n"
+                "Check :: () -> bool { x := quat(1, 0, 0, 0); y := quat(0, 1, "
+                "0, 0); "
+                "return x * y == quat(0, 0, 1, 0) && y * x == quat(0, 0, -1, "
+                "0) && "
+                "x * x == quat(0, 0, 0, -1) && quat(0, 0, 0, 1) * y == y; }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math constructor refuses excess components",
+      .source = "package facts\nBad :: () -> vec2 { return vec2(1, 2, 3); }\n",
+      .message = "vec2 needs 2 components; these arguments supply 3",
+      .line = 2,
+      .column = 28,
+      .oracle_message = "vec2 needs 2 components; these arguments supply 3",
+      .oracle_line = 2,
+      .oracle_column = 32 },
+    { .name = "math constructor refuses implicit f64 narrowing",
+      .source = "package facts\nBad :: (wide: f64) -> vec3 { return "
+                "vec3(wide); }\n",
+      .message = "math components require explicit f32(value) narrowing from "
+                 "f64",
+      .line = 2,
+      .column = 37,
+      .oracle_message = "Math components require explicit f32(value) narrowing "
+                        "from f64",
+      .oracle_line = 2,
+      .oracle_column = 42 },
+    { .name = "math writable swizzles refuse duplicate destinations",
+      .source = "package facts\nBad :: () { v := vec3(1, 2, 3); v.xx = vec2(4, "
+                "5); }\n",
+      .message = "a writable swizzle cannot repeat a destination component",
+      .line = 2,
+      .column = 33,
+      .oracle_message = "A writable swizzle cannot repeat a destination "
+                        "component",
+      .oracle_line = 2,
+      .oracle_column = 33 },
+    { .name = "math read swizzles refuse mixed component alphabets",
+      .source = "package facts\nBad :: () -> vec2 { v := vec3(1, 2, 3); return "
+                "v.xr; }\n",
+      .message = "a swizzle cannot mix xyzw and rgba components",
+      .line = 2,
+      .column = 48,
+      .oracle_message = "A swizzle uses one of xyzw or rgba without mixing "
+                        "them",
+      .oracle_line = 2,
+      .oracle_column = 50 },
+    { .name = "math vector operands require the same width",
+      .source = "package facts\nBad :: () -> vec2 { return vec2(1) + vec3(1); "
+                "}\n",
+      .message = "cannot apply + to vec2 and vec3",
+      .line = 2,
+      .column = 28,
+      .oracle_message = "Cannot combine vec2 and vec3 with this math operator",
+      .oracle_line = 2,
+      .oracle_column = 28 },
+    { .name = "math vector matrix multiplication states its convention",
+      .source = "package facts\nBad :: () -> vec2 { return vec2(1) * mat2(1); "
+                "}\n",
+      .message = "a matrix multiplies a column vector on its right; write "
+                 "matrix * vector",
+      .line = 2,
+      .column = 28,
+      .oracle_message = "A matrix multiplies a column vector on its right; "
+                        "write matrix * vector",
+      .oracle_line = 2,
+      .oracle_column = 28 },
+    { .name = "math quaternion rotation waits for recoverable results",
+      .source = "package facts\nBad :: () -> vec3 { return quat(0, 0, 0, 1) * "
+                "vec3(1, 0, 0); }\n",
+      .message = "quaternion rotation requires the recoverable math result "
+                 "contract",
+      .line = 2,
+      .column = 28,
+      .oracle_message = "Quaternion rotation requires the recoverable math "
+                        "result adapter",
+      .oracle_line = 2,
+      .oracle_column = 28 },
+    { .name = "math matrix representation stays private",
+      .source = "package facts\nBad :: () -> number { m := mat2(1); return "
+                "m.c0r0; }\n",
+      .message = "matrix storage fields are internal; use matrix operations",
+      .line = 2,
+      .column = 44,
+      .oracle_message = "Matrix storage fields are internal; use matrix "
+                        "operations",
+      .oracle_line = 2,
+      .oracle_column = 46 },
+    { .name = "math dot and cross have independent scalar and handedness "
+              "answers",
+      .source = "package facts\n"
+                "Check :: () -> bool { a := vec3(1, 2, 3); b := vec3(4, 5, 6); "
+                "return dot(a, b) == 32.0 && cross(a, b) == vec3(-3, 6, -3) && "
+                "cross(b, a) == vec3(3, -6, 3); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math length and distance use three four five triangles",
+      .source = "package facts\n"
+                "Check :: () -> bool { return length(vec2(3, 4)) == 5.0 && "
+                "length(vec3(0, 3, 4)) == 5.0 && length(vec4(0, 0, 3, 4)) == "
+                "5.0 && "
+                "distance(vec3(1, 2, 3), vec3(4, 6, 3)) == 5.0; }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math absolute bounds and clamp broadcast scalar arguments",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec3(-2, 0.5, 3); "
+                "return abs(v) == vec3(2, 0.5, 3) && min(v, 1) == vec3(-2, "
+                "0.5, 1) && "
+                "max(0, v) == vec3(0, 0.5, 3) && clamp(v, 0, 1) == vec3(0, "
+                "0.5, 1); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math mix accepts scalar and component weights",
+      .source = "package facts\n"
+                "Check :: () -> bool { return "
+                "mix(vec3(0, 2, 4), vec3(8, 10, 12), 0.25) == vec3(2, 4, 6) && "
+                "mix(vec3(0), vec3(8), vec3(0, 0.5, 1)) == vec3(0, 4, 8); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math step takes edge before value and includes the edge",
+      .source = "package facts\n"
+                "Check :: () -> bool { return step(2.0, 1.0) == 0.0 && "
+                "step(2.0, 2.0) == 1.0 && "
+                "step(0.5, vec3(0.25, 0.5, 0.75)) == vec3(0, 1, 1) && "
+                "step(vec3(0.25, 0.5, 0.75), 0.5) == vec3(1, 1, 0); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math smoothstep clamps values outside its edges",
+      .source = "package facts\n"
+                "Check :: () -> bool { return "
+                "smoothstep(0, 1, vec4(-1, 0, 0.5, 2)) == vec4(0, 0, 0.5, 1); "
+                "}\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math floor ceil and fract agree on negative fractions",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec3(-1.25, 1.75, 2); "
+                "return floor(v) == vec3(-2, 1, 2) && ceil(v) == vec3(-1, 2, "
+                "2) && "
+                "fract(v) == vec3(0.75, 0.75, 0); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math reflect and refract distinguish total internal reflection",
+      .source = "package facts\n"
+                "Check :: () -> bool { normal := vec3(0, 1, 0); "
+                "return reflect(vec3(1, -1, 0), normal) == vec3(1, 1, 0) && "
+                "refract(vec3(0, -1, 0), normal, 0.5) == vec3(0, -1, 0) && "
+                "refract(vec3(1, 0, 0), normal, 2) == vec3(0); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math transpose and determinant use column order",
+      .source = "package facts\n"
+                "Check :: () -> bool { a := mat2(1, 2, 3, 4); "
+                "b := mat3(1, 0, 0, 2, 3, 0, 4, 5, 6); "
+                "return transpose(a) == mat2(1, 3, 2, 4) && determinant(a) == "
+                "-2.0 && "
+                "transpose(b) == mat3(1, 2, 4, 0, 3, 5, 0, 0, 6) && "
+                "determinant(b) == 18.0; }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math matrix component multiplication is distinct from "
+              "composition",
+      .source = "package facts\n"
+                "Check :: () -> bool { a := mat2(1, 2, 3, 4); b := mat2(5, 6, "
+                "7, 8); "
+                "return matrix_comp_mult(a, b) == mat2(5, 12, 21, 32) && "
+                "a * b == mat2(23, 34, 31, 46); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math quaternion conjugation negates the imaginary components",
+      .source = "package facts\n"
+                "Check :: () -> bool { q := quat(1, 2, 3, 4); "
+                "return quat_conjugate(q) == quat(-1, -2, -3, 4) && "
+                "quat_conjugate(quat_conjugate(q)) == q; }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math normalization handles zero and large finite directions",
+      .source = "package facts\n"
+                "Check :: () -> bool { zero := normalize_or_zero(vec3(0)); "
+                "unit := normalize_or_zero(vec3(3e30, 4e30, 0)); "
+                "return zero == vec3(0) && unit.x > 0.599999 && unit.x < "
+                "0.600001 && "
+                "unit.y > 0.799999 && unit.y < 0.800001 && unit.z == 0.0; }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math binary left operand is captured before a mutating rhs",
+      .source = "package facts\n"
+                "Mutate :: (p: ^vec3) -> vec3 { p^ = vec3(10, 20, 30); return "
+                "vec3(4, 5, 6); }\n"
+                "Check :: () -> bool { v := vec3(1, 2, 3); sum := v + "
+                "Mutate(&v); "
+                "return sum == vec3(5, 7, 9) && v == vec3(10, 20, 30); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math constructor arguments are captured before later mutation",
+      .source = "package facts\n"
+                "Mutate :: (p: ^vec4) -> vec2 { p^ = vec4(10, 20, 30, 40); "
+                "return vec2(5, 6); }\n"
+                "Check :: () -> bool { v := vec4(1, 2, 3, 4); made := "
+                "vec4(v.xy, Mutate(&v)); "
+                "return made == vec4(1, 2, 5, 6) && v == vec4(10, 20, 30, 40); "
+                "}\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math function arguments are captured before later mutation",
+      .source = "package facts\n"
+                "Mutate :: (p: ^vec3) -> vec3 { p^ = vec3(10, 20, 30); return "
+                "vec3(4, 5, 6); }\n"
+                "Check :: () -> bool { v := vec3(1, 2, 3); product := dot(v, "
+                "Mutate(&v)); "
+                "return product == 32.0 && v == vec3(10, 20, 30); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math nested swizzles compose their destination components",
+      .source = "package facts\n"
+                "Check :: () -> bool { v := vec4(1, 2, 3, 4); v.yx.xy = "
+                "vec2(7, 8); "
+                "picked := v.wzyx.yx; v.wzyx.yx = v.xy; "
+                "return picked == vec2(3, 4) && v == vec4(8, 7, 8, 7); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+    { .name = "math compound swizzles snapshot selected fields and retain rhs "
+              "side effects",
+      .source = "package facts\n"
+                "Right :: (p: ^vec4) -> vec2 { p^ = vec4(100, 200, 30, 40); "
+                "return vec2(5, 6); }\n"
+                "Check :: () -> bool { v := vec4(1, 2, 3, 4); v.xy += "
+                "Right(&v); "
+                "return v == vec4(6, 8, 30, 40); }\n",
+      .calls = { { "Check", "[]", "[true]" } } },
+
+};
+
 static compiler_fixture fixture, oracle, consumer, corpus;
 /* The compiler host's natives, and those with the core pack a game links,
  * which declares assert. */
@@ -6038,15 +6394,40 @@ static bool traces_like_oracle(const unsigned char *bytes, size_t length, const 
     free(expected);
     return same;
 }
-static bool run_samples(sample_group group, int b)
+static bool math_rejects_at_source(const sample *s)
+{
+    const authoring_package *root;
+    authoring_packages *packages = oracle_packages(s, &root);
+    bool same = !authoring_packages_valid(packages) && root->diagnostic_count > 0;
+    if (same) {
+        const script_diagnostic *diagnostic = &root->diagnostics[0];
+        same = !strcmp(diagnostic->message, s->oracle_message) &&
+               diagnostic->range.line == s->oracle_line &&
+               diagnostic->range.column == s->oracle_column;
+        if (!same) {
+            fprintf(
+                stderr,
+                "stage zero math %s: %s at %d:%d\n",
+                s->name,
+                diagnostic->message,
+                diagnostic->range.line,
+                diagnostic->range.column
+            );
+        }
+    }
+    authoring_packages_free(packages);
+    REQUIRE(same);
+    return true;
+}
+static bool run_sample_table(sample_group group, int b, const sample *table, int table_count)
 {
     REQUIRE(prepare_backends(1u << b));
     if (group == BASE_SAMPLES && b == 0) {
         REQUIRE(rejects_malformed_effects());
     }
-    for (int i = 0; i < (int)SAMPLES; i++) {
-        const sample *s = &samples[i];
-        if (s->group != group) {
+    for (int i = 0; i < table_count; i++) {
+        const sample *s = &table[i];
+        if (group != MATH_SAMPLES && s->group != group) {
             continue;
         }
         source_package_input inputs[SAMPLE_INPUTS];
@@ -6111,6 +6492,9 @@ static bool run_samples(sample_group group, int b)
                 );
             }
             REQUIRE(!strcmp(pin_text(message).bytes, s->message) && position);
+            if (group == MATH_SAMPLES) {
+                REQUIRE(math_rejects_at_source(s));
+            }
             arena_free(&detached);
             continue;
         }
@@ -6149,9 +6533,22 @@ static bool run_samples(sample_group group, int b)
         for (int c = 0; ran && hosted && c < CALLS && s->calls[c].function; c++) {
             for (int backend = 0; ran && backend < 2; backend++) {
                 ran = call_sample(s, bytes, length, &s->calls[c], backend);
+                if (!ran && group == MATH_SAMPLES) {
+                    fprintf(stderr, "math stage-one compiler=%d target-vm=%d\n", b, backend);
+                }
             }
-            ran = ran &&
-                  (b || call_sample(s, expected, expected_length, &s->calls[c], 0));
+            if (ran && !b) {
+                ran = call_sample(s, expected, expected_length, &s->calls[c], 0);
+                if (!ran && group == MATH_SAMPLES) {
+                    fprintf(stderr, "math stage-zero oracle target-vm=0\n");
+                }
+            }
+            if (ran && !b && group == MATH_SAMPLES) {
+                ran = call_sample(s, expected, expected_length, &s->calls[c], 1);
+                if (!ran) {
+                    fprintf(stderr, "math stage-zero oracle target-vm=1\n");
+                }
+            }
         }
         ran = ran && (!s->traced || traces_like_oracle(bytes, length, s));
         if (ran && s->update_order) {
@@ -6189,6 +6586,10 @@ static bool run_samples(sample_group group, int b)
         REQUIRE(ran);
     }
     return true;
+}
+static bool run_samples(sample_group group, int b)
+{
+    return run_sample_table(group, b, samples, (int)SAMPLES);
 }
 /* Without debugger points and watches, a closure's functions have none, and
  * its loops and branches still run as they do with them. */
@@ -6519,6 +6920,16 @@ TEST_CASE(package_compiler_builds_runnable_packages)
 TEST_CASE(package_compiler_builds_runnable_packages_compiled)
 {
     return run_samples(BASE_SAMPLES, 1);
+}
+TEST_CASE(package_compiler_builtin_math_source_contracts)
+{
+    enum
+    {
+        COUNT = sizeof math_samples / sizeof *math_samples
+    };
+    REQUIRE(run_sample_table(MATH_SAMPLES, 0, math_samples, COUNT));
+    cleanup();
+    return run_sample_table(MATH_SAMPLES, 1, math_samples, COUNT);
 }
 TEST_CASE(package_compiler_builds_runnable_typed_packages)
 {
@@ -19719,6 +20130,7 @@ void test_language_package_compiler_chibi()
 void test_language_package_compiler_chibi_types()
 {
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_builtin_math_source_contracts);
     RUN_TEST_CASE(package_compiler_builds_runnable_typed_packages);
     pu_clear_setup();
 }

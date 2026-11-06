@@ -157,6 +157,20 @@ Value :: struct {
     container: int;
     record: int;
 }
+// The resolved singleton result of a native call in this body. Its AST node
+// identifies the original selection even through local aliases.
+NativeCallFact :: struct {
+    node: int;
+    native: int;
+    storage: int;
+    container: int;
+    record: int;
+}
+// An initializer's call and the names visible when that call was declared.
+CallSource :: struct {
+    node: int;
+    visible: int;
+}
 // A name in scope: a locals-bank value, a record or array held in a data
 // cell, a record or array parameter read in place, or a behavior's state or
 // owner. Pattern bindings are not writable.
@@ -285,6 +299,15 @@ CombinePhase: int : 9;
 // The phase of a named return: store one value, then evaluate the next.
 ReturnsPhase: int : 10;
 EffectsPhase: int : -1;
+// A private directive: publish the resolved native without emitting code.
+NativeCallPhase: int : -2;
+OwnerArgumentPhase: int : -3;
+RecordOwnerArgument :: (node: int, slot: int, record: int) -> Work {
+    item := Resume(node, OwnerArgumentPhase, slot, 0);
+    item.storage = HandleStorage;
+    item.record = record;
+    return item;
+}
 
 // The FNV-1a mix of the eight bytes of `value`, low first, as the SDK mixes
 // a word into an identity.
@@ -572,6 +595,10 @@ Visit :: (node: int) -> Work {
 }
 RecordEffects :: (effects: int) -> Work {
     return {node: -1, phase: EffectsPhase, a: effects, b: 0, c: 0, storage: 0, container: 0, record: -1};
+}
+RecordNativeCall :: (node: int, native: int, result: Value) -> Work {
+    return {node: node, phase: NativeCallPhase, a: native, b: 0, c: 0,
+            storage: result.storage, container: result.container, record: result.record};
 }
 Expect :: (node: int, storage: int, container: int, record: int) -> Work {
     return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: storage, container: container, record: record};
@@ -1189,16 +1216,39 @@ NameMatches :: (left: string, right: string) -> bool {
     }
     return false;
 }
-// The native an exact name or one unique matching name selects: -1 when none,
-// -2 when several match.
-FindNative :: (natives: Native[], name: string) -> int {
+NativeNameMatches :: (native: ResolvedNative, name: string) -> bool {
+    return NameMatches(native.qualified_name, name) || NameMatches(native.name, name);
+}
+ExactNativeKind :: (natives: ResolvedNative[], name: string, kind: int) -> int {
+    index: int = 0;
+    while (index < length(natives)) {
+        native := natives[index];
+        if (native.kind == kind && !native.source && native.qualified_name == name) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+NativeCandidate :: (native: ResolvedNative, name: string, kind: int, exact: bool) -> bool {
+    if (native.kind != kind || native.source) {
+        return false;
+    }
+    if (exact) {
+        return native.qualified_name == name;
+    }
+    return NativeNameMatches(native, name);
+}
+// Within one capability kind, exact canonical names precede loose canonical
+// and source names. Rows owned by parsed source keep their indices but do not
+// compete with native declarations.
+FindNativeKind :: (natives: ResolvedNative[], name: string, kind: int) -> int {
+    exact := ExactNativeKind(natives, name, kind) >= 0;
     found: int = -1;
     index: int = 0;
     while (index < length(natives)) {
-        if (natives[index].name == name) {
-            return index;
-        }
-        if (NameMatches(natives[index].name, name)) {
+        native := natives[index];
+        if (NativeCandidate(native, name, kind, exact)) {
             if (found >= 0) {
                 found = -2;
             } else if (found == -1) {
@@ -1208,6 +1258,40 @@ FindNative :: (natives: Native[], name: string) -> int {
         index += 1;
     }
     return found;
+}
+// The first candidate, used only after lookup establishes ambiguity
+// among functions and their argument types must select an overload.
+FirstNativeKind :: (natives: ResolvedNative[], name: string, kind: int) -> int {
+    exact := ExactNativeKind(natives, name, kind);
+    if (exact >= 0) {
+        return exact;
+    }
+    index: int = 0;
+    while (index < length(natives)) {
+        native := natives[index];
+        if (native.kind == kind && !native.source && NativeNameMatches(native, name)) {
+            return index;
+        }
+        index += 1;
+    }
+    return -1;
+}
+FindNative :: (natives: ResolvedNative[], name: string) -> int {
+    found := FindNativeKind(natives, name, NativeFunctionKind);
+    if (found != -1) {
+        return found;
+    }
+    return FindNativeKind(natives, name, NativeActionKind);
+}
+// Native qualification has no lexical alias once CallStep admits its unbound
+// prefix. Reconstruct the same spelling when a resumed call selects overloads.
+NativeCallName :: (forest: snapshot.SnapshotNode[], text: string, call: int) -> string {
+    callee := Field(forest, call, "function");
+    if (Is(forest, callee, "member_expression")) {
+        return format_text("{}.{}", Text(forest, text, Field(forest, callee, "object")),
+                           Text(forest, text, Field(forest, callee, "member")));
+    }
+    return Text(forest, text, callee);
 }
 // The package a name of package `package` qualified by `node` names: that
 // package for none, the imported one when `node` is an import alias no local
@@ -1412,7 +1496,7 @@ NextArm :: (forest: snapshot.SnapshotNode[], node: int) -> int {
 // The index of a native's result named `name`, matched as natives are: an
 // exact name first, else the one name that matches loosely; -1 for none and
 // -2 when several match.
-FindResult :: (ports: Port[], native: Native, name: string) -> int {
+FindResult :: (ports: ResolvedPort[], native: ResolvedNative, name: string) -> int {
     found: int = -1;
     index: int = 0;
     while (index < native.results) {
@@ -1433,54 +1517,70 @@ FindResult :: (ports: Port[], native: Native, name: string) -> int {
 }
 // The port of a native's argument `index`; a variadic native's last
 // parameter takes every argument from it on.
-NativePort :: (native: Native, index: int) -> int {
+NativePort :: (native: ResolvedNative, index: int) -> int {
     if (index >= native.parameters && native.variadic && native.parameters > 0) {
         return native.first + native.parameters - 1;
     }
     return native.first + index;
 }
+ArrayUpdate :: union {
+    NotApplicable | InPlace(mode: int, array: int, item: int)
+}
 // How `xs = name(xs, value)` updates the local array names[found] in place:
-// 0 for a push, 1 for an extension and -1 for any other statement. As in stage
-// zero, the native is recognized by its capability identity.
-InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
-                  ports: Port[], identities: uint64[], names: Name[], package: int, found: int, destination: int,
-                  value: int) -> int {
+// mode 0 pushes and mode 1 extends. The actual native and bound port order
+// establish whether the source can use this path without reordering values.
+InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: ResolvedNative[],
+                  ports: ResolvedPort[], identities: uint64[], names: Name[], package: int, found: int, destination: int,
+                  value: int) -> ArrayUpdate {
     updated := names[found];
     if (updated.place != CellPlace || updated.container != ArrayContainer || !updated.writable ||
         !Is(forest, value, "call_expression")) {
-        return -1;
+        return ArrayUpdate.NotApplicable;
     }
     callee := Field(forest, value, "function");
-    first := ArrayArgument(forest, value);
-    if (!Is(forest, first, "identifier") || Text(forest, text, first) != Text(forest, text, destination) ||
-        ItemArgument(forest, value) < 0 || NextMember(forest, ItemArgument(forest, value)) >= 0) {
-        return -1;
-    }
+    method := Is(forest, callee, "member_expression");
     native: int = -1;
-    if (Is(forest, callee, "member_expression")) {
+    if (method) {
         native = ArrayMethod(natives, ports, Text(forest, text, Field(forest, callee, "member")));
     } else if (Is(forest, callee, "identifier") && FindCallable(callables, package, Text(forest, text, callee)) < 0) {
         native = FindNative(natives, Text(forest, text, callee));
     }
-    if (native < 0) {
-        return -1;
+    if (native < 0 || !natives[native].direct || natives[native].intrinsic != 0 ||
+        natives[native].variadic || natives[native].parameters != 2) {
+        return ArrayUpdate.NotApplicable;
     }
     capability := identities[2 * native];
+    mode: int = -1;
     if (capability == binding.ID("capability", "Append")) {
-        return 0;
+        mode = 0;
+    } else if (capability == binding.ID("capability", "Extend")) {
+        mode = 1;
     }
-    if (capability == binding.ID("capability", "Extend")) {
-        return 1;
+    if (mode < 0) {
+        return ArrayUpdate.NotApplicable;
     }
-    return -1;
+    switch BindNative(forest, text, value, NativeSources(forest, value, method), natives[native], ports) {
+        case .Failed(problem, message):
+            return ArrayUpdate.NotApplicable;
+        case .Bound(arguments, total):
+            if (total != 2 || length(arguments) != 2 || arguments[0].parameter != 0 || arguments[1].parameter != 1) {
+                return ArrayUpdate.NotApplicable;
+            }
+            array := arguments[0].node;
+            if (!Is(forest, array, "identifier") || Text(forest, text, array) != Text(forest, text, destination)) {
+                return ArrayUpdate.NotApplicable;
+            }
+            return ArrayUpdate.InPlace(mode, array, arguments[1].node);
+    }
 }
 
 // The array function a method call on an array runs, with the array first.
 // -1 for none.
-ArrayMethod :: (natives: Native[], ports: Port[], name: string) -> int {
+ArrayMethod :: (natives: ResolvedNative[], ports: ResolvedPort[], name: string) -> int {
     index: int = 0;
     for (native in natives) {
-        if (native.parameters > 0 && ports[native.first].container == ArrayContainer && NameMatches(native.name, name)) {
+        if (!native.source && native.kind == NativeFunctionKind && native.parameters > 0 &&
+            ports[native.first].container == ArrayContainer && NameMatches(native.name, name)) {
             return index;
         }
         index += 1;
@@ -1489,7 +1589,7 @@ ArrayMethod :: (natives: Native[], ports: Port[], name: string) -> int {
 }
 // Whether an array function returns its array changed, so its method changes
 // the array in place, as `append` does and `slice` does not.
-ArrayChanger :: (natives: Native[], native: int) -> bool {
+ArrayChanger :: (natives: ResolvedNative[], native: int) -> bool {
     changers: string[] = ["append", "add_unique", "extend", "set_array_elem", "insert", "remove_index", "remove_item",
                           "clear", "reverse", "swap", "resize"];
     for (changer in changers) {
@@ -1501,7 +1601,7 @@ ArrayChanger :: (natives: Native[], native: int) -> bool {
 }
 // The array an expression statement's method call changes, as `xs.append(x)`
 // changes xs: the receiver, a name of an array, or -1.
-ChangedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: Native[], ports: Port[],
+ChangedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: ResolvedNative[], ports: ResolvedPort[],
                  statement: int) -> int {
     call := FirstMember(forest, statement);
     function := Field(forest, call, "function");
@@ -1533,21 +1633,6 @@ StatementValue :: (forest: snapshot.SnapshotNode[], statement: int) -> int {
         return FirstMember(forest, statement);
     }
     return Field(forest, statement, "value");
-}
-// The array a call updates, `xs` in both `append(xs, x)` and
-// `xs.append(x)`, and the item or array it adds.
-ArrayArgument :: (forest: snapshot.SnapshotNode[], call: int) -> int {
-    callee := Field(forest, call, "function");
-    if (Is(forest, callee, "member_expression")) {
-        return Field(forest, callee, "object");
-    }
-    return FirstMember(forest, Field(forest, call, "arguments"));
-}
-ItemArgument :: (forest: snapshot.SnapshotNode[], call: int) -> int {
-    if (Is(forest, Field(forest, call, "function"), "member_expression")) {
-        return FirstMember(forest, Field(forest, call, "arguments"));
-    }
-    return NextMember(forest, FirstMember(forest, Field(forest, call, "arguments")));
 }
 // The tables a body starts from: its parameters, its record or array result's
 // symbol, its point and its named results, which are locals from `named` on.
@@ -1652,7 +1737,7 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
 }
 EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
+             constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[], identities: uint64[],
              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
              solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[],
              mutated: string[], built: int[], ops: Ops, target: Target) -> Body {
@@ -1686,6 +1771,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             named = begun_named;
     }
     values: Value[] = [];
+    native_calls: NativeCallFact[] = [];
     loops: Loop[] = [];
     breaks: int[] = [];
     continues: int[] = [];
@@ -1705,6 +1791,48 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         item := work[work_top];
         if (item.phase == EffectsPhase) {
             semantic_effects = semantic_effects | item.a;
+            continue;
+        }
+        if (item.phase == NativeCallPhase) {
+            fact: NativeCallFact = {node: item.node, native: item.a, storage: item.storage,
+                                    container: item.container, record: item.record};
+            native_calls.append(fact);
+            continue;
+        }
+        if (item.phase == OwnerArgumentPhase) {
+            producer: int = -1;
+            index: int = 0;
+            while (index < length(code)) {
+                instruction := code[index];
+                if (instruction.output == item.a && instruction.op == ops.constant &&
+                    instruction.type == HandleStorage && instruction.value_storage == HandleStorage &&
+                    instruction.value_container == 0 && instruction.payload == 0 && !instruction.has_text) {
+                    if (producer >= 0) {
+                        return Body.Failed(Diagnose(forest, item.node, document,
+                                                   "native owner argument has several constant producers"));
+                    }
+                    producer = index;
+                }
+                index += 1;
+            }
+            if (producer < 0 || item.storage != HandleStorage || item.container != 0 || item.record < 0) {
+                return Body.Failed(Diagnose(forest, item.node, document,
+                                           "native owner argument has no constant handle producer"));
+            }
+            instruction := code[producer];
+            instruction.op = ops.owner;
+            instruction.value_record = item.record;
+            code[producer] = instruction;
+            index = 0;
+            while (index < length(code)) {
+                watch := code[index];
+                if (watch.op == ops.source_watch && watch.output == 1 && watch.left == item.a &&
+                    watch.value_storage == HandleStorage && watch.value_container == 0) {
+                    watch.value_record = item.record;
+                    code[index] = watch;
+                }
+                index += 1;
+            }
             continue;
         }
         node := forest[item.node];
@@ -2287,7 +2415,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if (item.phase == ReferencePhase) {
             step = ReferenceArgumentStep(forest, text, document, types, members, names, item, ops, target, at);
         } else if (item.phase == AggregatePhase) {
-            step = AggregateStep(forest, text, document, types, members, operators, values, value_top, item, ops,
+            step = AggregateStep(forest, text, document, types, members, operators, natives, values, value_top, item, ops,
                                  target, at);
         } else if (kind == "local_declaration" || kind == "assignment" || kind == "expression_statement" ||
                    kind == "return_statement" || kind == "delete_statement") {
@@ -2297,7 +2425,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
-                             names, callable.package, values, value_top, item, ops, target, at);
+                             native_calls, names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, built, item, ops, target, at);
         } else if (kind == "map_expression") {
@@ -2457,6 +2585,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     linked := natives[produced.record];
                     storage = ports[linked.first + linked.parameters + at_result].storage;
                     container = ports[linked.first + linked.parameters + at_result].container;
+                    record = ports[linked.first + linked.parameters + at_result].record;
                 }
                 address: Slot = {storage: target.pointer_storage, kind: AddressKind};
                 loaded: Slot = {storage: SlotStorage(storage, container, target), kind: SlotKind(storage, container)};

@@ -458,8 +458,17 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
                         entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                         make_fields: int[]) -> Result {
+    return CompileBehaviorResolved(identity, source, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
+                                   game_events, event_fields, types, type_fields, entity, operators, globals,
+                                   makes, make_fields, resize([int(0)], length(natives)));
+}
+CompileBehaviorResolved :: (identity: string, source: string, target: Target, abi: uint64, names: string[],
+                        natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
+                        event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                        entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                        make_fields: int[], native_effects: int[]) -> Result {
     ops := ResolveOps(names, true);
-    if (abi == 0 || !Complete(ops) || length(native_ids) != 2 * length(natives)) {
+    if (abi == 0 || !Complete(ops) || !NativeInputValid(natives, ports, native_ids, native_effects)) {
         return InputFailure(-1, "unsupported compiler input or target");
     }
     forest: snapshot.SnapshotNode[] = [];
@@ -565,7 +574,7 @@ pub CompileBehavior :: (identity: string, source: string, target: Target, abi: u
     constants: ConstDecl[] = [];
     switch Assemble(forest, [document], 0, 0, [identity], [binding.ID("module", identity)], [uint64(0)], [true], links,
                     callables, params, declared_types, members, constants, natives, ports, native_ids,
-                    resize([int(0)], length(natives)), resize([int(0)], length(callables)), ops, target, abi,
+                    native_effects, resize([int(0)], length(callables)), ops, target, abi,
                     Game.Behavior(kept_states, handled, game_events, event_fields, entity, operators, globals, makes,
                                   make_fields)) {
         case .Rejected(diagnostic):
@@ -583,6 +592,15 @@ pub CompileBehaviors :: (identities: string[], sources: string[], target: Target
                          event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
                          entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                          make_fields: int[]) -> byte[] {
+    return CompileBehaviorsResolved(identities, sources, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
+                                     game_events, event_fields, types, type_fields, entity, operators, globals,
+                                     makes, make_fields, resize([int(0)], length(natives)));
+}
+CompileBehaviorsResolved :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
+                         natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
+                         event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                         entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                         make_fields: int[], native_effects: int[]) -> byte[] {
     if (length(identities) == 0 || length(identities) != length(sources)) {
         return [];
     }
@@ -592,9 +610,9 @@ pub CompileBehaviors :: (identities: string[], sources: string[], target: Target
     lengths: int[] = [];
     index: int = 0;
     while (index < length(identities)) {
-        switch CompileBehavior(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
+        switch CompileBehaviorResolved(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
                                game_events, event_fields, types, type_fields, entity, operators,
-                               globals, makes, make_fields) {
+                               globals, makes, make_fields, native_effects) {
             case .Rejected(diagnostic):
                 return [];
             case .Compiled(module, bytes):
@@ -614,14 +632,23 @@ pub BehaviorRejection :: (identities: string[], sources: string[], target: Targe
                           event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
                           entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
                           make_fields: int[]) -> string {
+    return BehaviorRejectionResolved(identities, sources, target, abi, names, LegacyNatives(natives, names), LegacyPorts(ports), native_ids,
+                                     game_events, event_fields, types, type_fields, entity, operators, globals,
+                                     makes, make_fields, resize([int(0)], length(natives)));
+}
+BehaviorRejectionResolved :: (identities: string[], sources: string[], target: Target, abi: uint64, names: string[],
+                          natives: ResolvedNative[], ports: ResolvedPort[], native_ids: uint64[], game_events: GameEvent[],
+                          event_fields: GameEventField[], types: GameType[], type_fields: GameField[],
+                          entity: uint64, operators: NumericOperator[], globals: GameGlobal[], makes: NativeMake[],
+                          make_fields: int[], native_effects: int[]) -> string {
     if (length(identities) == 0 || length(identities) != length(sources)) {
         return "the behaviors' identities and sources differ in number, or there are none";
     }
     index: int = 0;
     while (index < length(identities)) {
-        switch CompileBehavior(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
+        switch CompileBehaviorResolved(identities[index], sources[index], target, abi, names, natives, ports, native_ids,
                                game_events, event_fields, types, type_fields, entity, operators,
-                               globals, makes, make_fields) {
+                               globals, makes, make_fields, native_effects) {
             case .Rejected(diagnostic):
                 return format_text("{}:{}:{}: {}", identities[index], diagnostic.line, diagnostic.column,
                                    diagnostic.message);
@@ -630,4 +657,130 @@ pub BehaviorRejection :: (identities: string[], sources: string[], target: Targe
         }
     }
     return "";
+}
+
+// Resolves only reflected native nominal ports. Unsupported ports remain in
+// place, so their native indices stay stable and only a use is rejected.
+CatalogRecordValid :: (types: TypeDecl[], record: int) -> bool {
+    if (record < 0 || record >= length(types)) {
+        return false;
+    }
+    first := types[record];
+    at := record;
+    depth: int = 0;
+    while (depth < length(types)) {
+        if (at < 0 || at >= length(types)) {
+            return false;
+        }
+        declared := types[at];
+        if (declared.kind != NativeDecl || declared.storage != first.storage || declared.size <= 0 ||
+            declared.size != first.size || declared.layout != first.layout ||
+            (declared.storage == StructStorage && declared.layout == 0)) {
+            return false;
+        }
+        if (declared.parent < 0) {
+            return true;
+        }
+        at = declared.parent;
+        depth += 1;
+    }
+    return false;
+}
+CatalogPorts :: (ports: CatalogPort[], types: TypeDecl[], entity: uint64) -> ResolvedPort[] {
+    resolved: ResolvedPort[] = [];
+    for (port in ports) {
+        record: int = -1;
+        storage := port.storage;
+        if (port.container < 0 || port.container > ArrayContainer ||
+            (storage < UnsupportedPort && storage != AnyPort) || storage > StructStorage) {
+            storage = UnsupportedPort;
+        }
+        if (port.nominal != 0) {
+            found := TypeWithId(types, port.nominal);
+            duplicate := false;
+            if (found >= 0) {
+                at := found + 1;
+                while (at < length(types)) {
+                    duplicate = duplicate || types[at].id == port.nominal;
+                    at += 1;
+                }
+            }
+            valid := found >= 0 && !duplicate && port.container == 0 &&
+                     (storage == StructStorage || storage == HandleStorage);
+            if (valid) {
+                declared := types[found];
+                valid = declared.storage == storage && CatalogRecordValid(types, found);
+                if (storage == StructStorage) {
+                    valid = valid && declared.size > 0 && declared.layout != 0;
+                }
+            }
+            if (valid) {
+                record = found;
+            } else {
+                storage = UnsupportedPort;
+            }
+        } else if (storage == StructStorage || storage == HandleStorage) {
+            storage = UnsupportedPort;
+        }
+        if (port.default_owner) {
+            owner := TypeWithId(types, entity);
+            valid := storage == HandleStorage && port.container == 0 && owner >= 0 && record >= 0;
+            if (valid) {
+                canonical := Canonical(types, owner);
+                valid = CatalogRecordValid(types, owner) && canonical >= 0 && canonical == Canonical(types, record);
+            }
+            if (!valid) {
+                storage = UnsupportedPort;
+            }
+        }
+        row: ResolvedPort = {name: port.name, storage: storage, container: port.container,
+                             c_string: port.c_string, record: record, has_default: port.has_default,
+                             default_owner: port.default_owner, default_supported: port.default_supported,
+                             default_bits: port.default_bits, default_text: port.default_text};
+        resolved.append(row);
+    }
+    return resolved;
+}
+// Legacy makers adapt ports the pure catalog cannot describe. Rich makers
+// require all their ports, so an unsupported maker fails at its selected call.
+CatalogMakes :: (makes: NativeMake[], natives: ResolvedNative[], ports: ResolvedPort[]) -> NativeMake[] {
+    supported: NativeMake[] = [];
+    for (make in makes) {
+        if (make.native >= 0 && make.native < length(natives) && Supported(ports, natives[make.native])) {
+            supported.append(make);
+        }
+    }
+    return supported;
+}
+// Rich game entry points carry nominal ports and the real native effects;
+// the pure package/bootstrap entry points keep their original record layouts.
+pub CompileBehaviorsWithCatalog :: (identities: string[], sources: string[], target: Target, abi: uint64,
+                                    names: string[], natives: CatalogNative[], ports: CatalogPort[], native_ids: uint64[],
+                                    game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
+                                    type_fields: GameField[], entity: uint64, operators: NumericOperator[],
+                                    globals: GameGlobal[], makes: NativeMake[], make_fields: int[],
+                                    native_effects: int[]) -> byte[] {
+    resolved := CatalogPorts(ports, NativeTypes(types), entity);
+    resolved_natives := CatalogNatives(natives);
+    if (!NativeInputValid(resolved_natives, resolved, native_ids, native_effects)) {
+        return [];
+    }
+    return CompileBehaviorsResolved(identities, sources, target, abi, names, resolved_natives, resolved, native_ids,
+                                    game_events, event_fields, types, type_fields, entity, operators, globals,
+                                    CatalogMakes(makes, resolved_natives, resolved), make_fields, native_effects);
+}
+pub BehaviorRejectionWithCatalog :: (identities: string[], sources: string[], target: Target, abi: uint64,
+                                     names: string[], natives: CatalogNative[], ports: CatalogPort[], native_ids: uint64[],
+                                     game_events: GameEvent[], event_fields: GameEventField[], types: GameType[],
+                                     type_fields: GameField[], entity: uint64, operators: NumericOperator[],
+                                     globals: GameGlobal[], makes: NativeMake[], make_fields: int[],
+                                     native_effects: int[]) -> string {
+    resolved := CatalogPorts(ports, NativeTypes(types), entity);
+    resolved_natives := CatalogNatives(natives);
+    if (!NativeInputValid(resolved_natives, resolved, native_ids, native_effects)) {
+        return "unsupported compiler input or target";
+    }
+    return BehaviorRejectionResolved(identities, sources, target, abi, names, resolved_natives, resolved, native_ids,
+                                     game_events, event_fields, types, type_fields, entity, operators, globals,
+                                     CatalogMakes(makes, resolved_natives, resolved), make_fields, native_effects);
 }

@@ -143,6 +143,61 @@ pub Native :: struct {
     results: int;
     variadic: bool;
 }
+// Rich catalogs retain function and action declarations with their actual
+// names and kinds. `direct` admits only bindings callable as synchronous data;
+// unsupported rows remain visible to source name resolution.
+pub CatalogNative :: struct {
+    name: string;
+    first: int;
+    parameters: int;
+    results: int;
+    variadic: bool;
+    direct: bool;
+    qualified_name: string;
+    kind: int;
+    intrinsic: int;
+}
+ResolvedNative :: struct {
+    name: string;
+    first: int;
+    parameters: int;
+    results: int;
+    variadic: bool;
+    direct: bool;
+    qualified_name: string;
+    kind: int;
+    intrinsic: int;
+    // Exact parsed callable IDs identify source-owned rows for this compile.
+    source: bool;
+}
+NativeFunctionKind: int : 0;
+NativeActionKind: int : 1;
+LegacyNatives :: (natives: Native[], names: string[]) -> ResolvedNative[] {
+    resolved: ResolvedNative[] = [];
+    for (native in natives) {
+        // The stable pure catalog predates linked intrinsic metadata.
+        intrinsic: int = 0;
+        if (NameMatches("assert", native.name)) {
+            intrinsic = Ordinal(names, "ASSERT");
+        }
+        row: ResolvedNative = {name: native.name, first: native.first, parameters: native.parameters,
+                               results: native.results, variadic: native.variadic, direct: true,
+                               qualified_name: native.name, kind: NativeFunctionKind, intrinsic: intrinsic, source: false};
+        resolved.append(row);
+    }
+    return resolved;
+}
+CatalogNatives :: (natives: CatalogNative[]) -> ResolvedNative[] {
+    resolved: ResolvedNative[] = [];
+    for (native in natives) {
+        row: ResolvedNative = {name: native.name, first: native.first, parameters: native.parameters,
+                               results: native.results, variadic: native.variadic, direct: native.direct,
+                               qualified_name: native.qualified_name, kind: native.kind,
+                               intrinsic: native.intrinsic, source: false};
+        resolved.append(row);
+    }
+    return resolved;
+}
 // A native port. Storage 0 is a type the call infers, one type for every such
 // port of the native; AnyPort takes each argument's own type, and
 // UnsupportedPort is a type this compiler cannot pass.
@@ -151,6 +206,61 @@ pub Port :: struct {
     storage: int;
     container: int;
     c_string: bool;
+}
+// Rich game ports preserve nominal identity and actual native defaults. The
+// game wrapper resolves nominal types before any body is emitted; unsupported
+// defaults reject only calls that omit that parameter.
+pub CatalogPort :: struct {
+    name: string;
+    storage: int;
+    container: int;
+    c_string: bool;
+    nominal: uint64;
+    has_default: bool;
+    default_owner: bool;
+    default_supported: bool;
+    default_bits: uint64;
+    default_text: string;
+}
+ResolvedPort :: struct {
+    name: string;
+    storage: int;
+    container: int;
+    c_string: bool;
+    record: int;
+    has_default: bool;
+    default_owner: bool;
+    default_supported: bool;
+    default_bits: uint64;
+    default_text: string;
+}
+LegacyPorts :: (ports: Port[]) -> ResolvedPort[] {
+    resolved: ResolvedPort[] = [];
+    for (port in ports) {
+        row: ResolvedPort = {name: port.name, storage: port.storage, container: port.container,
+                             c_string: port.c_string, record: -1, has_default: false, default_owner: false,
+                             default_supported: false, default_bits: 0, default_text: ""};
+        resolved.append(row);
+    }
+    return resolved;
+}
+NativeInputValid :: (natives: ResolvedNative[], ports: ResolvedPort[], identities: uint64[], effects: int[]) -> bool {
+    if (length(identities) != 2 * length(natives) || length(effects) != length(natives)) {
+        return false;
+    }
+    for (effect in effects) {
+        if (effect < 0 || effect > NativeEffectsMask) {
+            return false;
+        }
+    }
+    for (native in natives) {
+        if (native.first < 0 || native.parameters < 0 || native.results < 0 || native.first > length(ports) ||
+            native.parameters > length(ports) - native.first ||
+            native.results > length(ports) - native.first - native.parameters) {
+            return false;
+        }
+    }
+    return true;
 }
 AnyPort: int : -2;
 UnsupportedPort: int : -1;
@@ -1250,7 +1360,7 @@ Reachable :: (edges: graph.Edge[], count: int, package: int) -> bool[] {
 Link :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], packages: graph.Package[],
          files_of: int[], root: int, order: int[], edges: graph.Edge[], links: graph.Binding[],
          callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-         constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[], native_effects: int[], ops: Ops,
+         constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[], identities: uint64[], native_effects: int[], ops: Ops,
          target: Target, abi: uint64) -> Result {
     // Each package's identity and module ID, and the fingerprint of its module.
     package_names: string[] = [];
@@ -1361,7 +1471,7 @@ UsedConstants :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[
 Assemble :: (forest: snapshot.SnapshotNode[], documents: snapshot.Document[], package: int, first_document: int,
              package_names: string[], package_ids: uint64[], fingerprints: uint64[], reachable: bool[],
              links: graph.Binding[], callables: Callable[], params: Param[], types: TypeDecl[],
-             members: TypeMember[], constants: ConstDecl[], natives: Native[], ports: Port[],
+             members: TypeMember[], constants: ConstDecl[], natives: ResolvedNative[], ports: ResolvedPort[],
              identities: uint64[], native_effects: int[], callable_effects: int[], ops: Ops, target: Target,
              abi: uint64, game: Game) -> Assembly {
     identity := package_names[package];
@@ -1882,18 +1992,9 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
                            sources: string[], debug: bool, target: Target, abi: uint64, names: string[], natives: Native[],
                            ports: Port[], identities: uint64[], native_effects: int[]) -> Result {
     ops := ResolveOps(names, debug);
-    complete := length(identities) == 2 * length(natives) && length(native_effects) == length(natives);
-    for (effect in native_effects) {
-        if (effect < 0 || effect > NativeEffectsMask) {
-            complete = false;
-        }
-    }
-    for (native_row in natives) {
-        if (native_row.first < 0 || native_row.parameters < 0 || native_row.results < 0 ||
-            native_row.first + native_row.parameters + native_row.results > length(ports)) {
-            complete = false;
-        }
-    }
+    resolved_ports := LegacyPorts(ports);
+    resolved_natives := LegacyNatives(natives, names);
+    complete := NativeInputValid(resolved_natives, resolved_ports, identities, native_effects);
     if (abi == 0 || !Complete(ops) || !complete || length(paths) == 0 || length(paths) != length(sources) ||
         length(collection_names) != length(collection_paths)) {
         return InputFailure(-1, "unsupported compiler input or target");
@@ -1931,7 +2032,7 @@ pub CompileWithEffects :: (project: string, collection_names: string[], collecti
                             return Result.Rejected(diagnostic);
                         case .Collected(callables, params, types, members, constants):
                             return Link(nodes, documents, packages, files_of, file_packages[0], order, edges, links,
-                                        callables, params, types, members, constants, natives, ports, identities, native_effects, ops, target,
+                                        callables, params, types, members, constants, resolved_natives, resolved_ports, identities, native_effects, ops, target,
                                         abi);
                     }
             }

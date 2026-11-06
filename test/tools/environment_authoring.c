@@ -6,6 +6,7 @@
 #include "runtime/materials.h"
 #include "runtime/native_prepared.h"
 #include "runtime/scenes/physics.h"
+#include "support/arena.h"
 #include "support/array.h"
 #include "test/tools/fixture.h"
 #include "third_party/pico_headers/pico_unit.h"
@@ -23,6 +24,9 @@ static authoring_graph_catalog *palette;
 static const registry_pack **previous_packs;
 static bool palette_installed;
 static authoring_project_artifact artifact;
+static authoring_project_artifact assembled;
+static arena module_names;
+static package_module *modules;
 static player *runtime;
 static const char *controller;
 static char project[4096], scratch[64];
@@ -42,6 +46,10 @@ static void cleanup()
     }
     runtime = NULL;
     authoring_project_artifact_free(&artifact);
+    authoring_project_artifact_free(&assembled);
+    afree(modules);
+    modules = NULL;
+    arena_free(&module_names);
     if (palette_installed) {
         registry_set_packs(previous_packs, acount(previous_packs));
     }
@@ -119,6 +127,28 @@ static bool cpu_scene(void *, void *, const scene *, char *, size_t)
 static void commit_cpu_resources(void *, void *, world *) {}
 static void release_cpu_resources(void *, void *) {}
 
+static bool load_artifact(const authoring_project_artifact *prepared)
+{
+    char error[512] = { 0 };
+    native_prepared_context context = { .native = native };
+    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
+    player_host host = {
+        .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
+        .linker = &linker,
+        .resources = { .stage = stage_cpu_resources,
+                       .scene = cpu_scene,
+                       .commit = commit_cpu_resources,
+                       .discard = release_cpu_resources,
+                       .retire = release_cpu_resources },
+    };
+    runtime = player_prepared_read(prepared->data, prepared->size, &host, BEHAVIOR_BYTECODE, error, sizeof error);
+    if (!runtime) {
+        fprintf(stderr, "environment player: %s\n", error);
+    }
+    REQUIRE(runtime);
+    return true;
+}
+
 static bool prepare_scene(const char *scene_path)
 {
     char error[512] = { 0 };
@@ -159,22 +189,90 @@ static bool prepare_scene(const char *scene_path)
         fprintf(stderr, "environment preparation: %s\n", error);
     }
     REQUIRE(prepared);
-    native_prepared_context context = { .native = native };
-    execution_prepared_linker linker = native_capabilities_prepared_linker(&context);
-    player_host host = {
+    return load_artifact(&artifact);
+}
+
+TEST_CASE(environment_supplied_modules_keep_source_library_fields)
+{
+    REQUIRE(prepare_scene(NULL));
+    REQUIRE(!materials_prepare(world_materials(player_world(runtime))));
+    specimen_state solid = specimen(player_world(runtime), true),
+                   cut = specimen(player_world(runtime), false);
+    REQUIRE(solid.cells > 0 && cut.cells > 0);
+    char error[512] = { 0 };
+    size_t first, end;
+    REQUIRE(
+        player_prepared_modules(artifact.data, artifact.size, &module_names, &modules, &first, &end, error, sizeof error)
+    );
+    REQUIRE(acount(modules) == 3);
+    player_free(runtime);
+    runtime = NULL;
+    authoring_project_options options = {
+        .project = project,
+        .native = native,
         .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
-        .linker = &linker,
-        .resources = { .stage = stage_cpu_resources,
-                       .scene = cpu_scene,
-                       .commit = commit_cpu_resources,
-                       .discard = release_cpu_resources,
-                       .retire = release_cpu_resources },
+        .modules = WORLD_PHYSICS | WORLD_MATERIALS,
+        .read_only = true,
     };
-    runtime = player_prepared_read(artifact.data, artifact.size, &host, BEHAVIOR_BYTECODE, error, sizeof error);
-    if (!runtime) {
-        fprintf(stderr, "environment player: %s\n", error);
+    bool prepared = authoring_project_assemble(&options, modules, acount(modules), &assembled, error, sizeof error);
+    if (!prepared) {
+        fprintf(stderr, "environment supplied-module preparation: %s\n", error);
     }
-    REQUIRE(runtime);
+    REQUIRE(prepared);
+    REQUIRE(load_artifact(&assembled));
+    REQUIRE(!materials_prepare(world_materials(player_world(runtime))));
+    specimen_state actual_solid = specimen(player_world(runtime), true),
+                   actual_cut = specimen(player_world(runtime), false);
+    REQUIRE(actual_solid.cells == solid.cells && actual_solid.hash == solid.hash);
+    REQUIRE(actual_cut.cells == cut.cells && actual_cut.hash == cut.hash);
+    return true;
+}
+
+TEST_CASE(environment_supplied_modules_reject_unprojectable_library)
+{
+    REQUIRE(prepare_scene(NULL));
+    char error[512] = { 0 };
+    size_t first, end;
+    REQUIRE(
+        player_prepared_modules(artifact.data, artifact.size, &module_names, &modules, &first, &end, error, sizeof error)
+    );
+    player_free(runtime);
+    runtime = NULL;
+    snprintf(scratch, sizeof scratch, "/tmp/chibi-environment-XXXXXX");
+    REQUIRE(mkdtemp(scratch));
+    char copied[128], log[128], library[256];
+    snprintf(copied, sizeof copied, "%s/project", scratch);
+    snprintf(log, sizeof log, "%s/copy.log", scratch);
+#ifdef __APPLE__
+    const char *copy[] = { "cp", "-c", "-R", project, copied, NULL };
+#else
+    const char *copy[] = { "cp", "--reflink=auto", "-R", project, copied, NULL };
+#endif
+    REQUIRE(tool_run(copy, scratch, log) == 0);
+    snprintf(library, sizeof library, "%s/content/libraries/FieldShapes.chibi", copied);
+    /* Valid executable code can still be outside the native graph backend's
+     * scalar expression contract. Supplied modules cannot substitute a graph. */
+    tool_write(
+        library,
+        "FieldShapes :: library {\n"
+        " Islands :: (X: float = 0.0, Y: float = 0.0) -> (Value: float = 0.0) "
+        "{\n"
+        "  if X > 0.0 { return field_circle(X, Y, 1.0); }\n"
+        "  return field_circle(X, Y, 2.0);\n"
+        " }\n}\n"
+    );
+    authoring_project_options options = {
+        .project = copied,
+        .native = native,
+        .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
+        .modules = WORLD_PHYSICS | WORLD_MATERIALS,
+        .read_only = true,
+    };
+    REQUIRE(
+        !authoring_project_assemble(&options, modules, acount(modules), &assembled, error, sizeof error)
+    );
+    REQUIRE(!assembled.data && !assembled.size);
+    REQUIRE(strstr(error, "missing library function") && strstr(error, "FieldShapes"));
     return true;
 }
 
@@ -326,6 +424,8 @@ void test_environment_authoring(const char *program)
     int count = snprintf(project, sizeof project, "%s/test/fixtures/environment-authoring", tool_root());
     assert(count > 0 && count < (int)sizeof project);
     pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(environment_supplied_modules_keep_source_library_fields);
+    RUN_TEST_CASE(environment_supplied_modules_reject_unprojectable_library);
     RUN_TEST_CASE(environment_authored_samples_generate_and_only_cut_sample_changes);
     RUN_TEST_CASE(environment_physics_opens_passage_across_chunk_seam);
     RUN_TEST_CASE(environment_checked_in_project_validates);

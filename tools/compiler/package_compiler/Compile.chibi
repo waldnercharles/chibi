@@ -561,7 +561,7 @@ CharTypes :: (input: TypeDecl[]) -> TypeDecl[] {
     return append(input, declared);
 }
 CharType :: (types: TypeDecl[], storage: int, container: int, record: int) -> bool {
-    return storage == IntStorage && container == 0 && record >= 0 &&
+    return storage == IntStorage && container == 0 && record >= 0 && record < length(types) &&
            types[record].kind == BuiltinScalarDecl && types[record].id == binding.ID("type", "char");
 }
 // The record or union of `package` named `name`, -1 when none.

@@ -43,5 +43,20 @@ char *compiler_behavior_input_json(
     int count,
     size_t *length
 );
+/* The rich behavior compiler's arguments: the same seventeen as the behavior
+ * input, with CatalogPort rows adding each port's nominal type ID, then the
+ * callable natives' effect masks in matching order. Fixed nominal ports are
+ * supported only for single native records and handles whose exported type
+ * and alias chain have matching storage and target layout. Authored records,
+ * nominal arrays, sets, maps, nested collections and other flagged types retain
+ * unsupported storage (-1). The bootstrap target and behavior input stay
+ * unchanged. Malloc-owned; release with free(). */
+char *compiler_behavior_catalog_input_json(
+    const script_catalog *,
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    size_t *length
+);
 
 #endif

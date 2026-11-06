@@ -157,6 +157,20 @@ Value :: struct {
     container: int;
     record: int;
 }
+// The resolved singleton result of a native call in this body. Its AST node
+// identifies the original selection even through local aliases.
+NativeCallFact :: struct {
+    node: int;
+    native: int;
+    storage: int;
+    container: int;
+    record: int;
+}
+// An initializer's call and the names visible when that call was declared.
+CallSource :: struct {
+    node: int;
+    visible: int;
+}
 // A name in scope: a locals-bank value, a record or array held in a data
 // cell, a record or array parameter read in place, or a behavior's state or
 // owner. Pattern bindings are not writable.
@@ -237,6 +251,11 @@ CellPlace: int : 1;
 ParameterPlace: int : 2;
 // An import alias; its index is the package it names.
 AliasPlace: int : 3;
+// A catalog source library's namespace, without package privacy.
+LibraryPlace: int : 10;
+Alias :: (place: int) -> bool {
+    return place == AliasPlace || place == LibraryPlace;
+}
 // A local holding a native call's several results: its index is the first
 // result's cell and its record the native.
 ResultsPlace: int : 4;
@@ -285,6 +304,8 @@ CombinePhase: int : 9;
 // The phase of a named return: store one value, then evaluate the next.
 ReturnsPhase: int : 10;
 EffectsPhase: int : -1;
+// A private directive: publish the resolved native without emitting code.
+NativeCallPhase: int : -2;
 
 // The FNV-1a mix of the eight bytes of `value`, low first, as the SDK mixes
 // a word into an identity.
@@ -415,7 +436,7 @@ ConstantElement :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
 NamePoints :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], ops: Ops, node: int) -> Code[] {
     code: Code[] = [ExpressionCode(ops, forest[node])];
     found := Lookup(names, Text(forest, text, node));
-    if (found >= 0 && names[found].place != AliasPlace) {
+    if (found >= 0 && !Alias(names[found].place)) {
         code.append(SymbolCode(ops, names[found].node, forest[node]));
     }
     return code;
@@ -572,6 +593,10 @@ Visit :: (node: int) -> Work {
 }
 RecordEffects :: (effects: int) -> Work {
     return {node: -1, phase: EffectsPhase, a: effects, b: 0, c: 0, storage: 0, container: 0, record: -1};
+}
+RecordNativeCall :: (node: int, native: int, result: Value) -> Work {
+    return {node: node, phase: NativeCallPhase, a: native, b: 0, c: 0,
+            storage: result.storage, container: result.container, record: result.record};
 }
 Expect :: (node: int, storage: int, container: int, record: int) -> Work {
     return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: storage, container: container, record: record};
@@ -1120,6 +1145,58 @@ FindCallable :: (callables: Callable[], package: int, name: string) -> int {
     }
     return -1;
 }
+// Own declarations take precedence; otherwise source libraries export their
+// functions into the game's catalog namespace.
+SourceCallable :: (callables: Callable[], names: Name[], package: int, name: string) -> int {
+    own := FindCallable(callables, package, name);
+    if (own >= 0) {
+        return own;
+    }
+    found: int = -1;
+    for (alias in names) {
+        if (alias.place != LibraryPlace) {
+            continue;
+        }
+        index: int = 0;
+        while (index < length(callables)) {
+            candidate := callables[index];
+            if (candidate.package == alias.index && NameMatches(candidate.name, name)) {
+                if (found >= 0) {
+                    return -2;
+                }
+                found = index;
+            }
+            index += 1;
+        }
+    }
+    return found;
+}
+// Qualified source-library exports use the catalog's exact-then-loose match;
+// ordinary package aliases keep their exact lexical spelling.
+QualifiedCallable :: (callables: Callable[], names: Name[], package: int, name: string) -> int {
+    found := FindCallable(callables, package, name);
+    if (found >= 0) {
+        return found;
+    }
+    visible := false;
+    for (alias in names) {
+        visible = visible || (alias.place == LibraryPlace && alias.index == package);
+    }
+    if (!visible) {
+        return -1;
+    }
+    index: int = 0;
+    while (index < length(callables)) {
+        if (callables[index].package == package && NameMatches(callables[index].name, name)) {
+            if (found >= 0) {
+                return -2;
+            }
+            found = index;
+        }
+        index += 1;
+    }
+    return found;
+}
 // The field of types[record] named `name`; a native type's matches as the
 // catalog matches it: an exact name first, else the one that matches
 // loosely. -1 for none or several.
@@ -1219,15 +1296,35 @@ QualifierOf :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], pa
     if (!Is(forest, node, "identifier")) {
         return -1;
     }
-    found := Lookup(names, Text(forest, text, node));
-    if (found < 0 || names[found].place != AliasPlace) {
+    name := Text(forest, text, node);
+    found := Lookup(names, name);
+    if (found >= 0) {
+        if (Alias(names[found].place)) {
+            return names[found].index;
+        }
         return -1;
     }
-    return names[found].index;
+    home: int = -1;
+    for (alias in names) {
+        if (alias.place == LibraryPlace && NameMatches(alias.name, name)) {
+            if (home >= 0) {
+                return -1;
+            }
+            home = alias.index;
+        }
+    }
+    return home;
 }
 // Package privacy governs source names, not the runtime functions retained in
 // a module. A native or synthesized declaration has no source node.
 PrivateDeclaration :: (forest: snapshot.SnapshotNode[], node: int) -> bool {
+    at := node;
+    while (at >= 0) {
+        if (Is(forest, at, "library")) {
+            return false;
+        }
+        at = forest[at].parent;
+    }
     return node >= 0 && Field(forest, node, "visibility") < 0;
 }
 PrivateMessage :: (name: string) -> string {
@@ -1412,7 +1509,7 @@ NextArm :: (forest: snapshot.SnapshotNode[], node: int) -> int {
 // The index of a native's result named `name`, matched as natives are: an
 // exact name first, else the one name that matches loosely; -1 for none and
 // -2 when several match.
-FindResult :: (ports: Port[], native: Native, name: string) -> int {
+FindResult :: (ports: ResolvedPort[], native: Native, name: string) -> int {
     found: int = -1;
     index: int = 0;
     while (index < native.results) {
@@ -1443,7 +1540,7 @@ NativePort :: (native: Native, index: int) -> int {
 // 0 for a push, 1 for an extension and -1 for any other statement. As in stage
 // zero, the native is recognized by its capability identity.
 InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Callable[], natives: Native[],
-                  ports: Port[], identities: uint64[], names: Name[], package: int, found: int, destination: int,
+                  ports: ResolvedPort[], identities: uint64[], names: Name[], package: int, found: int, destination: int,
                   value: int) -> int {
     updated := names[found];
     if (updated.place != CellPlace || updated.container != ArrayContainer || !updated.writable ||
@@ -1477,7 +1574,7 @@ InPlaceUpdate :: (forest: snapshot.SnapshotNode[], text: string, callables: Call
 
 // The array function a method call on an array runs, with the array first.
 // -1 for none.
-ArrayMethod :: (natives: Native[], ports: Port[], name: string) -> int {
+ArrayMethod :: (natives: Native[], ports: ResolvedPort[], name: string) -> int {
     index: int = 0;
     for (native in natives) {
         if (native.parameters > 0 && ports[native.first].container == ArrayContainer && NameMatches(native.name, name)) {
@@ -1501,7 +1598,7 @@ ArrayChanger :: (natives: Native[], native: int) -> bool {
 }
 // The array an expression statement's method call changes, as `xs.append(x)`
 // changes xs: the receiver, a name of an array, or -1.
-ChangedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: Native[], ports: Port[],
+ChangedArray :: (forest: snapshot.SnapshotNode[], text: string, names: Name[], natives: Native[], ports: ResolvedPort[],
                  statement: int) -> int {
     call := FirstMember(forest, statement);
     function := Field(forest, call, "function");
@@ -1652,7 +1749,7 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
 }
 EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
-             constants: ConstDecl[], natives: Native[], ports: Port[], identities: uint64[],
+             constants: ConstDecl[], natives: Native[], ports: ResolvedPort[], identities: uint64[],
              operators: NumericOperator[], makes: NativeMake[], make_fields: int[], aliases: Name[], key: string,
              solid: int[], undeclared: uint64, meaning: uint64, function: int, referenced: string[],
              mutated: string[], built: int[], ops: Ops, target: Target) -> Body {
@@ -1686,6 +1783,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             named = begun_named;
     }
     values: Value[] = [];
+    native_calls: NativeCallFact[] = [];
     loops: Loop[] = [];
     breaks: int[] = [];
     continues: int[] = [];
@@ -1705,6 +1803,12 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         item := work[work_top];
         if (item.phase == EffectsPhase) {
             semantic_effects = semantic_effects | item.a;
+            continue;
+        }
+        if (item.phase == NativeCallPhase) {
+            fact: NativeCallFact = {node: item.node, native: item.a, storage: item.storage,
+                                    container: item.container, record: item.record};
+            native_calls.append(fact);
             continue;
         }
         node := forest[item.node];
@@ -1746,7 +1850,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             constant: int = -1;
             if (kind == "identifier") {
                 found := Lookup(names, Text(forest, text, item.node));
-                if (found >= 0 && names[found].place != AliasPlace) {
+                if (found >= 0 && !Alias(names[found].place)) {
                     code.append(SymbolCode(ops, names[found].node, node));
                 } else if (found < 0) {
                     constant = FindConstant(constants, callable.package, Text(forest, text, item.node));
@@ -2297,7 +2401,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         } else if (kind == "number" || kind == "boolean" || kind == "string" || kind == "nil" || kind == "identifier" ||
                    kind == "parenthesized_expression" || kind == "member_expression" || kind == "index_expression") {
             step = ValueStep(forest, text, document, callables, params, types, members, constants, natives, ports,
-                             names, callable.package, values, value_top, item, ops, target, at);
+                             native_calls, names, callable.package, values, value_top, item, ops, target, at);
         } else if (kind == "struct_expression" || kind == "array_expression") {
             step = LiteralStep(forest, text, document, types, members, values, value_top, built, item, ops, target, at);
         } else if (kind == "map_expression") {
@@ -2457,6 +2561,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                     linked := natives[produced.record];
                     storage = ports[linked.first + linked.parameters + at_result].storage;
                     container = ports[linked.first + linked.parameters + at_result].container;
+                    record = ports[linked.first + linked.parameters + at_result].record;
                 }
                 address: Slot = {storage: target.pointer_storage, kind: AddressKind};
                 loaded: Slot = {storage: SlotStorage(storage, container, target), kind: SlotKind(storage, container)};

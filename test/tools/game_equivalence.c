@@ -517,7 +517,7 @@ static bool assembles_from_its_own_modules(const char *story)
     REQUIRE(same && missing && extra && !refused.data);
     return true;
 }
-/* Positions of CompileBehaviors' arguments in the exported input: the
+/* Positions of CompileBehaviorsWithCatalog' arguments in the exported input: the
  * behaviors' identities and sources, the six target arguments, then the
  * game's. */
 enum
@@ -525,6 +525,7 @@ enum
     INPUT_IDENTITIES = 0,
     INPUT_SOURCES,
     INPUT_NATIVES = 5,
+    INPUT_PORTS,
     INPUT_EVENTS = 8,
     INPUT_EVENT_FIELDS,
     INPUT_TYPES,
@@ -534,6 +535,7 @@ enum
     INPUT_GLOBALS,
     INPUT_MAKES,
     INPUT_MAKE_FIELDS,
+    INPUT_NATIVE_EFFECTS,
     INPUT_ARGUMENTS
 };
 /* Whether the exported input holds the story's behavior and lists the type
@@ -601,6 +603,12 @@ static bool target_matches(yyjson_val *root, const execution_module *module, con
     }
     REQUIRE(yyjson_get_uint(yyjson_arr_get(root, INPUT_ENTITY)) == plan->owner_type);
     yyjson_val *natives = yyjson_arr_get(root, INPUT_NATIVES);
+    yyjson_val *effects = yyjson_arr_get(root, INPUT_NATIVE_EFFECTS);
+    REQUIRE(yyjson_arr_size(effects) == yyjson_arr_size(natives));
+    yyjson_val *ports = yyjson_arr_get(root, INPUT_PORTS);
+    for (size_t i = 0; i < yyjson_arr_size(ports); i++) {
+        REQUIRE(yyjson_is_uint(yyjson_obj_get(yyjson_arr_get(ports, i), "nominal")));
+    }
     yyjson_val *operators = yyjson_arr_get(root, INPUT_OPERATORS);
     bool add = false;
     for (size_t i = 0; i < yyjson_arr_size(operators); i++) {

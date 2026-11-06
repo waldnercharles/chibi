@@ -1,5 +1,6 @@
 #include "package_compiler_chibi.h"
 
+#include "authoring/source_collection.h"
 #include "backend.h"
 #include "compiler_fixture.h"
 #include "ecs/ecs.h"
@@ -24,6 +25,7 @@
 #include "toolchain/compiler_host.h"
 #include "toolchain/compiler_json.h"
 #include "toolchain/compiler_syntax.h"
+#include "toolchain/compiler_target.h"
 #include "types/array.h"
 #include "types/catalog.h"
 #include "types/copy.h"
@@ -40,6 +42,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 /* The authored package compiler, prepared by stage zero, compiles each sample
  * package, with the packages it imports, to a closure against the natives the
@@ -4079,7 +4082,6 @@ enum
     GET_TERRAIN = 800,
     GET_OTHER = 801,
     GET_RESOLVED = 802,
-    BEHAVIOR_ARGUMENTS = 17,
     TICKS = 5
 };
 typedef struct
@@ -4217,9 +4219,10 @@ static const script_catalog_global game_globals[] = {
 };
 /* The game: Spot, two nominal handle types, and keyed scene globals, with
  * Tick, Move, `self`, and the unsupported scalar global `pace`. */
+static script_catalog_type game_types[4];
 static script_catalog game_catalog()
 {
-    static script_catalog_type types[4];
+    script_catalog_type *types = game_types;
     types[0] = (script_catalog_type){
         .id = SPOT,
         .name = spot_type.name,
@@ -4248,7 +4251,7 @@ static script_catalog game_catalog()
                                       .fields = scene_globals,
                                       .field_count = 2 };
     return (script_catalog){ .types = types,
-                             .type_count = 4,
+                             .type_count = sizeof game_types / sizeof *game_types,
                              .capabilities = game_capabilities,
                              .capability_count = sizeof game_capabilities /
                                                  sizeof *game_capabilities,
@@ -4364,14 +4367,6 @@ static execution_module *stage_zero_behavior(const char *source)
     script_syntax_free(syntax);
     return module;
 }
-static pin_value u64(uint64_t value)
-{
-    return (pin_value){ .type = PIN_U64, .u64 = value };
-}
-static pin_value flag(bool value)
-{
-    return (pin_value){ .type = PIN_BOOL, .b = value };
-}
 /* The index of the type `id` among the catalog's, -1 for none. */
 static int type_index(const script_catalog *catalog, uint64_t id)
 {
@@ -4382,179 +4377,19 @@ static int type_index(const script_catalog *catalog, uint64_t id)
     }
     return -1;
 }
-/* Behavior targets append these fixture getters after the production host
- * natives. Package compilation and bootstrap keep their original tables. */
-static bool behavior_natives(int b, pin_value tables[3])
-{
-    script_catalog catalog = game_catalog();
-    pin_value *functions = NULL, *ports = NULL, *identities = NULL;
-    pin_array *before[] = { tables[0].ptr, tables[1].ptr, tables[2].ptr };
-    for (int i = 0; i < before[0]->count; i++) {
-        apush(functions, pin_array_get(before[0], i));
-    }
-    for (int i = 0; i < before[1]->count; i++) {
-        apush(ports, pin_array_get(before[1], i));
-    }
-    for (int i = 0; i < before[2]->count; i++) {
-        apush(identities, pin_array_get(before[2], i));
-    }
-    for (int i = 0; i < catalog.capability_count; i++) {
-        const script_catalog_capability *c = &catalog.capabilities[i];
-        if (c->kind != SCRIPT_CAPABILITY_FUNCTION) {
-            continue;
-        }
-        pin_value function = row(b, "Native");
-        REQUIRE(put_value(&function, "name", text(c->name)));
-        REQUIRE(put(&function, "first", acount(ports)));
-        REQUIRE(put(&function, "parameters", c->parameter_count));
-        REQUIRE(put(&function, "results", c->result_count));
-        REQUIRE(put_value(&function, "variadic", flag(false)));
-        apush(functions, function);
-        for (int j = 0; j < c->parameter_count + c->result_count; j++) {
-            const script_catalog_parameter *declared = j < c->parameter_count
-                                                         ? &c->parameters[j]
-                                                         : &c->results[j - c->parameter_count];
-            pin_value port = row(b, "Port");
-            REQUIRE(put_value(&port, "name", text(declared->name)));
-            REQUIRE(put(&port, "storage", port_storage(declared->type)));
-            REQUIRE(put(&port, "container", (int)declared->type.container));
-            REQUIRE(put_value(&port, "c_string", flag(false)));
-            apush(ports, port);
-        }
-        apush(identities, u64(c->id));
-        apush(identities, u64(script_catalog_capability_abi(&catalog, c)));
-    }
-    tables[0] = rows(functions, acount(functions), PIN_STRUCT, tables[0].record);
-    tables[1] = rows(ports, acount(ports), PIN_STRUCT, tables[1].record);
-    tables[2] = rows(identities, acount(identities), PIN_U64, NULL);
-    afree(functions);
-    afree(ports);
-    afree(identities);
-    return true;
-}
-static int game_native_index(const script_catalog *catalog, uint64_t id, int first)
-{
-    for (int i = 0; i < catalog->capability_count; i++) {
-        const script_catalog_capability *c = &catalog->capabilities[i];
-        if (c->kind != SCRIPT_CAPABILITY_FUNCTION) {
-            continue;
-        }
-        if (c->id == id) {
-            return first;
-        }
-        first++;
-    }
-    return -1;
-}
-/* CompileBehavior's game arguments, as the game target exports them: each
- * event and its payload fields, each type and its fields, the entity type,
- * no operators that combine records, the globals, and no record makes. */
-static bool game_arguments(int b, int first_native, pin_value *out)
-{
-    script_catalog catalog = game_catalog();
-    pin_value *declared = NULL, *payloads = NULL, *types = NULL, *fields = NULL;
-    for (int i = 0; i < catalog.capability_count; i++) {
-        const script_catalog_capability *c = &catalog.capabilities[i];
-        if (c->kind != SCRIPT_CAPABILITY_EVENT) {
-            continue;
-        }
-        pin_value event = row(b, "GameEvent");
-        REQUIRE(put_value(&event, "name", text(c->name)));
-        REQUIRE(put_value(&event, "id", u64(c->id)));
-        REQUIRE(put_value(&event, "abi", u64(script_catalog_capability_abi(&catalog, c))));
-        REQUIRE(put(&event, "first", acount(payloads)));
-        REQUIRE(put(&event, "count", c->parameter_count));
-        apush(declared, event);
-        for (int j = 0; j < c->parameter_count; j++) {
-            pin_value payload = row(b, "GameEventField");
-            REQUIRE(put_value(&payload, "name", text(c->parameters[j].name)));
-            REQUIRE(put(&payload, "storage", (int)c->parameters[j].type.storage));
-            REQUIRE(put_value(&payload, "nominal", u64(c->parameters[j].type.nominal)));
-            REQUIRE(put_value(&payload, "has_default", flag(c->parameters[j].has_default)));
-            REQUIRE(put_value(&payload, "default_owner", flag(c->parameters[j].default_owner)));
-            apush(payloads, payload);
-        }
-    }
-    for (int i = 0; i < catalog.type_count; i++) {
-        const script_catalog_type *t = &catalog.types[i];
-        pin_value type = row(b, "GameType");
-        REQUIRE(put_value(&type, "required", flag(!(t->type.flags & SCRIPT_TYPE_NAMESPACE))));
-        REQUIRE(put(&type, "underlying", type_index(&catalog, t->underlying)));
-        REQUIRE(put_value(&type, "name", text(t->name)));
-        REQUIRE(put_value(&type, "id", u64(t->id)));
-        REQUIRE(put_value(&type, "layout", u64(t->layout)));
-        REQUIRE(put(&type, "storage", (int)t->type.storage));
-        REQUIRE(put(&type, "size", (int)t->size));
-        REQUIRE(put_value(&type, "component", u64(t->component ? t->component_id : 0)));
-        REQUIRE(put(&type, "first", acount(fields)));
-        REQUIRE(put(&type, "count", t->field_count));
-        apush(types, type);
-        for (int j = 0; j < t->field_count; j++) {
-            pin_value field = row(b, "GameField");
-            REQUIRE(put_value(&field, "name", text(t->fields[j].name)));
-            REQUIRE(put(&field, "storage", (int)t->fields[j].type.storage));
-            REQUIRE(put(&field, "offset", (int)t->fields[j].offset));
-            REQUIRE(put_value(&field, "writable", flag(t->fields[j].writable)));
-            REQUIRE(put_value(&field, "c_string", flag(t->fields[j].c_string)));
-            REQUIRE(put(&field, "record", type_index(&catalog, t->fields[j].type.nominal)));
-            REQUIRE(put_value(&field, "constant", flag(t->fields[j].constant)));
-            REQUIRE(
-                put(&field, "read", game_native_index(&catalog, t->fields[j].read, first_native))
-            );
-            REQUIRE(put_value(
-                &field,
-                "read_key",
-                text(t->fields[j].read_key ? t->fields[j].read_key : "")
-            ));
-            apush(fields, field);
-        }
-    }
-    out[0] = rows(declared, acount(declared), PIN_STRUCT, declared[0].record);
-    out[1] = rows(payloads, acount(payloads), PIN_STRUCT, payloads[0].record);
-    out[2] = rows(types, acount(types), PIN_STRUCT, types[0].record);
-    out[3] = rows(fields, acount(fields), PIN_STRUCT, fields[0].record);
-    out[4] = u64(catalog.entity_type);
-    out[5] = rows(
-        NULL,
-        0,
-        PIN_STRUCT,
-        compiler_fixture_record(&fixture, b, PACKAGE, "NumericOperator", &input)
-    );
-    pin_value *globals = NULL;
-    for (int i = 0; i < catalog.global_count; i++) {
-        const script_catalog_global *g = &catalog.globals[i];
-        pin_value global = row(b, "GameGlobal");
-        REQUIRE(put_value(&global, "name", text(g->name)));
-        REQUIRE(put(&global, "storage", (int)g->type.storage));
-        REQUIRE(put(&global, "record", type_index(&catalog, g->type.nominal)));
-        apush(globals, global);
-    }
-    out[6] = rows(globals, acount(globals), PIN_STRUCT, globals[0].record);
-    out[7] = rows(NULL, 0, PIN_STRUCT, compiler_fixture_record(&fixture, b, PACKAGE, "NativeMake", &input));
-    out[8] = rows(NULL, 0, PIN_I32, NULL);
-    afree(declared);
-    afree(payloads);
-    afree(types);
-    afree(fields);
-    afree(globals);
-    return true;
-}
-/* Stage one's Result for `source` on backend `b`, in `detached`. */
+static bool catalog_compile(
+    int b,
+    const script_catalog *catalog,
+    const char *identity,
+    const char *source,
+    const char *entry,
+    pin_value *out
+);
+/* Stage one's prepared closure for `source`, using the production catalog export. */
 static bool compile_behavior(int b, const char *identity, const char *source, pin_value *out)
 {
-    pin_value compile[ARGUMENTS], args[BEHAVIOR_ARGUMENTS];
-    REQUIRE(arguments(b, false, NULL, 0, compile));
-    args[0] = text(identity);
-    args[1] = text(source);
-    memcpy(&args[2], &compile[TARGET_ARGUMENT], 6 * sizeof *args);
-    int first_native = ((pin_array *)args[5].ptr)->count;
-    REQUIRE(behavior_natives(b, &args[5]));
-    REQUIRE(game_arguments(b, first_native, &args[8]));
-    REQUIRE(
-        compiler_fixture_call(&fixture, b, PACKAGE, "CompileBehavior", args, BEHAVIOR_ARGUMENTS, COMPILE_BUDGET, &detached, out)
-    );
-    REQUIRE(out->type == PIN_UNION && out->ptr);
-    return true;
+    script_catalog catalog = game_catalog();
+    return catalog_compile(b, &catalog, identity, source, "CompileBehaviorsWithCatalog", out);
 }
 /* The game's types and events, as the player links them. */
 static bool link_game_type(void *user, uint64_t id, execution_prepared_type *out)
@@ -4604,37 +4439,44 @@ static bool link_game_host(void *user, uint64_t id, execution_prepared_host *out
 static bool stage_one_behavior(int b, const char *identity, const char *source, execution_module **module)
 {
     *module = NULL;
+    script_catalog catalog = game_catalog();
     pin_value out;
     REQUIRE(compile_behavior(b, identity, source, &out));
-    const pin_union *value = out.ptr;
-    if (value->tag != tag(b, "Compiled")) {
-        pin_value message, line, column;
-        get(&value->values[0], "message", &message);
-        get(&value->values[0], "line", &line);
-        get(&value->values[0], "column", &column);
-        fprintf(
-            stderr,
-            "stage one behavior %s rejected: %s at %d:%d\n",
-            identity,
-            pin_text(message).bytes,
-            line.i,
-            column.i
+    REQUIRE(out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY);
+    const pin_array *array = out.ptr;
+    if (!array || !array->count) {
+        arena_free(&detached);
+        REQUIRE(
+            catalog_compile(b, &catalog, identity, source, "BehaviorRejectionWithCatalog", &out)
         );
+        REQUIRE(out.type == PIN_STR);
+        fprintf(stderr, "stage one behavior rejected: %s\n", pin_text(out).bytes);
         arena_free(&detached);
         return false;
     }
-    size_t length;
-    unsigned char *bytes = closure_bytes(value, &length);
+    size_t length = (size_t)array->count;
+    unsigned char *bytes = xmalloc(length);
+    for (size_t i = 0; i < length; i++) {
+        bytes[i] = array->items[i].u8;
+    }
     arena_free(&detached);
-    script_catalog catalog = game_catalog();
+    char error[256] = { 0 };
+    int count = 0;
+    uint64_t root = 0;
+    package_module *modules = compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error);
+    if (!modules || count != 1 || root != modules[0].id) {
+        fprintf(stderr, "stage one behavior %s closure: %s\n", identity, error);
+        compiler_artifact_rows_free(modules, count);
+        free(bytes);
+        return false;
+    }
     execution_prepared_linker linker = { .user = &catalog,
                                          .host = link_game_host,
                                          .type = link_game_type,
                                          .event = link_game_event };
-    char error[256] = { 0 };
     *module = execution_prepared_read(
-        bytes,
-        length,
+        modules[0].data,
+        modules[0].length,
         &linker,
         b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
         error,
@@ -4643,6 +4485,7 @@ static bool stage_one_behavior(int b, const char *identity, const char *source, 
     if (!*module) {
         fprintf(stderr, "stage one behavior %s load: %s\n", identity, error);
     }
+    compiler_artifact_rows_free(modules, count);
     free(bytes);
     return *module != NULL;
 }
@@ -4860,22 +4703,29 @@ static script_diagnostic stage_zero_diagnostic(const char *source)
  * rejects it too, with stage zero's message at its position. */
 static bool rejects(int b, const behavior_rejection *rejection)
 {
-    pin_value out, message, line, column;
+    pin_value out;
     REQUIRE(compile_behavior(b, "Rejected", rejection->source, &out));
-    const pin_union *value = out.ptr;
-    bool rejected = value->tag == tag(b, "Rejected") &&
-                    get(&value->values[0], "message", &message) &&
-                    get(&value->values[0], "line", &line) &&
-                    get(&value->values[0], "column", &column) &&
-                    !strcmp(pin_text(message).bytes, rejection->message);
+    REQUIRE(
+        out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY &&
+        (!out.ptr || !((const pin_array *)out.ptr)->count)
+    );
+    arena_free(&detached);
+    script_catalog catalog = game_catalog();
+    REQUIRE(
+        catalog_compile(b, &catalog, "Rejected", rejection->source, "BehaviorRejectionWithCatalog", &out)
+    );
+    REQUIRE(out.type == PIN_STR);
+    const char *message = pin_text(out).bytes;
+    int line = 0, column = 0, consumed = 0;
+    bool rejected = sscanf(message, "Rejected:%d:%d: %n", &line, &column, &consumed) == 2 &&
+                    consumed > 0 && !strcmp(message + consumed, rejection->message);
     if (rejected && rejection->stage_zero) {
         script_diagnostic expected = stage_zero_diagnostic(rejection->source);
         rejected = !strcmp(expected.message, rejection->message) &&
-                   expected.range.line == line.i &&
-                   expected.range.column == column.i;
+                   expected.range.line == line && expected.range.column == column;
     }
     if (!rejected) {
-        fprintf(stderr, "behavior rejection: wanted '%s'\n", rejection->message);
+        fprintf(stderr, "behavior rejection: wanted '%s', got '%s'\n", rejection->message, message);
     }
     arena_free(&detached);
     return rejected;
@@ -4899,6 +4749,1505 @@ static bool takes_project_identities(int b)
     REQUIRE(named);
     return true;
 }
+/* Production catalog export must carry nominal native ports all the way to
+ * prepared host banks. SpotAlias shares Spot's layout; OtherSpot does not
+ * share its identity. An unsupported native remains harmless until selected. */
+enum
+{
+    CATALOG_ALIAS = 710,
+    CATALOG_OTHER = 711,
+    CATALOG_ECHO = 5100,
+    CATALOG_ENTITY,
+    CATALOG_PAIR,
+    CATALOG_ALIASED,
+    CATALOG_SEED,
+    CATALOG_CHECK,
+    CATALOG_OTHER_RESULT,
+    CATALOG_UNSUPPORTED
+};
+static const type_desc catalog_alias_type = { .name = "SpotAlias",
+                                              .size = sizeof(spot),
+                                              .fields = spot_fields,
+                                              .field_count = sizeof spot_fields /
+                                                             sizeof *spot_fields,
+                                              .alias_of = "Spot" };
+static const type_desc catalog_other_type = { .name = "OtherSpot",
+                                              .size = sizeof(spot),
+                                              .fields = spot_fields,
+                                              .field_count = sizeof spot_fields /
+                                                             sizeof *spot_fields };
+static const script_catalog_parameter catalog_spot_port = {
+    .name = "point",
+    .type = { .storage = PIN_STRUCT, .nominal = SPOT }
+};
+static const script_catalog_parameter catalog_entity_port = {
+    .name = "owner",
+    .type = { .storage = PIN_HANDLE, .nominal = ENTITY }
+};
+static const script_catalog_parameter catalog_check_port = { .name = "valid",
+                                                             .type = { .storage = PIN_BOOL } };
+static const script_catalog_parameter catalog_pair_ports[] = {
+    { .name = "point", .type = { .storage = PIN_STRUCT, .nominal = SPOT } },
+    { .name = "owner", .type = { .storage = PIN_HANDLE, .nominal = ENTITY } },
+};
+static const script_catalog_parameter catalog_alias_port = {
+    .name = "point",
+    .type = { .storage = PIN_STRUCT, .nominal = CATALOG_ALIAS }
+};
+static const script_catalog_parameter catalog_other_port = {
+    .name = "point",
+    .type = { .storage = PIN_STRUCT, .nominal = CATALOG_OTHER }
+};
+static const script_catalog_parameter catalog_unsupported_port = {
+    .name = "points",
+    .type = { .storage = PIN_STRUCT, .container = PIN_CONTAINER_ARRAY, .nominal = SPOT }
+};
+static script_catalog native_game_catalog()
+{
+    static script_catalog_type types[sizeof game_types / sizeof *game_types + 2];
+    static script_catalog_capability
+        capabilities[sizeof game_capabilities / sizeof *game_capabilities + CATALOG_UNSUPPORTED - CATALOG_ECHO + 1];
+    script_catalog catalog = game_catalog();
+    memcpy(types, catalog.types, (size_t)catalog.type_count * sizeof *types);
+    int alias = catalog.type_count, other = alias + 1;
+    int spot_index = type_index(&catalog, SPOT);
+    assert(spot_index >= 0);
+    types[alias] = types[spot_index];
+    types[alias].id = CATALOG_ALIAS;
+    types[alias].name = catalog_alias_type.name;
+    types[alias].type.nominal = CATALOG_ALIAS;
+    types[alias].underlying = SPOT;
+    types[alias].component = false;
+    types[alias].component_id = 0;
+    types[other] = types[alias];
+    types[other].id = CATALOG_OTHER;
+    types[other].name = catalog_other_type.name;
+    types[other].type.nominal = CATALOG_OTHER;
+    types[other].underlying = 0;
+    memcpy(capabilities, catalog.capabilities, (size_t)catalog.capability_count * sizeof *capabilities);
+    const script_catalog_capability natives[] = {
+        { .id = CATALOG_ECHO,
+          .name = "echo_spot",
+          .parameters = &catalog_spot_port,
+          .parameter_count = 1,
+          .results = &catalog_spot_port,
+          .result_count = 1 },
+        { .id = CATALOG_ENTITY,
+          .name = "echo_entity",
+          .parameters = &catalog_entity_port,
+          .parameter_count = 1,
+          .results = &catalog_entity_port,
+          .result_count = 1 },
+        { .id = CATALOG_PAIR,
+          .name = "pair_spot",
+          .parameters = catalog_pair_ports,
+          .parameter_count = 2,
+          .results = catalog_pair_ports,
+          .result_count = 2 },
+        { .id = CATALOG_ALIASED,
+          .name = "alias_spot",
+          .parameters = &catalog_alias_port,
+          .parameter_count = 1,
+          .results = &catalog_alias_port,
+          .result_count = 1 },
+        { .id = CATALOG_SEED,
+          .name = "entity_seed",
+          .results = &catalog_entity_port,
+          .result_count = 1 },
+        { .id = CATALOG_CHECK,
+          .name = "entity_ok",
+          .parameters = &catalog_entity_port,
+          .parameter_count = 1,
+          .results = &catalog_check_port,
+          .result_count = 1 },
+        { .id = CATALOG_OTHER_RESULT,
+          .name = "other_spot",
+          .results = &catalog_other_port,
+          .result_count = 1 },
+        { .id = CATALOG_UNSUPPORTED,
+          .name = "unsupported",
+          .results = &catalog_unsupported_port,
+          .result_count = 1 },
+    };
+    int first = catalog.capability_count;
+    int native_count = sizeof natives / sizeof *natives;
+    for (int i = 0; i < native_count; i++) {
+        capabilities[first + i] = natives[i];
+        capabilities[first + i].kind = SCRIPT_CAPABILITY_FUNCTION;
+        capabilities[first + i].effects = SCRIPT_EFFECT_HOST;
+        capabilities[first + i].completion_outcome = -1;
+    }
+    catalog.types = types;
+    catalog.type_count = other + 1;
+    catalog.capabilities = capabilities;
+    catalog.capability_count = first + native_count;
+    return catalog;
+}
+static int catalog_calls[6];
+static bool catalog_header(const pin_value *value, pin_type type, const char *name)
+{
+    return value->type == type && value->container == PIN_CONTAINER_SINGLE &&
+           value->type_name && !strcmp(value->type_name, name) &&
+           !value->record && (type != PIN_STRUCT || value->ptr);
+}
+static const char *catalog_echo(void *, const pin_value *arguments, pin_value *results)
+{
+    if (!catalog_header(&arguments[0], PIN_STRUCT, "Spot") ||
+        !catalog_header(&results[0], PIN_STRUCT, "Spot")) {
+        return "native Spot singleton header or result backing differs";
+    }
+    *(spot *)results[0].ptr = *(const spot *)arguments[0].ptr;
+    ((spot *)results[0].ptr)->x += 1;
+    catalog_calls[0]++;
+    return NULL;
+}
+static const char *catalog_entity(void *, const pin_value *arguments, pin_value *results)
+{
+    if (!catalog_header(&arguments[0], PIN_HANDLE, "ecs.entity") ||
+        !catalog_header(&results[0], PIN_HANDLE, "ecs.entity")) {
+        return "native entity singleton header differs";
+    }
+    results[0].u64 = arguments[0].u64;
+    catalog_calls[1]++;
+    return NULL;
+}
+static const char *catalog_pair(void *, const pin_value *arguments, pin_value *results)
+{
+    if (!catalog_header(&arguments[0], PIN_STRUCT, "Spot") ||
+        !catalog_header(&arguments[1], PIN_HANDLE, "ecs.entity") ||
+        !catalog_header(&results[0], PIN_STRUCT, "Spot") ||
+        !catalog_header(&results[1], PIN_HANDLE, "ecs.entity")) {
+        return "native multi-result headers or result backing differ";
+    }
+    *(spot *)results[0].ptr = *(const spot *)arguments[0].ptr;
+    ((spot *)results[0].ptr)->x += 3;
+    ((spot *)results[0].ptr)->y += 4;
+    results[1].u64 = arguments[1].u64;
+    catalog_calls[2]++;
+    return NULL;
+}
+static const char *catalog_aliased(void *, const pin_value *arguments, pin_value *results)
+{
+    if (arguments[0].type != PIN_STRUCT || !arguments[0].ptr ||
+        !catalog_header(&results[0], PIN_STRUCT, "SpotAlias")) {
+        return "native alias result header or result backing differs";
+    }
+    *(spot *)results[0].ptr = *(const spot *)arguments[0].ptr;
+    ((spot *)results[0].ptr)->y += 2;
+    catalog_calls[3]++;
+    return NULL;
+}
+static const char *catalog_seed(void *, const pin_value *, pin_value *results)
+{
+    if (!catalog_header(&results[0], PIN_HANDLE, "ecs.entity")) {
+        return "native entity source result header differs";
+    }
+    results[0].u64 = UINT64_C(0x1234567800000042);
+    catalog_calls[4]++;
+    return NULL;
+}
+static const char *catalog_check(void *, const pin_value *arguments, pin_value *results)
+{
+    if (!catalog_header(&arguments[0], PIN_HANDLE, "ecs.entity") ||
+        arguments[0].u64 != UINT64_C(0x1234567800000042) ||
+        results[0].type != PIN_BOOL || results[0].container != PIN_CONTAINER_SINGLE) {
+        return "native entity payload or predicate result differs";
+    }
+    results[0].b = true;
+    catalog_calls[5]++;
+    return NULL;
+}
+static const node_host_call catalog_host_calls[] = {
+    { .invoke = catalog_echo }, { .invoke = catalog_entity },
+    { .invoke = catalog_pair }, { .invoke = catalog_aliased },
+    { .invoke = catalog_seed }, { .invoke = catalog_check },
+};
+static bool catalog_host(void *, uint64_t id, script_lower_host *out)
+{
+    if (game_host(NULL, id, out)) {
+        return true;
+    }
+    if (id < CATALOG_ECHO || id > CATALOG_CHECK) {
+        return false;
+    }
+    *out = (script_lower_host){ .call = &catalog_host_calls[id - CATALOG_ECHO],
+                                .access = &HOST_ACCESS };
+    return true;
+}
+static bool catalog_prepared_host(void *user, uint64_t id, execution_prepared_host *out)
+{
+    const script_catalog *catalog = user;
+    const script_catalog_capability *capability = script_catalog_capability_by_id(catalog, id);
+    script_lower_host binding;
+    if (!capability || !catalog_host(NULL, id, &binding)) {
+        return false;
+    }
+    *out = (execution_prepared_host){
+        .call = binding.call,
+        .access = binding.access,
+        .abi = script_catalog_capability_abi(catalog, capability)
+    };
+    return true;
+}
+static bool catalog_prepared_type(void *user, uint64_t id, execution_prepared_type *out)
+{
+    if (!link_game_type(user, id, out)) {
+        return false;
+    }
+    if (id == CATALOG_ALIAS) {
+        out->type = &catalog_alias_type;
+    } else if (id == CATALOG_OTHER) {
+        out->type = &catalog_other_type;
+    }
+    return true;
+}
+/* Decode the production JSON against the actual authored entry signature.
+ * No test-side table reconstructs or repairs its port metadata. */
+static bool catalog_compile_sources(
+    int b,
+    const script_catalog *catalog,
+    const char *const *identities,
+    const char *const *sources,
+    int source_count,
+    const char *entry,
+    pin_value *out
+)
+{
+    size_t length;
+    char *json = compiler_behavior_catalog_input_json(catalog, identities, sources, source_count, &length);
+    yyjson_doc *parsed = yyjson_read(json, length, 0);
+    REQUIRE(parsed);
+    av_doc *doc = av_doc_new();
+    av_value *values = av_from_json(doc, yyjson_doc_get_root(parsed));
+    const authoring_package *package = compiler_fixture_package(&fixture, b, PACKAGE);
+    uint64_t id = compiler_fixture_export(&fixture, b, PACKAGE, entry);
+    const behavior_function *function = NULL;
+    for (int i = 0; i < package->module->plan.function_count; i++) {
+        if (package->module->plan.functions[i].id == id) {
+            function = package->module->plan.functions[i].body;
+        }
+    }
+    REQUIRE(function);
+    int count;
+    const pin_value *declarations = behavior_function_arguments(function, &count);
+    REQUIRE(count == 18 && yyjson_arr_size(yyjson_doc_get_root(parsed)) == 18);
+    pin_value args[18];
+    char error[256];
+    for (int i = 0; i < count; i++) {
+        int status = pin_value_read_document(
+            &input,
+            declarations[i],
+            av_arr_get(values, (size_t)i),
+            &args[i],
+            error,
+            sizeof error
+        );
+        if (status) {
+            fprintf(stderr, "catalog compiler argument %d: %s\n", i, error);
+        }
+        REQUIRE(!status);
+    }
+    yyjson_doc_free(parsed);
+    av_doc_free(doc);
+    free(json);
+    return compiler_fixture_call(&fixture, b, PACKAGE, entry, args, count, COMPILE_BUDGET, &detached, out);
+}
+static bool catalog_compile(
+    int b,
+    const script_catalog *catalog,
+    const char *identity,
+    const char *source,
+    const char *entry,
+    pin_value *out
+)
+{
+    return catalog_compile_sources(b, catalog, &identity, &source, 1, entry, out);
+}
+static bool catalog_export_rejects(const script_catalog *catalog)
+{
+    int alias = type_index(catalog, CATALOG_ALIAS),
+        other = type_index(catalog, CATALOG_OTHER);
+    const script_catalog_capability *echo = script_catalog_capability_by_id(catalog, CATALOG_ECHO);
+    REQUIRE(alias >= 0 && other >= 0 && echo);
+    static const char *const cases[] = { "flagged nominal",
+                                         "missing nominal",
+                                         "nominal array",
+                                         "set",
+                                         "map",
+                                         "alias cycle",
+                                         "missing alias target",
+                                         "alias size",
+                                         "alias layout" };
+    for (int i = 0; i < (int)(sizeof cases / sizeof *cases); i++) {
+        script_catalog_type *types = xmalloc((size_t)catalog->type_count * sizeof *types);
+        memcpy(types, catalog->types, (size_t)catalog->type_count * sizeof *types);
+        script_catalog_parameter parameter = catalog_spot_port;
+        if (i >= 5) {
+            parameter.type.nominal = CATALOG_ALIAS;
+        }
+        switch (i) {
+            case 0: parameter.type.flags = SCRIPT_TYPE_OPTIONAL; break;
+            case 1: parameter.type.nominal = UINT64_C(99999); break;
+            case 2: parameter.type.container = PIN_CONTAINER_ARRAY; break;
+            case 3:
+            case 4:
+                parameter.type = (script_type){
+                    .storage = PIN_I32,
+                    .container = i == 3 ? PIN_CONTAINER_SET : PIN_CONTAINER_MAP
+                };
+                break;
+            case 5:
+                types[alias].underlying = CATALOG_OTHER;
+                types[other].underlying = CATALOG_ALIAS;
+                break;
+            case 6: types[alias].underlying = UINT64_C(99999); break;
+            case 7: types[alias].size += sizeof(float); break;
+            case 8: types[alias].layout ^= 1; break;
+        }
+        script_catalog_capability native = *echo;
+        native.parameters = &parameter;
+        script_catalog changed = *catalog;
+        changed.types = types;
+        changed.capabilities = &native;
+        changed.capability_count = 1;
+        const char *identity = "NativeProbe",
+                   *source = "NativeProbe :: behavior {}";
+        size_t length;
+        char *json = compiler_behavior_catalog_input_json(&changed, &identity, &source, 1, &length);
+        yyjson_doc *parsed = yyjson_read(json, length, 0);
+        REQUIRE(parsed);
+        yyjson_val *port = yyjson_arr_get(yyjson_arr_get(yyjson_doc_get_root(parsed), 6), 0);
+        bool rejected = yyjson_get_int(yyjson_obj_get(port, "storage")) == -1 &&
+                        yyjson_get_uint(yyjson_obj_get(port, "nominal")) ==
+                            parameter.type.nominal;
+        if (!rejected) {
+            fprintf(stderr, "catalog exporter accepted unsupported %s port\n", cases[i]);
+        }
+        yyjson_doc_free(parsed);
+        free(json);
+        free(types);
+        REQUIRE(rejected);
+    }
+    return true;
+}
+static bool catalog_export_contract(const script_catalog *catalog)
+{
+    const char *identity = "NativeProbe",
+               *source = "NativeProbe :: behavior {}";
+    size_t old_length, length;
+    char *old_json = compiler_behavior_input_json(catalog, &identity, &source, 1, &old_length);
+    char *json = compiler_behavior_catalog_input_json(catalog, &identity, &source, 1, &length);
+    yyjson_doc *old = yyjson_read(old_json, old_length, 0),
+               *current = yyjson_read(json, length, 0);
+    REQUIRE(old && current);
+    yyjson_val *before = yyjson_doc_get_root(old),
+               *after = yyjson_doc_get_root(current);
+    REQUIRE(yyjson_arr_size(before) == 17 && yyjson_arr_size(after) == 18);
+    for (size_t i = 0; i < 17; i++) {
+        REQUIRE(i == 6 || yyjson_equals(yyjson_arr_get(before, i), yyjson_arr_get(after, i)));
+    }
+    yyjson_val *old_ports = yyjson_arr_get(before, 6),
+               *ports = yyjson_arr_get(after, 6);
+    yyjson_val *functions = yyjson_arr_get(after, 5),
+               *effects = yyjson_arr_get(after, 17);
+    size_t function_index = 0;
+    for (int i = 0; i < catalog->capability_count; i++) {
+        const script_catalog_capability *native = &catalog->capabilities[i];
+        if (native->kind != SCRIPT_CAPABILITY_FUNCTION ||
+            native->flow.kind != SCRIPT_FLOW_ACCESS_NONE ||
+            native->outcome_count || (native->effects & SCRIPT_EFFECT_SUSPEND)) {
+            continue;
+        }
+        yyjson_val *function = yyjson_arr_get(functions, function_index);
+        REQUIRE(function);
+        REQUIRE(!strcmp(yyjson_get_str(yyjson_obj_get(function, "name")), native->name));
+        REQUIRE(
+            yyjson_get_uint(yyjson_arr_get(effects, function_index)) == native->effects
+        );
+        function_index++;
+        int first = yyjson_get_int(yyjson_obj_get(function, "first"));
+        for (int j = 0; j < native->parameter_count + native->result_count; j++) {
+            const script_catalog_parameter
+                *parameter = j < native->parameter_count
+                               ? &native->parameters[j]
+                               : &native->results[j - native->parameter_count];
+            yyjson_val *port = yyjson_arr_get(ports, (size_t)(first + j));
+            yyjson_val *old_port = yyjson_arr_get(old_ports, (size_t)(first + j));
+            REQUIRE(!yyjson_obj_get(old_port, "nominal"));
+            REQUIRE(
+                yyjson_get_int(yyjson_obj_get(old_port, "storage")) ==
+                port_storage(parameter->type)
+            );
+            REQUIRE(
+                yyjson_get_uint(yyjson_obj_get(port, "nominal")) ==
+                parameter->type.nominal
+            );
+            REQUIRE(
+                yyjson_get_int(yyjson_obj_get(port, "storage")) ==
+                (native->id == CATALOG_UNSUPPORTED ? -1 : (int)parameter->type.storage)
+            );
+        }
+    }
+    REQUIRE(
+        yyjson_arr_size(functions) == function_index && yyjson_arr_size(effects) == function_index
+    );
+    yyjson_doc_free(old);
+    yyjson_doc_free(current);
+    free(old_json);
+    free(json);
+    return catalog_export_rejects(catalog);
+}
+enum
+{
+    CATALOG_SELECT_SPOT = 6100,
+    CATALOG_SELECT_ENTITY,
+    CATALOG_COLLISION,
+    CATALOG_INFERRED,
+    CATALOG_MAKE
+};
+static int catalog_named_calls[4];
+static const char *catalog_select_spot(void *, const pin_value *arguments, pin_value *results)
+{
+    if (!catalog_header(&arguments[0], PIN_STRUCT, "Spot") ||
+        !catalog_header(&results[0], PIN_STRUCT, "Spot")) {
+        return "native record overload headers differ";
+    }
+    *(spot *)results[0].ptr = *(const spot *)arguments[0].ptr;
+    ((spot *)results[0].ptr)->x += 10;
+    catalog_named_calls[0]++;
+    return NULL;
+}
+static const char *catalog_select_entity(void *, const pin_value *arguments, pin_value *results)
+{
+    if (!catalog_header(&arguments[0], PIN_HANDLE, "ecs.entity") ||
+        arguments[0].u64 != UINT64_C(0x1234567800000042) ||
+        !catalog_header(&results[0], PIN_STRUCT, "Spot")) {
+        return "native entity overload headers or input differ";
+    }
+    *(spot *)results[0].ptr = (spot){ .x = 100, .y = 200, .w = 9 };
+    catalog_named_calls[1]++;
+    return NULL;
+}
+static const char *catalog_collision(void *, const pin_value *arguments, pin_value *results)
+{
+    if (!catalog_header(&arguments[0], PIN_STRUCT, "Spot") ||
+        !catalog_header(&results[0], PIN_STRUCT, "Spot")) {
+        return "native colliding output headers differ";
+    }
+    *(spot *)results[0].ptr = *(const spot *)arguments[0].ptr;
+    ((spot *)results[0].ptr)->x += 20;
+    ((spot *)results[0].ptr)->y += 30;
+    catalog_named_calls[2]++;
+    return NULL;
+}
+static const char *catalog_inferred(void *, const pin_value *arguments, pin_value *results)
+{
+    if (arguments[0].type != PIN_I8 || results[0].type != PIN_I8 ||
+        results[0].container != PIN_CONTAINER_SINGLE || results[0].record) {
+        return "native inferred scalar headers differ";
+    }
+    results[0].i8 = arguments[0].i8 + 1;
+    catalog_named_calls[3]++;
+    return NULL;
+}
+static const node_host_call catalog_named_host_calls[] = {
+    { .invoke = catalog_select_spot },
+    { .invoke = catalog_select_entity },
+    { .invoke = catalog_collision },
+    { .invoke = catalog_inferred },
+};
+static bool catalog_named_host(void *user, uint64_t id, script_lower_host *out)
+{
+    if (catalog_host(user, id, out)) {
+        return true;
+    }
+    if (id < CATALOG_SELECT_SPOT || id > CATALOG_INFERRED) {
+        return false;
+    }
+    *out = (script_lower_host){ .call = &catalog_named_host_calls[id - CATALOG_SELECT_SPOT],
+                                .access = &HOST_ACCESS };
+    return true;
+}
+static bool catalog_named_prepared_host(void *user, uint64_t id, execution_prepared_host *out)
+{
+    const script_catalog *catalog = user;
+    const script_catalog_capability *capability = script_catalog_capability_by_id(catalog, id);
+    script_lower_host binding;
+    if (!capability || !catalog_named_host(user, id, &binding)) {
+        return false;
+    }
+    *out = (execution_prepared_host){
+        .call = binding.call,
+        .access = binding.access,
+        .abi = script_catalog_capability_abi(catalog, capability)
+    };
+    return true;
+}
+static bool catalog_named_plays(execution_module *expected, execution_module *actual)
+{
+    player e = { 0 }, a = { 0 };
+    bool alike = play(expected, &e) && play(actual, &a);
+    spot wanted = { .w = 9 };
+    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
+    for (int tick = 0; alike && tick < TICKS; tick++) {
+        wanted.x = 5 * wanted.x + 253;
+        wanted.y = 3 * wanted.y + 232;
+        int left = execution_instance_dispatch(e.instance, TICK, &delta, 1, 0, 0, 1000);
+        int right = execution_instance_dispatch(a.instance, TICK, &delta, 1, 0, 0, 1000);
+        const spot *x = ecs_component_data_const(e.world, e.owner, SPOT_COMPONENT);
+        const spot *y = ecs_component_data_const(a.world, a.owner, SPOT_COMPONENT);
+        alike = left == FLOW_OK && right == FLOW_OK && x && y &&
+                x->x == wanted.x && x->y == wanted.y && x->w == wanted.w &&
+                y->x == wanted.x && y->y == wanted.y && y->w == wanted.w &&
+                x->owner == ecs_entity_to_u64(e.owner) &&
+                y->owner == ecs_entity_to_u64(a.owner);
+        if (!alike) {
+            fprintf(
+                stderr,
+                "native singleton tick %d: flow %d/%d wanted %g,%g got "
+                "%g,%g/%g,%g\n",
+                tick,
+                left,
+                right,
+                wanted.x,
+                wanted.y,
+                x ? x->x : -1,
+                x ? x->y : -1,
+                y ? y->x : -1,
+                y ? y->y : -1
+            );
+        }
+    }
+    stop(&e);
+    stop(&a);
+    return alike;
+}
+/* Same native result type, different output names and input types. The x
+ * output hides a field once; its next x is the ordinary float field. */
+static bool native_catalog_named_results(const script_catalog *base)
+{
+    static const script_catalog_parameter position = {
+        .name = "position",
+        .type = { .storage = PIN_STRUCT, .nominal = SPOT }
+    };
+    static const script_catalog_parameter collision = {
+        .name = "x",
+        .type = { .storage = PIN_STRUCT, .nominal = SPOT }
+    };
+    static const script_catalog_parameter generic_input = {
+        .name = "value",
+        .type = { .storage = PIN_FLOW,
+                  .parameter = 6103,
+                  .flags = SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_GENERIC }
+    };
+    static const script_catalog_parameter generic_output = {
+        .name = "amount",
+        .type = { .storage = PIN_FLOW,
+                  .parameter = 6103,
+                  .flags = SCRIPT_TYPE_UNTYPED | SCRIPT_TYPE_GENERIC }
+    };
+    static const script_catalog_parameter make_inputs[] = {
+        { .name = "x", .type = { .storage = PIN_F32 }, .member = 811 },
+        { .name = "y", .type = { .storage = PIN_F32 }, .member = 812 },
+        { .name = "w", .type = { .storage = PIN_F32 }, .member = 813 },
+    };
+    const script_catalog_capability added[] = {
+        { .id = CATALOG_SELECT_SPOT,
+          .name = "select_spot",
+          .qualified_name = "fixture.select_spot_struct",
+          .parameters = &catalog_spot_port,
+          .parameter_count = 1,
+          .results = &catalog_spot_port,
+          .result_count = 1 },
+        { .id = CATALOG_SELECT_ENTITY,
+          .name = "select_spot",
+          .qualified_name = "fixture.select_spot_entity",
+          .parameters = &catalog_entity_port,
+          .parameter_count = 1,
+          .results = &position,
+          .result_count = 1 },
+        { .id = CATALOG_COLLISION,
+          .name = "collision_spot",
+          .parameters = &catalog_spot_port,
+          .parameter_count = 1,
+          .results = &collision,
+          .result_count = 1 },
+        { .id = CATALOG_INFERRED,
+          .name = "inferred_number",
+          .parameters = &generic_input,
+          .parameter_count = 1,
+          .results = &generic_output,
+          .result_count = 1 },
+        { .id = CATALOG_MAKE,
+          .name = "make_spot",
+          .parameters = make_inputs,
+          .parameter_count = 3,
+          .results = &catalog_spot_port,
+          .result_count = 1,
+          .aggregate = SPOT,
+          .struct_access = SCRIPT_STRUCT_ACCESS_MAKE,
+          .pure = true },
+    };
+    script_catalog_capability *capabilities = NULL;
+    for (int i = 0; i < base->capability_count; i++) {
+        apush(capabilities, base->capabilities[i]);
+    }
+    for (int i = 0; i < (int)(sizeof added / sizeof *added); i++) {
+        script_catalog_capability native = added[i];
+        native.kind = SCRIPT_CAPABILITY_FUNCTION;
+        native.completion_outcome = -1;
+        native.effects = native.pure ? 0 : SCRIPT_EFFECT_HOST;
+        apush(capabilities, native);
+    }
+    script_catalog catalog = *base;
+    catalog.capabilities = capabilities;
+    catalog.capability_count = acount(capabilities);
+    static const char source
+        [] = "NativeNames :: behavior {\n"
+             "    on Tick :: () {\n"
+             "        direct := echo_spot(self.Spot).point.x\n"
+             "        local := echo_spot(self.Spot)\n"
+             "        renamed := local\n"
+             "        typed := alias_spot(self.Spot)\n"
+             "        typed_copy := typed\n"
+             "        from_record := select_spot(self.Spot)\n"
+             "        from_entity := select_spot(entity_seed())\n"
+             "        clash := collision_spot(self.Spot)\n"
+             "        small: int8 = 7\n"
+             "        inferred := inferred_number(small)\n"
+             "        inferred_copy := inferred\n"
+             "        p := select_spot(self.Spot)\n"
+             "        shadowed: float = 0\n"
+             "        if true {\n"
+             "            saved := p\n"
+             "            p := select_spot(entity_seed())\n"
+             "            shadowed = saved.point.x + p.position.x\n"
+             "        }\n"
+             "        self.Spot.x = direct + renamed.point.x + "
+             "from_record.point.x +\n"
+             "            from_entity.position.x + clash.x.x + make_spot(3, 4, "
+             "5).point.x +\n"
+             "            int(inferred_copy.amount) + shadowed\n"
+             "        self.Spot.y = renamed.point.y + typed_copy.point.y +\n"
+             "            from_entity.position.y + "
+             "collision_spot(self.Spot).x.y\n"
+             "    }\n}\n";
+    script_syntax *syntax = script_parse(source);
+    script_analysis *analysis = script_analyze(syntax, &catalog);
+    const script_lower_bindings bindings = { .global = game_global,
+                                             .host = catalog_named_host };
+    execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
+    char error[256] = { 0 };
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "native singleton oracle:%d:%d: %s\n",
+            analysis->diagnostics[i].range.line,
+            analysis->diagnostics[i].range.column,
+            analysis->diagnostics[i].message
+        );
+    }
+    for (int i = 0; i < plan->diagnostic_count; i++) {
+        fprintf(
+            stderr,
+            "native singleton oracle lowering:%d:%d: %s\n",
+            plan->diagnostics[i].range.line,
+            plan->diagnostics[i].range.column,
+            plan->diagnostics[i].message
+        );
+    }
+    execution_module *expected = analysis->diagnostic_count || plan->diagnostic_count
+                                   ? NULL
+                                   : execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    execution_module_plan_free(plan);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    REQUIRE(expected);
+    for (int b = 0; b < 2; b++) {
+        pin_value out;
+        REQUIRE(
+            catalog_compile(b, &catalog, "NativeNames", source, "CompileBehaviorsWithCatalog", &out)
+        );
+        REQUIRE(out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY);
+        const pin_array *array = out.ptr;
+        bool compiled = array && array->count;
+        if (!compiled) {
+            arena_free(&detached);
+            REQUIRE(
+                catalog_compile(b, &catalog, "NativeNames", source, "BehaviorRejectionWithCatalog", &out)
+            );
+            fprintf(
+                stderr,
+                "native singleton compiler rejected: %s\n",
+                pin_text(out).bytes
+            );
+            arena_free(&detached);
+            REQUIRE(compiled);
+        }
+        size_t length = (size_t)array->count;
+        unsigned char *bytes = xmalloc(length);
+        for (size_t i = 0; i < length; i++) {
+            bytes[i] = array->items[i].u8;
+        }
+        arena_free(&detached);
+        int count;
+        uint64_t root;
+        package_module *modules = compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error);
+        REQUIRE(modules && count == 1 && root == expected->plan.id);
+        execution_prepared_linker linker = { .user = &catalog,
+                                             .host = catalog_named_prepared_host,
+                                             .type = catalog_prepared_type,
+                                             .event = link_game_event };
+        execution_module *actual = execution_prepared_read(
+            modules[0].data,
+            modules[0].length,
+            &linker,
+            b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+            error,
+            sizeof error
+        );
+        compiler_artifact_rows_free(modules, count);
+        free(bytes);
+        if (!actual) {
+            fprintf(stderr, "native singleton prepared module: %s\n", error);
+        }
+        REQUIRE(
+            actual && same_declarations(expected, actual) &&
+            same_points(expected, actual) && same_watches(expected, actual)
+        );
+        int native_roots = 0;
+        for (int f = 0; f < actual->plan.function_count; f++) {
+            const behavior_function *body = actual->plan.functions[f].body;
+            for (int r = 0; r < acount(body->value_roots); r++) {
+                const pin_value *shape = &body->value_roots[r].shape;
+                if (shape->type == PIN_STRUCT && !shape->record) {
+                    REQUIRE(
+                        shape->type_name && !shape->ptr &&
+                        (!strcmp(shape->type_name, "Spot") ||
+                         !strcmp(shape->type_name, "SpotAlias"))
+                    );
+                    native_roots++;
+                }
+            }
+        }
+        REQUIRE(native_roots);
+        memset(catalog_calls, 0, sizeof catalog_calls);
+        memset(catalog_named_calls, 0, sizeof catalog_named_calls);
+        REQUIRE(catalog_named_plays(expected, actual));
+        static const int base_calls[] = { 2, 0, 0, 1, 2, 0 };
+        static const int named_calls[] = { 2, 2, 2, 1 };
+        for (int i = 0; i < 6; i++) {
+            REQUIRE(catalog_calls[i] == 2 * TICKS * base_calls[i]);
+        }
+        for (int i = 0; i < 4; i++) {
+            REQUIRE(catalog_named_calls[i] == 2 * TICKS * named_calls[i]);
+        }
+        execution_module_free(actual);
+    }
+    execution_module_free(expected);
+    static const char wrong_output[] = "NativeWrong :: behavior {\n"
+                                       "    on Tick :: () { self.Spot.x = "
+                                       "select_spot(entity_seed()).point.x; }\n"
+                                       "}\n";
+    syntax = script_parse(wrong_output);
+    analysis = script_analyze(syntax, &catalog);
+    REQUIRE(analysis->diagnostic_count && strstr(analysis->diagnostics[0].message, "point"));
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    pin_value rejected;
+    REQUIRE(
+        catalog_compile(1, &catalog, "NativeWrong", wrong_output, "CompileBehaviorsWithCatalog", &rejected)
+    );
+    REQUIRE(
+        rejected.type == PIN_U8 && rejected.container == PIN_CONTAINER_ARRAY &&
+        (!rejected.ptr || !((const pin_array *)rejected.ptr)->count)
+    );
+    arena_free(&detached);
+    REQUIRE(
+        catalog_compile(1, &catalog, "NativeWrong", wrong_output, "BehaviorRejectionWithCatalog", &rejected)
+    );
+    REQUIRE(
+        rejected.type == PIN_STR && strstr(pin_text(rejected).bytes, "NativeWrong:") &&
+        strstr(pin_text(rejected).bytes, "Unknown field 'point'")
+    );
+    arena_free(&detached);
+    afree(capabilities);
+    return true;
+}
+static bool native_catalog_alike()
+{
+    const type_desc *const reflected[] = { &spot_type,
+                                           &catalog_alias_type,
+                                           &catalog_other_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 3 };
+    type_catalog_set_project(&pack);
+    script_catalog catalog = native_game_catalog();
+    REQUIRE(catalog_export_contract(&catalog));
+    static const char
+        source[] = "NativeProbe :: behavior {\n"
+                   "    on Tick :: () {\n"
+                   "        first := echo_spot(self.Spot)\n"
+                   "        owner := entity_seed()\n"
+                   "        paired := pair_spot(first, owner)\n"
+                   "        alias := alias_spot(paired.point)\n"
+                   "        target := echo_entity(paired.owner)\n"
+                   "        if entity_ok(target) { self.Spot = alias; }\n"
+                   "    }\n}\n";
+    script_syntax *syntax = script_parse(source);
+    script_analysis *analysis = script_analyze(syntax, &catalog);
+    const script_lower_bindings bindings = { .global = game_global,
+                                             .host = catalog_host };
+    execution_module_plan *plan = script_lower(analysis, &catalog, &bindings);
+    char error[256] = { 0 };
+    for (int i = 0; i < analysis->diagnostic_count; i++) {
+        fprintf(stderr, "native catalog oracle: %s\n", analysis->diagnostics[i].message);
+    }
+    execution_module *expected = analysis->diagnostic_count || plan->diagnostic_count
+                                   ? NULL
+                                   : execution_module_finish(&plan, BEHAVIOR_BYTECODE, error, sizeof error);
+    execution_module_plan_free(plan);
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    REQUIRE(expected);
+    for (int b = 0; b < 2; b++) {
+        pin_value out;
+        REQUIRE(
+            catalog_compile(b, &catalog, "NativeProbe", source, "CompileBehaviorsWithCatalog", &out)
+        );
+        REQUIRE(out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY);
+        const pin_array *array = out.ptr;
+        REQUIRE(array && array->count);
+        size_t length = (size_t)array->count;
+        unsigned char *bytes = xmalloc(length);
+        for (size_t i = 0; i < length; i++) {
+            bytes[i] = array->items[i].u8;
+        }
+        arena_free(&detached);
+        int count;
+        uint64_t root;
+        package_module *modules = compiler_artifact_rows(bytes, length, &count, &root, error, sizeof error);
+        REQUIRE(modules && count == 1 && root == expected->plan.id);
+        execution_prepared_linker linker = { .user = &catalog,
+                                             .host = catalog_prepared_host,
+                                             .type = catalog_prepared_type,
+                                             .event = link_game_event };
+        execution_module *actual = execution_prepared_read(
+            modules[0].data,
+            modules[0].length,
+            &linker,
+            b ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+            error,
+            sizeof error
+        );
+        compiler_artifact_rows_free(modules, count);
+        free(bytes);
+        if (!actual) {
+            fprintf(stderr, "native catalog prepared module: %s\n", error);
+        }
+        REQUIRE(
+            actual && same_declarations(expected, actual) &&
+            same_points(expected, actual) && same_watches(expected, actual)
+        );
+        int native_roots = 0;
+        for (int f = 0; f < actual->plan.function_count; f++) {
+            const behavior_function *body = actual->plan.functions[f].body;
+            for (int r = 0; r < acount(body->value_roots); r++) {
+                const pin_value *shape = &body->value_roots[r].shape;
+                if (shape->type != PIN_STRUCT || shape->record) {
+                    continue;
+                }
+                REQUIRE(
+                    shape->container == PIN_CONTAINER_SINGLE &&
+                    shape->type_name && !shape->ptr
+                );
+                REQUIRE(
+                    !strcmp(shape->type_name, "Spot") ||
+                    !strcmp(shape->type_name, "SpotAlias")
+                );
+                native_roots++;
+            }
+        }
+        REQUIRE(native_roots);
+        memset(catalog_calls, 0, sizeof catalog_calls);
+        REQUIRE(plays_alike(expected, actual));
+        for (int i = 0; i < 6; i++) {
+            REQUIRE(catalog_calls[i] == 2 * TICKS);
+        }
+        execution_module_free(actual);
+    }
+    execution_module_free(expected);
+    static const char wrong[] = "Wrong :: behavior { on Tick :: () { value := "
+                                "echo_spot(other_spot()); } }";
+    syntax = script_parse(wrong);
+    analysis = script_analyze(syntax, &catalog);
+    REQUIRE(analysis->diagnostic_count);
+    script_diagnostic diagnostic = analysis->diagnostics[0];
+    script_analysis_free(analysis);
+    script_syntax_free(syntax);
+    const char *const rejected[] = {
+        wrong,
+        "Unsupported :: behavior { on Tick :: () { values := unsupported(); } }"
+    };
+    for (int i = 0; i < 2; i++) {
+        pin_value out;
+        REQUIRE(
+            catalog_compile(1, &catalog, i ? "Unsupported" : "Wrong", rejected[i], "CompileBehaviorsWithCatalog", &out)
+        );
+        REQUIRE(
+            out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY &&
+            (!out.ptr || !((const pin_array *)out.ptr)->count)
+        );
+        arena_free(&detached);
+        REQUIRE(
+            catalog_compile(1, &catalog, i ? "Unsupported" : "Wrong", rejected[i], "BehaviorRejectionWithCatalog", &out)
+        );
+        REQUIRE(out.type == PIN_STR);
+        const char *message = pin_text(out).bytes;
+        if (!i) {
+            REQUIRE(strstr(diagnostic.message, "Incompatible types:"));
+            REQUIRE(
+                diagnostic.range.line == 1 &&
+                diagnostic.range.column == (int)(strstr(wrong, "other_spot") - wrong) + 1
+            );
+            char expected_message[256];
+            snprintf(
+                expected_message,
+                sizeof expected_message,
+                "Wrong:1:%d: argument differs from its parameter type",
+                (int)(strstr(wrong, "echo_spot") - wrong) + 1
+            );
+            if (strcmp(message, expected_message)) {
+                fprintf(stderr, "native catalog rejection: wanted '%s', got '%s'\n", expected_message, message);
+            }
+            REQUIRE(!strcmp(message, expected_message));
+        } else {
+            REQUIRE(strstr(message, "native 'unsupported' is not supported yet"));
+        }
+        arena_free(&detached);
+    }
+    REQUIRE(native_catalog_named_results(&catalog));
+    type_catalog_set_project(NULL);
+    return true;
+}
+/* Production definition conversion keeps canonical and source names distinct. */
+static const native_capability_definition LIBRARY_ALIAS_DEFINITIONS[] = {
+    { .canonical_name = "Alias.Native",
+      .source_name = "leaf_alias",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = INTEGER_INPUT,
+      .input_count = 1,
+      .outputs = CSTRING_OUTPUT,
+      .output_count = 1,
+      .completion_output = -1,
+      .pure = true },
+    { .canonical_name = "Alias.Source",
+      .source_name = "Alias.Native_",
+      .kind = SCRIPT_CAPABILITY_FUNCTION,
+      .inputs = INTEGER_INPUT,
+      .input_count = 1,
+      .outputs = CSTRING_OUTPUT,
+      .output_count = 1,
+      .completion_output = -1,
+      .pure = true },
+};
+static bool library_host(void *user, uint64_t id, script_lower_host *out)
+{
+    if (game_host(user, id, out)) {
+        return true;
+    }
+    for (int i = 0; i < NATIVE_COUNT(LIBRARY_ALIAS_DEFINITIONS); i++) {
+        if (id == native_capability_definition_id(&LIBRARY_ALIAS_DEFINITIONS[i])) {
+            *out = (script_lower_host){ .call = &INTEGER_CALL,
+                                        .access = &CSTRING_ACCESS };
+            return true;
+        }
+    }
+    return false;
+}
+static bool link_library_host(void *user, uint64_t id, execution_prepared_host *out)
+{
+    const script_catalog *catalog = user;
+    script_lower_host linked;
+    const script_catalog_capability *capability = script_catalog_capability_by_id(catalog, id);
+    if (!capability || !library_host(user, id, &linked)) {
+        return false;
+    }
+    *out = (execution_prepared_host){
+        .call = linked.call,
+        .access = linked.access,
+        .abi = script_catalog_capability_abi(catalog, capability)
+    };
+    return true;
+}
+static bool library_plays(execution_module *expected, execution_module *actual, bool compiled)
+{
+    player e = { 0 }, a = { 0 };
+    REQUIRE(play(expected, &e) && play(actual, &a));
+    const uint64_t label = script_catalog_id("symbol", "behaviors/Caller.chibi:1:label");
+    pin_value delta = { .type = PIN_F32, .f = 1.0f / 60.0f };
+    for (int tick = 1; tick <= TICKS; tick++) {
+        REQUIRE(execution_instance_dispatch(e.instance, TICK, &delta, 1, 0, 0, 10000) == FLOW_OK);
+        behavior_run_scope runs = { 0 };
+        behavior_run_scope_begin(&runs);
+        int status = execution_instance_dispatch(a.instance, TICK, &delta, 1, 0, 0, 10000);
+        behavior_run_scope_end(&runs);
+        REQUIRE(status == FLOW_OK && !runs.counts.overflow);
+        if (compiled) {
+            REQUIRE(
+                TEST_COMPILED_BACKEND == BEHAVIOR_WASM ? runs.counts.wasm_entries > 0
+                                                       : runs.counts.sljit_entries > 0
+            );
+            REQUIRE(!runs.counts.bytecode_entries);
+        }
+        const spot *left = ecs_component_data_const(e.world, e.owner, SPOT_COMPONENT);
+        const spot *right = ecs_component_data_const(a.world, a.owner, SPOT_COMPONENT);
+        REQUIRE(left && right && left->x == 8 * tick && right->x == left->x);
+        REQUIRE(left->y == 3.5f * tick && right->y == left->y);
+        const pin_value *x = execution_instance_state(e.instance, label);
+        const pin_value *y = execution_instance_state(a.instance, label);
+        REQUIRE(x && y && pin_text_equal(pin_text(*x), (pin_string){ "a\0b", 3 }));
+        REQUIRE(pin_text_equal(pin_text(*x), pin_text(*y)));
+    }
+    stop(&e);
+    stop(&a);
+    return true;
+}
+/* A caller retains exactly the imported generation. Replacing a called
+ * library rejects; replacing an unused library remains valid. */
+static bool library_generations(
+    const script_catalog *catalog,
+    const char *const *identities,
+    const char *const *sources,
+    const unsigned char *bytes,
+    size_t length
+)
+{
+    const char *amount = strstr(sources[2], "return n;");
+    REQUIRE(amount);
+    char *leaf = xmalloc(strlen(sources[2]) + 16);
+    snprintf(
+        leaf,
+        strlen(sources[2]) + 16,
+        "%.*sreturn n + 1.0;%s",
+        (int)(amount - sources[2]),
+        sources[2],
+        amount + strlen("return n;")
+    );
+    const char *changed[] = { sources[0], sources[1], leaf, "Unused :: library { Answer :: () -> int { return 20; } }" };
+    pin_value out;
+    REQUIRE(
+        catalog_compile_sources(1, catalog, identities, changed, 4, "CompileBehaviorsWithCatalog", &out)
+    );
+    free(leaf);
+    const pin_array *array = out.ptr;
+    REQUIRE(array && array->count);
+    size_t next_length = (size_t)array->count;
+    unsigned char *next = xmalloc(next_length);
+    for (size_t i = 0; i < next_length; i++) {
+        next[i] = array->items[i].u8;
+    }
+    arena_free(&detached);
+    char error[256];
+    int before_count, after_count;
+    uint64_t before_root, after_root;
+    package_module *before = compiler_artifact_rows(bytes, length, &before_count, &before_root, error, sizeof error);
+    package_module *after = compiler_artifact_rows(next, next_length, &after_count, &after_root, error, sizeof error);
+    REQUIRE(before && after && before_count == 4 && after_count == 4 && before_root == after_root);
+    execution_prepared_linker linker = { .user = (void *)catalog,
+                                         .type = link_game_type,
+                                         .host = link_library_host,
+                                         .event = link_game_event };
+    for (int replaced = 2; replaced <= 3; replaced++) {
+        package_module mixed[4];
+        memcpy(mixed, before, sizeof mixed);
+        bool swapped = false;
+        for (int i = 0; i < 4; i++) {
+            for (int j = 0; j < 4; j++) {
+                if (!strcmp(mixed[i].name, identities[replaced]) &&
+                    mixed[i].id == after[j].id) {
+                    mixed[i].data = after[j].data;
+                    mixed[i].length = after[j].length;
+                    swapped = true;
+                }
+            }
+        }
+        REQUIRE(swapped);
+        size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+        package_collection *loaded = package_read_budget(
+            mixed,
+            4,
+            &linker,
+            NULL,
+            BEHAVIOR_BYTECODE,
+            &remaining,
+            error,
+            sizeof error
+        );
+        REQUIRE((loaded != NULL) == (replaced == 3));
+        if (loaded) {
+            package_collection_free(loaded);
+        }
+    }
+    package_module missing[3];
+    int kept = 0;
+    for (int i = 0; i < 4; i++) {
+        if (strcmp(before[i].name, identities[2])) {
+            missing[kept++] = before[i];
+        }
+    }
+    REQUIRE(kept == 3);
+    size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+    package_collection *loaded = package_read_budget(
+        missing,
+        3,
+        &linker,
+        NULL,
+        BEHAVIOR_BYTECODE,
+        &remaining,
+        error,
+        sizeof error
+    );
+    REQUIRE(!loaded);
+    compiler_artifact_rows_free(before, before_count);
+    compiler_artifact_rows_free(after, after_count);
+    free(next);
+    return true;
+}
+static bool libraries_alike(
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    bool playing,
+    bool namespace_native
+)
+{
+    char root[] = "/tmp/chibi-compiler-libraries-XXXXXX";
+    REQUIRE(mkdtemp(root));
+    source_catalog_edit *edits = NULL;
+    char (*paths)[256] = xmalloc((size_t)count * sizeof *paths);
+    for (int i = 0; i < count; i++) {
+        snprintf(paths[i], sizeof paths[i], "%s/%s", root, identities[i]);
+        apush(edits, ((source_catalog_edit){ .path = paths[i], .text = sources[i] }));
+    }
+    script_catalog native = game_catalog();
+    script_catalog_capability
+        capabilities[sizeof game_capabilities / sizeof *game_capabilities + NATIVE_COUNT(LIBRARY_ALIAS_DEFINITIONS)];
+    char definition_error[256];
+    const script_catalog definition_base = { 0 };
+    native_definition_catalog *definitions = native_definition_catalog_new(
+        &definition_base,
+        LIBRARY_ALIAS_DEFINITIONS,
+        NATIVE_COUNT(LIBRARY_ALIAS_DEFINITIONS),
+        NULL,
+        0,
+        definition_error,
+        sizeof definition_error
+    );
+    REQUIRE(definitions);
+    const script_catalog *aliases = native_definition_catalog_view(definitions);
+    if (namespace_native) {
+        memcpy(capabilities, game_capabilities, sizeof game_capabilities);
+        for (int i = 0; i < native.capability_count; i++) {
+            if (capabilities[i].id == GET_TERRAIN) {
+                capabilities[i].name = "Leaf.Native";
+                capabilities[i].qualified_name = "Leaf.Native";
+            }
+        }
+        for (int i = 0; i < aliases->capability_count; i++) {
+            capabilities[native.capability_count++] = aliases->capabilities[i];
+        }
+        native.capabilities = capabilities;
+    }
+    source_catalog *snapshot = source_catalog_replaced(root, &native, edits, count);
+    afree(edits);
+    free(paths);
+    for (int i = 0; i < source_catalog_diagnostic_count(snapshot); i++) {
+        fprintf(
+            stderr,
+            "library catalog: %s\n",
+            source_catalog_diagnostic_at(snapshot, i)->message
+        );
+    }
+    REQUIRE(!source_catalog_diagnostic_count(snapshot));
+    script_lower_bindings bindings = { .host = library_host, .global = game_global };
+    authoring_sources *oracle = authoring_sources_prepare_catalog(snapshot, &bindings, BEHAVIOR_BYTECODE);
+    for (int i = 0; i < authoring_sources_count(oracle); i++) {
+        const authoring_source *source = authoring_sources_at(oracle, i);
+        for (int j = 0; j < source->diagnostic_count; j++) {
+            fprintf(
+                stderr,
+                "library oracle %s: %s\n",
+                source->path,
+                source->diagnostics[j].message
+            );
+        }
+    }
+    REQUIRE(authoring_sources_valid(oracle));
+    const script_catalog *catalog = authoring_sources_catalog(oracle);
+    for (int b = 0; b < 2; b++) {
+        pin_value out;
+        REQUIRE(
+            catalog_compile_sources(b, catalog, identities, sources, count, "CompileBehaviorsWithCatalog", &out)
+        );
+        const pin_array *bytes = out.ptr;
+        if (!bytes || !bytes->count) {
+            arena_free(&detached);
+            REQUIRE(
+                catalog_compile_sources(b, catalog, identities, sources, count, "BehaviorRejectionWithCatalog", &out)
+            );
+            fprintf(
+                stderr,
+                "executable library rejected: %.*s\n",
+                (int)pin_text(out).length,
+                pin_text(out).bytes
+            );
+            REQUIRE(false);
+        }
+        size_t length = (size_t)bytes->count;
+        unsigned char *copied = xmalloc(length);
+        for (size_t i = 0; i < length; i++) {
+            copied[i] = bytes->items[i].u8;
+        }
+        arena_free(&detached);
+        for (int backend = 0; backend < 2; backend++) {
+            execution_prepared_linker linker = { .user = (void *)catalog,
+                                                 .type = link_game_type,
+                                                 .host = link_library_host,
+                                                 .event = link_game_event };
+            size_t remaining = COMPILER_HOST_MAX_CLOSURE_BYTES;
+            uint64_t root_id = 0;
+            char error[256];
+            package_collection *actual = compiler_artifact_read(
+                copied,
+                length,
+                &linker,
+                backend ? TEST_COMPILED_BACKEND : BEHAVIOR_BYTECODE,
+                &remaining,
+                &root_id,
+                error,
+                sizeof error
+            );
+            if (!actual) {
+                fprintf(stderr, "executable library load: %s\n", error);
+            }
+            REQUIRE(actual && package_collection_count(actual) == count);
+            for (int i = 0; i < count; i++) {
+                execution_module *got = package_collection_module(actual, i);
+                const execution_module *expected = NULL;
+                for (int j = 0; j < count; j++) {
+                    const execution_module *candidate = authoring_sources_at(oracle, j)
+                                                            ->module;
+                    if (execution_module_id(candidate) == execution_module_id(got)) {
+                        REQUIRE(!expected);
+                        expected = candidate;
+                    }
+                }
+                REQUIRE(expected);
+                REQUIRE(same_declarations(expected, got));
+                REQUIRE(same_points(expected, got));
+                REQUIRE(same_watches(expected, got));
+                if (playing && execution_module_id(got) == root_id) {
+                    int calls = 0;
+                    for (int j = 0; j < got->plan.function_count; j++) {
+                        calls += acount(got->plan.functions[j].body->calls);
+                    }
+                    REQUIRE(calls > 0);
+                }
+                for (int j = 0; j < execution_module_function_count(got); j++) {
+                    execution_module_function_info x = execution_module_function_at(expected, j);
+                    execution_module_function_info y = execution_module_function_at(got, j);
+                    REQUIRE(x.continuation_wait == y.continuation_wait);
+                }
+                if (playing && execution_module_id(got) == root_id) {
+                    REQUIRE(library_plays((execution_module *)expected, got, backend));
+                }
+            }
+            package_collection_free(actual);
+        }
+        if (playing && b == 1) {
+            REQUIRE(library_generations(catalog, identities, sources, copied, length));
+        }
+        free(copied);
+    }
+    authoring_sources_free(oracle);
+    native_definition_catalog_free(definitions);
+    REQUIRE(!rmdir(root));
+    return true;
+}
+TEST_CASE(package_compiler_compiles_executable_libraries)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "libraries/Leaf.chibi" };
+    const char *sources[] = { "Leaf :: library { Answer :: (value: int = 7) -> "
+                              "(result: int) { return value; } }" };
+    REQUIRE(libraries_alike(identities, sources, 1, false, false));
+    return true;
+}
+TEST_CASE(package_compiler_links_executable_libraries)
+{
+    REQUIRE(prepare());
+    const type_desc *reflected[] = { &spot_type };
+    const type_catalog_pack pack = { .types = reflected, .type_count = 1 };
+    type_catalog_set_project(&pack);
+    const char *identities[] = { "behaviors/Caller.chibi",
+                                 "libraries/Middle.chibi",
+                                 "libraries/Leaf.chibi",
+                                 "libraries/Unused.chibi" };
+    const char *sources[] = {
+        "Caller :: behavior { label: string = \"seed\"; on Tick :: () { "
+        "p := Middle.Make().point; q := p; q.count += 5; later := "
+        "Leaf.Make(19).value; label = p.text; "
+        "if p.count == 7 && q.count == 12 && later.count == 19 { self.Spot.x "
+        "+= 7; } "
+        "self.Spot.y += Middle.Amount(); "
+        "if Middle.OwnerMatches() { self.Spot.x += 1; } "
+        "if Middle.CheckText(label) { self.Spot.y += 1; } } }",
+        "Middle :: library { Make :: () -> (point: Leaf.Row) { return "
+        "Leaf.Make(); } "
+        "Amount :: () -> float { return Leaf.Amount(); } "
+        "OwnerMatches :: () -> bool { return Leaf.OwnerMatches(); } "
+        "CheckText :: (value: string) -> bool { return value == \"a\\u0000b\"; "
+        "} }",
+        "Leaf :: library { Row :: struct { text: string; count: int; } "
+        "Make :: (n: int = 7) -> (value: Row) { return {text: \"a\\u0000b\", "
+        "count: n}; } "
+        "Amount :: (n: float = 2.5) -> float { return n; } "
+        "OwnerMatches :: () -> bool { return self == globals.Terrain; } }",
+        "Unused :: library { Answer :: () -> int { return 19; } }"
+    };
+    REQUIRE(libraries_alike(identities, sources, 4, true, false));
+    type_catalog_set_project(NULL);
+    return true;
+}
+TEST_CASE(package_compiler_resolves_unqualified_libraries)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "behaviors/Probe.chibi", "libraries/Leaf.chibi" };
+    const char *sources[] = {
+        "Probe :: behavior { Read :: () -> int { return Answer().value; } }",
+        "Leaf :: library { Answer :: () -> (value: int) { return 7; } }"
+    };
+    REQUIRE(libraries_alike(identities, sources, 2, false, false));
+    return true;
+}
+TEST_CASE(package_compiler_resolves_native_canonical_names)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "behaviors/Probe.chibi", "libraries/Alias.chibi" };
+    const char *sources[] = {
+        "Probe :: behavior { Read :: () -> int { return "
+        "Alias.Native(7).length; } "
+        "ReadAlias :: () -> int { return leaf_alias(8).length; } "
+        "ReadSource :: () -> bool { return Alias.Native_(9).length; } }",
+        "Alias :: library { Native_ :: (value: int) -> (length: bool) { return "
+        "false; } }"
+    };
+    REQUIRE(libraries_alike(identities, sources, 2, false, true));
+    return true;
+}
+TEST_CASE(package_compiler_resolves_library_names)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "behaviors/Probe.chibi", "libraries/Leaf.chibi" };
+    const char *sources[] = {
+        "Probe :: behavior { Read :: () -> int { return leaf.value(); } "
+        "Owned :: () -> bool { return Leaf.Native(\"Terrain\").Value == self; "
+        "} }",
+        "Leaf :: library { Value :: () -> int { return Twice(2); } "
+        "Native_ :: (key: string) -> (Value: int) { return 0; } "
+        "Twice :: (n: int) -> int { if n == 0 { return 0; } return Twice(n - "
+        "1) + 1; } }"
+    };
+    REQUIRE(libraries_alike(identities, sources, 2, false, true));
+    return true;
+}
+static bool library_rejects(
+    const char *const *identities,
+    const char *const *sources,
+    int count,
+    const char *message,
+    bool native_invalid
+)
+{
+    char root[] = "/tmp/chibi-compiler-libraries-XXXXXX";
+    REQUIRE(mkdtemp(root));
+    source_catalog_edit *edits = NULL;
+    char (*paths)[256] = xmalloc((size_t)count * sizeof *paths);
+    for (int i = 0; i < count; i++) {
+        snprintf(paths[i], sizeof paths[i], "%s/%s", root, identities[i]);
+        apush(edits, ((source_catalog_edit){ .path = paths[i], .text = sources[i] }));
+    }
+    script_catalog native = game_catalog();
+    source_catalog *snapshot = source_catalog_replaced(root, &native, edits, count);
+    afree(edits);
+    free(paths);
+    const script_catalog *catalog = source_catalog_view(snapshot);
+    for (int b = 0; b < 2; b++) {
+        pin_value out;
+        REQUIRE(
+            catalog_compile_sources(b, catalog, identities, sources, count, "CompileBehaviorsWithCatalog", &out)
+        );
+        const pin_array *bytes = out.ptr;
+        REQUIRE(!bytes || !bytes->count);
+        arena_free(&detached);
+        REQUIRE(
+            catalog_compile_sources(b, catalog, identities, sources, count, "BehaviorRejectionWithCatalog", &out)
+        );
+        if (!strstr(pin_text(out).bytes, message)) {
+            fprintf(
+                stderr,
+                "library rejection wanted '%s', got '%s'\n",
+                message,
+                pin_text(out).bytes
+            );
+        }
+        REQUIRE(strstr(pin_text(out).bytes, message));
+        arena_free(&detached);
+    }
+    if (native_invalid) {
+        script_lower_bindings bindings = { .host = library_host, .global = game_global };
+        authoring_sources *oracle = authoring_sources_prepare_catalog(snapshot, &bindings, BEHAVIOR_BYTECODE);
+        REQUIRE(!authoring_sources_valid(oracle));
+        authoring_sources_free(oracle);
+    } else {
+        source_catalog_free(snapshot);
+    }
+    REQUIRE(!rmdir(root));
+    return true;
+}
+TEST_CASE(package_compiler_rejects_invalid_library_closures)
+{
+    REQUIRE(prepare());
+    const char *identities[] = { "libraries/A.chibi",
+                                 "libraries/B.chibi",
+                                 "behaviors/Use.chibi" };
+    const char *ambiguous[] = {
+        "A :: library { Value :: () -> int { return 1; } }",
+        "B :: library { Value :: () -> int { return 2; } }",
+        "Use :: behavior { Read :: () -> int { return Value(); } }"
+    };
+    REQUIRE(library_rejects(identities, ambiguous, 3, "Ambiguous function", true));
+    const char *cycle[] = {
+        "A :: library { Value :: () -> int { return B.Value(); } }",
+        "B :: library { Value :: () -> int { return A.Value(); } }"
+    };
+    REQUIRE(library_rejects(identities, cycle, 2, "cross-library import cycle", true));
+    const char *duplicates[] = { "libraries/A.chibi", "libraries/A.chibi" };
+    REQUIRE(
+        library_rejects(duplicates, ambiguous, 2, "duplicate executable source identity", false)
+    );
+    const char *roots[] = {
+        "A :: library { Value :: () -> int { return 1; } }",
+        "A :: library { Value :: () -> int { return 2; } }"
+    };
+    REQUIRE(library_rejects(identities, roots, 2, "duplicate library declaration", true));
+    const char *system[] = {
+        "A :: library { Value :: () -> int { return 1; } }",
+        "Batch :: system() {}"
+    };
+    REQUIRE(library_rejects(identities, system, 2, "one behavior or library declaration", false));
+    return true;
+}
 /* Stage zero's build of stage one passes arguments without copying them to
  * every function but those that run once per compile. One that pushes onto an
  * array argument, or stores a uint64 into a field of a local record, copies
@@ -4912,6 +6261,14 @@ TEST_CASE(package_compiler_shares_its_arguments)
                                  "CompileWithEffects",
                                  "CompileClosureWithEffects",
                                  "CompileBehavior",
+                                 "CompileBehaviorResolved",
+                                 "CompileSources",
+                                 "PromoteRecords",
+                                 "DeclareSource",
+                                 "CompileBehaviorsResolved",
+                                 "BehaviorRejectionResolved",
+                                 "CompileBehaviorsWithCatalog",
+                                 "BehaviorRejectionWithCatalog",
                                  "CompileBehaviors",
                                  "BehaviorRejection",
                                  "Declare",
@@ -4991,7 +6348,10 @@ TEST_CASE(package_compiler_compiles_the_other_behaviors)
         for (int b = 0; b < 2; b++) {
             pin_value out;
             REQUIRE(compile_behavior(b, "Rejected", invalid_entity_defaults[i], &out));
-            REQUIRE(((pin_union *)out.ptr)->tag == tag(b, "Rejected"));
+            REQUIRE(
+                out.type == PIN_U8 && out.container == PIN_CONTAINER_ARRAY &&
+                (!out.ptr || !((const pin_array *)out.ptr)->count)
+            );
             arena_free(&detached);
         }
     }
@@ -5014,6 +6374,7 @@ TEST_CASE(package_compiler_compiles_the_other_behaviors)
         }
     }
     passed = passed && takes_project_identities(1);
+    passed = passed && native_catalog_alike();
     type_catalog_set_project(NULL);
     REQUIRE(passed);
     return true;
@@ -5151,5 +6512,17 @@ void test_language_package_compiler_chibi_debug_free()
 {
     pu_setup(NULL, cleanup);
     RUN_TEST_CASE(package_compiler_omits_debug_info);
+    pu_clear_setup();
+}
+
+void test_language_package_compiler_chibi_libraries()
+{
+    pu_setup(NULL, cleanup);
+    RUN_TEST_CASE(package_compiler_compiles_executable_libraries);
+    RUN_TEST_CASE(package_compiler_links_executable_libraries);
+    RUN_TEST_CASE(package_compiler_resolves_unqualified_libraries);
+    RUN_TEST_CASE(package_compiler_resolves_native_canonical_names);
+    RUN_TEST_CASE(package_compiler_resolves_library_names);
+    RUN_TEST_CASE(package_compiler_rejects_invalid_library_closures);
     pu_clear_setup();
 }

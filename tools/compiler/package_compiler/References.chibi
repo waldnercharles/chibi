@@ -42,7 +42,10 @@ CalledFunction :: (forest: snapshot.SnapshotNode[], text: string, callables: Cal
     if (home < 0 || !Is(forest, callee, "identifier")) {
         return -1;
     }
-    return FindCallable(callables, home, Text(forest, text, callee));
+    if (qualifier < 0) {
+        return SourceCallable(callables, aliases, home, Text(forest, text, callee));
+    }
+    return QualifiedCallable(callables, aliases, home, Text(forest, text, callee));
 }
 // The name a ref argument reaches through its fields, or "" for a value no
 // reference can reach.
@@ -327,7 +330,7 @@ ReferenceArgumentStep :: (forest: snapshot.SnapshotNode[], text: string, documen
     if (Is(forest, root, "identifier")) {
         found = Lookup(names, Text(forest, text, root));
     }
-    if (found < 0 || !names[found].writable || names[found].place == AliasPlace) {
+    if (found < 0 || !names[found].writable || Alias(names[found].place)) {
         return Fail(forest, item.node, document, "Reference argument requires a writable value");
     }
     binding := names[found];

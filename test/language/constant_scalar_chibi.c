@@ -53,10 +53,12 @@ typedef struct
 #define F32(N) { .type = PIN_F32, .f = (N) }
 #define F64(N) { .type = PIN_F64, .d = (N) }
 #define BOOL(N) { .type = PIN_BOOL, .b = (N) }
-#define TEXT(N)                                                                      \
-    { .type = PIN_STR,                                                               \
-      .text = (N) ? &(const pin_string){ .bytes = (N),                               \
-                                         .length = (N) ? (uint32_t)strlen((N)) : 0 } \
+#define TEXT(N)                                                                \
+    { .type = PIN_STR,                                                         \
+      .text = (N) ? &(                                                         \
+                        const pin_string                                       \
+                    ){ .bytes = (N),                                           \
+                       .length = (N) ? (uint32_t)strlen((N) ? (N) : "") : 0 }  \
                   : NULL }
 #define NAME(N) { .type = PIN_NAME, .str = (N) }
 static const scalar_case cases[] = {

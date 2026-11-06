@@ -334,6 +334,15 @@ int main(int argc, char **argv)
         }
     }
     assert(argc >= 3);
+    if (!strcmp(argv[1], "policy-ps")) {
+        assert(argc == 4);
+        marker(argv[2], "started");
+        pause_seconds(strtod(argv[3], NULL));
+        char *const inspect[] = { "ps", "-A", "-o", "pid=,ppid=", NULL };
+        execvp(inspect[0], inspect);
+        perror("ps");
+        return 127;
+    }
     if (!strcmp(argv[1], "build-blocked-signals")) {
         sigset_t blocked;
         sigemptyset(&blocked);

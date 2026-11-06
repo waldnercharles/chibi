@@ -11,9 +11,15 @@ on:
       - 'cmake/**'
       - 'third_party/**'
       - 'content/**'
+      - 'packages/core/**'
       - 'tools/**'
       - 'CMakeLists.txt'
       - 'Makefile'
+      - 'COPYING'
+      - 'COPYING.LESSER'
+      - 'COPYING.EXAMPLES'
+      - 'LICENSE.md'
+      - 'docs/distribution-licensing.md'
       - '.github/workflows/publish.yml'
 
 permissions:
@@ -68,6 +74,9 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
               print(f'complete={str(complete).lower()}', file=output)
           PY
+      - name: Validate SDK release pins
+        if: steps.release.outputs.complete != 'true'
+        run: sh tools/check_publish_pins.sh
       - name: Install build dependencies
         if: steps.release.outputs.complete != 'true'
         run: |

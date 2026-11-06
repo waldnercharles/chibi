@@ -54,6 +54,7 @@ void test_tool_bootstrap_recovery(const char *host, const char *artifact);
 #endif
 #ifdef CHIBI_TEST_BUILD_PROCESS
 void test_tool_build_process(const char *worker, const char *host);
+void test_tool_build_process_files(const char *worker, const char *host);
 void test_build_toolchain(const char *worker, const char *host);
 void test_build_graph(const char *host, const char *cmake_build);
 void test_build_graph_support(const char *host, const char *cmake_build);
@@ -62,8 +63,12 @@ void test_build_graph_archive(const char *host, const char *cmake_build);
 void test_build_graph_generated(const char *host, const char *cmake_build);
 void test_build_graph_programs(const char *host, const char *cmake_build);
 void test_build_graph_resources(const char *host, const char *cmake_build);
+#ifndef _WIN32
+void test_build_sdk(const char *host, const char *build, const char *third_party);
+#endif
 #endif
 void test_tool_desktop_dependencies();
+void test_tool_third_party_publish();
 void test_tool_package_ownership();
 void test_tool_collab();
 void test_tool_test_policy();
@@ -205,6 +210,12 @@ void test_tool_game_equivalence(
     const char *candidate
 );
 void test_tool_game_equivalence_stage_one(
+    const char *observer,
+    const char *build_host,
+    const char *reference,
+    const char *stage_one_host
+);
+void test_tool_game_equivalence_empty(
     const char *observer,
     const char *build_host,
     const char *reference,
@@ -531,6 +542,18 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
+    if (argc == 5 && !strcmp(argv[1], "--build-sdk")) {
+#if defined(CHIBI_TEST_BUILD_PROCESS) && !defined(_WIN32)
+        tool_init();
+        pu_display_time(true);
+        test_build_sdk(argv[2], argv[3], argv[4]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        fprintf(stderr, "%s requires the private native build host\n", argv[1]);
+        return 2;
+#endif
+    }
     if (argc == 4 && (!strcmp(argv[1], "--build-graph") ||
                       !strcmp(argv[1], "--build-graph-support") ||
                       !strcmp(argv[1], "--build-graph-reflect") ||
@@ -611,11 +634,16 @@ int main(int argc, char **argv)
         return 2;
 #endif
     }
-    if (argc == 4 && !strcmp(argv[1], "--build-process")) {
+    if (argc == 4 && (!strcmp(argv[1], "--build-process") ||
+                      !strcmp(argv[1], "--build-process-files"))) {
 #ifdef CHIBI_TEST_BUILD_PROCESS
         tool_init();
         pu_display_time(true);
-        test_tool_build_process(argv[2], argv[3]);
+        if (!strcmp(argv[1], "--build-process-files")) {
+            test_tool_build_process_files(argv[2], argv[3]);
+        } else {
+            test_tool_build_process(argv[2], argv[3]);
+        }
         pu_print_stats();
         return pu_test_failed() ? 1 : 0;
 #else
@@ -875,6 +903,7 @@ int main(int argc, char **argv)
     }
     if ((argc == 5 && !strcmp(argv[1], "--game-equivalence")) ||
         (argc == 5 && !strcmp(argv[1], "--game-equivalence-stage-one")) ||
+        (argc == 5 && !strcmp(argv[1], "--game-equivalence-empty")) ||
         (argc >= 5 && argc % 2 && !strcmp(argv[1], "--game-observe"))) {
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
         tool_init();
@@ -885,7 +914,9 @@ int main(int argc, char **argv)
             return test_tool_game_observe(argv[2], (const char *const *)argv + 3, (argc - 3) / 2);
         }
         pu_display_time(true);
-        if (!strcmp(argv[1], "--game-equivalence-stage-one")) {
+        if (!strcmp(argv[1], "--game-equivalence-empty")) {
+            test_tool_game_equivalence_empty(argv[0], argv[2], argv[3], argv[4]);
+        } else if (!strcmp(argv[1], "--game-equivalence-stage-one")) {
             test_tool_game_equivalence_stage_one(argv[0], argv[2], argv[3], argv[4]);
         } else {
             test_tool_game_equivalence(argv[0], argv[2], argv[3], argv[4]);
@@ -959,6 +990,7 @@ int main(int argc, char **argv)
     bool package_ownership = argc == 2 && !strcmp(argv[1], "--package-ownership");
     bool desktop_dependencies = argc == 2 &&
                                 !strcmp(argv[1], "--desktop-dependencies");
+    bool third_party_publish = argc == 2 && !strcmp(argv[1], "--third-party-publish");
     bool unit = argc == 2 && !strcmp(argv[1], "--unit");
     bool test_runner = argc == 2 && !strcmp(argv[1], "--test-runner");
     bool validation_plan = argc == 2 && !strcmp(argv[1], "--validation-plan");
@@ -1142,9 +1174,9 @@ int main(int argc, char **argv)
     physics3d = argc == 2 && !strcmp(argv[1], "--physics3d");
     transforms = argc == 2 && !strcmp(argv[1], "--transforms");
 #endif
-    if (argc != 1 && !corpus && !unit_fixtures && !coverage &&
-        !preview_components && !shader_parameters && !source_edit && !new_asset &&
-        !asset_refactor && !tilemap && !package && !desktop_dependencies &&
+    if (argc != 1 && !corpus && !unit_fixtures && !coverage && !preview_components &&
+        !shader_parameters && !source_edit && !new_asset && !asset_refactor &&
+        !tilemap && !package && !desktop_dependencies && !third_party_publish &&
         !package_ownership && !unit && !test_runner && !validation_plan &&
         !web_storage && !webgpu_staging && !wasm_browser && !query_benchmark &&
         !prepared && !read && !scene && !scene_prepared && !scene_hierarchy &&
@@ -1169,7 +1201,8 @@ int main(int argc, char **argv)
         fprintf(
             stderr,
             "Usage: %s [--tilemap | --package | "
-            "--desktop-dependencies | --package-ownership | --unit | "
+            "--desktop-dependencies | --third-party-publish | "
+            "--package-ownership | --unit | "
             "--test-runner | --validation-plan | "
             "--reflect-ranges | --c-export-alias | "
             "--ecs-query | --ecs-strings | "
@@ -1537,6 +1570,8 @@ int main(int argc, char **argv)
         test_tool_wasm_browser();
     } else if (package_ownership) {
         test_tool_package_ownership();
+    } else if (third_party_publish) {
+        test_tool_third_party_publish();
     } else if (desktop_dependencies) {
         test_tool_desktop_dependencies();
     } else if (package) {
@@ -1578,6 +1613,8 @@ int main(int argc, char **argv)
         test_tool_ecs_world();
         test_tool_ecs_query();
         test_tool_package();
+        test_tool_desktop_dependencies();
+        test_tool_third_party_publish();
         test_tool_collab();
         test_tool_test_policy();
         test_tool_validation_plan();

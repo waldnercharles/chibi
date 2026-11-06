@@ -91,7 +91,7 @@ Root :: struct {
 Body :: union {
     Failed(diagnostic: syntax.Diagnostic)
     | Emitted(slots: Slot[], locals: Slot[], cells: Cell[], code: Code[], calls: Invocation[],
-              hosts: Host[], roots: Root[], points: SourcePoint[], watches: SourceWatch[])
+              hosts: Host[], roots: Root[], points: SourcePoint[], watches: SourceWatch[], effects: int)
 }
 // A debugger point: a record of stage zero's kind at a source range, which
 // breakpoints find by its occurrence; `meaning` names what it is, such as the
@@ -139,7 +139,8 @@ ExpressionPoint: int : -4;
 // the function's document.
 OccurrencePoint: int : -5;
 // A scheduled visit. Storage, container and record are the type a literal at
-// `node` takes from its context; storage 0 means none.
+// `node` takes from its context; storage 0 means none. EffectsPhase is a
+// directive with no node; its `a` holds source-semantic effect flags.
 Work :: struct {
     node: int;
     phase: int;
@@ -281,8 +282,9 @@ ComponentAssignPhase: int : 8;
 // The phase of a compound assignment that combines the two values on top with
 // its operator.
 CombinePhase: int : 9;
-// The phase of `return (a, b)` once each named result's value is ready.
+// The phase of a named return: store one value, then evaluate the next.
 ReturnsPhase: int : 10;
+EffectsPhase: int : -1;
 
 // The FNV-1a mix of the eight bytes of `value`, low first, as the SDK mixes
 // a word into an identity.
@@ -567,6 +569,9 @@ Instruction :: (op: int, type: int, output: int, left: int, right: int, target: 
 }
 Visit :: (node: int) -> Work {
     return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: 0, container: 0, record: -1};
+}
+RecordEffects :: (effects: int) -> Work {
+    return {node: -1, phase: EffectsPhase, a: effects, b: 0, c: 0, storage: 0, container: 0, record: -1};
 }
 Expect :: (node: int, storage: int, container: int, record: int) -> Work {
     return {node: node, phase: 0, a: 0, b: 0, c: 0, storage: storage, container: container, record: record};
@@ -1547,16 +1552,19 @@ ItemArgument :: (forest: snapshot.SnapshotNode[], call: int) -> int {
 // The tables a body starts from: its parameters, its record or array result's
 // symbol, its point and its named results, which are locals from `named` on.
 Start :: union {
-    Begun(work: Work[], names: Name[], slots: Slot[], locals: Slot[], code: Code[], points: SourcePoint[], named: int)
+    Begun(work: Work[], names: Name[], slots: Slot[], locals: Slot[], cells: Cell[], hosts: Host[], code: Code[],
+          points: SourcePoint[], named: int)
 }
 Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], callable: Callable, aliases: Name[],
              key: string, solid: int[], meaning: uint64, referenced: string[], mutated: string[],
-             ops: Ops) -> Start {
+             ops: Ops, target: Target) -> Start {
     declaration := forest[callable.node];
     // Import aliases are the outermost names; every local may hide one.
     names := aliases;
     slots: Slot[] = [];
     locals: Slot[] = [];
+    cells: Cell[] = [];
+    hosts: Host[] = [];
     code: Code[] = [];
     // Scalar and string parameters move to locals, so assigning one needs no
     // other form. Record and array parameters are read in place, unless the
@@ -1598,25 +1606,49 @@ Prologue :: (forest: snapshot.SnapshotNode[], text: string, params: Param[], cal
     if (callable.results == 0 && (callable.result == StructStorage || callable.result_container != 0)) {
         code.append(SymbolCode(ops, -1, declaration));
     }
-    // The function's point; the body places the others as stage zero does.
-    points: SourcePoint[] = [PointAt(key, solid, FunctionRecord, meaning, false, declaration, declaration)];
-    code.append(PointCode(ops, 0, declaration));
-    // Named results are locals from `named` on, zero until the body sets them.
+    // Named results reserve consecutive locals. A record local holds its
+    // stable cell's header address, while its name reads the cell's payload.
     named := length(locals);
     index = 0;
     while (index < callable.results) {
         result := params[callable.first + callable.count + index];
-        slots.append(ValueLocal(result.storage));
-        code.append(ConstantCode(ops, result.storage, 0, length(slots) - 1, declaration));
-        locals.append(ValueLocal(result.storage));
-        code.append(Instruction(ops.save, result.storage, 0, length(slots) - 1, 0, length(locals) - 1,
-                                declaration));
-        bound: Name = {name: result.name, place: LocalPlace, index: length(locals) - 1, storage: result.storage,
-                       container: 0, record: result.record, writable: true, node: result.node};
+        place := LocalPlace;
+        location := length(locals);
+        if (result.storage == StructStorage) {
+            // Normalize the typed zero buffer through the constructor, so
+            // native record ranges receive the same defaults as stage zero.
+            cell: Cell = {storage: result.storage, container: result.container, record: result.record,
+                          constant: 0, variant: -1, kind: ValueKind};
+            cells.extend([cell, cell]);
+            host: Host = {intrinsic: ConstructIntrinsic, linked: -1, first: length(cells) - 2,
+                          result_first: length(cells) - 1, result_count: 1, written: false};
+            hosts.append(host);
+            code.append(Instruction(ops.host_call, 0, 0, target.data_failure, 0, length(hosts) - 1, declaration));
+            slots.append(AddressSlot(target));
+            code.append(Instruction(ops.host_slot, target.pointer_storage, length(slots) - 1,
+                                    length(cells) - 1, 0, 0, declaration));
+            locals.append(AddressSlot(target));
+            code.append(Instruction(ops.save, target.pointer_storage, 0, length(slots) - 1, 0,
+                                    length(locals) - 1, declaration));
+            code.append(SymbolCode(ops, result.node, declaration));
+            place = CellPlace;
+            location = length(cells) - 1;
+        } else {
+            slots.append(ValueLocal(result.storage));
+            code.append(ConstantCode(ops, result.storage, 0, length(slots) - 1, declaration));
+            locals.append(ValueLocal(result.storage));
+            code.append(Instruction(ops.save, result.storage, 0, length(slots) - 1, 0, length(locals) - 1,
+                                    declaration));
+        }
+        bound: Name = {name: result.name, place: place, index: location, storage: result.storage,
+                       container: result.container, record: result.record, writable: true, node: result.node};
         names.append(bound);
         index += 1;
     }
-    return Start.Begun(work, names, slots, locals, code, points, named);
+    // Initial result construction precedes the function's first point.
+    points: SourcePoint[] = [PointAt(key, solid, FunctionRecord, meaning, false, declaration, declaration)];
+    code.append(PointCode(ops, 0, declaration));
+    return Start.Begun(work, names, slots, locals, cells, hosts, code, points, named);
 }
 EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
              callables: Callable[], params: Param[], types: TypeDecl[], members: TypeMember[],
@@ -1628,7 +1660,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     declaration := forest[callable.node];
     document_hash := DocumentHash(key);
     slots: Slot[] = [];
-    // The storage of each locals-bank value; records and arrays never live there.
+    // Locals hold scalars and the header addresses of named record results.
     locals: Slot[] = [];
     cells: Cell[] = [];
     code: Code[] = [];
@@ -1639,13 +1671,16 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     work: Work[] = [];
     points: SourcePoint[] = [];
     named: int = 0;
-    begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, ops);
+    begun := Prologue(forest, text, params, callable, aliases, key, solid, meaning, referenced, mutated, ops, target);
     switch begun {
-        case .Begun(begun_work, begun_names, begun_slots, begun_locals, begun_code, begun_points, begun_named):
+        case .Begun(begun_work, begun_names, begun_slots, begun_locals, begun_cells, begun_hosts, begun_code,
+                    begun_points, begun_named):
             work = begun_work;
             names = begun_names;
             slots = begun_slots;
             locals = begun_locals;
+            cells = begun_cells;
+            hosts = begun_hosts;
             code = begun_code;
             points = begun_points;
             named = begun_named;
@@ -1663,10 +1698,15 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     work_top: int = 0;
     value_top: int = 0;
     watches: SourceWatch[] = [];
+    semantic_effects: int = 0;
     work_top = length(work);
     while (work_top > 0) {
         work_top -= 1;
         item := work[work_top];
+        if (item.phase == EffectsPhase) {
+            semantic_effects = semantic_effects | item.a;
+            continue;
+        }
         node := forest[item.node];
         kind := node.kind;
         // Items this one schedules, in the order they run.
@@ -2406,9 +2446,13 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
             while (at_result < count) {
                 storage: int = 0;
                 container: int = 0;
+                record: int = -1;
                 if (produced.storage == FunctionResultsStorage) {
                     called := callables[produced.record];
-                    storage = params[called.first + called.count + at_result].storage;
+                    result := params[called.first + called.count + at_result];
+                    storage = result.storage;
+                    container = result.container;
+                    record = result.record;
                 } else {
                     linked := natives[produced.record];
                     storage = ports[linked.first + linked.parameters + at_result].storage;
@@ -2419,7 +2463,11 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
                 slots.extend([address, loaded]);
                 code.extend(CellRead(loaded.storage, produced.slot + at_result, ops, target, length(slots) - 2,
                                      node));
-                code.append(WatchCode(ops, length(slots) - 1, storage, container, -1, at_result, true, node,
+                if (Pointer(storage, container)) {
+                    root: Root = {slot: length(slots) - 1, storage: storage, container: container, record: record};
+                    roots.append(root);
+                }
+                code.append(WatchCode(ops, length(slots) - 1, storage, container, record, at_result, true, node,
                                       target));
                 at_result += 1;
             }
@@ -2454,9 +2502,18 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
     points.append(PointAt(key, solid, FunctionRecord, meaning, true, declaration, declaration));
     code.append(PointCode(ops, length(points) - 1, declaration));
     if (callable.results > 0) {
-        code.extend(NamedResultsCode(ops, params, callable, named, length(slots), declaration));
-        slots.extend(NamedResultsSlots(params, callable));
-        code.append(Instruction(ops.finish, 0, 0, 0, 0, 0, declaration));
+        at: Bases = {pc: length(code), slot: length(slots), local: length(locals), cell: length(cells),
+                     host: length(hosts), call: length(calls)};
+        switch NamedResultsStep([], ops, target, params, callable, named, at, declaration) {
+            case .Failed(diagnostic):
+                return Body.Failed(diagnostic);
+            case .Emitted(added_code, added_slots, added_locals, added_cells, added_hosts, added_roots,
+                          added_calls, added_names, scheduled, popped, value, kept, marks):
+                code.extend(added_code);
+                slots.extend(added_slots);
+                cells.extend(added_cells);
+                hosts.extend(added_hosts);
+        }
     }
     code.append(Instruction(ops.end, 0, 0, 0, 0, 0, declaration));
     if (!ops.debug) {
@@ -2464,7 +2521,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
         points = [];
     }
     return NumberPoints(forest, solid, undeclared, meaning, document_hash, declaration, ops, slots, locals, cells,
-                        code, calls, hosts, roots, points, watches);
+                        code, calls, hosts, roots, points, watches, semantic_effects);
 }
 
 // A body's tables, with the points and watches the steps placed, each at its
@@ -2474,7 +2531,7 @@ EmitBody :: (forest: snapshot.SnapshotNode[], text: string, document: int,
 NumberPoints :: (forest: snapshot.SnapshotNode[], solid: int[], undeclared: uint64, meaning: uint64,
                  document_hash: uint64, declaration: snapshot.SnapshotNode, ops: Ops, slots: Slot[], locals: Slot[],
                  cells: Cell[], code: Code[], calls: Invocation[], hosts: Host[], roots: Root[],
-                 points: SourcePoint[], watches: SourceWatch[]) -> Body {
+                 points: SourcePoint[], watches: SourceWatch[], effects: int) -> Body {
     numbered_code := code;
     numbered_points := points;
     numbered_watches := watches;
@@ -2526,10 +2583,11 @@ NumberPoints :: (forest: snapshot.SnapshotNode[], solid: int[], undeclared: uint
                                   record: placed.value_record, ordinal: placed.right, output: placed.output == 1,
                                   reference: placed.offset == 1};
             numbered_watches.append(watch);
-            numbered_code[at_point] = Instruction(ops.source_watch, placed.type, 0, placed.left, 0, length(numbered_watches) - 1,
-                                                  Located(placed));
+            numbered_code[at_point] = Instruction(ops.source_watch, placed.type, 0, placed.left, 0,
+                                                  length(numbered_watches) - 1, Located(placed));
         }
         at_point += 1;
     }
-    return Body.Emitted(slots, locals, cells, numbered_code, calls, hosts, roots, numbered_points, numbered_watches);
+    return Body.Emitted(slots, locals, cells, numbered_code, calls, hosts, roots, numbered_points, numbered_watches,
+                        effects);
 }

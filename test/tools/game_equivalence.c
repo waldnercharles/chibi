@@ -719,6 +719,9 @@ TEST_CASE(assembly_refuses_what_is_no_closure)
                            output,         NULL };
     REQUIRE(tool_run(argv, scratch, log_path) == 1);
     REQUIRE(log_has("invalid compiler artifact header") && access(output, F_OK) != 0);
+    tool_write(closure, "");
+    REQUIRE(tool_run(argv, scratch, log_path) == 1);
+    REQUIRE(log_has("the closure cannot be read") && access(output, F_OK) != 0);
     return true;
 }
 TEST_CASE(stories_assemble_from_their_own_modules)
@@ -738,6 +741,135 @@ TEST_CASE(stage_one_rebuilds_stories_as_stage_zero_does)
     char route[4096];
     snprintf(route, sizeof route, "%s/" STAGE_ONE, tool_root());
     return rebuilds_alike("stage-one", route);
+}
+
+/* A project with a scene and native components but no executable source
+ * needs no behavior compiler. Its resource-only assembly still plays as the
+ * ordinary native preparation does. */
+TEST_CASE(a_resource_only_project_builds_and_plays_without_a_behavior_compiler)
+{
+    char source[4096], project[128], prototype[256], behavior[256], input[128];
+    story_path(source, sizeof source, "Counter", "");
+    path(project, sizeof project, "Empty");
+#ifdef __APPLE__
+    const char *clone[] = { "cp", "-c", "-R", source, project, NULL };
+#else
+    const char *clone[] = { "cp", "--reflink=auto", "-R", source, project, NULL };
+#endif
+    REQUIRE(tool_run(clone, scratch, log_path) == 0);
+    snprintf(behavior, sizeof behavior, "%s/content/behaviors/Counter.chibi", project);
+    snprintf(prototype, sizeof prototype, "%s/content/prototypes/Counter.kdl", project);
+    REQUIRE(!unlink(behavior));
+    tool_write(prototype, "name \"Counter\"\ncomponents {\n    (object)Transform x=3 y=4\n}\n");
+    path(input, sizeof input, "empty-input.json");
+    const char *export[] = { reference_path, "--project-root",
+                             project,        "--stage-one-input",
+                             input,          NULL };
+    REQUIRE(tool_run(export, scratch, log_path) == 0);
+    char *reported = tool_read(log_path);
+    bool counted = reported && !strcmp(reported, "0\n");
+    free(reported);
+    yyjson_doc *document = yyjson_read_file(input, 0, NULL, NULL);
+    yyjson_val *arguments = yyjson_doc_get_root(document);
+    bool empty = document &&
+                 yyjson_arr_size(yyjson_arr_get(arguments, INPUT_IDENTITIES)) == 0 &&
+                 yyjson_arr_size(yyjson_arr_get(arguments, INPUT_SOURCES)) == 0;
+    yyjson_doc_free(document);
+    REQUIRE(empty);
+    char reference[256], candidate[256], unavailable[128], route[4096];
+    path(reference, sizeof reference, "empty-reference/Empty.chibip");
+    path(candidate, sizeof candidate, "empty-candidate/Empty.chibip");
+    path(unavailable, sizeof unavailable, "no-behavior-compiler");
+    snprintf(route, sizeof route, "%s/" STAGE_ONE, tool_root());
+    REQUIRE(compile(project, reference));
+    const char *command[] = { build_host_path,
+                              "--root",
+                              tool_root(),
+                              "--source",
+                              route,
+                              "--entry",
+                              "Compile",
+                              "--timeout-ms",
+                              HARNESS_MILLISECONDS,
+                              "--",
+                              "--project-root",
+                              project,
+                              "--output",
+                              candidate,
+                              NULL };
+    char *previous = xstrdup(getenv("CHIBI_STAGE_ONE_HOST"));
+    REQUIRE(!setenv("CHIBI_STAGE_ONE_HOST", unavailable, 1));
+    int status = tool_run_within(command, tool_root(), log_path, 55);
+    REQUIRE(!setenv("CHIBI_STAGE_ONE_HOST", previous, 1));
+    free(previous);
+    REQUIRE(status == 0);
+    REQUIRE(counted);
+    size_t reference_size = 0, candidate_size = 0;
+    unsigned char *left = read_file(reference, &reference_size);
+    unsigned char *right = read_file(candidate, &candidate_size);
+    char reference_manifest[288], candidate_manifest[288];
+    snprintf(reference_manifest, sizeof reference_manifest, "%s.resources.json", reference);
+    snprintf(candidate_manifest, sizeof candidate_manifest, "%s.resources.json", candidate);
+    char *left_manifest = tool_read(reference_manifest),
+         *right_manifest = tool_read(candidate_manifest);
+    arena names = { 0 };
+    package_module *modules = NULL;
+    size_t first = 0, end = 0;
+    char error[256];
+    bool same = left && right && reference_size == candidate_size &&
+                !memcmp(left, right, reference_size) && left_manifest &&
+                right_manifest && !strcmp(left_manifest, right_manifest) &&
+                player_prepared_modules(right, candidate_size, &names, &modules, &first, &end, error, sizeof error) &&
+                acount(modules) == 0;
+    afree(modules);
+    arena_free(&names);
+    afree(left);
+    afree(right);
+    free(left_manifest);
+    free(right_manifest);
+    REQUIRE(same);
+    char scenario[4096], reference_trace[128], candidate_trace[128];
+    story_path(scenario, sizeof scenario, "Counter", SCENARIO);
+    path(reference_trace, sizeof reference_trace, "empty-reference.trace");
+    path(candidate_trace, sizeof candidate_trace, "empty-candidate.trace");
+    const char *reference_story[] = { reference, scenario },
+               *candidate_story[] = { candidate, scenario };
+    REQUIRE(!test_tool_game_observe(reference_trace, reference_story, 1));
+    REQUIRE(!test_tool_game_observe(candidate_trace, candidate_story, 1));
+    char *left_trace = tool_read(reference_trace),
+         *right_trace = tool_read(candidate_trace);
+    bool played = left_trace && right_trace && !strcmp(left_trace, right_trace) &&
+                  strstr(right_trace, "frame 30 ");
+    free(left_trace);
+    free(right_trace);
+    REQUIRE(played);
+    return true;
+}
+
+/* Resource-only is explicit assembly with no supplied modules. It cannot
+ * compile or ignore a project's executable source, or replace prior output
+ * when that source needs a module. */
+TEST_CASE(resource_only_assembly_refuses_sources_and_preserves_output)
+{
+    char project[4096], output[128], manifest[160];
+    story_path(project, sizeof project, "Counter", "");
+    path(output, sizeof output, "resource-only-refused.chibip");
+    snprintf(manifest, sizeof manifest, "%s.resources.json", output);
+    tool_write(output, "prior artifact");
+    tool_write(manifest, "prior resources");
+    const char *command[] = {
+        reference_path, "--project-root", project, "--resources-only",
+        "--output",     output,           NULL
+    };
+    REQUIRE(tool_run(command, scratch, log_path) == 1);
+    REQUIRE(log_has("behaviors/Counter.chibi: no prepared module was supplied"));
+    char *artifact = tool_read(output), *resources = tool_read(manifest);
+    bool preserved = artifact && resources && !strcmp(artifact, "prior artifact") &&
+                     !strcmp(resources, "prior resources");
+    free(artifact);
+    free(resources);
+    REQUIRE(preserved);
+    return true;
 }
 static void prepare_scratch()
 {
@@ -764,6 +896,24 @@ void test_tool_game_equivalence_stage_one(
     setenv("CHIBI_STAGE_ONE_HOST", stage_one_host, 1);
     prepare_scratch();
     RUN_TEST_CASE(stage_one_rebuilds_stories_as_stage_zero_does);
+    tool_remove_tree(scratch);
+}
+void test_tool_game_equivalence_empty(
+    const char *observer,
+    const char *build_host,
+    const char *reference,
+    const char *stage_one_host
+)
+{
+    observer_path = observer;
+    build_host_path = build_host;
+    reference_path = reference;
+    setenv("CHIBI_COMPILE", reference, 1);
+    setenv("CHIBI_STAGE_ONE_HOST", stage_one_host, 1);
+    prepare_scratch();
+    RUN_TEST_CASE(a_resource_only_project_builds_and_plays_without_a_behavior_compiler);
+    RUN_TEST_CASE(resource_only_assembly_refuses_sources_and_preserves_output);
+    RUN_TEST_CASE(assembly_refuses_what_is_no_closure);
     tool_remove_tree(scratch);
 }
 void test_tool_game_equivalence(

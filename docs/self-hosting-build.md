@@ -182,6 +182,23 @@ bindings to move. `StageOne.chibi` still uses the C catalog for input export and
 final game assembly. Native runtime construction, SDK/full-engine and Wasm builds, Studio
 consumers and command-parity checks retain their current CMake responsibilities.
 
+`chibi-compile --stage-one-input FILE` writes the unchanged behavior-compiler
+argument array and reports its executable source count on stdout. For zero
+sources, `StageOne.chibi` invokes `chibi-compile --resources-only --output FILE`
+with the project root before recovering or invoking the behavior compiler.
+This mode assembles scenes, prototypes and resources with no supplied modules;
+it rescans the project and refuses any executable source. Nonempty projects
+retain the existing compiler and `--modules FILE` assembly route. Empty compiler
+results and empty `--modules` files remain failures; CHIBICLO still requires a
+root and at least one module.
+
+The `game-equivalence-empty` C dispatcher case builds a disposable resource-only
+project through that route with an unavailable behavior-compiler host. It checks
+zero modules, artifact and resource-manifest equality with native preparation,
+and CPU play traces through frame 30. It also checks that resource-only assembly
+refuses a behavior source while preserving prior output, and that malformed or
+empty module closures cannot produce an artifact.
+
 ## Installed build program
 
 `tools/toolchain/Build.chibi` owns native profile selection, compiler and SDK
@@ -839,3 +856,81 @@ assemblers/linkers, SDKs, native backends and runtime libraries may remain behin
 narrow bindings. Current native tools remain construction/recovery inputs during
 migration. Final acceptance also requires the installed clean-checkout proof to
 execute stage one and stage two and build/link a checked game.
+
+## Compiler tools from graph outputs
+
+`tools/toolchain/SDK.chibi` owns the first part of graph SDK installation. It
+packages the graph-built private build and compiler hosts into a fresh prefix,
+with the complete compiler/bootstrap/core resources, Build/Graph/SDK/StageOne programs,
+graph packages, the configure signature helper and dependency notices. It
+preserves bootstrap manifests and artifacts byte for byte. Public SDK libraries,
+headers, CMake exports and `package.json` remain with the existing SDK packager.
+StageOne is staged verbatim for the compiler owner's installed CLI integration;
+this increment does not establish an installed StageOne execution route.
+
+Build matching Release tools, then name the same unpacked dependency archive
+that their `.chibi-record` link records name:
+
+```sh
+make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
+build-release/sdk/chibi-build-host --root "$PWD" \
+  --source tools/toolchain/SDK.chibi --core packages/core \
+  --entry CompilerTools --timeout-ms 120000 -- \
+  --build "$PWD/build-release" --output "$PWD/dist/compiler-tools" \
+  --third-party /absolute/path/to/the/pinned/archive
+```
+
+The installer rejects output or staging paths inside copied input directories,
+including symlink, dot and case aliases, before creating directories. It also
+rejects invalid directory ancestors, missing or stale graph compiler/core resources and an
+archive that differs from the executable link records. It reserves the sibling
+`OUTPUT.chibi-stage`, copies inputs, checks compiler recovery using the staged
+runtime and resources, and writes `share/chibi/compiler-tools.tsv`. That manifest
+contains relative file paths and their SHA-256 hashes. Publication atomically
+renames the stage and refuses every existing destination. Normal preparation
+failures remove only the stage this invocation reserved. A hard kill or fatal
+host error can leave that stage for inspection; a later invocation refuses to
+claim it. Use a fresh prefix when installing a new generation.
+
+The prefix can move. Build programs use the installed host with explicit source
+and collection paths, while the host discovers its compiler resources relative
+to its executable. For the installed graph, pass
+`--source PREFIX/share/chibi/tools/toolchain/Graph.chibi`,
+`--core PREFIX/share/chibi/core`, and
+`--collection graph=PREFIX/share/chibi/graph`.
+
+`python3 tools/test_policy.py tool build-sdk` runs the C packaging and relocation
+cases against the Release graph tools. Linux graph test-driver compilation and
+linking are not supported by this checkpoint, so build only the C harness with
+the supported CMake route in its own directory:
+
+```sh
+make build-release GRAPH_BUILD=1 BUILD_TARGET='chibi-build-host chibi-compiler-host'
+make build GRAPH_BUILD= BUILD_DIR=build-sdk-tests BUILD_TARGET=test_tools BUILD_HOST="$PWD/build-release/sdk/chibi-build-host"
+CHIBI_TOOLS_BUILD_DIR=build-sdk-tests/test/tools \
+CHIBI_BUILD_HOST="$PWD/build-release/sdk/chibi-build-host" \
+CHIBI_SDK_GRAPH_BUILD_DIR="$PWD/build-release" \
+  python3 tools/test_policy.py tool build-sdk
+```
+
+The CMake harness must leave both shipped Release hosts and their adjacent
+`.chibi-record` files unchanged. Linux CI records and checks those four SHA-256
+identities around the harness build. The separate CMake build supplies the test
+harness; the compiler tools being packaged and relocated remain Release graph
+outputs.
+`/build-sdk-tests/` is the explicitly ignored generated harness directory.
+
+The test derives the archive location from the Release graph link record;
+`CHIBI_SDK_THIRD_PARTY_DIR` can name it explicitly. `CHIBI_TOOLS_BUILD_DIR` selects
+the harness, while `CHIBI_SDK_GRAPH_BUILD_DIR` and `CHIBI_BUILD_HOST` select
+matching graph outputs. The cases exercise recovery and build-program/graph
+compilation after relocation with an empty tool search path. The graph's
+`--profile explicit` disables discovery and requires its compiler, archiver and
+ranlib to be named; an omitted launcher remains empty. This checkpoint
+has no Linux/Windows packaging, full SDK, browser or Studio acceptance claim.
+
+The standalone SDK program adds `build.reserve_directory` and
+`build.publish_directory`. These private bindings reserve one fresh directory
+and publish without replacement on macOS and Linux. Normal `Build.chibi` is
+unchanged, so its protocol gate remains version 8. Use the matching newly built
+host to run `SDK.chibi`.

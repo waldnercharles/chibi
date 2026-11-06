@@ -41,6 +41,16 @@ static const char driver_setup
          "    policy.cleanup_subtree = interrupted_cleanup\n"
          "if mode in ('missing-proc', 'no-reader'): policy.proc_children = "
          "unavailable\n"
+         /* Keep the real ps output and PID, delaying only its startup. */
+         "if mode in ('slow-ps', 'hung-ps'):\n"
+         "    policy.enable_subreaper = lambda: False\n"
+         "    original_popen = subprocess.Popen\n"
+         "    def delayed_ps(command, *args, **kwargs):\n"
+         "        if command == ['ps', '-A', '-o', 'pid=,ppid=']:\n"
+         "            command = [sys.argv[3], 'policy-ps', sys.argv[4],\n"
+         "                       '1.2' if mode == 'slow-ps' else '30']\n"
+         "        return original_popen(command, *args, **kwargs)\n"
+         "    policy.subprocess.Popen = delayed_ps\n"
          /* signal.signal runs pending handlers before it installs a new one. Model
             the caller's SIGTERM still pending as cleanup starts to ignore it. */
          "if mode == 'pending':\n"
@@ -126,6 +136,12 @@ static const char driver_source[] =
     "        result = policy.run_commands([[worker, 'exit', '0']], 120)\n"
     "    elif action == 'no-reader':\n"
     "        result = policy.supervise([[worker, 'mark', root]])\n"
+    "    elif action in ('slow-ps', 'hung-ps'):\n"
+    "        try:\n"
+    "            result = policy.supervise([[worker, 'mark', root]])\n"
+    "        finally:\n"
+    /* Verify the probe is gone before the caller performs group cleanup. */
+    "            subprocess.run([worker, 'cleanup-probe', root], check=True)\n"
     "    elif action == 'portable':\n"
     "        os.environ['CHIBI_POLICY_FIXTURE'] = 'portable'\n"
     "        os.environ[policy.PROCESS_GROUP] = str(os.getpgrp())\n"
@@ -758,6 +774,38 @@ TEST_CASE(unavailable_discovery_refuses_before_launch)
     return true;
 }
 
+TEST_CASE(slow_process_inspection_still_launches_work)
+{
+    reset_markers();
+    setenv("CHIBI_POLICY_FIXTURE", "slow-ps", 1);
+    int status = run("slow-ps", NULL);
+    unsetenv("CHIBI_POLICY_FIXTURE");
+    REQUIRE(status == 0);
+    REQUIRE(exists("started"));
+    REQUIRE(exists("last-command"));
+    REQUIRE(!exists("escaped"));
+    reset_markers();
+    return true;
+}
+
+TEST_CASE(stuck_process_inspection_refuses_work_and_reaps_probe)
+{
+    reset_markers();
+    setenv("CHIBI_POLICY_FIXTURE", "hung-ps", 1);
+    int status = run("hung-ps", NULL);
+    unsetenv("CHIBI_POLICY_FIXTURE");
+    REQUIRE(status == 2);
+    REQUIRE(exists("started"));
+    REQUIRE(!exists("last-command"));
+    char *output = tool_read(logpath);
+    bool refused = output && strstr(output, "timed out") &&
+                   strstr(output, "no test started");
+    free(output);
+    REQUIRE(refused);
+    reset_markers();
+    return true;
+}
+
 #ifdef __linux__
 TEST_CASE(nested_cancellation_cleans_detached_descendants)
 {
@@ -824,6 +872,8 @@ void test_tool_test_policy()
     RUN_TEST_CASE(descendant_cleanup);
     RUN_TEST_CASE(portable_nested_cleanup_preserves_sibling);
     RUN_TEST_CASE(unavailable_discovery_refuses_before_launch);
+    RUN_TEST_CASE(slow_process_inspection_still_launches_work);
+    RUN_TEST_CASE(stuck_process_inspection_refuses_work_and_reaps_probe);
 #ifdef __linux__
     RUN_TEST_CASE(nested_cancellation_cleans_detached_descendants);
     RUN_TEST_CASE(orphan_setsid_cleanup);

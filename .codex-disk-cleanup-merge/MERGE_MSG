@@ -1,0 +1,14 @@
+Merge remote-tracking branch 'origin/main' into codex/shared-sequence-slices-20261021
+
+# Conflicts:
+#	docs/testing.md
+#	src/host/build_catalog.c
+#	src/host/build_io.c
+#	test/language/package_compiler_chibi.c
+#	test/tools/build_process.c
+#	tools/compiler/bootstrap/bootstrap.json
+#	tools/compiler/bootstrap/compiler.chibip
+#	tools/compiler/package_compiler/Compile.chibi
+#	tools/compiler/package_compiler/Steps.chibi
+#	tools/compiler/prepared_writer/Writer.chibi
+#	tools/compiler/signature_reader/Reader.chibi

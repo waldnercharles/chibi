@@ -1,0 +1,3072 @@
+diff --cc docs/testing.md
+index 5438d115c,6023fd8bd..000000000
+--- a/docs/testing.md
++++ b/docs/testing.md
+diff --cc src/host/build_catalog.c
+index e925a74d0,5b1686aa1..000000000
+--- a/src/host/build_catalog.c
++++ b/src/host/build_catalog.c
+@@@ -309,8 -288,8 +309,9 @@@ VALUE_CALLBACK(lines
+  VALUE_CALLBACK(trim)
+  VALUE_CALLBACK(concat)
+  VALUE_CALLBACK(length)
++ VALUE_CALLBACK(replace)
+  #undef VALUE_CALLBACK
+ +#undef BOOL_STRING_ARGUMENTS
+  #undef STRING_ARGUMENTS
+  #undef READY_HOST
+  
+@@@ -364,43 -340,44 +370,44 @@@ static const script_catalog_parameter a
+      .name = "value",
+      .type = { .storage = PIN_STR, .container = PIN_CONTAINER_ARRAY }
+  };
+ -#define BUILD_NATIVES(X)                                                                    \
+ -    X(901, "build.run", &array_parameter, 1, int_result, build_host_run_step)               \
+ -    X(902, "build.environment", &text_parameter, 1, text_result, build_host_environment)    \
+ -    X(903, "build.arguments", NULL, 0, array_result, build_arguments)                       \
+ -    X(904, "build.platform", NULL, 0, text_result, build_platform)                          \
+ -    X(905, "build.root", NULL, 0, text_result, build_root)                                  \
+ -    X(906, "build.program_directory", NULL, 0, text_result, build_program_directory)        \
+ -    X(907, "build.find_executable", &text_parameter, 1, text_result, build_find_executable) \
+ -    X(908, "build.read_file", &text_parameter, 1, text_result, build_read_file)             \
+ -    X(909, "build.file_exists", &text_parameter, 1, bool_result, build_file_exists)         \
+ -    X(910, "build.make_directory", &text_parameter, 1, bool_result, build_make_directory)   \
+ -    X(911, "build.resolve_path", &text_parameter, 1, text_result, build_resolve_path)       \
+ -    X(912, "build.write_file", two_text_parameters, 2, bool_result, build_write_file)       \
+ -    X(913, "build.last_stdout", NULL, 0, text_result, build_last_stdout)                    \
+ -    X(914, "build.last_stderr", NULL, 0, text_result, build_last_stderr)                    \
+ -    X(915, "build.report", &text_parameter, 1, int_result, build_report)                    \
+ -    X(916, "build.join", join_parameters, 2, text_result, value_join)                       \
+ -    X(917, "build.starts_with", two_text_parameters, 2, bool_result, value_starts_with)     \
+ -    X(918, "build.before", two_text_parameters, 2, text_result, value_before)               \
+ -    X(919, "build.after", two_text_parameters, 2, text_result, value_after)                 \
+ -    X(920, "build.lines", &text_parameter, 1, array_result, value_lines)                    \
+ -    X(921, "build.trim", &text_parameter, 1, text_result, value_trim)                       \
+ -    X(922, "build.concat", concat_parameters, 2, array_result, value_concat)                \
+ -    X(923, "build.length", &array_parameter, 1, int_result, value_length)                   \
+ -    X(924, "build.probe", &array_parameter, 1, int_result, build_host_run_probe)            \
+ -    X(925, "build.environment_names", NULL, 0, array_result, build_host_environment_names)  \
+ -    X(926, "build.file_kind", &path_parameter, 1, text_result, build_file_kind)             \
+ -    X(927, "build.file_stamp", &path_parameter, 1, text_result, build_file_stamp)           \
+ -    X(928, "build.list_directory", &path_parameter, 1, array_result, build_list_directory)  \
+ -    X(929, "build.copy_file", move_parameters, 2, bool_result, build_copy_file)             \
+ -    X(930, "build.rename", move_parameters, 2, bool_result, build_rename)                   \
+ -    X(931, "build.remove", &path_parameter, 1, bool_result, build_remove)                   \
+ -    X(932, "build.hash_file", &path_parameter, 1, text_result, build_hash_file)             \
+ -    X(933, "build.hash_text", &text_parameter, 1, text_result, build_hash_text)             \
+ -    X(934, "build.start", &array_parameter, 1, int_result, build_host_start)                \
+ -    X(935, "build.wait", &handle_parameter, 1, int_result, build_host_wait)                 \
+ +#define BUILD_NATIVES(X)                                                                      \
+ +    X(901, "build.run", &array_parameter, 1, int_result, build_host_run_step)                 \
+ +    X(902, "build.environment", &c_text_parameter, 1, text_result, build_host_environment)    \
+ +    X(903, "build.arguments", NULL, 0, array_result, build_arguments)                         \
+ +    X(904, "build.platform", NULL, 0, text_result, build_platform)                            \
+ +    X(905, "build.root", NULL, 0, text_result, build_root)                                    \
+ +    X(906, "build.program_directory", NULL, 0, text_result, build_program_directory)          \
+ +    X(907, "build.find_executable", &c_text_parameter, 1, text_result, build_find_executable) \
+ +    X(908, "build.read_file", &c_text_parameter, 1, text_result, build_read_file)             \
+ +    X(909, "build.file_exists", &c_text_parameter, 1, bool_result, build_file_exists)         \
+ +    X(910, "build.make_directory", &c_text_parameter, 1, bool_result, build_make_directory)   \
+ +    X(911, "build.resolve_path", &c_text_parameter, 1, text_result, build_resolve_path)       \
+ +    X(912, "build.write_file", write_parameters, 2, bool_result, build_write_file)            \
+ +    X(913, "build.last_stdout", NULL, 0, text_result, build_last_stdout)                      \
+ +    X(914, "build.last_stderr", NULL, 0, text_result, build_last_stderr)                      \
+ +    X(915, "build.report", &text_parameter, 1, int_result, build_report)                      \
+ +    X(916, "build.join", join_parameters, 2, text_result, value_join)                         \
+ +    X(917, "build.starts_with", two_text_parameters, 2, bool_result, value_starts_with)       \
+ +    X(918, "build.before", two_text_parameters, 2, text_result, value_before)                 \
+ +    X(919, "build.after", two_text_parameters, 2, text_result, value_after)                   \
+ +    X(920, "build.lines", &text_parameter, 1, array_result, value_lines)                      \
+ +    X(921, "build.trim", &text_parameter, 1, text_result, value_trim)                         \
+ +    X(922, "build.concat", concat_parameters, 2, array_result, value_concat)                  \
+ +    X(923, "build.length", &array_parameter, 1, int_result, value_length)                     \
+ +    X(924, "build.probe", &array_parameter, 1, int_result, build_host_run_probe)              \
+ +    X(925, "build.environment_names", NULL, 0, array_result, build_host_environment_names)    \
+ +    X(926, "build.file_kind", &path_parameter, 1, text_result, build_file_kind)               \
+ +    X(927, "build.file_stamp", &path_parameter, 1, text_result, build_file_stamp)             \
+ +    X(928, "build.list_directory", &path_parameter, 1, array_result, build_list_directory)    \
+ +    X(929, "build.copy_file", move_parameters, 2, bool_result, build_copy_file)               \
+ +    X(930, "build.rename", move_parameters, 2, bool_result, build_rename)                     \
+ +    X(931, "build.remove", &path_parameter, 1, bool_result, build_remove)                     \
+ +    X(932, "build.hash_file", &path_parameter, 1, text_result, build_hash_file)               \
+ +    X(933, "build.hash_text", &text_parameter, 1, text_result, build_hash_text)               \
+ +    X(934, "build.start", &array_parameter, 1, int_result, build_host_start)                  \
+ +    X(935, "build.wait", &handle_parameter, 1, int_result, build_host_wait)                   \
+-     X(936, "build.embed_file", embed_parameters, 3, bool_result, build_embed_file)
++     X(936, "build.embed_file", embed_parameters, 3, bool_result, build_embed_file)          \
++     X(937, "build.replace", replace_parameters, 3, text_result, value_replace)
+  #define CAPABILITY(ID, NAME, PARAMETERS, COUNT, RESULT, FUNCTION)              \
+      { .id = ID,                                                                \
+        .name = NAME,                                                            \
+diff --cc src/host/build_io.c
+index b496e976f,da3265c20..000000000
+--- a/src/host/build_io.c
++++ b/src/host/build_io.c
+@@@ -125,7 -124,7 +126,7 @@@ bool build_io_read
+      if (fstat(fd, &info) || !S_ISREG(info.st_mode) || info.st_size < 0 ||
+          info.st_size > BUILD_FILE_LIMIT) {
+          close(fd);
+-         *error = "build file must be regular data of at most 1 MiB";
+ -        *error = "build file must be regular text of at most 16 MiB";
+++        *error = "build file must be regular data of at most 16 MiB";
+          return false;
+      }
+      char *text = xmalloc(BUILD_FILE_LIMIT + 1);
+@@@ -148,9 -147,13 +149,9 @@@
+          if (!count) {
+              break;
+          }
+ -        if (memchr(text + size, 0, (size_t)count)) {
+ -            *error = "build file contains NUL bytes";
+ -            break;
+ -        }
+          size += (size_t)count;
+          if (size > BUILD_FILE_LIMIT) {
+-             *error = "build file exceeds 1 MiB";
++             *error = "build file exceeds 16 MiB";
+              break;
+          }
+      }
+diff --cc test/language/package_compiler_chibi.c
+index f998480a4,941aba717..000000000
+--- a/test/language/package_compiler_chibi.c
++++ b/test/language/package_compiler_chibi.c
+@@@ -96,197 -97,15 +99,197 @@@ typedef struc
+  {
+      const char *name, *source, *more, *library;
+      sample_group group;
+-     bool core, updates, boxed, game, moves, aliases, same_rejection, c_string_probe;
+ -    bool core, updates, boxed, game, moves, aliases, variants;
+++    bool core, updates, boxed, game, moves, aliases, variants, same_rejection, c_string_probe;
+      sample_call calls[CALLS];
+      const char *message;
+ +    const char *oracle_message;
+      int line, column;
+  } sample;
+ +static const char *cstring_probe(arena *storage, const pin_value *arguments, int, pin_value *result)
+ +{
+ +    const char *value = NULL;
+ +    size_t nul = 0;
+ +    const char *error = pin_text_cstring(storage, arguments[0], &value, &nul);
+ +    if (error) {
+ +        return error;
+ +    }
+ +    result->i = (int)strlen(value);
+ +    return NULL;
+ +}
+ +static const native_parameter_definition CSTRING_INPUT[] = {
+ +    { .name = "value",
+ +      .kind = NATIVE_PARAMETER_DATA,
+ +      .storage = PIN_STR,
+ +      .type_name = "const char *",
+ +      .c_string = true },
+ +};
+ +static const native_parameter_definition CSTRING_OUTPUT[] = {
+ +    { .name = "length", .kind = NATIVE_PARAMETER_DATA, .storage = PIN_I32, .type_name = "int" },
+ +};
+ +static const native_capability_definition CSTRING_DEFINITIONS[] = {
+ +    { .canonical_name = "CString Probe",
+ +      .source_name = "cstring_probe",
+ +      .kind = SCRIPT_CAPABILITY_FUNCTION,
+ +      .inputs = CSTRING_INPUT,
+ +      .input_count = 1,
+ +      .outputs = CSTRING_OUTPUT,
+ +      .output_count = 1,
+ +      .completion_output = -1,
+ +      .pure = true },
+ +};
+ +static const node_host_call CSTRING_CALL = { .value = cstring_probe };
+ +static const node_access CSTRING_ACCESS = { .flags = NODE_EFFECT_PURE };
+ +static const native_definition_binding CSTRING_BINDINGS[] = {
+ +    { .canonical_name = "CString Probe",
+ +      .implementation = { .call = &CSTRING_CALL, .access = &CSTRING_ACCESS } },
+ +};
+ +static const native_definition_pack CSTRING_PACK = {
+ +    .definitions = CSTRING_DEFINITIONS,
+ +    .definition_count = 1,
+ +    .bindings = CSTRING_BINDINGS,
+ +    .binding_count = 1,
+ +};
+  static const sample samples[] = {
+ +    { .name = "typed constant shifts discard bits",
+ +      .group = TYPE_SAMPLES,
+ +      .source = "package facts\n"
+ +                "Sign: int : 1 << 31;\n"
+ +                "Zero: byte : 128 << 1;\n"
+ +                "Small: int8 : 64 << 1;\n"
+ +                "Unsigned: uint : 4294967295 << 1;\n"
+ +                "Floor: int : -3 >> 1;\n"
+ +                "Wide: int64 : 1 << 63;\n"
+ +                "ReadSign :: () -> int { return Sign; }\n"
+ +                "ReadZero :: () -> byte { return Zero; }\n"
+ +                "ReadSmall :: () -> int8 { return Small; }\n"
+ +                "ReadUnsigned :: () -> uint { return Unsigned; }\n"
+ +                "ReadFloor :: () -> int { return Floor; }\n"
+ +                "ReadWide :: () -> int64 { return Wide; }",
+ +      .calls = { { .function = "ReadSign", .arguments = "[]", .expected = "[-2147483648]" },
+ +                 { .function = "ReadZero", .arguments = "[]", .expected = "[0]" },
+ +                 { .function = "ReadSmall", .arguments = "[]", .expected = "[-128]" },
+ +                 { .function = "ReadUnsigned", .arguments = "[]", .expected = "[4294967294]" },
+ +                 { .function = "ReadFloor", .arguments = "[]", .expected = "[-2]" },
+ +                 { .function = "ReadWide",
+ +                   .arguments = "[]",
+ +                   .expected = "[-9223372036854775808]" } } },
+ +    { .name = "constant negative shift count",
+ +      .group = TYPE_SAMPLES,
+ +      .source = "package facts\nBad: int : 1 << -1;",
+ +      .message = "Constant shift count is outside the type",
+ +      .line = 2,
+ +      .column = 12 },
+ +    { .name = "constant shift count at width",
+ +      .group = TYPE_SAMPLES,
+ +      .source = "package facts\nBad: int : 1 >> 32;",
+ +      .message = "Constant shift count is outside the type",
+ +      .line = 2,
+ +      .column = 12 },
+ +    { .name = "private imported function",
+ +      .group = IMPORT_SAMPLES,
+ +      .source = "package facts\nimport lib \"project:lib\"\n"
+ +                "One :: () -> int { return lib.Hidden(); }",
+ +      .library = "package lib\nHidden :: () -> int { return 7; }",
+ +      .message = "'lib.Hidden' is private: declare it pub to use it from "
+ +                 "another package",
+ +      .same_rejection = true },
+ +    { .name = "private imported constant",
+ +      .group = IMPORT_SAMPLES,
+ +      .source = "package facts\nimport lib \"project:lib\"\n"
+ +                "One :: () -> int { return lib.Hidden; }",
+ +      .library = "package lib\nHidden :: 7;",
+ +      .message = "'lib.Hidden' is private: declare it pub to use it from "
+ +                 "another package",
+ +      .same_rejection = true },
+ +    { .name = "private imported constant expression",
+ +      .group = IMPORT_SAMPLES,
+ +      .source = "package facts\nimport lib \"project:lib\"\nValue :: "
+ +                "lib.Hidden + 1;",
+ +      .library = "package lib\nHidden :: 7;",
+ +      .message = "'lib.Hidden' is private: declare it pub to use it from "
+ +                 "another package",
+ +      .same_rejection = true },
+ +    { .name = "private imported record local",
+ +      .group = IMPORT_SAMPLES,
+ +      .source = "package facts\nimport lib \"project:lib\"\n"
+ +                "One :: () -> int { value: lib.Hidden = lib.Make(); return "
+ +                "value.x; }",
+ +      .library = "package lib\nHidden :: struct { x: int; }\n"
+ +                 "pub Make :: () -> Hidden { return {x: 7}; }",
+ +      .message = "'lib.Hidden' is private: declare it pub to use it from "
+ +                 "another package",
+ +      .same_rejection = true },
+ +    { .name = "private imported record parameter",
+ +      .group = IMPORT_SAMPLES,
+ +      .source = "package facts\nimport lib \"project:lib\"\n"
+ +                "One :: (value: lib.Hidden) -> int { return value.x; }",
+ +      .library = "package lib\nHidden :: struct { x: int; }",
+ +      .message = "'lib.Hidden' is private: declare it pub to use it from "
+ +                 "another package",
+ +      .same_rejection = true },
+ +    { .name = "private imported record result",
+ +      .group = IMPORT_SAMPLES,
+ +      .source = "package facts\nimport lib \"project:lib\"\n"
+ +                "One :: () -> lib.Hidden { return lib.Make(); }",
+ +      .library = "package lib\nHidden :: struct { x: int; }\n"
+ +                 "pub Make :: () -> Hidden { return {x: 7}; }",
+ +      .message = "'lib.Hidden' is private: declare it pub to use it from "
+ +                 "another package",
+ +      .same_rejection = true },
+ +    { .name = "private imported union payload type",
+ +      .group = IMPORT_SAMPLES,
+ +      .source = "package facts\nimport lib \"project:lib\"\n"
+ +                "Wrapper :: union { Some(value: lib.Hidden) }",
+ +      .library = "package lib\nHidden :: struct { x: int; }",
+ +      .message = "'lib.Hidden' is private: declare it pub to use it from "
+ +                 "another package",
+ +      .same_rejection = true },
+ +    { .name = "private imported map value type",
+ +      .group = IMPORT_SAMPLES,
+ +      .source = "package facts\nimport lib \"project:lib\"\n"
+ +                "One :: () -> int { values: [int: lib.Hidden] = [:]; return 0; "
+ +                "}",
+ +      .library = "package lib\nHidden :: struct { x: int; }",
+ +      .message = "'lib.Hidden' is private: declare it pub to use it from "
+ +                 "another package",
+ +      .same_rejection = true },
+ +    { .name = "private imported union constructor",
+ +      .group = IMPORT_SAMPLES,
+ +      .source = "package facts\nimport lib \"project:lib\"\n"
+ +                "One :: () -> int { value := lib.Hidden.Some(7); return 0; }",
+ +      .library = "package lib\nHidden :: union { Some(value: int) | None }",
+ +      .message = "'lib.Hidden' is private: declare it pub to use it from "
+ +                 "another package",
+ +      .oracle_message = "Unknown callable 'lib.Hidden.Some'",
+ +      .same_rejection = true },
+ +    { .name = "private imported union value",
+ +      .group = IMPORT_SAMPLES,
+ +      .source = "package facts\nimport lib \"project:lib\"\n"
+ +                "One :: () -> int { value := lib.Hidden.None; return 0; }",
+ +      .library = "package lib\nHidden :: union { Some(value: int) | None }",
+ +      .message = "'lib.Hidden' is private: declare it pub to use it from "
+ +                 "another package",
+ +      .same_rejection = true },
+ +    { .name = "private package implementation",
+ +      .group = IMPORT_SAMPLES,
+ +      .source = "package facts\nimport lib \"project:lib\"\n"
+ +                "One :: () -> int { return Helper(3) + lib.Value(3) + "
+ +                "lib.Make(3).x; }\n"
+ +                "Shadow :: (lib: Local) -> int { return lib.Hidden; }\n"
+ +                "Local :: struct { Hidden: int; }",
+ +      .more = "package facts\nHelper :: (value: int) -> int { return value + "
+ +              "1; }",
+ +      .library = "package lib\nHidden :: 7;\n"
+ +                 "Secret :: struct { x: int; }\n"
+ +                 "Twice :: (value: int) -> int { return value * 2; }\n"
+ +                 "pub Value :: (value: int) -> int { return Twice(value) + "
+ +                 "Hidden; }\n"
+ +                 "pub Make :: (value: int) -> Secret { return {x: value}; }",
+ +      .calls = { { .function = "One", .arguments = "[]", .expected = "[20]" },
+ +                 { .function = "Shadow", .arguments = "[{\"Hidden\":11}]", .expected = "[11]" } } },
+      { .name = "constant",
+        .source = "package facts\nAnswer :: () -> int { return 42; }",
+ -      .calls = { { "Answer", "[]", "[42]" } } },
+ +      .calls = { { .function = "Answer", .arguments = "[]", .expected = "[42]" } } },
+      { .name = "named results",
+        .source = "package facts\nPair :: (x: int) -> (kind: int, end: int) {\n  "
+                  "  end = x + 1;\n"
+@@@ -370,12 -189,43 +373,45 @@@
+                  "Copied :: (notes: Note[]) -> int {\n"
+                  "    note := notes[0];\n    note.count += 5;\n"
+                  "    return note.count + notes[0].count;\n}",
+ -      .calls = { { "MovedNote", "[3]", "[{\"text\":\"a\",\"count\":3}]" },
+ -                 { "MovedResults", "[]", "[12]" },
+ -                 { "MovedSecond", "[4]", "[5]" },
+ -                 { "Copied", "[[{\"text\":\"x\",\"count\":1}]]", "[7]" } } },
+ +      .calls = { { .function = "MovedNote", .arguments = "[3]", .expected = "[{\"text\":\"a\",\"count\":3}]" },
+ +                 { .function = "MovedResults", .arguments = "[]", .expected = "[12]" },
+ +                 { .function = "MovedSecond", .arguments = "[4]", .expected = "[5]" },
+ +                 { .function = "Copied",
+ +                   .arguments = "[[{\"text\":\"x\",\"count\":1}]]",
+ +                   .expected = "[7]" } } },
++     { .name = "returned variants",
++       .group = IMPORT_SAMPLES,
++       .variants = true,
++       .source =
++           "package facts\n"
++           "Holder :: union { Some(items: int[], name: string) }\n"
++           "KeptMake :: (n: int) -> Holder {\n"
++           "    xs: int[] = [];\n    i: int = 0;\n"
++           "    while (i < n) { xs.append(i); i += 1; }\n"
++           "    return (Holder.Some(xs, \"made\"));\n}\n"
++           "KeptAgain :: (h: Holder) -> Holder {\n"
++           "    switch h { case .Some(items, name): return Holder.Some(items, "
++           "name); }\n}\n"
++           "KeptParam :: (xs: int[]) -> Holder { return Holder.Some(xs, \"p\"); "
++           "}\n"
++           "Total :: () -> int {\n"
++           "    a := KeptMake(3);\n    b := KeptMake(5);\n    c := "
++           "KeptAgain(a);\n"
++           "    total: int = 0;\n"
++           "    switch a { case .Some(items, name): total += items[2] * 100; }\n"
++           "    switch b { case .Some(items, name): total += items[4] * 10; }\n"
++           "    switch c { case .Some(items, name): total += items[1]; }\n"
++           "    return total;\n}\n"
++           "Changed :: () -> int {\n"
++           "    ys: int[] = [1, 2];\n    h := KeptParam(ys);\n    ys[0] = 7;\n"
++           "    switch h { case .Some(items, name): return items[0] * 10 + "
++           "ys[0]; }\n}\n"
++           "CopiedHold :: (xs: int[]) -> int {\n"
++           "    h := Holder.Some(xs, \"x\");\n    xs[0] = 9;\n"
++           "    switch h { case .Some(items, name): return items[0]; }\n}",
+ -      .calls = { { "Total", "[]", "[241]" },
+ -                 { "Changed", "[]", "[17]" },
+ -                 { "CopiedHold", "[[5,6]]", "[5]" } } },
+++      .calls = { { .function = "Total", .arguments = "[]", .expected = "[241]" },
+++                 { .function = "Changed", .arguments = "[]", .expected = "[17]" },
+++                 { .function = "CopiedHold", .arguments = "[[5,6]]", .expected = "[5]" } } },
+      { .name = "read in place",
+        .group = IMPORT_SAMPLES,
+        .aliases = true,
+diff --cc test/tools/build_process.c
+index 94e739172,e642d4bed..000000000
+--- a/test/tools/build_process.c
++++ b/test/tools/build_process.c
+@@@ -1079,10 -1030,10 +1084,10 @@@ TEST_CASE(private_file_reads_preserve_b
+      static const char *diagnostics[] = {
+          NULL,
+          NULL,
+-         "build file must be regular data of at most 1 MiB",
+ -        "build file must be regular text of at most 16 MiB",
+ -        "build file contains NUL bytes",
+ -        "build file must be regular text of at most 16 MiB",
+ -        "build file must be regular text of at most 16 MiB",
+++        "build file must be regular data of at most 16 MiB",
+ +        NULL,
+-         "build file must be regular data of at most 1 MiB",
+-         "build file must be regular data of at most 1 MiB",
+++        "build file must be regular data of at most 16 MiB",
+++        "build file must be regular data of at most 16 MiB",
+      };
+      for (int b = 0; b < 2; b++) {
+          behavior_backend backend = b ? BEHAVIOR_SLJIT : BEHAVIOR_BYTECODE;
+@@@ -1581,11 -1566,11 +1620,12 @@@ void test_tool_build_process(const cha
+      RUN_TEST_CASE(private_waits_take_output_in_wait_order);
+      RUN_TEST_CASE(private_waits_refuse_unknown_and_repeated_handles);
+      RUN_TEST_CASE(private_unwaited_and_late_steps_stop);
+ -    RUN_TEST_CASE(private_last_output_refuses_truncated_and_binary_protocols);
+ -    RUN_TEST_CASE(private_file_reads_distinguish_missing_and_invalid_text);
+ +    RUN_TEST_CASE(private_value_helpers_preserve_nul_and_validate_c_boundaries);
+ +    RUN_TEST_CASE(private_last_output_preserves_bytes_and_refuses_truncation);
+ +    RUN_TEST_CASE(private_file_reads_preserve_bytes_and_reject_invalid_files);
+      RUN_TEST_CASE(private_atomic_writes_preserve_target_on_rename_failure);
+      RUN_TEST_CASE(private_file_and_value_limits_accept_exact_text_and_reject_growth);
++     RUN_TEST_CASE(private_value_storage_holds_large_graphs_and_rejects_growth);
+      RUN_TEST_CASE(private_argument_bounds_reject_before_authored_execution);
+      RUN_TEST_CASE(private_step_output_fills_one_text_value_and_probes_stay_unreported);
+      RUN_TEST_CASE(private_metadata_reports_kinds_stamps_and_sorted_entries);
+diff --cc tools/compiler/bootstrap/bootstrap.json
+index e547888e7,59ebff09a..000000000
+--- a/tools/compiler/bootstrap/bootstrap.json
++++ b/tools/compiler/bootstrap/bootstrap.json
+diff --cc tools/compiler/bootstrap/compiler.chibip
+index d413897ce,309691422..000000000
+Binary files differ
+diff --cc tools/compiler/package_compiler/Compile.chibi
+index 3511cb161,9fb6e6092..000000000
+--- a/tools/compiler/package_compiler/Compile.chibi
++++ b/tools/compiler/package_compiler/Compile.chibi
+@@@ -684,8 -679,8 +684,8 @@@ pub DeclarePackage :: (forest: snapshot
+                          width := FieldSize(storage, target);
+                          size = AlignTo(size, width);
+                          field: TypeMember = {name: field_name, storage: storage, container: 0, record: -1, offset: size,
+ -                                             writable: true, constant: false, read: -1, read_key: ""};
+ +                                             writable: true, c_string: false, constant: false, read: -1, read_key: ""};
+-                         members = array_add(members, field);
++                         members.append(field);
+                          size += width;
+                          if (width > alignment) {
+                              alignment = width;
+@@@ -733,8 -723,8 +733,8 @@@
+                              }
+                              field: TypeMember = {name: Text(forest, text, Field(forest, parameter, "name")),
+                                                   storage: payload.storage, container: payload.container, record: payload.record, offset: 0,
+ -                                                 writable: true, constant: false, read: -1, read_key: ""};
+ +                                                 writable: true, c_string: false, constant: false, read: -1, read_key: ""};
+-                             members = array_add(members, field);
++                             members.append(field);
+                              parameter = NextMember(forest, parameter);
+                          }
+                          alternative.count = length(members) - alternative.first;
+diff --cc tools/compiler/package_compiler/Steps.chibi
+index 12b299b0d,7d1b1913e..000000000
+--- a/tools/compiler/package_compiler/Steps.chibi
++++ b/tools/compiler/package_compiler/Steps.chibi
+@@@ -346,14 -336,8 +346,14 @@@ StatementStep :: (forest: snapshot.Snap
+                  if (field < 0) {
+                      return Fail(forest, destination, document, format_text("Unknown field '{}'", member));
+                  }
+ +                if (members[field].c_string) {
+ +                    message := CStringMessage(forest, text, value, members[field].name);
+ +                    if (message != "") {
+ +                        return Fail(forest, value, document, message);
+ +                    }
+ +                }
+-                 code = append(code, TargetPoints(forest, text, names, ops, destination));
+-                 next = array_add(next, Expect(value, members[field].storage, 0, -1));
++                 code.extend(TargetPoints(forest, text, names, ops, destination));
++                 next.append(Expect(value, members[field].storage, 0, -1));
+                  write := Resume(item.node, FieldPhase, found, field);
+                  if (operator != "") {
+                      write.c = 1;
+@@@ -1194,13 -1169,7 +1194,13 @@@ LiteralStep :: (forest: snapshot.Snapsh
+                      earlier = NextMember(forest, earlier);
+                  }
+                  field := members[FindField(types, members, record, name)];
+ +                if (field.c_string) {
+ +                    message := CStringMessage(forest, text, Field(forest, member, "value"), field.name);
+ +                    if (message != "") {
+ +                        return Fail(forest, Field(forest, member, "value"), document, message);
+ +                    }
+ +                }
+-                 next = array_add(next, Expect(Field(forest, member, "value"), field.storage, 0, -1));
++                 next.append(Expect(Field(forest, member, "value"), field.storage, 0, -1));
+              }
+              count += 1;
+              member = NextMember(forest, member);
+@@@ -3063,31 -2999,6 +3068,31 @@@ AggregateStep :: (forest: snapshot.Snap
+      return Step.Emitted(code, slots, locals, CallCells(operands, combined), [host], roots, calls, bound, next, 2,
+                          Typed(made, StructStorage, 0, result.record), NoValue(), marks);
+  }
+ +// A native char pointer is read through its reflected field adapter.
+ +NativeTextReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, at: Bases,
+ +                       node: snapshot.SnapshotNode) -> Step {
+ +    first := at.cell;
+ +    facts: uint64[] = [0, 0, 0, 0xFFFFFFFFFFFFFFFF, 0, 0, 0, 0, 0];
+ +    cells := ReferenceCells(target, object.record, facts, field);
+-     cells = append(cells, [ReferenceCell(target), TypedCell(TextStorage, 0, -1),
+++    cells = extend(cells, [ReferenceCell(target), TypedCell(TextStorage, 0, -1),
+ +                           TypedCell(StructStorage, 0, object.record)]);
+ +    address: Slot = {storage: target.pointer_storage, kind: AddressKind};
+ +    slots: Slot[] = [address, address, address, address];
+ +    code := CellWrite(target.pointer_storage, object.slot, first + 20, ops, target, at.slot, node);
+-     code = array_add(code, Instruction(ops.context, target.pointer_storage, at.slot, 0, 0, 1, node));
+-     code = append(code, CellWrite(target.pointer_storage, at.slot, first, ops, target, at.slot + 1, node));
+-     code = array_add(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + 2, first + 20, 0, 0, node));
+-     code = append(code, CellWrite(target.pointer_storage, at.slot + 2, first + 4, ops, target, at.slot + 3, node));
+++    code = append(code, Instruction(ops.context, target.pointer_storage, at.slot, 0, 0, 1, node));
+++    code = extend(code, CellWrite(target.pointer_storage, at.slot, first, ops, target, at.slot + 1, node));
+++    code = append(code, Instruction(ops.host_slot, target.pointer_storage, at.slot + 2, first + 20, 0, 0, node));
+++    code = extend(code, CellWrite(target.pointer_storage, at.slot + 2, first + 4, ops, target, at.slot + 3, node));
+ +    hosts := FieldReferenceHosts(first);
+-     code = append(code, ReferenceCode(ops, target, first, first + 14, at.host, at.slot + 4, node));
+-     slots = append(slots, FieldReferenceSlots(target));
+-     hosts = array_add(hosts, ReadThroughHost(first + 18));
+-     code = append(code, ReadThroughCode(ops, target, TextStorage, 0, at.slot + 8, first + 18, at.host + 2,
+++    code = extend(code, ReferenceCode(ops, target, first, first + 14, at.host, at.slot + 4, node));
+++    slots = extend(slots, FieldReferenceSlots(target));
+++    hosts = append(hosts, ReadThroughHost(first + 18));
+++    code = extend(code, ReadThroughCode(ops, target, TextStorage, 0, at.slot + 8, first + 18, at.host + 2,
+ +                                        at.slot + 9, node));
+-     slots = append(slots, ReadThroughSlots(TextStorage, 0, target));
+++    slots = extend(slots, ReadThroughSlots(TextStorage, 0, target));
+ +    return Step.Emitted(code, slots, [], cells, hosts, [], [], [], [], 1,
+ +                        Typed(at.slot + 11, TextStorage, 0, -1), NoValue(), []);
+ +}
+  // `v.f`, where natives[f.read] reads the field: a call of it on `v`.
+  NativeReadStep :: (object: Value, field: TypeMember, ops: Ops, target: Target, at: Bases,
+                     node: snapshot.SnapshotNode) -> Step {
+diff --cc tools/compiler/prepared_writer/Writer.chibi
+index 8a2c9becf,2230e8978..000000000
+--- a/tools/compiler/prepared_writer/Writer.chibi
++++ b/tools/compiler/prepared_writer/Writer.chibi
+@@@ -351,19 -351,15 +351,19 @@@ ValueHead :: (v: Value, bits: uint64) -
+      }
+      if (v.tag == UnionTag) {
+          if (!v.present) {
+-             return append(bytes, Words([Flag(v.authored), 0]));
++             return extend(bytes, Words([Flag(v.authored), 0]));
+          }
+-         return append(bytes, Words([Flag(v.authored), 1, bits, Zig(v.count)]));
++         return extend(bytes, Words([Flag(v.authored), 1, bits, Zig(v.count)]));
+      }
+ -    if (v.tag == TextTag || v.tag == NameTag) {
+ +    if (v.tag == TextTag) {
+ +        raw := Raw(v.text);
+-         return append(bytes, append(Words([Flag(v.authored), uint64(length(raw))]), raw));
+++        return extend(bytes, extend(Words([Flag(v.authored), uint64(length(raw))]), raw));
+ +    }
+ +    if (v.tag == NameTag) {
+-         bytes = append(bytes, Words([Flag(v.authored)]));
+-         return append(bytes, Text(v.text, v.has_text));
++         bytes.extend(Words([Flag(v.authored)]));
++         return extend(bytes, Text(v.text, v.has_text));
+      }
+-     return append(bytes, Words([Flag(v.authored), bits]));
++     return extend(bytes, Words([Flag(v.authored), bits]));
+  }
+  // A value's bytes: its own, then those of the values nested in it, which
+  // `pool` already holds from starts[i] for sizes[i] bytes.
+@@@ -490,11 -486,10 +490,11 @@@ pub Write :: (module: Module) -> byte[
+                      index: int = 0;
+                      while (index < requirement.count) {
+                          field := fields[requirement.first + index];
+-                         bytes = append(bytes, Text(field.name, true));
+-                         bytes = append(bytes, Ints([field.kind]));
+-                         bytes = append(bytes, Text(field.type_name, field.has_type_name));
+-                         bytes = append(bytes, Text(field.unit, field.has_unit));
+-                         bytes = append(bytes, Words([Flag(field.kind == TextTag)]));
++                         bytes.extend(Text(field.name, true));
++                         bytes.extend(Ints([field.kind]));
++                         bytes.extend(Text(field.type_name, field.has_type_name));
++                         bytes.extend(Text(field.unit, field.has_unit));
+++                        bytes.extend(Words([Flag(field.kind == TextTag)]));
+                          index += 1;
+                      }
+                  }
+diff --cc tools/compiler/signature_reader/Reader.chibi
+index 7c515346f,9999587fb..000000000
+--- a/tools/compiler/signature_reader/Reader.chibi
++++ b/tools/compiler/signature_reader/Reader.chibi
+@@@ -96,8 -96,8 +96,8 @@@ pub Name :: (tree: Tree, node: int, doc
+          return Decoded.Name(raw, diagnostics);
+      }
+      decoded := compiler_json_string(raw);
+ -    if (!decoded.valid || strings.ByteLength(decoded.value) != decoded.byte_length) {
+ +    if (!decoded.valid || strings.IndexByte(decoded.value, 0) >= 0) {
+-         diagnostics = array_add(diagnostics, Diagnostic(tree, node, document, "Invalid string or embedded NUL"));
++         diagnostics.append(Diagnostic(tree, node, document, "Invalid string or embedded NUL"));
+          return Decoded.Name("", diagnostics);
+      }
+      return Decoded.Name(decoded.value, diagnostics);
+diff --git a/packages/core/strings/Strings.chibi b/packages/core/strings/Strings.chibi
+index 84c0ba323..a343174c1 100644
+--- a/packages/core/strings/Strings.chibi
++++ b/packages/core/strings/Strings.chibi
+@@ -9,7 +9,7 @@ pub ByteLength :: (value: string) -> int {
+ }
+ 
+ // Returns -1 outside the string; valid bytes are unsigned values from 0 to 255.
+-// Each call measures the string, so a loop over a long one should read Bytes.
++// Indexing uses the stored byte length and takes constant time.
+ pub ByteAt :: (value: string, index: int) -> int {
+     return text_byte_at(value, index);
+ }
+diff --git a/src/assets/model_import.c b/src/assets/model_import.c
+index 511664964..9f38235ff 100644
+--- a/src/assets/model_import.c
++++ b/src/assets/model_import.c
+@@ -1197,7 +1197,8 @@ static char *prototype_text(const char *name, const char *source)
+         { "Geometry3D", "depth", { .type = PIN_F32, .f = 1 } },
+         { "MeshAsset",
+           "source",
+-          { .type = PIN_STR, .text = &(pin_string){ source, (uint32_t)strlen(source) } } },
++          { .type = PIN_STR,
++            .text = &(pin_string){ .bytes = source, .length = (uint32_t)strlen(source) } } },
+     };
+     for (size_t i = 0; i < sizeof fields / sizeof *fields; i++) {
+         int written = prototype_write_field(
+diff --git a/src/assets/prototype.c b/src/assets/prototype.c
+index f58e413aa..cd5c4f567 100644
+--- a/src/assets/prototype.c
++++ b/src/assets/prototype.c
+@@ -82,7 +82,7 @@ static void read_field(const void *base, const type_field *field, pin_value *out
+         memcpy(&bytes, (const char *)base + field->offset, sizeof bytes);
+         size_t length = bytes ? strlen(bytes) : 0;
+         assert(length <= UINT32_MAX);
+-        *text = (pin_string){ bytes ? bytes : "", (uint32_t)length };
++        *text = (pin_string){ .bytes = bytes ? bytes : "", .length = (uint32_t)length };
+         *out = (pin_value){ .type = PIN_STR, .type_name = field->type_name, .text = text };
+         return;
+     }
+@@ -419,7 +419,8 @@ static int parse_field(
+         case PIN_STR: {
+             result = !av_is_str(json);
+             if (!result) {
+-                text = (pin_string){ av_get_str(json), (uint32_t)av_get_len(json) };
++                text = (pin_string){ .bytes = av_get_str(json),
++                                     .length = (uint32_t)av_get_len(json) };
+                 value.text = &text;
+             }
+             break;
+diff --git a/src/assets/refactor.c b/src/assets/refactor.c
+index 8a2b92e21..f4724b39b 100644
+--- a/src/assets/refactor.c
++++ b/src/assets/refactor.c
+@@ -38,7 +38,8 @@ static pin_value renamed_value(pin_type type, const char *bytes, pin_string *tex
+     if (type == PIN_NAME) {
+         return (pin_value){ .type = PIN_NAME, .str = bytes };
+     }
+-    *text = (pin_string){ bytes, bytes ? (uint32_t)strlen(bytes) : 0 };
++    *text = (pin_string){ .bytes = bytes,
++                          .length = bytes ? (uint32_t)strlen(bytes) : 0 };
+     return (pin_value){ .type = PIN_STR, .text = text };
+ }
+ 
+diff --git a/src/assets/standard_material.c b/src/assets/standard_material.c
+index 37cd792d0..adacb17d2 100644
+--- a/src/assets/standard_material.c
++++ b/src/assets/standard_material.c
+@@ -104,8 +104,8 @@ static node *texture(graph *g, const standard_texture *source, shader_image_colo
+         n,
+         SHADER_IMAGE_INPUT_IMAGE,
+         (pin_value){ .type = PIN_STR,
+-                     .text = &(pin_string){ source->image,
+-                                            (uint32_t)strlen(source->image) } });
++                     .text = &(pin_string){ .bytes = source->image,
++                                            .length = (uint32_t)strlen(source->image) } });
+     set(g, n, SHADER_IMAGE_INPUT_COLOR_SPACE, (pin_value){ .type = PIN_I32, .i = space });
+     set(g,
+         n,
+diff --git a/src/execution/c.c b/src/execution/c.c
+index 454795564..6a73d0208 100644
+--- a/src/execution/c.c
++++ b/src/execution/c.c
+@@ -326,11 +326,11 @@ static void body(const behavior_function *f, FILE *out, char prefix, bool inspec
+             continue;
+         }
+         pin_string text = pin_text(value);
+-        fprintf(out, "static const pin_string text%d={(const char*)\"", n);
++        fprintf(out, "static const pin_string text%d={.bytes=(const char*)\"", n);
+         for (uint32_t byte = 0; byte < text.length; byte++) {
+             fprintf(out, "\\%03o", (unsigned char)text.bytes[byte]);
+         }
+-        fprintf(out, "\",%u};\n", text.length);
++        fprintf(out, "\",.length=%u};\n", text.length);
+     }
+     for (int j = 0; j < acount(f->slots); j++) {
+         fprintf(out, "%s v%d=0;\n", behavior_scalar_c_type(f->slots[j]), j);
+diff --git a/src/execution/function.c b/src/execution/function.c
+index b20580519..082441f87 100644
+--- a/src/execution/function.c
++++ b/src/execution/function.c
+@@ -587,7 +587,11 @@ static const pin_string *copy_text(void *storage, const pin_string *text)
+         return NULL;
+     }
+     pin_value value;
+-    const char *error = pin_value_text(storage, &value, text->bytes, text->length);
++    const char *error = pin_value_text_share(
++        storage,
++        &value,
++        (pin_value){ .type = PIN_STR, .text = text }
++    );
+     assert(!error);
+     (void)error;
+     return value.text;
+diff --git a/src/host/build_io.h b/src/host/build_io.h
+index 109d0c886..55c6d10bf 100644
+--- a/src/host/build_io.h
++++ b/src/host/build_io.h
+@@ -13,7 +13,7 @@ char *build_io_resolve(const char *root, const char *path);
+ bool build_io_exists(const char *root, const char *path);
+ bool build_io_mkdir(const char *root, const char *path);
+ 
+-/* Read at most 1 MiB of regular-file bytes. A missing file returns an owned
++/* Read at most 16 MiB of regular-file bytes. A missing file returns an owned
+  * empty string; all other failures return false with a static capability
+  * diagnostic. Deadline uses chibi_process_now(); cancelled may be NULL. */
+ bool build_io_read(
+@@ -27,7 +27,7 @@ bool build_io_read(
+ );
+ 
+ /* Atomically replace bytes through a temporary file in the destination directory.
+- * Data is limited to 1 MiB. Failed writes remove the temporary file. */
++ * Data is limited to 16 MiB. Failed writes remove the temporary file. */
+ bool build_io_write(
+     const char *root,
+     const char *path,
+@@ -48,7 +48,7 @@ const char *build_io_stamp(const char *root, const char *path, char stamp[BUILD_
+ 
+ /* A directory's entry names except . and .., sorted by byte, as an owned
+  * support/array.h array of owned strings. A missing directory lists no names.
+- * Fails beyond 8,192 names or 1 MiB of names. */
++ * Fails beyond 8,192 names or 16 MiB of names. */
+ const char *build_io_list(
+     const char *root,
+     const char *path,
+diff --git a/src/host/build_values.c b/src/host/build_values.c
+index e4536774c..e8813d26e 100644
+--- a/src/host/build_values.c
++++ b/src/host/build_values.c
+@@ -133,36 +133,68 @@ const char *build_values_join(build_values *values, const pin_value *arguments,
+     results[0].text = joined;
+     return NULL;
+ }
++static const char *find_bytes(const char *text, size_t length, pin_string find)
++{
++    while (length >= find.length) {
++        const char *at = memchr(text, (unsigned char)find.bytes[0], length - find.length + 1);
++        if (!at) {
++            return NULL;
++        }
++        if (!memcmp(at, find.bytes, find.length)) {
++            return at;
++        }
++        size_t skipped = (size_t)(at - text) + 1;
++        text += skipped;
++        length -= skipped;
++    }
++    return NULL;
++}
+ /* Every occurrence of a non-empty `find` in text, left to right, replaced by
+- * `with`. */
++ * `with`. All three strings may contain arbitrary bytes. */
+ const char *build_values_replace(build_values *values, const pin_value *arguments, pin_value *results)
+ {
+     if (!build_values_string(&arguments[0]) || !build_values_string(&arguments[1]) ||
+-        !build_values_string(&arguments[2]) || !arguments[1].str[0]) {
++        !build_values_string(&arguments[2])) {
+         return "invalid build string arguments";
+     }
+-    const char *text = arguments[0].str, *find = arguments[1].str,
+-               *with = arguments[2].str;
+-    size_t find_size = strlen(find), with_size = strlen(with), size = strlen(text);
+-    for (const char *at = strstr(text, find); at; at = strstr(at + find_size, find)) {
+-        if (with_size > find_size && with_size - find_size > BUILD_TEXT_LIMIT - size) {
++    pin_string text = pin_text(arguments[0]), find = pin_text(arguments[1]),
++               with = pin_text(arguments[2]);
++    if (!find.length) {
++        return "invalid build string arguments";
++    }
++    size_t size = text.length;
++    const char *at = text.bytes;
++    size_t remaining = text.length;
++    for (const char *match; (match = find_bytes(at, remaining, find));) {
++        if (with.length > find.length && with.length - find.length > BUILD_TEXT_LIMIT - size) {
+             return "build text limit exceeded";
+         }
+-        size = size - find_size + with_size;
++        size = size - find.length + with.length;
++        size_t consumed = (size_t)(match - at) + find.length;
++        at += consumed;
++        remaining -= consumed;
+     }
+-    char *result = allocate(values, size + 1);
++    pin_string *result = allocate(values, sizeof(*result) + size + 1);
+     if (!result) {
+         return values->error;
+     }
+-    char *out = result;
+-    for (const char *at; (at = strstr(text, find)); text = at + find_size) {
+-        memcpy(out, text, (size_t)(at - text));
+-        out += at - text;
+-        memcpy(out, with, with_size);
+-        out += with_size;
+-    }
+-    strcpy(out, text);
+-    results[0].str = result;
++    char *out = (char *)(result + 1);
++    *result = (pin_string){ .bytes = out, .length = (uint32_t)size };
++    at = text.bytes;
++    remaining = text.length;
++    for (const char *match; (match = find_bytes(at, remaining, find));) {
++        size_t prefix = (size_t)(match - at);
++        memcpy(out, at, prefix);
++        out += prefix;
++        memcpy(out, with.bytes, with.length);
++        out += with.length;
++        size_t consumed = prefix + find.length;
++        at += consumed;
++        remaining -= consumed;
++    }
++    memcpy(out, at, remaining);
++    out[remaining] = 0;
++    results[0].text = result;
+     return NULL;
+ }
+ const char *build_values_starts_with(build_values *, const pin_value *arguments, pin_value *results)
+diff --git a/src/runtime/text_format.c b/src/runtime/text_format.c
+index a50387a0e..3eb1f3601 100644
+--- a/src/runtime/text_format.c
++++ b/src/runtime/text_format.c
+@@ -260,10 +260,11 @@ static pin_string fmt_render_text(const pin_value *value, const char *mods, size
+             assert(length >= 0 && length < FMT_RENDER_BUF);
+             char *bytes = arena_alloc(storage, (size_t)length + 1);
+             memcpy(bytes, buffer, (size_t)length + 1);
+-            return (pin_string){ bytes, (uint32_t)length };
++            return (pin_string){ .bytes = bytes, .length = (uint32_t)length };
+         }
+         const char *text = fmt_render_arg(value, mods, size, storage);
+-        return (pin_string){ text ? text : "", text ? (uint32_t)strlen(text) : 0 };
++        return (pin_string){ .bytes = text ? text : "",
++                             .length = text ? (uint32_t)strlen(text) : 0 };
+     }
+     pin_string text = pin_text(*value);
+     char conv[80], letter;
+@@ -296,7 +297,7 @@ static pin_string fmt_render_text(const pin_value *value, const char *mods, size
+     memset(bytes, ' ', total);
+     memcpy(bytes + (left ? 0 : total - length), text.bytes, length);
+     bytes[total] = 0;
+-    return (pin_string){ bytes, (uint32_t)total };
++    return (pin_string){ .bytes = bytes, .length = (uint32_t)total };
+ }
+ pin_value native_format_text(const pin_value *inputs, int input_count, arena *storage)
+ {
+@@ -304,8 +305,9 @@ pin_value native_format_text(const pin_value *inputs, int input_count, arena *st
+     pin_value result = { .type = PIN_STR, .type_name = "const char *" };
+     bool scalar_text = inputs[0].container == PIN_CONTAINER_SINGLE &&
+                        (inputs[0].type == PIN_STR || inputs[0].type == PIN_NAME);
+-    pin_string format = scalar_text ? pin_text(inputs[0])
+-                                    : (pin_string){ fmt_text_of(inputs), 0 };
++    pin_string format = scalar_text
++                          ? pin_text(inputs[0])
++                          : (pin_string){ .bytes = fmt_text_of(inputs), .length = 0 };
+     if (!scalar_text) {
+         format.length = (uint32_t)strlen(format.bytes);
+     }
+@@ -474,7 +476,7 @@ static const char *text_slice_call(arena *storage, const pin_value *arguments, i
+     if (take > length - start) {
+         take = length - start;
+     }
+-    return pin_value_text(storage, result, text + start, take);
++    return pin_value_text_slice(storage, result, arguments[0], start, take);
+ }
+ static const char *text_bytes_call(arena *storage, const pin_value *arguments, int count, pin_value *result)
+ {
+diff --git a/src/runtime/text_format.h b/src/runtime/text_format.h
+index 275a5d722..17734b1be 100644
+--- a/src/runtime/text_format.h
++++ b/src/runtime/text_format.h
+@@ -12,8 +12,8 @@ pin_value native_text_equal(const pin_value *, int, arena *);
+ extern const node_host_call NATIVE_FORMAT_TEXT_HOST, NATIVE_FORMAT_TEXT_CALL;
+ extern const node_host_call NATIVE_TEXT_EQUAL_HOST, NATIVE_TEXT_EQUAL_CALL;
+ /* Byte operations: length rejects text beyond INT_MAX; byte access returns -1
+- * outside the string. Slice clamps start/count and owns its NUL-terminated
+- * result in the supplied arena. Byte ranges may split UTF-8 sequences. Each
++ * outside the string. Slice clamps start/count and retains immutable backing
++ * through its arena-owned descriptor. Byte ranges may split UTF-8 sequences. Each
+  * call reads the stored byte length; length and indexing are constant time.
+  * text_bytes returns every byte, from 0 to 255, as an int[]
+  * in the arena, in one pass. */
+diff --git a/src/support/arena.c b/src/support/arena.c
+index 1553d1c61..b43fc36f9 100644
+--- a/src/support/arena.c
++++ b/src/support/arena.c
+@@ -21,6 +21,8 @@ struct arena_allocation
+     size_t size, capacity;
+     arena_tracer trace;
+     const void *shape;
++    void (*release)(void *);
++    void *resource;
+     bool live, marked;
+     _Alignas(max_align_t) unsigned char data[];
+ };
+@@ -29,6 +31,17 @@ struct arena_page
+     uintptr_t page;
+     arena_allocation *value;
+ };
++struct arena_cleanup
++{
++    arena_cleanup *next;
++    void (*release)(void *);
++    void *resource;
++};
++struct arena_resource
++{
++    void *resource;
++    size_t references, bytes;
++};
+ static _Thread_local uint64_t block_allocations, collect_marks;
+ /* Keep bounded reuse across safepoints even when payload sizes keep changing. */
+ #define ARENA_VALUE_CACHE_BYTES ((size_t)4 * 1024)
+@@ -182,8 +195,109 @@ static arena_allocation *indexed(const arena *a, uintptr_t address, bool start)
+     }
+     return NULL;
+ }
++static size_t resource_slot(const arena *a, const void *resource)
++{
++    uint64_t hash = (uint64_t)(uintptr_t)resource * UINT64_C(0x9E3779B97F4A7C15);
++    return (size_t)(hash >> 32) & (a->resource_capacity - 1);
++}
++static void resize_resources(arena *a, size_t capacity)
++{
++    arena_resource *old = a->resources;
++    size_t old_capacity = a->resource_capacity;
++    a->resources = xcalloc(capacity, sizeof *a->resources);
++    a->resource_capacity = capacity;
++    for (size_t i = 0; i < old_capacity; i++) {
++        if (!old[i].resource) {
++            continue;
++        }
++        size_t slot = resource_slot(a, old[i].resource);
++        while (a->resources[slot].resource) {
++            slot = (slot + 1) & (capacity - 1);
++        }
++        a->resources[slot] = old[i];
++    }
++    free(old);
++}
++static void retain_resource(arena *a, void *resource, size_t bytes)
++{
++    if (2 * (a->resource_count + 1) > a->resource_capacity) {
++        resize_resources(a, a->resource_capacity ? a->resource_capacity * 2 : 8);
++    }
++    size_t slot = resource_slot(a, resource);
++    while (a->resources[slot].resource && a->resources[slot].resource != resource) {
++        slot = (slot + 1) & (a->resource_capacity - 1);
++    }
++    arena_resource *entry = &a->resources[slot];
++    if (entry->resource) {
++        assert(entry->bytes == bytes);
++        entry->references++;
++        return;
++    }
++    assert(bytes <= SIZE_MAX - a->retained_bytes);
++    *entry = (arena_resource){ resource, 1, bytes };
++    a->resource_count++;
++    a->retained_bytes += bytes;
++    if (a->collectable) {
++        assert(bytes <= SIZE_MAX - a->allocated);
++        a->allocated += bytes;
++    }
++}
++static void release_resource(arena *a, void (*release)(void *), void *resource)
++{
++    size_t mask = a->resource_capacity - 1, slot = resource_slot(a, resource);
++    while (a->resources[slot].resource != resource) {
++        assert(a->resources[slot].resource);
++        slot = (slot + 1) & mask;
++    }
++    if (!--a->resources[slot].references) {
++        a->retained_bytes -= a->resources[slot].bytes;
++        a->resource_count--;
++        /* Remove the key without leaving tombstones across collections. */
++        for (size_t next = (slot + 1) & mask; a->resources[next].resource;
++             next = (next + 1) & mask) {
++            size_t home = resource_slot(a, a->resources[next].resource);
++            if (((next - home) & mask) >= ((next - slot) & mask)) {
++                a->resources[slot] = a->resources[next];
++                slot = next;
++            }
++        }
++        a->resources[slot] = (arena_resource){ 0 };
++    }
++    release(resource);
++}
++static void free_cleanups(arena *a)
++{
++    while (a->cleanups) {
++        arena_cleanup *cleanup = a->cleanups;
++        a->cleanups = cleanup->next;
++        release_resource(a, cleanup->release, cleanup->resource);
++        free(cleanup);
++    }
++    a->cleanup_count = 0;
++}
++static void fit_resources(arena *a)
++{
++    if (!a->resource_count) {
++        free(a->resources);
++        a->resources = NULL;
++        a->resource_capacity = 0;
++        return;
++    }
++    size_t capacity = 8;
++    while (capacity < 4 * a->resource_count) {
++        capacity *= 2;
++    }
++    if (capacity < a->resource_capacity) {
++        resize_resources(a, capacity);
++    }
++}
+ static void retire(arena *a, arena_allocation *value)
+ {
++    if (value->release) {
++        release_resource(a, value->release, value->resource);
++        value->release = NULL;
++        value->resource = NULL;
++    }
+     value->live = false;
+     value->size = 0;
+     value->trace = NULL;
+@@ -208,12 +322,14 @@ void arena_copy_remember(arena *a, const void *source, const void *copy)
+ void arena_reset(arena *a)
+ {
+     forget_copy(a);
++    free_cleanups(a);
+     clear_pages(a);
+     while (a->allocations) {
+         arena_allocation *value = a->allocations;
+         a->allocations = value->next;
+         retire(a, value);
+     }
++    fit_resources(a);
+     a->allocated = 0;
+     a->kept = 0;
+     for (arena_block *block = a->first; block; block = block->next) {
+@@ -284,18 +400,23 @@ void *arena_alloc(arena *a, size_t size)
+     }
+ }
+ 
+-static void free_values(arena_allocation *value)
++static void free_values(arena *a, arena_allocation *value)
+ {
+     while (value) {
+         arena_allocation *next = value->next;
++        if (value->release) {
++            release_resource(a, value->release, value->resource);
++        }
+         free(value);
+         value = next;
+     }
+ }
+ void arena_free(arena *a)
+ {
+-    free_values(a->allocations);
+-    free_values(a->unused);
++    free_cleanups(a);
++    free_values(a, a->allocations);
++    free_values(a, a->unused);
++    free(a->resources);
+     free(a->pages);
+     arena_block *block = a->first;
+     while (block) {
+@@ -330,6 +451,23 @@ void arena_set_trace(arena *a, const void *data, arena_tracer trace, const void
+     value->trace = trace;
+     value->shape = shape;
+ }
++void arena_set_cleanup(arena *a, const void *allocation, void (*release)(void *), void *resource, size_t retained_bytes)
++{
++    assert(release && resource);
++    if (a->collectable) {
++        arena_allocation *value = indexed(a, (uintptr_t)allocation, true);
++        assert(value && !value->release);
++        value->release = release;
++        value->resource = resource;
++    } else {
++        assert(arena_contains(a, allocation));
++        arena_cleanup *cleanup = xmalloc(sizeof *cleanup);
++        *cleanup = (arena_cleanup){ a->cleanups, release, resource };
++        a->cleanups = cleanup;
++        a->cleanup_count++;
++    }
++    retain_resource(a, resource, retained_bytes);
++}
+ static int by_address(const void *a, const void *b)
+ {
+     uintptr_t x = (uintptr_t)(*(arena_allocation *const *)a)->data;
+@@ -393,6 +531,7 @@ static void sweep(arena *a)
+         unindex_value(a, value);
+         retire(a, value);
+     }
++    a->kept += a->retained_bytes;
+     size_t cached = 0;
+     for (arena_allocation *value = a->unused; value; value = value->next) {
+         cached += value->capacity;
+@@ -404,6 +543,7 @@ static void sweep(arena *a)
+         free(value);
+     }
+     fit_pages(a);
++    fit_resources(a);
+ }
+ void arena_collect_end(arena_collection *c)
+ {
+@@ -422,8 +562,8 @@ void arena_collect_end(arena_collection *c)
+ }
+ void arena_usage(const arena *a, size_t *bytes, size_t *capacity)
+ {
+-    *bytes = 0;
+-    *capacity = 0;
++    *bytes = a->retained_bytes;
++    *capacity = a->retained_bytes;
+     for (const arena_allocation *value = a->allocations; value; value = value->next) {
+         *bytes += value->size;
+         *capacity += value->capacity;
+@@ -448,7 +588,9 @@ size_t arena_storage_bytes(const arena *a)
+     for (const arena_block *block = a->first; block; block = block->next) {
+         bytes += sizeof *block + block->cap;
+     }
+-    return bytes + a->page_capacity * sizeof *a->pages;
++    return bytes + a->page_capacity * sizeof *a->pages + a->retained_bytes +
++           a->resource_capacity * sizeof *a->resources +
++           a->cleanup_count * sizeof(arena_cleanup);
+ }
+ void *arena_alloc_bounded(arena *a, size_t size, size_t budget)
+ {
+diff --git a/src/support/arena.h b/src/support/arena.h
+index 49e2070e1..c7f9f767d 100644
+--- a/src/support/arena.h
++++ b/src/support/arena.h
+@@ -8,6 +8,8 @@
+ typedef struct arena_block arena_block;
+ typedef struct arena_allocation arena_allocation;
+ typedef struct arena_page arena_page;
++typedef struct arena_cleanup arena_cleanup;
++typedef struct arena_resource arena_resource;
+ typedef void (*arena_marker)(void *user, const void *address);
+ typedef void (*arena_tracer)(const void *value, const void *shape, arena_marker mark, void *user);
+ typedef struct arena
+@@ -19,10 +21,14 @@ typedef struct arena
+     arena_page *pages;             /* Live values by each page they touch. */
+     size_t page_capacity;          /* Index slots, a power of two. */
+     size_t page_count;             /* Occupied index slots. */
+-    size_t allocated;              /* Collectable bytes since the last sweep. */
+-    size_t kept;                   /* Collectable bytes the last sweep kept. */
+-    const void *copied_from;       /* Source of the last copy remembered. */
+-    const void *copy;              /* That copy, which this arena holds. */
++    size_t allocated; /* Value and new resource bytes since the last sweep. */
++    size_t kept;      /* Value and resource bytes the last sweep kept. */
++    arena_cleanup *cleanups; /* Ordinary allocations with external ownership. */
++    arena_resource *resources; /* Unique resources retained by live allocations. */
++    size_t resource_capacity, resource_count, retained_bytes;
++    size_t cleanup_count;
++    const void *copied_from; /* Source of the last copy remembered. */
++    const void *copy;        /* That copy, which this arena holds. */
+     bool collectable;
+ } arena;
+ 
+@@ -42,6 +48,19 @@ uint64_t arena_block_allocations();
+  * Values no collection marks become reusable; live addresses stay stable. */
+ void arena_init_collectable(arena *a);
+ void arena_set_trace(arena *a, const void *value, arena_tracer trace, const void *shape);
++/* Transfers one retained reference to an allocation. Attach at most once, using
++ * its starting address and non-null resource/release. Release runs exactly once
++ * when that allocation retires, before its storage is reused or freed. It must
++ * not mutate this arena or depend on other arena allocations remaining live.
++ * Shared resource identities must report the same retained_bytes; accounting
++ * charges their bytes once per arena until the last attachment retires. */
++void arena_set_cleanup(
++    arena *a,
++    const void *allocation,
++    void (*release)(void *),
++    void *resource,
++    size_t retained_bytes
++);
+ /* One mark and sweep over collectable arenas whose values may point into one
+  * another. A mark finds its value by address in logarithmic time, and each
+  * marked value is traced once. The arenas must outlive the collection. */
+diff --git a/src/types/array.c b/src/types/array.c
+index 2a51cb9b2..87d3a0c82 100644
+--- a/src/types/array.c
++++ b/src/types/array.c
+@@ -188,9 +188,8 @@ static char *arena_string(arena *a, const char *s, pin_copy_kind kind)
+ 
+ static int copy_text(arena *storage, pin_value *out, const pin_value *source)
+ {
+-    pin_string text = pin_text(*source);
+     pin_value copy;
+-    if (pin_value_text(storage, &copy, text.bytes, text.length)) {
++    if (pin_value_text_share(storage, &copy, *source)) {
+         return -1;
+     }
+     out->text = copy.text;
+@@ -890,7 +889,7 @@ void pin_value_destroy(pin_value *value)
+     } else if (value->container >= PIN_CONTAINER_ARRAY) {
+         pin_array_free((pin_array *)value->ptr);
+     } else if (value->type == PIN_STR) {
+-        free((void *)value->text);
++        pin_text_destroy(value->text);
+     } else if (value->type == PIN_NAME) {
+         free((void *)value->str);
+     } else if (value->type == PIN_UNION) {
+diff --git a/src/types/scalar.h b/src/types/scalar.h
+index 4243d6830..e82050926 100644
+--- a/src/types/scalar.h
++++ b/src/types/scalar.h
+@@ -93,8 +93,10 @@ static inline pin_value behavior_scalar_from_bits(pin_type type, uint64_t bits)
+ 
+ static inline int behavior_text_equal(const pin_string *a, const pin_string *b)
+ {
+-    return a == b ||
+-           pin_text_equal(a ? *a : (pin_string){ "", 0 }, b ? *b : (pin_string){ "", 0 });
++    return a == b || pin_text_equal(
++                         a ? *a : (pin_string){ .bytes = "", .length = 0 },
++                         b ? *b : (pin_string){ .bytes = "", .length = 0 }
++                     );
+ }
+ static inline int behavior_string_equal(const char *a, const char *b)
+ {
+diff --git a/src/types/text.c b/src/types/text.c
+index 5e0e5c064..7b7c8ecc5 100644
+--- a/src/types/text.c
++++ b/src/types/text.c
+@@ -5,8 +5,49 @@
+ #include "types/copy_internal.h"
+ 
+ #include <assert.h>
++#include <stdatomic.h>
++#include <stdlib.h>
+ #include <string.h>
+ 
++struct pin_text_owner
++{
++    atomic_size_t references;
++    uint32_t length;
++    char bytes[];
++};
++
++static void release_owner(void *resource)
++{
++    pin_text_owner *owner = resource;
++    size_t before = atomic_fetch_sub_explicit(&owner->references, 1, memory_order_acq_rel);
++    assert(before);
++    if (before == 1) {
++        free(owner);
++    }
++}
++
++static const char *store_descriptor(arena *storage, pin_value *out, pin_string text)
++{
++    pin_string *descriptor = storage ? arena_alloc(storage, sizeof *descriptor)
++                                     : xmalloc(sizeof *descriptor);
++    if (!descriptor) {
++        release_owner(text.owner);
++        return "String allocation failed";
++    }
++    *descriptor = text;
++    if (storage) {
++        arena_set_cleanup(
++            storage,
++            descriptor,
++            release_owner,
++            text.owner,
++            sizeof *text.owner + (size_t)text.owner->length + 1
++        );
++    }
++    *out = (pin_value){ .type = PIN_STR, .text = descriptor };
++    return NULL;
++}
++
+ pin_string pin_text(pin_value value)
+ {
+     assert(value.type == PIN_STR || value.type == PIN_NAME);
+@@ -14,9 +55,9 @@ pin_string pin_text(pin_value value)
+         const char *bytes = value.str ? value.str : "";
+         size_t length = strlen(bytes);
+         assert(length <= UINT32_MAX);
+-        return (pin_string){ bytes, (uint32_t)length };
++        return (pin_string){ .bytes = bytes, .length = (uint32_t)length };
+     }
+-    return value.text ? *value.text : (pin_string){ "", 0 };
++    return value.text ? *value.text : (pin_string){ .bytes = "" };
+ }
+ bool pin_text_valid_utf8(pin_string text)
+ {
+@@ -63,23 +104,74 @@ bool pin_text_valid_utf8(pin_string text)
+ const char *pin_value_text(arena *storage, pin_value *out, const char *bytes, size_t length)
+ {
+     if (!out || (!bytes && length) || length > UINT32_MAX ||
+-        length > SIZE_MAX - sizeof(pin_string) - 1) {
++        length > SIZE_MAX - sizeof(pin_text_owner) - 1) {
+         return "Invalid string length or data";
+     }
+-    size_t size = sizeof(pin_string) + length + 1;
+-    pin_string *text = storage ? arena_alloc(storage, size) : xmalloc(size);
++    if (!length) {
++        *out = (pin_value){ .type = PIN_STR };
++        return NULL;
++    }
++    pin_text_owner *owner = xmalloc(sizeof *owner + length + 1);
++    atomic_init(&owner->references, 1);
++    owner->length = (uint32_t)length;
++    memcpy(owner->bytes, bytes, length);
++    owner->bytes[length] = 0;
++    pin_copy_record(PIN_COPY_TEXT, length + 1);
++    return store_descriptor(
++        storage,
++        out,
++        (pin_string){ .bytes = owner->bytes, .length = (uint32_t)length, .owner = owner }
++    );
++}
++const char *pin_value_text_slice(arena *storage, pin_value *out, pin_value source, size_t start, size_t length)
++{
++    if (!out || source.container != PIN_CONTAINER_SINGLE ||
++        (source.type != PIN_STR && source.type != PIN_NAME)) {
++        return "Invalid string slice";
++    }
++    pin_string text = pin_text(source);
++    if (start > text.length || length > text.length - start) {
++        return "String slice is outside its bounds";
++    }
++    if (!length) {
++        *out = (pin_value){ .type = PIN_STR };
++        return NULL;
++    }
++    if (!text.owner) {
++        return pin_value_text(storage, out, text.bytes + start, length);
++    }
++    size_t before = atomic_fetch_add_explicit(&text.owner->references, 1, memory_order_relaxed);
++    assert(before && before < SIZE_MAX);
++    text.bytes += start;
++    text.length = (uint32_t)length;
++    return store_descriptor(storage, out, text);
++}
++const char *pin_value_text_share(arena *storage, pin_value *out, pin_value source)
++{
++    if (source.container != PIN_CONTAINER_SINGLE ||
++        (source.type != PIN_STR && source.type != PIN_NAME)) {
++        return "Invalid string value";
++    }
++    return pin_value_text_slice(storage, out, source, 0, pin_text(source).length);
++}
++const char *pin_value_text_clone(arena *storage, pin_value *out, pin_value source)
++{
++    if (source.container != PIN_CONTAINER_SINGLE ||
++        (source.type != PIN_STR && source.type != PIN_NAME)) {
++        return "Invalid string value";
++    }
++    pin_string text = pin_text(source);
++    return pin_value_text(storage, out, text.bytes, text.length);
++}
++void pin_text_destroy(const pin_string *text)
++{
+     if (!text) {
+-        return "String allocation failed";
++        return;
+     }
+-    char *data = (char *)(text + 1);
+-    if (length) {
+-        memcpy(data, bytes, length);
++    if (text->owner) {
++        release_owner(text->owner);
+     }
+-    data[length] = 0;
+-    *text = (pin_string){ data, (uint32_t)length };
+-    *out = (pin_value){ .type = PIN_STR, .text = text };
+-    pin_copy_record(PIN_COPY_TEXT, length + 1);
+-    return NULL;
++    free((void *)text);
+ }
+ const char *pin_text_cstring(arena *storage, pin_value value, const char **out, size_t *nul_offset)
+ {
+diff --git a/src/types/text.h b/src/types/text.h
+index f7a92326e..3f404507b 100644
+--- a/src/types/text.h
++++ b/src/types/text.h
+@@ -13,12 +13,25 @@ static inline bool pin_text_equal(pin_string a, pin_string b)
+     return a.length == b.length && (!a.length || !memcmp(a.bytes, b.bytes, a.length));
+ }
+ bool pin_text_valid_utf8(pin_string);
+-/* One allocation owns descriptor and copied bytes. NULL storage selects heap
+- * ownership, released by pin_value_destroy; arena values expire with storage.
+- * Constructs plain text with no nominal type name. Wrappers carrying a nominal
+- * identity must restore that header. Errors leave out unchanged. No UTF-8
+- * validation is implied. */
++/* Copies bytes into retained immutable backing. NULL storage selects a heap
++ * descriptor released by pin_value_destroy; arena descriptors expire with
++ * storage. Constructs plain text with no nominal type name. Wrappers carrying a
++ * nominal identity must restore that header. Errors leave out unchanged. No
++ * UTF-8 validation is implied. */
+ const char *pin_value_text(arena *storage, pin_value *out, const char *bytes, size_t length);
++/* Shares owned immutable bytes, copying borrowed bytes before retaining them.
++ * Descriptors have independent lifetimes, including across arena reset/free.
++ * Empty values have no backing allocation. Returns plain text; errors leave
++ * out unchanged. */
++const char *pin_value_text_share(arena *, pin_value *out, pin_value source);
++/* Copies precisely the source bytes into independent backing. */
++const char *pin_value_text_clone(arena *, pin_value *out, pin_value source);
++/* A checked byte window, counting length bytes from start. A nested slice
++ * retains the original backing directly. Empty slices retain no backing.
++ * An invalid window leaves out unchanged. */
++const char *pin_value_text_slice(arena *, pin_value *out, pin_value source, size_t start, size_t length);
++/* Releases a heap descriptor and its retained backing. */
++void pin_text_destroy(const pin_string *);
+ /* Reject embedded NUL before exposing C text. Reuse a terminating buffer or
+  * copy into storage. With NULL storage, a nonterminated input is heap-copied
+  * and the caller frees that buffer. Failure leaves out unchanged. nul_offset
+diff --git a/src/types/value.h b/src/types/value.h
+index 9d64fc1a9..59be35e62 100644
+--- a/src/types/value.h
++++ b/src/types/value.h
+@@ -40,10 +40,13 @@ typedef enum
+ 
+ typedef struct pin_record pin_record;
+ typedef struct arena arena;
++typedef struct pin_text_owner pin_text_owner;
+ typedef struct pin_string
+ {
+     const char *bytes;
+     uint32_t length;
++    /* NULL for borrowed bytes. Owned descriptors retain this immutable buffer. */
++    pin_text_owner *owner;
+ } pin_string;
+ 
+ typedef struct
+diff --git a/test/authoring/scene_snapshot_read.c b/test/authoring/scene_snapshot_read.c
+index b0709013b..815db7f1f 100644
+--- a/test/authoring/scene_snapshot_read.c
++++ b/test/authoring/scene_snapshot_read.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "authoring/language_catalog.h"
+ #include "authoring/scene_snapshot.h"
+ #include "authoring/source_prepare.h"
+@@ -119,7 +120,7 @@ static const char *read_snapshot(
+     for (int i = 0; i < count; i++) {
+         const char *copy = pin_text(arrays[2]->items[i]).bytes;
+         owned &= copy && copy != raw[i].name &&
+-                 arena_contains(context->value_storage, copy);
++                 test_text_owned(context->value_storage, arrays[2]->items[i]);
+     }
+     f->owned = owned;
+     f->ownership_checks++;
+diff --git a/test/graph/model_parameters.c b/test/graph/model_parameters.c
+index a8d899249..856aaf387 100644
+--- a/test/graph/model_parameters.c
++++ b/test/graph/model_parameters.c
+@@ -378,7 +378,8 @@ TEST_CASE(runtime_snapshots)
+     render_model_stats before_invalid = render_shader_model_stats();
+     const pin_string *valid_name = inputs[1].text;
+     const char nul_name[] = "Radius\0shadow";
+-    const pin_string invalid_name = { nul_name, sizeof nul_name - 1 };
++    const pin_string invalid_name = { .bytes = nul_name,
++                                      .length = sizeof nul_name - 1 };
+     inputs[1].text = &invalid_name;
+     const char *invalid_text = RENDER_SHAPE_PARAMETER_CALL.invoke(world, inputs, NULL);
+     REQUIRE(invalid_text && !strcmp(invalid_text, "String contains embedded NUL"));
+diff --git a/test/language/binding_benchmark.c b/test/language/binding_benchmark.c
+index 4c74b6dc1..5d900aba0 100644
+--- a/test/language/binding_benchmark.c
++++ b/test/language/binding_benchmark.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "backend.h"
+ #include "capabilities/catalog_snapshot.h"
+ #include "ecs/ecs.h"
+@@ -772,7 +773,7 @@ static bool managed_values(const pin_value *values, const arena *storage, int it
+         REQUIRE(
+             !pin_read_field(&managed_input, row->ptr, &row->record->type.fields[1], &count)
+         );
+-        REQUIRE(label.type == PIN_STR && arena_contains(storage, pin_text(label).bytes));
++        REQUIRE(label.type == PIN_STR && test_text_owned(storage, label));
+         REQUIRE(!strcmp(pin_text(label).bytes, text) && count.type == PIN_I32 && count.i == 1);
+     }
+     return true;
+@@ -925,18 +926,12 @@ TEST_CASE(binding_schedule_snapshots_managed_evaluator_results)
+             REQUIRE(cache->output.type == PIN_BOOL && cache->output.b);
+             REQUIRE(text_cache->valid && text_cache->inputs[0].type == PIN_STR);
+             REQUIRE(
+-                arena_contains(
+-                    &text_cache->storage,
+-                    pin_text(text_cache->inputs[0]).bytes
+-                ) &&
++                test_text_owned(&text_cache->storage, text_cache->inputs[0]) &&
+                 !strcmp(pin_text(text_cache->inputs[0]).bytes, expected_text)
+             );
+             REQUIRE(
+                 text_cache->output.type == PIN_STR &&
+-                arena_contains(
+-                    &text_cache->storage,
+-                    pin_text(text_cache->output).bytes
+-                )
++                test_text_owned(&text_cache->storage, text_cache->output)
+             );
+             REQUIRE(!strcmp(pin_text(text_cache->output).bytes, expected_text));
+             const binding_label *label = ecs_component_data_const(world, owners[0], MANAGED_COMPONENT);
+@@ -969,7 +964,7 @@ TEST_CASE(binding_schedule_snapshots_managed_evaluator_results)
+         world = NULL;
+         REQUIRE(managed_values(saved, &managed_saved, 1, "first"));
+         REQUIRE(
+-            arena_contains(&managed_saved, pin_text(saved[4]).bytes) &&
++            test_text_owned(&managed_saved, saved[4]) &&
+             !strcmp(pin_text(saved[4]).bytes, "first")
+         );
+     }
+diff --git a/test/language/borrow.c b/test/language/borrow.c
+index 37d86690f..5f0636d84 100644
+--- a/test/language/borrow.c
++++ b/test/language/borrow.c
+@@ -787,7 +787,8 @@ TEST_CASE(borrow_guard_preserves_null_empty_mixed_headers_and_errors)
+     REQUIRE(guarded() == 1);
+     for (int mode = 0; mode < 4; mode++) {
+         for (int variant = 0; variant < 8; variant++) {
+-            const pin_string retained_text = { "retained", sizeof("retained") - 1 };
++            const pin_string retained_text = { .bytes = "retained",
++                                               .length = sizeof("retained") - 1 };
+             pin_value item = { .type = PIN_F64, .d = 7 };
+             pin_array array = { .element_type = PIN_F64,
+                                 .count = 1,
+@@ -1604,7 +1605,8 @@ static pin_value strings(pin_array *array, pin_value *items, const char *const *
+ {
+     pin_string *descriptors = arena_alloc(&string_inputs, (size_t)count * sizeof *descriptors);
+     for (int i = 0; i < count; i++) {
+-        descriptors[i] = (pin_string){ texts[i], (uint32_t)strlen(texts[i]) };
++        descriptors[i] = (pin_string){ .bytes = texts[i],
++                                       .length = (uint32_t)strlen(texts[i]) };
+         items[i] = (pin_value){ .type = PIN_STR, .text = &descriptors[i] };
+     }
+     *array = (pin_array){ .element_type = PIN_STR,
+diff --git a/test/language/callable_headers_chibi.c b/test/language/callable_headers_chibi.c
+index df8e2f533..657d7830f 100644
+--- a/test/language/callable_headers_chibi.c
++++ b/test/language/callable_headers_chibi.c
+@@ -1,5 +1,6 @@
+ #include "callable_headers_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "callable_headers_chibi_source.h"
+ #include "compiler_fixture.h"
+ #include "language/callable_headers.h"
+@@ -348,9 +349,7 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(
+-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+-        );
++        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
+         return true;
+     }
+     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL || value->type == PIN_U64);
+diff --git a/test/language/constant_scalar_chibi.c b/test/language/constant_scalar_chibi.c
+index 66d12160e..3ecd81a71 100644
+--- a/test/language/constant_scalar_chibi.c
++++ b/test/language/constant_scalar_chibi.c
+@@ -1,5 +1,6 @@
+ #include "constant_scalar_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "compiler_fixture.h"
+ #include "constant_scalar_chibi_source.h"
+ #include "language/constant_proof.h"
+@@ -496,9 +497,7 @@ static bool owned(const arena *storage, const pin_value *value)
+             REQUIRE(owned(storage, &data->values[i]));
+         }
+     } else if (behavior_scalar_string(value->type)) {
+-        REQUIRE(
+-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+-        );
++        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
+     }
+     return true;
+ }
+diff --git a/test/language/effect_analysis_chibi.c b/test/language/effect_analysis_chibi.c
+index dc4e56ff3..1a11be051 100644
+--- a/test/language/effect_analysis_chibi.c
++++ b/test/language/effect_analysis_chibi.c
+@@ -1,5 +1,6 @@
+ #include "effect_analysis_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "compiler_fixture.h"
+ #include "effect_analysis_chibi_source.h"
+ #include "language/effect_analysis.h"
+@@ -468,7 +469,7 @@ static bool owned(arena *owner, const pin_value *value, int depth)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
++        REQUIRE(pin_text(*value).bytes && test_text_owned(owner, *value));
+         return true;
+     }
+     REQUIRE(value->type == PIN_I32);
+diff --git a/test/language/execution.c b/test/language/execution.c
+index 80ab2abe3..7042d4477 100644
+--- a/test/language/execution.c
++++ b/test/language/execution.c
+@@ -363,7 +363,7 @@ TEST_CASE(execution_finished_definition_owns_producer_strings)
+     const char expected[] = { 'p', 0, 'x', (char)0xff };
+     char type_name[] = "fixture.text", origin[] = "fixture.chibi";
+     builder = behavior_function_builder_new();
+-    pin_string descriptor = { text, sizeof text - 1 };
++    pin_string descriptor = { .bytes = text, .length = sizeof text - 1 };
+     pin_value initial = { .type = PIN_STR, .text = &descriptor, .type_name = type_name };
+     behavior_function_builder_signature(builder, NULL, 0, &initial, 1, NULL, 0);
+     int source = behavior_function_builder_origin(
+@@ -1321,8 +1321,8 @@ TEST_CASE(execution_print_string_is_synchronous_and_preserves_context)
+             if (mode != 2) {
+                 apush(log_services, ((service_binding){ EXECUTION_LOG_SERVICE, &sink }));
+             }
+-            pin_string descriptor = { "logged before return",
+-                                      sizeof("logged before return") - 1 };
++            pin_string descriptor = { .bytes = "logged before return",
++                                      .length = sizeof("logged before return") - 1 };
+             text.text = mode == 0 ? &descriptor : NULL;
+             context = (behavior_function_context){
+                 .arguments = &text,
+@@ -1982,10 +1982,10 @@ TEST_CASE(execution_string_equality_and_iteration_use_full_bytes)
+     REQUIRE(finish() && behavior_function_compile(function));
+     const char first[] = { 'A', 0, 'B', (char)0xff, 0 };
+     const char second[] = { 'A', 0, 'C', (char)0xff, 0 };
+-    pin_string texts[] = { { first, sizeof first - 1 },
+-                           { second, sizeof second - 1 },
+-                           { first, 1 },
+-                           { first, sizeof first - 1 } };
++    pin_string texts[] = { { .bytes = first, .length = sizeof first - 1 },
++                           { .bytes = second, .length = sizeof second - 1 },
++                           { .bytes = first, .length = 1 },
++                           { .bytes = first, .length = sizeof first - 1 } };
+     const bool expected[] = { true, false, false, true };
+     for (int backend = 0; backend < 2; backend++) {
+         args[0].text = &texts[0];
+@@ -2025,7 +2025,7 @@ TEST_CASE(execution_native_string_fields_validate_before_publication)
+     memset(source, 'x', sizeof source - 1);
+     REQUIRE(pin_text(read).length == 6 && !memcmp(pin_text(read).bytes, "before", 6));
+     const char binary[] = { 'A', 0, 'B', 0 };
+-    pin_string descriptor = { binary, 3 };
++    pin_string descriptor = { .bytes = binary, .length = 3 };
+     pin_value writes[] = { field, { .type = PIN_STR, .text = &descriptor } }, result;
+     void *previous = root.ptr;
+     REQUIRE(EXECUTION_reference_write_call.value(&managed, writes, 2, &result));
+@@ -2036,7 +2036,7 @@ TEST_CASE(execution_native_string_fields_validate_before_publication)
+     result = (pin_value){ .type = PIN_I32, .i = 77 };
+     REQUIRE(EXECUTION_construct_call.value(&managed, construct, 3, &result));
+     REQUIRE(result.type == PIN_I32 && result.i == 77);
+-    descriptor = (pin_string){ "after", 5 };
++    descriptor = (pin_string){ .bytes = "after", .length = 5 };
+     REQUIRE(!EXECUTION_reference_write_call.value(&managed, writes, 2, &result));
+     REQUIRE(root.ptr != previous && !strcmp(((fixture_c_text *)root.ptr)->text, "after"));
+     construct[2] = writes[1];
+@@ -2046,7 +2046,7 @@ TEST_CASE(execution_native_string_fields_validate_before_publication)
+     REQUIRE(!EXECUTION_snapshot_call.value(&managed, &writes[1], 1, &named));
+     REQUIRE(named.type == PIN_NAME && !strcmp(named.str, "after"));
+     const char *kept = named.str;
+-    descriptor = (pin_string){ binary, 3 };
++    descriptor = (pin_string){ .bytes = binary, .length = 3 };
+     REQUIRE(EXECUTION_snapshot_call.value(&managed, &writes[1], 1, &named));
+     REQUIRE(named.type == PIN_NAME && named.str == kept);
+     pin_value converted = { .type = PIN_STR };
+diff --git a/test/language/lexical_binding_chibi.c b/test/language/lexical_binding_chibi.c
+index ab8931383..008e8263b 100644
+--- a/test/language/lexical_binding_chibi.c
++++ b/test/language/lexical_binding_chibi.c
+@@ -1,5 +1,6 @@
+ #include "lexical_binding_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "compiler_fixture.h"
+ #include "language/lexical_binding.h"
+ #include "lexical_binding_chibi_source.h"
+@@ -258,7 +259,7 @@ static bool diagnostics(const arena *storage, const pin_value *value, const scri
+             pin_text(message).bytes
+         );
+         REQUIRE(
+-            arena_contains(storage, pin_text(message).bytes) &&
++            test_text_owned(storage, message) &&
+             !strcmp(pin_text(message).bytes, error->message)
+         );
+     }
+diff --git a/test/language/named_binding_chibi.c b/test/language/named_binding_chibi.c
+index b65daeadb..c20eb67ff 100644
+--- a/test/language/named_binding_chibi.c
++++ b/test/language/named_binding_chibi.c
+@@ -1,5 +1,6 @@
+ #include "named_binding_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "compiler_fixture.h"
+ #include "language/named_binding.h"
+ #include "lexical_binding_chibi_source.h"
+@@ -476,9 +477,7 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(
+-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+-        );
++        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
+         return true;
+     }
+     REQUIRE(value->type == PIN_I32 || value->type == PIN_U64 || value->type == PIN_BOOL);
+diff --git a/test/language/nominal_binding_chibi.c b/test/language/nominal_binding_chibi.c
+index 06c4911d3..148f069e4 100644
+--- a/test/language/nominal_binding_chibi.c
++++ b/test/language/nominal_binding_chibi.c
+@@ -1,5 +1,6 @@
+ #include "nominal_binding_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "compiler_fixture.h"
+ #include "language/nominal_binding.h"
+ #include "lexical_binding_chibi_source.h"
+@@ -342,7 +343,7 @@ static bool owns(arena *owner, const pin_value *value)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
++        REQUIRE(pin_text(*value).bytes && test_text_owned(owner, *value));
+         return true;
+     }
+     if (value->type == PIN_STRUCT) {
+diff --git a/test/language/outliner_projection.c b/test/language/outliner_projection.c
+index 9afa8a868..15081be0f 100644
+--- a/test/language/outliner_projection.c
++++ b/test/language/outliner_projection.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "authoring/native_bindings.h"
+ #include "backend.h"
+ #include "execution/definition.h"
+@@ -493,13 +494,17 @@ static bool make_inputs(const request *r, bool changed)
+             switch (a) {
+                 case 0: v.u64 = IDS[n]; break;
+                 case 1:
+-                    descriptor = (pin_string){ producer_names[0][n],
+-                                               (uint32_t)strlen(producer_names[0][n]) };
++                    descriptor = (pin_string){
++                        .bytes = producer_names[0][n],
++                        .length = (uint32_t)strlen(producer_names[0][n])
++                    };
+                     v.text = &descriptor;
+                     break;
+                 case 2:
+-                    descriptor = (pin_string){ producer_names[1][n],
+-                                               (uint32_t)strlen(producer_names[1][n]) };
++                    descriptor = (pin_string){
++                        .bytes = producer_names[1][n],
++                        .length = (uint32_t)strlen(producer_names[1][n])
++                    };
+                     v.text = &descriptor;
+                     break;
+                 case 3: v.i = PARENTS[n]; break;
+@@ -513,7 +518,7 @@ static bool make_inputs(const request *r, bool changed)
+             if (a == 1 || a == 2) {
+                 REQUIRE(
+                     pin_text(array->items[n]).bytes != pin_text(v).bytes &&
+-                    arena_contains(&inputs, pin_text(array->items[n]).bytes)
++                    test_text_owned(&inputs, array->items[n])
+                 );
+             }
+         }
+@@ -561,10 +566,7 @@ static bool check_inputs(const request *r, bool changed)
+                     break;
+                 case 1:
+                 case 2:
+-                    REQUIRE(
+-                        pin_text(*item).bytes &&
+-                        arena_contains(&inputs, pin_text(*item).bytes)
+-                    );
++                    REQUIRE(pin_text(*item).bytes && test_text_owned(&inputs, *item));
+                     REQUIRE(!strcmp(
+                         pin_text(*item).bytes,
+                         a == 2 ? PROTOTYPES[n] : (changed ? CHANGED_NAMES[n] : NAMES[n])
+@@ -587,7 +589,7 @@ static bool check_inputs(const request *r, bool changed)
+     REQUIRE(arguments[12].type == PIN_BOOL && arguments[12].b == !r->readonly);
+     REQUIRE(
+         arguments[13].type == PIN_STR && pin_text(arguments[13]).bytes &&
+-        arena_contains(&inputs, pin_text(arguments[13]).bytes) &&
++        test_text_owned(&inputs, arguments[13]) &&
+         !strcmp(pin_text(arguments[13]).bytes, r->filter)
+     );
+     REQUIRE(arguments[14].type == PIN_I32 && arguments[14].i == r->first);
+@@ -727,7 +729,7 @@ static bool check(call *c, const request *r, bool changed)
+             REQUIRE(!pin_read_field(&inputs, row->ptr, f, &member));
+             if (field < 5) {
+                 REQUIRE(member.type == PIN_STR && pin_text(member).bytes);
+-                REQUIRE(arena_contains(&c->storage, pin_text(member).bytes));
++                REQUIRE(test_text_owned(&c->storage, member));
+                 REQUIRE(!strcmp(pin_text(member).bytes, text[field]));
+             } else if (field < 7) {
+                 REQUIRE(member.type == PIN_I32 && member.i == integers[field - 5]);
+@@ -740,21 +742,14 @@ static bool check(call *c, const request *r, bool changed)
+ }
+ static void retire_inputs()
+ {
+-    /* Poison the actual owned invocation inputs, not only their earlier source. */
++    /* Replace immutable values before releasing their invocation storage. */
+     for (int a = 1; a <= 2; a++) {
+         pin_array *array = arguments[a].ptr;
+         for (int n = 0; array && n < array->count; n++) {
+-            char *text = (char *)pin_text(array->items[n]).bytes;
+-            memset(text, 'z', strlen(text));
++            array->items[n] = (pin_value){ .type = PIN_STR };
+         }
+     }
+-    if (pin_text(arguments[13]).bytes) {
+-        memset(
+-            (char *)pin_text(arguments[13]).bytes,
+-            'z',
+-            strlen(pin_text(arguments[13]).bytes)
+-        );
+-    }
++    arguments[13] = (pin_value){ .type = PIN_STR };
+     for (int a = 0; a < 2; a++) {
+         for (int n = 0; n < ACTORS; n++) {
+             if (producer_names[a][n]) {
+@@ -775,7 +770,7 @@ TEST_CASE(outliner_projection_matches_all_fields_and_selected_windows)
+         pin_value zero = { .type = PIN_HANDLE, .type_name = "ecs.entity" }, text;
+         REQUIRE(!entity_decimal(&inputs, &zero, 1, &text));
+         REQUIRE(text.type == PIN_STR && !strcmp(pin_text(text).bytes, "0"));
+-        REQUIRE(arena_contains(&inputs, pin_text(text).bytes));
++        REQUIRE(test_text_owned(&inputs, text));
+         for (int i = 0; i < 12; i++) {
+             REQUIRE(make_inputs(&REQUESTS[i], false));
+             REQUIRE(execute(&calls[0], BACKENDS[b], &REQUESTS[i]));
+diff --git a/test/language/package_imports.c b/test/language/package_imports.c
+index 3c4bddf8c..e4dd729b4 100644
+--- a/test/language/package_imports.c
++++ b/test/language/package_imports.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "authoring/source_package_prepare.h"
+ #include "capabilities/catalog_snapshot.h"
+ #include "execution/status.h"
+@@ -663,10 +664,7 @@ TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults)
+         owned->fields[1].has_default
+     );
+     REQUIRE(owned->fields[0].default_value.type == PIN_STR);
+-    REQUIRE(arena_contains(
+-        &metadata_storage,
+-        pin_text(owned->fields[0].default_value).bytes
+-    ));
++    REQUIRE(test_text_owned(&metadata_storage, owned->fields[0].default_value));
+     REQUIRE(!strcmp(pin_text(owned->fields[0].default_value).bytes, "owned label"));
+     const pin_array *words = owned->fields[1].default_value.ptr;
+     REQUIRE(words && arena_contains(&metadata_storage, words) && words->count == 2);
+@@ -675,8 +673,8 @@ TEST_CASE(package_import_catalog_snapshot_owns_union_payload_defaults)
+         words->items[1].type == PIN_STR
+     );
+     REQUIRE(
+-        arena_contains(&metadata_storage, pin_text(words->items[0]).bytes) &&
+-        arena_contains(&metadata_storage, pin_text(words->items[1]).bytes)
++        test_text_owned(&metadata_storage, words->items[0]) &&
++        test_text_owned(&metadata_storage, words->items[1])
+     );
+     REQUIRE(
+         !strcmp(pin_text(words->items[0]).bytes, "first") &&
+diff --git a/test/language/package_routes_chibi.c b/test/language/package_routes_chibi.c
+index c49bf3828..7459df40f 100644
+--- a/test/language/package_routes_chibi.c
++++ b/test/language/package_routes_chibi.c
+@@ -1,5 +1,6 @@
+ #include "package_routes_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "authoring/source_package_routes.h"
+ #include "compiler_fixture.h"
+ #include "package_core_source.h"
+@@ -274,9 +275,7 @@ static bool owned(arena *storage, const pin_value *value, int depth)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(
+-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+-        );
++        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
+         return true;
+     }
+     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL);
+diff --git a/test/language/package_snapshot_chibi.c b/test/language/package_snapshot_chibi.c
+index 7d6d42dc0..a1d0f6622 100644
+--- a/test/language/package_snapshot_chibi.c
++++ b/test/language/package_snapshot_chibi.c
+@@ -1,5 +1,6 @@
+ #include "package_snapshot_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "authoring/source_package_routes.h"
+ #include "authoring/source_package_syntax.h"
+ #include "compiler_fixture.h"
+@@ -257,9 +258,7 @@ static bool own(arena *storage, const pin_value *value, int depth)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(
+-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+-        );
++        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
+         return true;
+     }
+     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL || value->type == PIN_U64);
+@@ -972,7 +971,7 @@ static bool retained_results()
+             const pin_value *check = &saved_check[b][kind];
+             REQUIRE(
+                 check->type == PIN_STR && pin_text(*check).bytes &&
+-                arena_contains(&retained[b][kind], pin_text(*check).bytes) &&
++                test_text_owned(&retained[b][kind], *check) &&
+                 !strcmp(pin_text(*check).bytes, saved_expected[kind])
+             );
+         }
+diff --git a/test/language/package_syntax_chibi.c b/test/language/package_syntax_chibi.c
+index 7cfffb98e..cde942dfb 100644
+--- a/test/language/package_syntax_chibi.c
++++ b/test/language/package_syntax_chibi.c
+@@ -1,5 +1,6 @@
+ #include "package_syntax_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "compiler_fixture.h"
+ #include "package_core_source.h"
+ #include "package_syntax_chibi_source.h"
+@@ -93,7 +94,7 @@ static bool same_text(const pin_value *row, const char *name, const char *expect
+         value.type == PIN_STR && pin_text(value).bytes &&
+         !strcmp(pin_text(value).bytes, expected)
+     );
+-    REQUIRE(arena_contains(&detached, pin_text(value).bytes));
++    REQUIRE(test_text_owned(&detached, value));
+     return true;
+ }
+ static bool same_range(const pin_value *row, const char *prefix, script_range range)
+diff --git a/test/language/program.c b/test/language/program.c
+index ba22da0d2..c53354348 100644
+--- a/test/language/program.c
++++ b/test/language/program.c
+@@ -9618,7 +9618,7 @@ TEST_CASE(program_descriptor_field_observers_compare_all_bytes)
+     const ecs_component_desc *component = ecs_world_component(world, declared.id);
+     REQUIRE(component && component->layout_hash);
+     ecs_entity entity = ecs_world_create_entity(world);
+-    const pin_string initial = { "A\0B", 3 };
++    const pin_string initial = { .bytes = "A\0B", .length = 3 };
+     const pin_string *initial_field = &initial;
+     REQUIRE(ecs_world_record_add(world, entity, component->id, &initial_field, 0) == ECS_OK);
+     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+@@ -9720,7 +9720,7 @@ TEST_CASE(program_descriptor_field_observers_compare_all_bytes)
+     REQUIRE(execution_program_step(program, 0, 0, 1000) == FLOW_OK);
+     const pin_value *seen = execution_instance_state(instance, 811);
+     REQUIRE(seen && !pin_text(*seen).length);
+-    const pin_string changed = { "A\0C", 3 };
++    const pin_string changed = { .bytes = "A\0C", .length = 3 };
+     REQUIRE(
+         ecs_component_write_field(
+             world,
+diff --git a/test/language/record_compatibility.c b/test/language/record_compatibility.c
+index 9047be08e..354180d53 100644
+--- a/test/language/record_compatibility.c
++++ b/test/language/record_compatibility.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "runtime/arrays.h"
+ #include "support/arena.h"
+ #include "third_party/pico_headers/pico_unit.h"
+@@ -89,13 +90,16 @@ static bool check_item(const pin_value *value, pin_type type, int number)
+         text = row->text;
+     }
+     if (!number) {
+-        REQUIRE(!text);
++        REQUIRE(type == PIN_STR ? !pin_text(*value).length : !text);
+         return true;
+     }
+     char expected[24];
+     snprintf(expected, sizeof expected, "native-%d", number);
+     REQUIRE(text && !strcmp(text, expected));
+-    REQUIRE(arena_contains(&results, text));
++    REQUIRE(
++        type == PIN_STR ? test_text_owned(&results, *value)
++                        : arena_contains(&results, text)
++    );
+     return true;
+ }
+ TEST_CASE(record_legacy_array_callbacks)
+@@ -185,10 +189,11 @@ TEST_CASE(record_legacy_array_callbacks)
+         /* The result must already own all text before a test-side copy. */
+         if (kinds[kind] != PIN_I32) {
+             for (int i = 0; i < 4; i++) {
+-                char *text = kinds[kind] == PIN_STR
+-                               ? (char *)pin_text(items[i]).bytes
+-                               : (char *)((native_row *)items[i].ptr)->text;
+-                text[0] = 'X';
++                if (kinds[kind] == PIN_STR) {
++                    items[i] = (pin_value){ .type = PIN_STR };
++                } else {
++                    ((char *)((native_row *)items[i].ptr)->text)[0] = 'X';
++                }
+             }
+         }
+         arena_free(&source);
+diff --git a/test/language/record_members_chibi.c b/test/language/record_members_chibi.c
+index 0c975d694..51410d3b0 100644
+--- a/test/language/record_members_chibi.c
++++ b/test/language/record_members_chibi.c
+@@ -1,5 +1,6 @@
+ #include "record_members_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "compiler_fixture.h"
+ #include "language/record_members.h"
+ #include "lexical_binding_chibi_source.h"
+@@ -478,7 +479,7 @@ static bool owned(arena *owner, const pin_value *value, int depth)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
++        REQUIRE(pin_text(*value).bytes && test_text_owned(owner, *value));
+         return true;
+     }
+     REQUIRE(value->type == PIN_I32 || value->type == PIN_U64 || value->type == PIN_BOOL);
+diff --git a/test/language/record_publication.c b/test/language/record_publication.c
+index 92bf50469..6ee6032d6 100644
+--- a/test/language/record_publication.c
++++ b/test/language/record_publication.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "authoring/source_collection.h"
+ #include "backend.h"
+ #include "capabilities/catalog_snapshot.h"
+@@ -15,8 +16,10 @@
+ #include <string.h>
+ #include <unistd.h>
+ 
+-static const pin_string stale_text = { "stale", sizeof("stale") - 1 };
+-static const pin_string changed_text = { "changed", sizeof("changed") - 1 };
++static const pin_string stale_text = { .bytes = "stale",
++                                       .length = sizeof("stale") - 1 };
++static const pin_string changed_text = { .bytes = "changed",
++                                         .length = sizeof("changed") - 1 };
+ 
+ /* Seven fixed cases. VM/SLJIT preparation and publication, no authored execution.
+  * The repro selector runs only the VM half of the real publication case. */
+@@ -224,8 +227,9 @@ TEST_CASE(record_equal_catalog_snapshots_merge_and_own_their_shape)
+     REQUIRE(copied.types[0].name != analysis->types[0].name);
+     REQUIRE(copied.types[0].fields != analysis->types[0].fields);
+     REQUIRE(
+-        pin_text(copied.types[0].fields[0].default_value).bytes !=
+-        pin_text(analysis->types[0].fields[0].default_value).bytes
++        test_text_owned(&catalog_storage, copied.types[0].fields[0].default_value) &&
++        copied.types[0].fields[0].default_value.text !=
++            analysis->types[0].fields[0].default_value.text
+     );
+     plan = script_lower(analysis, &copied, &bindings);
+     REQUIRE(plan->valid && plan->type_count == 1);
+diff --git a/test/language/record_services.c b/test/language/record_services.c
+index 5b53e4429..a42809bdd 100644
+--- a/test/language/record_services.c
++++ b/test/language/record_services.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "ecs/ecs.h"
+ #include "execution/function.h"
+ #include "runtime/behaviors/entities.h"
+@@ -123,7 +124,7 @@ static bool check_row(const pin_value *value, int number, const arena *owner)
+             char text[32];
+             snprintf(text, sizeof text, "row-%d-field-%d", number, i);
+             REQUIRE(pin_text(field).bytes && !strcmp(pin_text(field).bytes, text));
+-            REQUIRE(arena_contains(owner, pin_text(field).bytes));
++            REQUIRE(test_text_owned(owner, field));
+         } else if (i < 7) {
+             REQUIRE(field.i == number + i);
+         } else {
+@@ -195,32 +196,17 @@ TEST_CASE(record_globals_owned_values)
+     void *backing = set.ptr;
+     REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, arguments, &set));
+     REQUIRE(set.ptr == backing);
+-    pin_value text;
+-    {
+-        const char *
+-            error = pin_read_field(&reads, arguments[1].ptr, &record->type.fields[0], &text);
+-        if (error) {
+-            abort();
+-        }
+-    };
+-    ((char *)pin_text(text).bytes)[0] = 'X';
++    const pin_string changed = { .bytes = "changed", .length = sizeof("changed") - 1 };
++    pin_value replacement = { .type = PIN_STR, .text = &changed };
++    REQUIRE(!pin_write_field(&producer, arguments[1].ptr, &record->type.fields[0], replacement));
+     REQUIRE(check_row(&set, 9, &invocation));
+     arguments[0].text = &(const pin_string){ .bytes = "rows",
+                                              .length = (uint32_t)strlen("rows") };
+     arguments[1] = array;
+     REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, arguments, &set_array));
+-    {
+-        const char *error = pin_read_field(
+-            &reads,
+-            pin_array_data(array.ptr, 0),
+-            &record->type.fields[0],
+-            &text
+-        );
+-        if (error) {
+-            abort();
+-        }
+-    };
+-    ((char *)pin_text(text).bytes)[0] = 'X';
++    REQUIRE(
++        !pin_write_field(&producer, pin_array_data(array.ptr, 0), &record->type.fields[0], replacement)
++    );
+     REQUIRE(check_rows(&set_array, 3, &invocation));
+     arena_free(&producer);
+     pin_value stored, stored_array;
+@@ -339,7 +325,8 @@ TEST_CASE(record_headless_ui_owned_data)
+     const av_value *before = datum->value;
+     const pin_string *valid_name = arguments[1].text;
+     const char nul_name[] = "rows\0other";
+-    const pin_string invalid_name = { nul_name, sizeof nul_name - 1 };
++    const pin_string invalid_name = { .bytes = nul_name,
++                                      .length = sizeof nul_name - 1 };
+     arguments[1].text = &invalid_name;
+     const char *invalid_text = UI_SET_DATA_CALL.context(&context, model, arguments, NULL);
+     REQUIRE(invalid_text && !strcmp(invalid_text, "String contains embedded NUL"));
+@@ -428,10 +415,11 @@ TEST_CASE(record_globals_native_compatibility)
+         REQUIRE(!host(&ENTITY_SET_GLOBAL_CALL, args, &out));
+         REQUIRE(out.type == values[i].type && !out.record);
+         if (i == 2) {
+-            REQUIRE(arena_contains(&invocation, pin_text(out).bytes));
++            REQUIRE(test_text_owned(&invocation, out));
+             text[0] = 'X';
+             arena_free(&producer);
+-            values[i].str = "native-text";
++            values[i].text = &(const pin_string){ .bytes = "native-text",
++                                                  .length = sizeof("native-text") - 1 };
+             args[1] = values[i];
+         }
+         REQUIRE(pin_value_equal(&out, &values[i]));
+@@ -441,8 +429,8 @@ TEST_CASE(record_globals_native_compatibility)
+         REQUIRE(!host(&ENTITY_GET_GLOBAL_CALL, args, &out));
+         REQUIRE(pin_value_equal(&out, &values[i]) && !out.record);
+         if (i == 2) {
+-            REQUIRE(arena_contains(&reads, pin_text(saved).bytes));
+-            REQUIRE(arena_contains(&invocation, pin_text(out).bytes));
++            REQUIRE(test_text_owned(&reads, saved));
++            REQUIRE(test_text_owned(&invocation, out));
+         }
+     }
+ 
+diff --git a/test/language/record_state.c b/test/language/record_state.c
+index 7d2ce7887..6d5ca83c1 100644
+--- a/test/language/record_state.c
++++ b/test/language/record_state.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "backend.h"
+ #include "capabilities/catalog_snapshot.h"
+ #include "ecs/ecs.h"
+@@ -501,7 +502,7 @@ static bool owned(const pin_value *v)
+     for (int i = 0; i < 5; i++) {
+         pin_value field;
+         REQUIRE(!pin_read_field(&producer, v->ptr, &v->record->type.fields[i], &field));
+-        REQUIRE(arena_contains(&saved, pin_text(field).bytes));
++        REQUIRE(test_text_owned(&saved, field));
+     }
+     return true;
+ }
+diff --git a/test/language/record_values.c b/test/language/record_values.c
+index fdfc39831..88991ab06 100644
+--- a/test/language/record_values.c
++++ b/test/language/record_values.c
+@@ -23,6 +23,7 @@ bool record_prepared_guard(const pin_value *);
+ static av_doc *document;
+ static bool project_set;
+ static pin_value borrowed;
++static pin_value heap_text[4];
+ static const type_field fields[] = {
+     { .name = "key", .type = PIN_STR },
+     { .name = "label", .type = PIN_STR },
+@@ -44,6 +45,9 @@ static void cleanup()
+         project_set = false;
+     }
+     pin_value_destroy(&borrowed);
++    for (int i = 0; i < 4; i++) {
++        pin_value_destroy(&heap_text[i]);
++    }
+     if (document) {
+         av_doc_free(document);
+     }
+@@ -111,7 +115,7 @@ static void collect(arena *storage, const void *root)
+     arena_collect_mark(&collection, root);
+     arena_collect_end(&collection);
+ }
+-static size_t row_text_bytes(const pin_value *value)
++static size_t minimum_row_text_bytes(const pin_value *value)
+ {
+     size_t size = 0;
+     for (int i = 0; i < 5; i++) {
+@@ -180,14 +184,17 @@ TEST_CASE(record_array_ownership)
+             REQUIRE(pin_array_get(copy, i).type_name == copy->type_name);
+             pin_value item = pin_array_get(copy, i);
+             REQUIRE(pin_value_equal(&rows[i], &item));
+-            expected += record->type.size + row_text_bytes(&rows[i]);
++            expected += record->type.size + minimum_row_text_bytes(&rows[i]);
+         }
+         size_t bytes, capacity;
+         arena_usage(&owned, &bytes, &capacity);
+-        REQUIRE(bytes == expected); /* Exactly one metadata closure, no per-row copy. */
++        /* Empty arrays retain exactly one metadata closure. Nonempty rows also
++         * retain opaque text-owner metadata beyond descriptors and byte data. */
++        REQUIRE(count ? bytes >= expected : bytes == expected);
++        size_t before_collection = bytes;
+         collect(&owned, copy);
+         arena_usage(&owned, &bytes, &capacity);
+-        REQUIRE(bytes == expected);
++        REQUIRE(bytes == before_collection);
+         if (count) {
+             pin_value again, item = pin_array_get(copy, 0);
+             REQUIRE(!pin_value_snapshot_to_arena(&owned, &again, &item));
+@@ -213,13 +220,16 @@ TEST_CASE(record_raw_trace_lifetime)
+     const pin_record *record = row_layout(&source, 91);
+     pin_value input = row(&source, record, 7), output;
+     REQUIRE(!pin_value_snapshot_to_arena(&owned, &output, &input));
+-    size_t expected = output.record->bytes + output.record->type.size +
+-                      row_text_bytes(&output);
++    size_t minimum = output.record->bytes + output.record->type.size +
++                     minimum_row_text_bytes(&output);
++    size_t expected, capacity;
++    arena_usage(&owned, &expected, &capacity);
++    REQUIRE(expected >= minimum);
+     arena_free(&source);
+     collect(&owned, output.ptr); /* Only raw payload roots the metadata trace shape. */
+     REQUIRE(pin_record_valid(output.record));
+     REQUIRE(!strcmp(pin_text(member(&output, 1)).bytes, "row-7-field-1"));
+-    size_t bytes, capacity;
++    size_t bytes;
+     arena_usage(&owned, &bytes, &capacity);
+     REQUIRE(bytes == expected);
+     for (int i = 0; i < 16; i++) {
+@@ -543,8 +553,11 @@ TEST_CASE(record_projection_and_codec_guard)
+             const pin_string *stored = *(const pin_string *const
+                                              *)((const char *)output.ptr +
+                                                 output.record->type.fields[i].offset);
++            REQUIRE(arena_contains(&other, stored) && stored->owner);
++            REQUIRE(!arena_contains(&other, stored->bytes));
+             REQUIRE(
+-                arena_contains(&other, stored) && arena_contains(&other, stored->bytes)
++                stored->length == strlen(expected) &&
++                !memcmp(stored->bytes, expected, stored->length)
+             );
+         } else if (i < 7) {
+             REQUIRE(field.i == 4 + i);
+@@ -613,8 +626,8 @@ TEST_CASE(text_bytes_ownership_and_c_boundary)
+     pin_value read;
+     REQUIRE(!pin_read_field(&other, &field, &native, &read));
+     native_bytes[0] = 'x';
+-    REQUIRE(pin_text_equal(pin_text(read), (pin_string){ "native", 6 }));
+-    const pin_string slice = { "abc", 2 };
++    REQUIRE(pin_text_equal(pin_text(read), (pin_string){ .bytes = "native", .length = 6 }));
++    const pin_string slice = { .bytes = "abc", .length = 2 };
+     REQUIRE(
+         !pin_text_cstring(&other, (pin_value){ .type = PIN_STR, .text = &slice }, &converted, &offset)
+     );
+@@ -633,6 +646,143 @@ TEST_CASE(text_bytes_ownership_and_c_boundary)
+     REQUIRE(pin_text_equal(pin_text(alias_snapshot), pin_text(copy)));
+     return true;
+ }
++/* A slice and a snapshot own independent descriptors and retain the original
++ * bytes across source reset, address reuse, and destruction. */
++TEST_CASE(text_slices_retain_original_bytes_across_arena_lifetimes)
++{
++    static const char bytes[] = { 'a', 0, (char)0xff, 'b', (char)0xc0, 'z' };
++    pin_value input, slice, nested, snapshot;
++    REQUIRE(!pin_value_text(&source, &input, bytes, sizeof bytes));
++    pin_string original = pin_text(input);
++    REQUIRE(original.owner && !arena_contains(&source, original.bytes));
++    REQUIRE(!pin_value_text_slice(&owned, &slice, input, 1, 4));
++    REQUIRE(!pin_value_text_slice(&other, &nested, slice, 1, 2));
++    REQUIRE(!pin_value_snapshot_to_arena(&reads, &snapshot, &slice));
++    REQUIRE(pin_text(slice).owner == original.owner);
++    REQUIRE(pin_text(nested).owner == original.owner);
++    REQUIRE(pin_text(snapshot).owner == original.owner);
++    REQUIRE(pin_text(slice).bytes == original.bytes + 1);
++    REQUIRE(pin_text(nested).bytes == original.bytes + 2);
++    REQUIRE(snapshot.text != slice.text);
++    arena_reset(&source);
++    memset(arena_alloc(&source, 1024), 0xa5, 1024);
++    arena_free(&source);
++    REQUIRE(pin_text(slice).length == 4 && !memcmp(pin_text(slice).bytes, bytes + 1, 4));
++    arena_free(&owned);
++    REQUIRE(pin_text(nested).length == 2 && !memcmp(pin_text(nested).bytes, bytes + 2, 2));
++    REQUIRE(pin_text(snapshot).length == 4 && !memcmp(pin_text(snapshot).bytes, bytes + 1, 4));
++    arena_reset(&other);
++    REQUIRE(!memcmp(pin_text(snapshot).bytes, bytes + 1, 4));
++    return true;
++}
++
++/* Heap copies share retained bytes, while an explicit clone detaches. Each
++ * destruction order leaves the remaining values readable. */
++TEST_CASE(text_heap_shares_and_detached_clone_have_independent_lifetimes)
++{
++    static const char bytes[] = { 'a', 0, (char)0xff, 'z' };
++    REQUIRE(!pin_value_text(NULL, &heap_text[0], bytes, sizeof bytes));
++    REQUIRE(!pin_value_copy(&heap_text[1], &heap_text[0]));
++    REQUIRE(heap_text[0].text != heap_text[1].text);
++    REQUIRE(pin_text(heap_text[0]).owner == pin_text(heap_text[1]).owner);
++    REQUIRE(pin_text(heap_text[0]).bytes == pin_text(heap_text[1]).bytes);
++    REQUIRE(!pin_value_text_slice(NULL, &heap_text[2], heap_text[0], 1, 2));
++    REQUIRE(!pin_value_text_clone(NULL, &heap_text[3], heap_text[2]));
++    REQUIRE(pin_text(heap_text[3]).owner != pin_text(heap_text[2]).owner);
++    REQUIRE(pin_text(heap_text[3]).bytes != pin_text(heap_text[2]).bytes);
++    REQUIRE(pin_text_equal(pin_text(heap_text[3]), pin_text(heap_text[2])));
++    pin_value_destroy(&heap_text[0]);
++    REQUIRE(!memcmp(pin_text(heap_text[1]).bytes, bytes, sizeof bytes));
++    pin_value_destroy(&heap_text[2]);
++    REQUIRE(!memcmp(pin_text(heap_text[3]).bytes, bytes + 1, 2));
++    pin_value_destroy(&heap_text[3]);
++    REQUIRE(!memcmp(pin_text(heap_text[1]).bytes, bytes, sizeof bytes));
++    pin_value arena_copy;
++    REQUIRE(!pin_value_text_share(&owned, &arena_copy, heap_text[1]));
++    pin_value_destroy(&heap_text[1]);
++    REQUIRE(!memcmp(pin_text(arena_copy).bytes, bytes, sizeof bytes));
++    return true;
++}
++
++TEST_CASE(text_empty_values_retain_no_backing_and_invalid_windows_preserve_output)
++{
++    pin_value empty, input, slice;
++    REQUIRE(!pin_value_text(&source, &empty, NULL, 0));
++    REQUIRE(!pin_text(empty).owner && pin_text(empty).length == 0);
++    REQUIRE(!pin_value_text(&source, &input, "hello", 5));
++    REQUIRE(!pin_value_text_slice(&owned, &slice, input, 5, 0));
++    REQUIRE(!pin_text(slice).owner && pin_text(slice).length == 0);
++    REQUIRE(!pin_value_text_share(NULL, &heap_text[0], empty));
++    REQUIRE(!pin_value_text_clone(NULL, &heap_text[1], slice));
++    REQUIRE(!pin_text(heap_text[0]).owner && !pin_text(heap_text[1]).owner);
++    REQUIRE(!arena_storage_bytes(&owned));
++    const pin_value sentinel = { .type = PIN_I32, .i = 79 };
++    pin_value output = sentinel;
++    const size_t windows[][2] = { { 6, 0 }, { 4, 2 }, { SIZE_MAX, 0 }, { 0, SIZE_MAX } };
++    for (size_t i = 0; i < sizeof windows / sizeof *windows; i++) {
++        REQUIRE(pin_value_text_slice(&owned, &output, input, windows[i][0], windows[i][1]));
++        REQUIRE(!memcmp(&output, &sentinel, sizeof output));
++    }
++    REQUIRE(pin_value_text_slice(&owned, &output, sentinel, 0, 0));
++    REQUIRE(!memcmp(&output, &sentinel, sizeof output));
++    pin_value array = input;
++    array.container = PIN_CONTAINER_ARRAY;
++    REQUIRE(pin_value_text_slice(&owned, &output, array, 0, 0));
++    REQUIRE(!memcmp(&output, &sentinel, sizeof output));
++    arena_free(&source);
++    REQUIRE(!pin_text(slice).owner && pin_text(slice).length == 0);
++    REQUIRE(!arena_storage_bytes(&owned));
++    return true;
++}
++
++/* Many descriptors retain one large owner. Sweeping unmarked aliases drops
++ * descriptor bytes, keeps the full owner charge once, and eventually releases
++ * both when no descriptor remains rooted. */
++TEST_CASE(text_collectable_slices_account_one_owner_until_last_root)
++{
++    char bytes[8192];
++    memset(bytes, 'q', sizeof bytes);
++    bytes[17] = 0;
++    bytes[18] = (char)0xff;
++    arena_init_collectable(&owned);
++    pin_value input, survivor;
++    REQUIRE(!pin_value_text(&source, &input, bytes, sizeof bytes));
++    REQUIRE(!pin_value_text_slice(&owned, &survivor, input, 17, 2));
++    size_t first_bytes, first_capacity;
++    arena_usage(&owned, &first_bytes, &first_capacity);
++    REQUIRE(first_bytes > sizeof bytes && first_capacity == first_bytes);
++    REQUIRE(owned.allocated == first_bytes && owned.kept == 0);
++    size_t external = owned.retained_bytes;
++    REQUIRE(external > sizeof bytes);
++    for (int i = 0; i < 32; i++) {
++        pin_value alias;
++        REQUIRE(!pin_value_text_share(&owned, &alias, survivor));
++        REQUIRE(pin_text(alias).owner == pin_text(survivor).owner);
++    }
++    size_t total, capacity;
++    arena_usage(&owned, &total, &capacity);
++    REQUIRE(total == first_bytes + 32 * sizeof(pin_string));
++    REQUIRE(owned.retained_bytes == external && owned.resource_count == 1);
++    REQUIRE(owned.allocated == total);
++    arena_free(&source);
++    collect(&owned, survivor.text);
++    arena_usage(&owned, &total, &capacity);
++    REQUIRE(total == first_bytes && owned.retained_bytes == external);
++    REQUIRE(owned.allocated == 0 && owned.kept == first_bytes);
++    REQUIRE(
++        pin_text(survivor).length == 2 &&
++        !memcmp(pin_text(survivor).bytes, bytes + 17, 2)
++    );
++    REQUIRE(!pin_value_text_share(&other, &input, survivor));
++    collect(&owned, NULL);
++    arena_usage(&owned, &total, &capacity);
++    REQUIRE(total == 0 && !owned.retained_bytes && !owned.resource_count);
++    REQUIRE(owned.allocated == 0 && owned.kept == 0);
++    arena_free(&owned);
++    REQUIRE(pin_text(input).length == 2 && !memcmp(pin_text(input).bytes, bytes + 17, 2));
++    return true;
++}
++
+ TEST_CASE(text_utf8_validation)
+ {
+     static const struct
+@@ -652,7 +802,8 @@ TEST_CASE(text_utf8_validation)
+     };
+     for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+         REQUIRE(
+-            pin_text_valid_utf8((pin_string){ cases[i].bytes, cases[i].length }) ==
++            pin_text_valid_utf8((pin_string){ .bytes = cases[i].bytes,
++                                              .length = cases[i].length }) ==
+             cases[i].valid
+         );
+     }
+@@ -799,6 +950,10 @@ void test_language_record_values()
+     RUN_TEST_CASE(record_array_checked_changes);
+     RUN_TEST_CASE(record_projection_and_codec_guard);
+     RUN_TEST_CASE(text_bytes_ownership_and_c_boundary);
++    RUN_TEST_CASE(text_slices_retain_original_bytes_across_arena_lifetimes);
++    RUN_TEST_CASE(text_heap_shares_and_detached_clone_have_independent_lifetimes);
++    RUN_TEST_CASE(text_empty_values_retain_no_backing_and_invalid_windows_preserve_output);
++    RUN_TEST_CASE(text_collectable_slices_account_one_owner_until_last_root);
+     RUN_TEST_CASE(text_utf8_validation);
+     RUN_TEST_CASE(text_keys_preserve_suffix_after_nul);
+     RUN_TEST_CASE(record_native_nested_resolution_is_call_owned);
+diff --git a/test/language/row_array.c b/test/language/row_array.c
+index 635c616db..433476452 100644
+--- a/test/language/row_array.c
++++ b/test/language/row_array.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "authoring/native_bindings.h"
+ #include "backend.h"
+ #include "compiler_fixture.h"
+@@ -173,7 +174,7 @@ static bool check_row(const pin_value *value, int number, const char *shared_tex
+                 pin_text(v).bytes &&
+                 !strcmp(pin_text(v).bytes, shared_text ? shared_text : buffer)
+             );
+-            REQUIRE(arena_contains(owner, pin_text(v).bytes));
++            REQUIRE(test_text_owned(owner, v));
+         } else if (v.type == PIN_I32) {
+             REQUIRE(v.i == number + f);
+         } else {
+@@ -290,7 +291,12 @@ TEST_CASE(row_array_direct_cost_and_aliases)
+                 REQUIRE(check_array(&result, count, NULL));
+                 for (int i = 0; i < count; i++) {
+                     for (int f = 0; f < 5; f++) {
+-                        ((char *)pin_text(member(&items[i], f)).bytes)[0] = 'X';
++                        REQUIRE(!pin_write_field(
++                            &producer,
++                            items[i].ptr,
++                            &record->type.fields[f],
++                            (pin_value){ .type = PIN_STR }
++                        ));
+                     }
+                 }
+                 arena_free(&producer);
+@@ -406,7 +412,9 @@ TEST_CASE(row_array_call_collectable_results)
+         REQUIRE(check_array(&retained[i], counts[i], NULL));
+     }
+     for (int f = 0; f < 5; f++) {
+-        ((char *)pin_text(member(&item, f)).bytes)[0] = 'X';
++        REQUIRE(
++            !pin_write_field(&producer, item.ptr, &record->type.fields[f], (pin_value){ .type = PIN_STR })
++        );
+     }
+     arena_free(&producer);
+     arena_collection collection;
+diff --git a/test/language/runtime_attribution.c b/test/language/runtime_attribution.c
+index 5b184d292..845748312 100644
+--- a/test/language/runtime_attribution.c
++++ b/test/language/runtime_attribution.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "backend.h"
+ #include "ecs/ecs.h"
+ #include "ecs/execution.h"
+@@ -271,8 +272,10 @@ TEST_CASE(runtime_attribution_copy_sites)
+         /* S2: null, empty, heap text, ordinary arena text, owning empty. */
+         const char *texts[] = { NULL, "", "abc" };
+         for (int i = 0; i < 3; i++) {
+-            const pin_string borrowed = { texts[i] ? texts[i] : "",
+-                                          texts[i] ? (uint32_t)strlen(texts[i]) : 0 };
++            const pin_string borrowed = { .bytes = texts[i] ? texts[i] : "",
++                                          .length = texts[i]
++                                                      ? (uint32_t)strlen(texts[i])
++                                                      : 0 };
+             pin_value source = { .type = PIN_STR, .text = texts[i] ? &borrowed : NULL };
+             copy_begin(enabled);
+             REQUIRE(pin_value_copy(&fixture.heap[0], &source) == 0);
+@@ -1485,10 +1488,7 @@ static bool workload_check_results(int managed, int count)
+                 pin_text(pin_array_get(array, j)).bytes !=
+                 pin_text(workload_input_items[j]).bytes
+             );
+-            REQUIRE(arena_contains(
+-                &workload_storage,
+-                pin_text(pin_array_get(array, j)).bytes
+-            ));
++            REQUIRE(test_text_owned(&workload_storage, pin_array_get(array, j)));
+             REQUIRE(!strcmp(
+                 pin_text(pin_array_get(array, j)).bytes,
+                 pin_text(workload_input_items[j]).bytes
+diff --git a/test/language/scalar_lowering_chibi.c b/test/language/scalar_lowering_chibi.c
+index 6f555cfe1..2983e059d 100644
+--- a/test/language/scalar_lowering_chibi.c
++++ b/test/language/scalar_lowering_chibi.c
+@@ -1,5 +1,6 @@
+ #include "scalar_lowering_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "backend.h"
+ #include "compiler_fixture.h"
+ #include "execution/definition.h"
+@@ -542,7 +543,7 @@ static bool owned(arena *owner, const pin_value *v, int depth)
+         return true;
+     }
+     if (v->type == PIN_STR) {
+-        REQUIRE(pin_text(*v).bytes && arena_contains(owner, pin_text(*v).bytes));
++        REQUIRE(pin_text(*v).bytes && test_text_owned(owner, *v));
+         return true;
+     }
+     REQUIRE(v->type == PIN_I32 || v->type == PIN_BOOL || v->type == PIN_U64);
+diff --git a/test/language/scalarize.c b/test/language/scalarize.c
+index 6f4c5cce2..8aa5b56bb 100644
+--- a/test/language/scalarize.c
++++ b/test/language/scalarize.c
+@@ -269,7 +269,7 @@ TEST_CASE(scalar_unions_keep_escaping_and_managed_payloads_owned)
+ #endif
+         for (int backend = 0; backend < 4; backend++) {
+             char text[] = "original";
+-            pin_string descriptor = { text, sizeof text - 1 };
++            pin_string descriptor = { .bytes = text, .length = sizeof text - 1 };
+             if (j == 3) {
+                 input.text = &descriptor;
+             }
+diff --git a/test/language/signature_reader_chibi.c b/test/language/signature_reader_chibi.c
+index bac77024d..54f0b503d 100644
+--- a/test/language/signature_reader_chibi.c
++++ b/test/language/signature_reader_chibi.c
+@@ -1,5 +1,6 @@
+ #include "signature_reader_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "capabilities/catalog_snapshot.h"
+ #include "compiler_fixture.h"
+ #include "language/signature_reader.h"
+@@ -498,7 +499,7 @@ static bool owned(arena *owner, const pin_value *value, int depth)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
++        REQUIRE(pin_text(*value).bytes && test_text_owned(owner, *value));
+         return true;
+     }
+     REQUIRE(value->type == PIN_I32 || value->type == PIN_U64 || value->type == PIN_BOOL);
+diff --git a/test/language/type_constructors_chibi.c b/test/language/type_constructors_chibi.c
+index cb36dfe41..8af1bd286 100644
+--- a/test/language/type_constructors_chibi.c
++++ b/test/language/type_constructors_chibi.c
+@@ -1,5 +1,6 @@
+ #include "type_constructors_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "compiler_fixture.h"
+ #include "language/type_constructors.h"
+ #include "lexical_binding_chibi_source.h"
+@@ -478,7 +479,7 @@ static bool owned(arena *owner, const pin_value *value, int depth)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
++        REQUIRE(pin_text(*value).bytes && test_text_owned(owner, *value));
+         return true;
+     }
+     REQUIRE(value->type == PIN_I32 || value->type == PIN_U64 || value->type == PIN_BOOL);
+@@ -1014,7 +1015,7 @@ TEST_CASE(type_constructor_results_and_metadata_outlive_producers)
+     REQUIRE(
+         literal->is_literal && literal->literal.type == PIN_STR &&
+         pin_text(literal->literal).bytes &&
+-        arena_contains(&metadata_storage, pin_text(literal->literal).bytes) &&
++        test_text_owned(&metadata_storage, literal->literal) &&
+         !strcmp(pin_text(literal->literal).bytes, "owned literal")
+     );
+     REQUIRE(
+@@ -1028,7 +1029,7 @@ TEST_CASE(type_constructor_results_and_metadata_outlive_producers)
+         field->name && arena_contains(&metadata_storage, field->name) &&
+         !strcmp(field->name, "message") && field->has_default &&
+         field->default_value.type == PIN_STR && pin_text(field->default_value).bytes &&
+-        arena_contains(&metadata_storage, pin_text(field->default_value).bytes) &&
++        test_text_owned(&metadata_storage, field->default_value) &&
+         !strcmp(pin_text(field->default_value).bytes, "owned default")
+     );
+     return true;
+diff --git a/test/language/union_members_chibi.c b/test/language/union_members_chibi.c
+index 8d1596f09..20d43c4f8 100644
+--- a/test/language/union_members_chibi.c
++++ b/test/language/union_members_chibi.c
+@@ -1,5 +1,6 @@
+ #include "union_members_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "compiler_fixture.h"
+ #include "language/union_members.h"
+ #include "lexical_binding_chibi_source.h"
+@@ -125,7 +126,7 @@ static bool text_field(const pin_value *row, const char *name, pin_string expect
+ static bool string_field(const pin_value *row, const char *name, const char *expected)
+ {
+     expected = expected ? expected : "";
+-    return text_field(row, name, (pin_string){ expected, (uint32_t)strlen(expected) });
++    return text_field(row, name, (pin_string){ .bytes = expected, .length = (uint32_t)strlen(expected) });
+ }
+ static bool range_fields(const pin_value *row, script_range r)
+ {
+@@ -283,9 +284,7 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(
+-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+-        );
++        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
+         return true;
+     }
+     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL || value->type == PIN_U64);
+@@ -573,7 +572,12 @@ static bool compare_replaced(const pin_union *u, const script_catalog_type *d)
+             typed_field(r, "type", &u->values[3], &u->values[4], v->type) &&
+             bool_field(r, "tagged", v->tagged) &&
+             bool_field(r, "is_literal", v->is_literal) &&
+-            text_field(r, "literal", v->is_literal ? pin_text(v->literal) : (pin_string){ "", 0 }) &&
++            text_field(
++                r,
++                "literal",
++                v->is_literal ? pin_text(v->literal)
++                              : (pin_string){ .bytes = "", .length = 0 }
++            ) &&
+             int_field(r, "field_count", v->field_count) &&
+             field_number(r, "field_start", &fs) &&
+             compare_fields(&u->values[2], fs, v->fields, v->field_count, &u->values[3], &u->values[4], true)
+diff --git a/test/language/unit_algebra_chibi.c b/test/language/unit_algebra_chibi.c
+index 001bedef5..ddff7cca2 100644
+--- a/test/language/unit_algebra_chibi.c
++++ b/test/language/unit_algebra_chibi.c
+@@ -1,5 +1,6 @@
+ #include "unit_algebra_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "compiler_fixture.h"
+ #include "language/unit_algebra.h"
+ #include "package_core_source.h"
+@@ -323,9 +324,7 @@ static bool owned(const arena *storage, const pin_value *value, int depth)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(
+-            pin_text(*value).bytes && arena_contains(storage, pin_text(*value).bytes)
+-        );
++        REQUIRE(pin_text(*value).bytes && test_text_owned(storage, *value));
+         return true;
+     }
+     REQUIRE(value->type == PIN_I32 || value->type == PIN_BOOL);
+diff --git a/test/language/unit_analysis_chibi.c b/test/language/unit_analysis_chibi.c
+index 32cf7291d..b342ca99f 100644
+--- a/test/language/unit_analysis_chibi.c
++++ b/test/language/unit_analysis_chibi.c
+@@ -1,5 +1,6 @@
+ #include "unit_analysis_chibi.h"
+ 
++#include "../owned_text.h"
+ #include "compiler_fixture.h"
+ #include "language/unit_analysis.h"
+ #include "lexical_binding_chibi_source.h"
+@@ -585,7 +586,7 @@ static bool owned(arena *owner, const pin_value *value, int depth)
+         return true;
+     }
+     if (value->type == PIN_STR) {
+-        REQUIRE(pin_text(*value).bytes && arena_contains(owner, pin_text(*value).bytes));
++        REQUIRE(pin_text(*value).bytes && test_text_owned(owner, *value));
+         return true;
+     }
+     REQUIRE(value->type == PIN_I32);
+diff --git a/test/runtime/owned_tick.c b/test/runtime/owned_tick.c
+index 917b283df..40f273f03 100644
+--- a/test/runtime/owned_tick.c
++++ b/test/runtime/owned_tick.c
+@@ -153,7 +153,8 @@ static bool seed(ecs_entity owner, int kind, int id)
+         } else if (kind == 3) {
+             items[i].ptr = &records[i];
+         } else if (kind == 1) {
+-            descriptors[i] = (pin_string){ labels[i], (uint32_t)strlen(labels[i]) };
++            descriptors[i] = (pin_string){ .bytes = labels[i],
++                                           .length = (uint32_t)strlen(labels[i]) };
+             items[i].text = &descriptors[i];
+         } else {
+             items[i].str = labels[i];
+diff --git a/test/support/arena.c b/test/support/arena.c
+index 57d3f28bd..ded8280fa 100644
+--- a/test/support/arena.c
++++ b/test/support/arena.c
+@@ -173,10 +173,189 @@ TEST_CASE(arena_remembers_last_copy_until_reset_or_collection)
+     return true;
+ }
+ 
++typedef struct retained_resource
++{
++    int releases;
++} retained_resource;
++static void release_retained_resource(void *resource)
++{
++    ((retained_resource *)resource)->releases++;
++}
++static void collect_one(arena *storage, const void *keep)
++{
++    arena *arenas[] = { storage };
++    arena_collection collection;
++    arena_collect_begin(&collection, arenas, 1);
++    if (keep) {
++        arena_collect_mark(&collection, keep);
++    }
++    arena_collect_end(&collection);
++}
++
++/* Both storage modes release attachments once, and reused allocation addresses
++ * never inherit an old attachment. */
++TEST_CASE(arena_cleanup_reset_and_free_release_each_attachment_once)
++{
++    for (int collectable = 0; collectable < 2; collectable++) {
++        arena storage = { 0 };
++        if (collectable) {
++            arena_init_collectable(&storage);
++        }
++        retained_resource shared = { 0 }, separate = { 0 };
++        void *first = arena_alloc(&storage, 16);
++        arena_set_cleanup(&storage, first, release_retained_resource, &shared, 100);
++        arena_set_cleanup(&storage, arena_alloc(&storage, 16), release_retained_resource, &shared, 100);
++        arena_reset(&storage);
++        REQUIRE(shared.releases == 2);
++        REQUIRE(storage.retained_bytes == 0 && storage.resource_capacity == 0);
++        REQUIRE(arena_alloc(&storage, 16) == first || collectable);
++        arena_reset(&storage);
++        REQUIRE(shared.releases == 2);
++        arena_set_cleanup(&storage, arena_alloc(&storage, 16), release_retained_resource, &separate, 200);
++        arena_free(&storage);
++        REQUIRE(shared.releases == 2 && separate.releases == 1);
++        arena_free(&storage);
++        REQUIRE(shared.releases == 2 && separate.releases == 1);
++    }
++    return true;
++}
++
++/* Sweeping one alias releases that reference, while the marked alias retains
++ * the shared resource's full byte charge until it too retires. */
++TEST_CASE(arena_cleanup_collection_keeps_shared_resource_until_last_alias)
++{
++    arena storage;
++    arena_init_collectable(&storage);
++    retained_resource shared = { 0 }, separate = { 0 };
++    void *keep = arena_alloc(&storage, 16);
++    void *drop = arena_alloc(&storage, 16);
++    void *other = arena_alloc(&storage, 16);
++    arena_set_cleanup(&storage, keep, release_retained_resource, &shared, 1000);
++    arena_set_cleanup(&storage, drop, release_retained_resource, &shared, 1000);
++    arena_set_cleanup(&storage, other, release_retained_resource, &separate, 2000);
++    size_t bytes, capacity;
++    arena_usage(&storage, &bytes, &capacity);
++    REQUIRE(bytes == 3048 && capacity == 3048);
++    REQUIRE(storage.allocated == 3048 && storage.kept == 0);
++    collect_one(&storage, keep);
++    REQUIRE(shared.releases == 1 && separate.releases == 1);
++    arena_usage(&storage, &bytes, &capacity);
++    REQUIRE(bytes == 1016 && capacity == 1048);
++    REQUIRE(storage.allocated == 0 && storage.kept == 1016);
++    REQUIRE(arena_contains(&storage, keep));
++    REQUIRE(!arena_contains(&storage, drop) && !arena_contains(&storage, other));
++    arena_set_cleanup(&storage, arena_alloc(&storage, 16), release_retained_resource, &shared, 1000);
++    REQUIRE(storage.allocated == 16 && storage.kept == 1016);
++    collect_one(&storage, keep);
++    REQUIRE(shared.releases == 2);
++    REQUIRE(storage.allocated == 0 && storage.kept == 1016);
++    collect_one(&storage, NULL);
++    REQUIRE(shared.releases == 3 && separate.releases == 1);
++    REQUIRE(storage.allocated == 0 && storage.kept == 0);
++    arena_usage(&storage, &bytes, &capacity);
++    REQUIRE(bytes == 0 && capacity == 48);
++    void *reused = arena_alloc(&storage, 16);
++    REQUIRE(arena_contains(&storage, reused));
++    collect_one(&storage, NULL);
++    arena_free(&storage);
++    REQUIRE(shared.releases == 3 && separate.releases == 1);
++    return true;
++}
++
++/* Attaching an alias adds metadata but never charges the external bytes twice.
++ * A second arena accounts for its own retained ownership independently. */
++TEST_CASE(arena_cleanup_accounts_unique_external_storage)
++{
++    for (int collectable = 0; collectable < 2; collectable++) {
++        arena storage = { 0 }, other = { 0 };
++        if (collectable) {
++            arena_init_collectable(&storage);
++            arena_init_collectable(&other);
++        }
++        retained_resource shared = { 0 };
++        void *first = arena_alloc(&storage, 16);
++        void *second = arena_alloc(&storage, 16);
++        size_t before = arena_storage_bytes(&storage), bytes, capacity;
++        arena_set_cleanup(&storage, first, release_retained_resource, &shared, 12345);
++        size_t attached = arena_storage_bytes(&storage);
++        REQUIRE(attached > before + 12345); /* Resource index is owned metadata. */
++        arena_usage(&storage, &bytes, &capacity);
++        REQUIRE(bytes == 32 + 12345 && capacity >= bytes);
++        arena_set_cleanup(&storage, second, release_retained_resource, &shared, 12345);
++        size_t aliased = arena_storage_bytes(&storage);
++        REQUIRE(aliased >= attached && aliased - attached < 12345);
++        arena_usage(&storage, &bytes, &capacity);
++        REQUIRE(bytes == 32 + 12345);
++        arena_set_cleanup(&other, arena_alloc(&other, 16), release_retained_resource, &shared, 12345);
++        arena_usage(&other, &bytes, &capacity);
++        REQUIRE(bytes == 16 + 12345);
++        arena_reset(&storage);
++        REQUIRE(shared.releases == 2);
++        REQUIRE(arena_storage_bytes(&storage) < before + 12345);
++        arena_usage(&other, &bytes, &capacity);
++        REQUIRE(bytes == 16 + 12345);
++        arena_free(&storage);
++        arena_free(&other);
++        REQUIRE(shared.releases == 3);
++    }
++    return true;
++}
++
++/* Repeated sweeps delete old resource keys and return peak metadata, even when
++ * many resources share hash probe chains and one alias survives each sweep. */
++TEST_CASE(arena_cleanup_resource_index_reuses_after_collection)
++{
++    enum
++    {
++        COUNT = 257
++    };
++    arena storage;
++    arena_init_collectable(&storage);
++    retained_resource resources[COUNT] = { 0 };
++    size_t steady = 0;
++    for (int round = 0; round < 4; round++) {
++        void *keep = NULL;
++        for (int i = 0; i < COUNT; i++) {
++            void *allocation = arena_alloc(&storage, 16);
++            arena_set_cleanup(
++                &storage,
++                allocation,
++                release_retained_resource,
++                &resources[i],
++                (size_t)i + 1
++            );
++            if (i == COUNT / 2) {
++                keep = allocation;
++            }
++        }
++        collect_one(&storage, keep);
++        for (int i = 0; i < COUNT; i++) {
++            REQUIRE(resources[i].releases == round + (i != COUNT / 2));
++        }
++        REQUIRE(storage.retained_bytes == COUNT / 2 + 1);
++        collect_one(&storage, NULL);
++        REQUIRE(!storage.resources && !storage.resource_count && !storage.retained_bytes);
++        size_t retained = arena_storage_bytes(&storage);
++        if (round) {
++            REQUIRE(retained == steady);
++        }
++        steady = retained;
++    }
++    arena_free(&storage);
++    for (int i = 0; i < COUNT; i++) {
++        REQUIRE(resources[i].releases == 4);
++    }
++    return true;
++}
++
+ void test_arena()
+ {
+     RUN_TEST_CASE(arena_growth_keeps_allocations_and_reset_reuses_blocks);
+     RUN_TEST_CASE(zero_arena_allocates_on_first_use);
+     RUN_TEST_CASE(collectable_arena_finds_values_by_address);
+     RUN_TEST_CASE(arena_remembers_last_copy_until_reset_or_collection);
++    RUN_TEST_CASE(arena_cleanup_reset_and_free_release_each_attachment_once);
++    RUN_TEST_CASE(arena_cleanup_collection_keeps_shared_resource_until_last_alias);
++    RUN_TEST_CASE(arena_cleanup_accounts_unique_external_storage);
++    RUN_TEST_CASE(arena_cleanup_resource_index_reuses_after_collection);
+ }
+diff --git a/test/tools/c_export.c b/test/tools/c_export.c
+index 42fecf842..df38b16ef 100644
+--- a/test/tools/c_export.c
++++ b/test/tools/c_export.c
+@@ -65,7 +65,8 @@ static const struct
+     { PIN_I64, PIN_F64, BEHAVIOR_CAST_EXACT },
+ };
+ static const int query_variables[QUERY_FIXTURES] = { 1, ECS_QUERY_VARS };
+-static const pin_string managed_text = { "managed", sizeof("managed") - 1 };
++static const pin_string managed_text = { .bytes = "managed",
++                                         .length = sizeof("managed") - 1 };
+ static behavior_function *functions[FIXTURES];
+ static behavior_function_builder *builder;
+ static char directory[128];
+@@ -1572,9 +1573,10 @@ static bool writes_exported_current_world_scalars()
+ 
+ static const char binary_text_bytes[] = { 'A', 0, 'B', (char)0xff, 0 };
+ static const char other_text_bytes[] = { 'A', 0, 'C', (char)0xff, 0 };
+-static const pin_string binary_text = { binary_text_bytes,
+-                                        sizeof binary_text_bytes - 1 };
+-static const pin_string other_text = { other_text_bytes, sizeof other_text_bytes - 1 };
++static const pin_string binary_text = { .bytes = binary_text_bytes,
++                                        .length = sizeof binary_text_bytes - 1 };
++static const pin_string other_text = { .bytes = other_text_bytes,
++                                       .length = sizeof other_text_bytes - 1 };
+ static bool binary_text_fixture()
+ {
+     pin_value argument = { .type = PIN_STR };
+diff --git a/test/tools/ecs.c b/test/tools/ecs.c
+index 9463de427..6adb50670 100644
+--- a/test/tools/ecs.c
++++ b/test/tools/ecs.c
+@@ -339,7 +339,7 @@ TEST_CASE(ecs_native_text_rejects_nul_without_publishing)
+     uint64_t version = ecs_component_version(world, entity, record_desc.id);
+     uint64_t nested_version = ecs_component_version(world, entity, managed_desc.id);
+     ecs_string_usage strings = ecs_world_string_usage(world);
+-    const pin_string bad_text = { "save\0backup", 11 };
++    const pin_string bad_text = { .bytes = "save\0backup", .length = 11 };
+     pin_value bad = { .type = PIN_STR, .text = &bad_text };
+     REQUIRE(ecs_component_write_field(world, entity, record_desc.id, 1, bad) == ECS_ERR_ARGUMENT);
+     REQUIRE(
+@@ -426,7 +426,7 @@ TEST_CASE(ecs_descriptor_fields_retain_every_byte)
+     REQUIRE(ecs_world_record_add(world, entity, desc.id, NULL, 0) == ECS_OK);
+     REQUIRE(ecs_world_apply_commands(world) == ECS_OK);
+     char bytes[] = { 'A', 0, 'B', 0 };
+-    pin_string text = { bytes, 3 };
++    pin_string text = { .bytes = bytes, .length = 3 };
+     REQUIRE(
+         ecs_component_write_field(world, entity, desc.id, 0, (pin_value){ .type = PIN_STR, .text = &text }) ==
+         ECS_OK
+diff --git a/test/tools/native.c b/test/tools/native.c
+index 38cf40709..ef7894ac1 100644
+--- a/test/tools/native.c
++++ b/test/tools/native.c
+@@ -2254,10 +2254,12 @@ TEST_CASE(native_save_rejects_invalid_text_without_mutating_store)
+     boundary_save = save_new();
+     REQUIRE(boundary_save && save_set(boundary_save, "key", "kept"));
+     uint64_t revision = save_revision(boundary_save);
+-    const pin_string key = { "key", 3 }, value = { "replacement", 11 };
++    const pin_string key = { .bytes = "key", .length = 3 },
++                     value = { .bytes = "replacement", .length = 11 };
+     const char nul_key[] = "key\0other", nul_value[] = "replace\0other";
+-    const pin_string invalid[] = { { nul_key, sizeof nul_key - 1 },
+-                                   { nul_value, sizeof nul_value - 1 } };
++    const pin_string invalid[] = { { .bytes = nul_key, .length = sizeof nul_key - 1 },
++                                   { .bytes = nul_value,
++                                     .length = sizeof nul_value - 1 } };
+     for (int i = 0; i < 2; i++) {
+         pin_value in[] = { { .type = PIN_STR, .text = i == 0 ? &invalid[0] : &key },
+                            { .type = PIN_STR, .text = i == 1 ? &invalid[1] : &value } };
+@@ -2272,8 +2274,8 @@ TEST_CASE(native_save_rejects_invalid_text_without_mutating_store)
+     REQUIRE(save_count(boundary_save) == 1 && save_revision(boundary_save) == revision);
+     REQUIRE(!strcmp(save_get(boundary_save, "key"), "kept"));
+     const char fallback[] = { 'A', 0, (char)0xff, 'B', 0 };
+-    const pin_string missing = { "missing", 7 },
+-                     bytes = { fallback, sizeof fallback - 1 };
++    const pin_string missing = { .bytes = "missing", .length = 7 },
++                     bytes = { .bytes = fallback, .length = sizeof fallback - 1 };
+     pin_value arguments[] = { { .type = PIN_STR, .text = &missing },
+                               { .type = PIN_STR, .text = &bytes } };
+     const char *declared_name = "const char *";
+diff --git a/test/tools/record_c_export.c b/test/tools/record_c_export.c
+index 413873a85..739f21e48 100644
+--- a/test/tools/record_c_export.c
++++ b/test/tools/record_c_export.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "authoring/native_bindings.h"
+ #include "execution/definition.h"
+ #include "execution/intrinsics.h"
+@@ -194,8 +195,7 @@ static bool owned_row(const pin_value *value)
+ {
+     REQUIRE(arena_contains(&storage, value->ptr));
+     for (int field = 0; field < 5; field++) {
+-        const char *text = pin_text(member(value, field)).bytes;
+-        REQUIRE(text && arena_contains(&storage, text));
++        REQUIRE(test_text_owned(&storage, member(value, field)));
+     }
+     return true;
+ }
+diff --git a/test/tools/record_runtime.c b/test/tools/record_runtime.c
+index 18f951a6f..c8852cd49 100644
+--- a/test/tools/record_runtime.c
++++ b/test/tools/record_runtime.c
+@@ -1,5 +1,6 @@
+ #include "types/text.h"
+ /* This consumer compiles only with exported runtime SDK headers. */
++#include "../owned_text.h"
+ #include "execution/function_builder.h"
+ #include "execution/module.h"
+ #include "execution/prepared.h"
+@@ -117,8 +118,7 @@ static bool owned_row(const pin_value *value)
+ {
+     REQUIRE(arena_contains(&storage, value->ptr));
+     for (int field = 0; field < 5; field++) {
+-        const char *text = pin_text(member(value, field)).bytes;
+-        REQUIRE(text && arena_contains(&storage, text));
++        REQUIRE(test_text_owned(&storage, member(value, field)));
+     }
+     return true;
+ }
+diff --git a/test/tools/types.c b/test/tools/types.c
+index 7d4268120..e749514ae 100644
+--- a/test/tools/types.c
++++ b/test/tools/types.c
+@@ -1,3 +1,4 @@
++#include "../owned_text.h"
+ #include "execution/borrow.h"
+ #include "support/arena.h"
+ #include "support/array.h"
+@@ -333,8 +334,8 @@ TEST_CASE(types_array_snapshot_owns_strings_and_names)
+     REQUIRE(snapshot != NULL && snapshot->count == 1);
+     REQUIRE(snapshot->items != source->items);
+     REQUIRE(
+-        pin_text(pin_array_get(snapshot, 0)).bytes !=
+-        pin_text(pin_array_get(source, 0)).bytes
++        test_text_owned(&snapshots, pin_array_get(snapshot, 0)) &&
++        pin_array_get(snapshot, 0).text != pin_array_get(source, 0).text
+     );
+     nominal_name[0] = 'X';
+     pin_array_free(source);
+@@ -921,7 +922,7 @@ TEST_CASE(types_document_rejects_invalid_values_without_publication)
+     REQUIRE(pin_text(text).bytes[sizeof embedded] == 0);
+     REQUIRE(pin_text(text).bytes != av_get_str(encoded_text));
+     REQUIRE(arena_contains(&snapshots, text.text));
+-    REQUIRE(arena_contains(&snapshots, pin_text(text).bytes));
++    REQUIRE(test_text_owned(&snapshots, text));
+     REQUIRE(
+         pin_value_read_document(&snapshots, (pin_value){ .type = PIN_NAME }, encoded_text, &value, error, sizeof error) ==
+         -1
+@@ -1023,7 +1024,7 @@ TEST_CASE(types_document_array_collection_retains_split_payloads)
+         REQUIRE(arena_contains(&snapshots, payload));
+         pin_value item = pin_array_get(array, 0);
+         if (strings) {
+-            REQUIRE(arena_contains(&snapshots, pin_text(item).bytes));
++            REQUIRE(test_text_owned(&snapshots, item));
+             REQUIRE(!strcmp(pin_text(item).bytes, "owned"));
+         } else {
+             REQUIRE(item.i == 17);
+diff --git a/tools/compiler/union_members/Members.chibi b/tools/compiler/union_members/Members.chibi
+index f44b7563e..52a70cec9 100644
+--- a/tools/compiler/union_members/Members.chibi
++++ b/tools/compiler/union_members/Members.chibi
+@@ -431,7 +431,7 @@ ReadVariant :: (tree: reader.Tree, node: int, document: int, literal: bool) -> V
+         decoded := compiler_json_value_string(reader.Text(tree, node));
+         diagnostics: syntax.Diagnostic[] = [];
+         if (!decoded.valid) {
+-            diagnostics = array_add(diagnostics, reader.Diagnostic(tree, node, document, "Invalid string literal"));
++            diagnostics.append(reader.Diagnostic(tree, node, document, "Invalid string literal"));
+             return VariantText.Read("", diagnostics);
+         }
+         return VariantText.Read(decoded.value, diagnostics);

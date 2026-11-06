@@ -86,6 +86,12 @@ target_include_directories(chibi_scene_consumer PRIVATE "${CMAKE_CURRENT_BINARY_
 target_link_libraries(chibi_scene_consumer PRIVATE Chibi::scene_runtime)
 target_compile_options(chibi_scene_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 
+if(TARGET Chibi::material_runtime)
+    add_library(chibi_material_public_consumer OBJECT material_public.c)
+    target_link_libraries(chibi_material_public_consumer PRIVATE Chibi::material_runtime)
+    target_compile_options(chibi_material_public_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+endif()
+
 add_executable(test_tools main.c graph_dispatch.c prepared.c $<TARGET_OBJECTS:chibi_prepared_consumer> $<TARGET_OBJECTS:chibi_scene_consumer> fixture.c execution_policy.c package.c collab.c
     validate_project.c tetris.c controller.c render_fixture.c test_policy.c validation_plan.c publish.c web_storage.c player_url.c webgpu_staging.c browser.c wasm_browser.c ../support/arena.c
     $<TARGET_OBJECTS:chibi_sdk_contracts>
@@ -98,6 +104,9 @@ target_compile_definitions(test_tools PRIVATE _POSIX_C_SOURCE=200809L _DEFAULT_S
     CHIBI_SOURCE_ROOT="${CHIBI_TOOL_ROOT}"
     CHIBI_POLICY_WORKER_PATH="$<TARGET_FILE:policy_worker>")
 add_dependencies(test_tools policy_worker)
+if(TARGET chibi_material_public_consumer)
+    add_dependencies(test_tools chibi_material_public_consumer)
+endif()
 target_compile_features(test_tools PRIVATE c_std_11)
 target_compile_options(test_tools PRIVATE -Wall -Wextra -Werror -UNDEBUG)
 target_link_libraries(test_tools PRIVATE Chibi::behavior_runtime Chibi::scene_runtime Chibi::value_document)
@@ -298,13 +307,15 @@ if(TARGET Chibi::render)
     if(TARGET Chibi::shader_preparation)
         configure_file("${CHIBI_TOOL_ROOT}/test/graph/packs.h"
             "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/graph/packs.h" COPYONLY)
+        configure_file("${CHIBI_TOOL_ROOT}/test/tools/fixture.h"
+            "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/tools/fixture.h" COPYONLY)
         configure_file("${CHIBI_TOOL_ROOT}/test/render/hidden_app.h"
             "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/render/hidden_app.h" COPYONLY)
         target_link_libraries(chibi_render_consumer PRIVATE Chibi::shader_preparation
             Chibi::graph_compilation Chibi::graph_authoring)
         target_sources(chibi_render_consumer PRIVATE ../render/material_graphs.c ../render/material_ramps.c
             ../render/material_pixels.c ../sdf_visibility.c surface_transport.c
-            material_mesh_cache.c hrc_spot.c)
+            material_mesh_cache.c hrc_spot.c terrain_mesh_persistence.c)
         target_compile_definitions(chibi_render_consumer PRIVATE CHIBI_TEST_MATERIAL_GRAPHS=1)
         target_link_libraries(test_tools PRIVATE Chibi::shader_preparation
             Chibi::graph_compilation Chibi::graph_authoring)
@@ -332,6 +343,20 @@ if(TARGET Chibi::image_preparation)
     target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_image_preparation_consumer>)
     target_link_libraries(test_tools PRIVATE Chibi::image_preparation)
     target_compile_definitions(test_tools PRIVATE CHIBI_TEST_IMAGE_PREPARATION=1)
+endif()
+
+# Image import plans and their visual-budget admission use only exported CPU APIs.
+if(TARGET Chibi::image_preparation AND TARGET Chibi::shader_preparation)
+    configure_file("${CHIBI_TOOL_ROOT}/test/graph/packs.h"
+        "${CMAKE_CURRENT_BINARY_DIR}/testing/include/test/graph/packs.h" COPYONLY)
+    add_library(chibi_image_import_consumer OBJECT image_import.c)
+    target_include_directories(chibi_image_import_consumer PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/testing/include")
+    target_link_libraries(chibi_image_import_consumer PRIVATE Chibi::image_preparation Chibi::shader_preparation
+        Chibi::graph_compilation)
+    target_compile_options(chibi_image_import_consumer PRIVATE -Wall -Wextra -Werror -UNDEBUG)
+    target_sources(test_tools PRIVATE $<TARGET_OBJECTS:chibi_image_import_consumer>)
+    target_link_libraries(test_tools PRIVATE Chibi::image_preparation Chibi::shader_preparation)
+    target_compile_definitions(test_tools PRIVATE CHIBI_TEST_IMAGE_IMPORT=1)
 endif()
 
 # Mesh preparation reads `.mesh` content files, and model export writes them,
@@ -441,7 +466,7 @@ if(TARGET Chibi::authoring AND TARGET Chibi::host_native_default)
         target_compile_definitions(test_tools PRIVATE CHIBI_TEST_GRAPH_AUTHORING=1)
         # Feature coverage runs each fixture scene through chibi_ctl's run_scenario.
         if(TARGET chibi_ctl)
-            target_sources(test_tools PRIVATE feature_coverage.c environment_authoring.c material_bake.c terrain_storage_commands.c terrain_playable.c)
+            target_sources(test_tools PRIVATE feature_coverage.c environment_authoring.c image_import_commands.c material_bake.c terrain_storage_commands.c terrain_playable.c)
             target_compile_definitions(test_tools PRIVATE CHIBI_TEST_FEATURE_COVERAGE=1
                 CHIBI_CTL_PATH="$<TARGET_FILE:chibi_ctl>")
             add_dependencies(test_tools chibi_ctl)

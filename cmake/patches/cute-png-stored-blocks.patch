@@ -1,0 +1,88 @@
+--- a/cute_png.h
++++ b/cute_png.h
+@@ -402,12 +402,6 @@
+ 	return (s->bits_left + s->count) - num_bits < 0;
+ }
+ 
+-static char* cp_ptr(cp_state_t* s)
+-{
+-	CUTE_PNG_ASSERT(!(s->bits_left & 7));
+-	return (char*)(s->words + s->word_index) - (s->count / 8);
+-}
+-
+ static uint64_t cp_peak_bits(cp_state_t* s, int num_bits_to_read)
+ {
+ 	if (s->count < num_bits_to_read)
+@@ -530,21 +524,18 @@
+ 
+ static int cp_stored(cp_state_t* s)
+ {
+-	char* p;
+-
+-	// 3.2.3
+-	// skip any remaining bits in current partially processed byte
+-	cp_read_bits(s, s->count & 7);
+-
+-	// 3.2.4
+-	// read LEN and NLEN, should complement each other
++	// RFC 1951 3.2.4: byte alignment, LEN/NLEN, then literal bytes.
++	int padding = s->count & 7;
++	CUTE_PNG_CHECK(s->bits_left >= padding + 32, "Truncated stored block header.");
++	if (padding) cp_read_bits(s, padding);
+ 	uint16_t LEN = (uint16_t)cp_read_bits(s, 16);
+ 	uint16_t NLEN = (uint16_t)cp_read_bits(s, 16);
+ 	CUTE_PNG_CHECK(LEN == (uint16_t)(~NLEN), "Failed to find LEN and NLEN as complements within stored (uncompressed) stream.");
+-	CUTE_PNG_CHECK(s->bits_left / 8 <= (int)LEN, "Stored block extends beyond end of input stream.");
+-	p = cp_ptr(s);
+-	CUTE_PNG_MEMCPY(s->out, p, LEN);
+-	s->out += LEN;
++	CUTE_PNG_CHECK(s->bits_left / 8 >= (int)LEN, "Stored block extends beyond end of input stream.");
++	CUTE_PNG_CHECK(s->out_end - s->out >= (int)LEN, "Stored block exceeds output buffer.");
++	// Consume through the bit reader, including prefetched bytes and the final
++	// partial word. Copying from words alone neither advances nor preserves it.
++	for (int i = 0; i < (int)LEN; ++i) *s->out++ = (char)cp_read_bits(s, 8);
+ 	return 1;
+ 
+ cp_err:
+@@ -668,6 +659,7 @@
+ 
+ 	// s->words is the in-pointer rounded up to a multiple of 4
+ 	int first_bytes = (int) ((( (size_t) in + 3) & ~3) - (size_t) in);
++	if (first_bytes > in_bytes) first_bytes = in_bytes;
+ 	s->words = (uint32_t*)((char*)in + first_bytes);
+ 	s->word_count = (in_bytes - first_bytes) / 4;
+ 	int last_bytes = ((in_bytes - first_bytes) & 3);
+@@ -690,6 +682,7 @@
+ 	int bfinal;
+ 	do
+ 	{
++		CUTE_PNG_CHECK(s->bits_left >= 3, "Truncated DEFLATE block header.");
+ 		bfinal = cp_read_bits(s, 1);
+ 		int btype = cp_read_bits(s, 2);
+ 
+@@ -704,6 +697,7 @@
+ 		++count;
+ 	}
+ 	while (!bfinal);
++	CUTE_PNG_CHECK(s->out == s->out_end, "DEFLATE output is shorter than the image scanlines.");
+ 
+ 	CUTE_PNG_FREE(s);
+ 	return 1;
+@@ -1307,7 +1301,7 @@
+ 	CUTE_PNG_CHECK(cp_out_size(&img, bpp) >= 1, "invalid image size found");
+ 
+ 	out = (uint8_t*)img.pix + cp_out_size(&img, 4) - cp_out_size(&img, bpp);
+-	CUTE_PNG_CHECK(cp_inflate(data + 2, datalen - 6, out, pix_bytes), "DEFLATE algorithm failed");
++	CUTE_PNG_CHECK(cp_inflate(data + 2, datalen - 6, out, (img.w * bpp + 1) * img.h), "DEFLATE algorithm failed");
+ 	CUTE_PNG_CHECK(cp_unfilter(img.w, img.h, bpp, out), "invalid filter byte found");
+ 
+ 	if (color_type == 3)
+@@ -1522,7 +1516,7 @@
+ 	CUTE_PNG_CHECK(!(data[1] & 0x20), "preset dictionary is present and not supported");
+ 
+ 	out = img.pix;
+-	CUTE_PNG_CHECK(cp_inflate(data + 2, datalen - 6, out, pix_bytes), "DEFLATE algorithm failed");
++	CUTE_PNG_CHECK(cp_inflate(data + 2, datalen - 6, out, (img.w * bpp + 1) * img.h), "DEFLATE algorithm failed");
+ 	CUTE_PNG_CHECK(cp_unfilter(img.w, img.h, bpp, out), "invalid filter byte found");
+ 	cp_unpack_indexed_rows(img.w, img.h, out, img.pix);
+ 

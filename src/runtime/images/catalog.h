@@ -59,5 +59,8 @@ const char *render_image_source_key(int);
 bool render_image_prepared_write(const char *, unsigned char **, size_t *, shader_error *);
 /* Copies caller RGBA8 pixels into the same portable image artifact. */
 bool render_image_pixels_prepared_write(const shader_image_view *, unsigned char **, size_t *, shader_error *);
+/* Exact codec payload length, including its variable-length header. No pixels
+ * or catalog needed; useful before allocating an imported derivative. */
+bool render_image_prepared_size(int width, int height, size_t *, shader_error *);
 
 #endif

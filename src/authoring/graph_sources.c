@@ -2,6 +2,7 @@
 
 #include "graph/document/serialize.h"
 #include "support/array.h"
+#include "support/asset_format.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
 
@@ -81,7 +82,7 @@ bool authoring_graph_sources_load(const char *content_root, authoring_graph_sour
         }
         struct dirent *entry;
         while ((entry = readdir(directory))) {
-            if (entry->d_name[0] == '.' ||
+            if (entry->d_name[0] == '.' || asset_texture_metadata_path(entry->d_name) ||
                 !has_suffix(entry->d_name, DECLARATIVE_ASSET_EXTENSION)) {
                 continue;
             }

@@ -109,10 +109,10 @@ sculpting, but do not establish bit-identical CPU/GPU shading or visual fidelity
 The generic `PlanarSurfaces` specimen now binds `SurfaceDestructible` to
 `SurfaceRelief`, whose Height is `PartPosition.x * 0.05` and whose Normal remains
 the generated mesh normal. The CPU selector has analytical plane/normal,
-cross-chunk, carved-hole, depth-envelope and atomic failure cases. Formatting,
-validation and rerunning those cases for this shared-Height extension are pending
-the coordinated root build. The earlier checked-candidate results below describe
-the preceding relief path, not acceptance of this extension.
+cross-chunk, carved-hole, depth-envelope and atomic failure cases. The Grey Rock01
+checkpoint below verifies that shared Height path and its lifetime through edits
+and restart. The earlier checked-candidate results describe the preceding relief
+path; its specimen run is not fresh acceptance of the authored Height fixture.
 
 ## Verification
 
@@ -141,7 +141,7 @@ The original candidate is unmodified. Coordinate integration with thread
 `01a14208-7219-7ef3-9f03-86aa1b3ec729`; no commits, merges or publication are
 requested in this pass.
 
-## Checked candidate, 2026-10-16
+## Earlier rock-surface candidate, 2026-10-16
 
 The controller/compiler/player and focused test executable build successfully
 with Debug, sanitizers off and warnings enabled. Increment C files use
@@ -166,3 +166,26 @@ visibility now tests both endpoint slabs, unlike direct surface rays.
 
 The current images remain far below the reference. Surface geometry and
 destruction linkage are implemented, not photorealistic basalt acceptance.
+
+## Grey Rock01 shared engine checkpoint, 2026-10-16
+
+The separate `grey-rock-checkpoint/chibi` candidate starts from dependency tree
+`71d3d5832061d3e09edf53feb463ddde7113f7e8`. Surface settings, material frames and
+shader bindings now synchronize to resident terrain chunks without replacing
+edited masks. Detached fragments retain their captured material coordinates and
+shader binding. Existing ECS rows use managed component writes. Rendering checks
+cover mask reset, mesh retirement/rebuild and subsequent cache reuse.
+
+Direct and scattering spotlight rays now check both endpoint slabs. Rays crossing
+the projection near plane are clipped in 3D before their screen projection;
+canvas traversal has a bound derived from image dimensions instead of 512 steps.
+The spotlight check now contains 26 GPU readbacks across four bounded cases.
+
+Fresh supervised selectors passed: `--material-surface-mesh` (nine CPU cases,
+1.772 s), `--material-mesh-cache` (3.049 s), `--material-terrain-seams` (3.848 s),
+`--hrc-spot` (4.215 s), `--terrain-mesh-persistence` (2.408 s) and
+`--terrain-storage-commands` (2.148 s). The persistence check uses two fresh
+processes and verifies restored cuts, collision and regenerated mesh hashes on
+both sides of a chunk seam. Build time is excluded. These checks establish the
+shared mechanism; Voidweaver retains ownership of game visuals and playable
+visual acceptance.

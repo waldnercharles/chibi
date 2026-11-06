@@ -1,5 +1,6 @@
 #include "authoring/project_prepare_internal.h"
 #include "support/array.h"
+#include "support/asset_format.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
 
@@ -98,7 +99,8 @@ bool project_prepare_prototypes(
     struct dirent *entry;
     while (valid && (entry = readdir(dir))) {
         size_t n = strlen(entry->d_name);
-        if (entry->d_name[0] == '.' || n < 4 || strcmp(entry->d_name + n - 4, ".kdl")) {
+        if (entry->d_name[0] == '.' || asset_texture_metadata_path(entry->d_name) ||
+            n < 4 || strcmp(entry->d_name + n - 4, ".kdl")) {
             continue;
         }
         char path[4096];

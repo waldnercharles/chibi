@@ -60,6 +60,14 @@ static bool terrain_recipe(
     );
 }
 
+static MaterialFrame tile_frame(MaterialFrame source, field_grid grid)
+{
+    float c = cosf(source.radians), s = sinf(source.radians);
+    source.x += c * grid.center_x - s * grid.center_y;
+    source.y += s * grid.center_x + c * grid.center_y;
+    return source;
+}
+
 static void spawn_tile(
     materials *materials,
     ecs_entity source,
@@ -79,16 +87,16 @@ static void spawn_tile(
     Material material = surface ? *surface : (Material){ 0 };
     const Shader *binding = Shader_get_const(world, source);
     bool has_shader = binding != NULL;
-    Shader shader = binding ? *binding : (Shader){ 0 };
+    Shader shader = material_ecs_shader_snapshot(world, binding ? *binding : (Shader){ 0 });
     const MaterialSurface3D *mesh_ptr = MaterialSurface3D_get_const(world, source);
     bool has_mesh = mesh_ptr != NULL;
     MaterialSurface3D mesh = mesh_ptr ? *mesh_ptr : (MaterialSurface3D){ 0 };
     const MaterialFrame *frame_ptr = MaterialFrame_get_const(world, source);
-    MaterialFrame mesh_frame = frame_ptr ? *frame_ptr
-                                         : (MaterialFrame){ origin.x, origin.y, 0 };
-    float frame_c = cosf(mesh_frame.radians), frame_s = sinf(mesh_frame.radians);
-    mesh_frame.x += frame_c * grid.center_x - frame_s * grid.center_y;
-    mesh_frame.y += frame_s * grid.center_x + frame_c * grid.center_y;
+    bool has_frame = has_mesh || frame_ptr;
+    MaterialFrame mesh_frame = tile_frame(
+        frame_ptr ? *frame_ptr : (MaterialFrame){ origin.x, origin.y, 0 },
+        grid
+    );
     const Substance *sub = Substance_get_const(world, source);
     Substance substance = sub ? *sub : (Substance){ 0 };
     const Reflection *ref = Reflection_get_const(world, source);
@@ -112,6 +120,8 @@ static void spawn_tile(
     material_ecs_add_component(world, entity, &COMPONENT_Material, &material);
     if (has_mesh) {
         material_ecs_add_component(world, entity, &COMPONENT_MaterialSurface3D, &mesh);
+    }
+    if (has_frame) {
         material_ecs_add_component(world, entity, &COMPONENT_MaterialFrame, &mesh_frame);
     }
     material_ecs_add_component(world, entity, &COMPONENT_MaterialBreakProfile, &profile);
@@ -509,6 +519,136 @@ static const char *generate_terrain(materials *materials, ecs_entity source)
     return NULL;
 }
 
+/* Adds are structural; replacing an existing reflected row uses the value
+ * API so managed fields retain their own storage and observers see the edit. */
+static bool set_terrain_component(
+    ecs_world *world,
+    ecs_entity entity,
+    const ecs_component_desc *component,
+    const void *data
+)
+{
+    if (!ecs_component_has(world, entity, component->id)) {
+        material_ecs_add_component(world, entity, component, data);
+        return true;
+    }
+    pin_value declared = { .type = PIN_STRUCT, .type_name = component->type->name };
+    pin_value value = declared;
+    value.ptr = (void *)data;
+    int result = ecs_component_write_value(world, entity, component->id, 0, declared, value);
+    assert(result == ECS_OK);
+    (void)result;
+    return false;
+}
+
+static bool same_text(const char *a, const char *b)
+{
+    return a == b || (a && b && !strcmp(a, b));
+}
+
+/* Presentation can change while edited occupancy remains authoritative. Apply
+ * the source bundle to every resident child, including existing empty chunks. */
+static void sync_terrain_surface(materials *materials, ecs_entity source)
+{
+    ecs_world *world = materials->world;
+    MaterialTerrain terrain = *MaterialTerrain_get_const(world, source);
+    const Shader *binding = Shader_get_const(world, source);
+    bool has_shader = binding != NULL;
+    Shader shader = material_ecs_shader_snapshot(world, binding ? *binding : (Shader){ 0 });
+    const MaterialSurface3D *surface_ptr = MaterialSurface3D_get_const(world, source);
+    bool has_surface = surface_ptr != NULL;
+    MaterialSurface3D surface = surface_ptr ? *surface_ptr : (MaterialSurface3D){ 0 };
+    const MaterialFrame *frame_ptr = MaterialFrame_get_const(world, source);
+    bool has_frame = has_surface || frame_ptr;
+    CF_V2 origin = transform_world_2d(world, source).position;
+    MaterialFrame frame = frame_ptr ? *frame_ptr
+                                    : (MaterialFrame){ origin.x, origin.y, 0 };
+    field_grid grid = { .width = (int)ceilf(terrain.width / terrain.cell_size),
+                        .height = (int)ceilf(terrain.height / terrain.cell_size),
+                        .cell_size = terrain.cell_size };
+    bool pending = false;
+    for (int i = 0; i < acount(materials->records); i++) {
+        material_record *record = &materials->records[i];
+        if (record->fragment || !record->mask ||
+            ecs_entity_to_u64(record->terrain_source) != ecs_entity_to_u64(source) ||
+            !ecs_entity_is_alive(world, record->entity)) {
+            continue;
+        }
+        const Shader *child_shader = Shader_get_const(world, record->entity);
+        if (has_shader &&
+            (!child_shader || !same_text(child_shader->material, shader.material) ||
+             !same_text(child_shader->shape, shader.shape) ||
+             !same_text(child_shader->parameters, shader.parameters) ||
+             child_shader->bounds_x != shader.bounds_x ||
+             child_shader->bounds_y != shader.bounds_y)) {
+            pending |= set_terrain_component(world, record->entity, &COMPONENT_Shader, &shader);
+        } else if (!has_shader && child_shader) {
+            int result = ecs_world_record_remove(
+                world,
+                record->entity,
+                COMPONENT_Shader.id,
+                0
+            );
+            assert(result == ECS_OK);
+            (void)result;
+            pending = true;
+        }
+        const MaterialSurface3D
+            *child_surface = MaterialSurface3D_get_const(world, record->entity);
+        if (has_surface &&
+            (!child_surface || child_surface->enabled != surface.enabled ||
+             child_surface->material_height != surface.material_height ||
+             child_surface->elevation != surface.elevation ||
+             child_surface->depth != surface.depth ||
+             child_surface->bevel_width != surface.bevel_width ||
+             child_surface->relief != surface.relief ||
+             child_surface->relief_scale != surface.relief_scale ||
+             child_surface->spacing != surface.spacing ||
+             child_surface->seed != surface.seed)) {
+            pending |= set_terrain_component(world, record->entity, &COMPONENT_MaterialSurface3D, &surface);
+        } else if (!has_surface && child_surface) {
+            int result = ecs_world_record_remove(
+                world,
+                record->entity,
+                COMPONENT_MaterialSurface3D.id,
+                0
+            );
+            assert(result == ECS_OK);
+            (void)result;
+            pending = true;
+        }
+        const MaterialFrame *child_frame = MaterialFrame_get_const(world, record->entity);
+        if (has_frame) {
+            field_grid tile;
+            bool valid = material_stream_tile_grid(grid, record->terrain_key, &tile);
+            assert(valid);
+            (void)valid;
+            MaterialFrame composed = tile_frame(frame, tile);
+            if (child_frame && child_frame->x == composed.x &&
+                child_frame->y == composed.y &&
+                child_frame->radians == composed.radians) {
+                continue;
+            }
+            pending |= set_terrain_component(world, record->entity, &COMPONENT_MaterialFrame, &composed);
+        } else if (child_frame) {
+            int result = ecs_world_record_remove(
+                world,
+                record->entity,
+                COMPONENT_MaterialFrame.id,
+                0
+            );
+            assert(result == ECS_OK);
+            (void)result;
+            pending = true;
+        }
+    }
+    if (pending) {
+        int result = ecs_world_apply_commands(world);
+        assert(result == ECS_OK);
+        (void)result;
+    }
+}
+
 const char *material_ecs_generate_terrains(materials *materials)
 {
     ecs_component_id id = COMPONENT_MaterialTerrain.id;
@@ -529,6 +669,9 @@ const char *material_ecs_generate_terrains(materials *materials)
     const char *error = NULL;
     for (int i = 0; i < acount(sources) && !error; i++) {
         error = generate_terrain(materials, sources[i]);
+        if (!error) {
+            sync_terrain_surface(materials, sources[i]);
+        }
     }
     afree(sources);
     return error;

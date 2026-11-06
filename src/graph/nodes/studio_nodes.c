@@ -208,12 +208,29 @@ EFFECT_NODE(
     "debug break spawn prototype breakpoint",
     "Turns Break When Spawned on or off for Prototype."
 );
+EFFECT_NODE(
+    IMAGE_IMPORT,
+    STUDIO_NODE_IMAGE_IMPORT,
+    STUDIO_IMAGE_IMPORT_NAME,
+    "texture image import file review",
+    "Runs a bounded explicit choose/poll/review/commit/cancel image import "
+    "request in Studio."
+);
+EFFECT_NODE(
+    TEXTURE_ASSET,
+    STUDIO_NODE_TEXTURE_ASSET,
+    STUDIO_TEXTURE_ASSET_NAME,
+    "texture asset settings reimport",
+    "Reads or edits the selected texture's import settings through Studio "
+    "document history."
+);
 static node_desc *const NODES[] = {
     &SCENE_OBJECTS,     &SCENE_INFO,    &SELECTION,      &OBJECT_SELECTED,
     &OBJECT_ROW,        &RENAMING,      &EDITOR_STATE,   &SPAWN_BREAK,
     &PROTOTYPE_CHOICES, &SELECT_OBJECT, &RENAME_OBJECT,  &END_RENAME,
     &SET_HIDDEN,        &SET_LOCKED,    &ISOLATE_OBJECT, &ADD_OBJECT,
     &DROP_ON_OBJECT,    &MOVE_OBJECTS,  &SET_FILTER,     &TOGGLE_SPAWN_BREAK,
+    &IMAGE_IMPORT,      &TEXTURE_ASSET,
 };
 static const type_desc *const TYPES[] = { &STUDIO_OBJECT_ROW_LAYOUT,
                                           &STUDIO_CHOICE_LAYOUT };

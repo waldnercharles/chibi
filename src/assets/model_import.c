@@ -9,6 +9,7 @@
 #include "runtime/geometry/mesh_asset.h"
 #include "runtime/geometry/mesh_prepared.h"
 #include "support/array.h"
+#include "support/asset_format.h"
 #include "support/asset_text.h"
 #include "support/file_io.h"
 #include "support/xalloc.h"
@@ -1255,7 +1256,8 @@ static bool names_file(const char *file, const char *name)
 static bool asset_file(const char *file)
 {
     size_t length = strlen(file), extension = strlen(DECLARATIVE_ASSET_EXTENSION);
-    return file[0] != '.' && length > extension &&
+    return file[0] != '.' && !asset_texture_metadata_path(file) &&
+           length > extension &&
            !strcmp(file + length - extension, DECLARATIVE_ASSET_EXTENSION);
 }
 

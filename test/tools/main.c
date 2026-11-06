@@ -472,6 +472,51 @@ bool test_model_import_active()
 
 int main(int argc, char **argv)
 {
+    if (argc == 4 && !strcmp(argv[1], "--terrain-mesh-persistence-child")) {
+#ifdef CHIBI_TEST_MATERIAL_GRAPHS
+        int test_terrain_mesh_persistence_child(const char *, const char *);
+        tool_init();
+        return test_terrain_mesh_persistence_child(argv[2], argv[3]);
+#else
+        return 2;
+#endif
+    }
+    if (argc == 2 && !strcmp(argv[1], "--terrain-mesh-persistence")) {
+#ifdef CHIBI_TEST_MATERIAL_GRAPHS
+        void test_terrain_mesh_persistence(const char *);
+        tool_init();
+        pu_display_time(true);
+        test_terrain_mesh_persistence(argv[0]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        return 2;
+#endif
+    }
+    if (argc == 2 && !strcmp(argv[1], "--image-import")) {
+#ifdef CHIBI_TEST_IMAGE_IMPORT
+        void test_image_import();
+        tool_init();
+        pu_display_time(true);
+        test_image_import();
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        return 2;
+#endif
+    }
+    if (argc == 4 && !strcmp(argv[1], "--image-import-grey-rock")) {
+#ifdef CHIBI_TEST_FEATURE_COVERAGE
+        void test_image_import_grey_rock(const char *, const char *);
+        tool_init();
+        pu_display_time(true);
+        test_image_import_grey_rock(argv[2], argv[3]);
+        pu_print_stats();
+        return pu_test_failed() ? 1 : 0;
+#else
+        return 2;
+#endif
+    }
     if (argc == 2 && !strcmp(argv[1], "--surface-transport")) {
 #ifdef CHIBI_TEST_MATERIAL_GRAPHS
         tool_init();
@@ -660,6 +705,7 @@ int main(int argc, char **argv)
 #endif
     }
     if (argc == 3 && (!strcmp(argv[1], "--environment-authoring") ||
+                      !strcmp(argv[1], "--image-import-commands") ||
                       !strcmp(argv[1], "--material-bake") ||
                       !strcmp(argv[1], "--terrain-storage-commands"))) {
 #ifdef CHIBI_TEST_FEATURE_COVERAGE
@@ -670,6 +716,9 @@ int main(int argc, char **argv)
             source_runtime_active = true;
 #endif
             test_environment_authoring(argv[2]);
+        } else if (!strcmp(argv[1], "--image-import-commands")) {
+            void test_image_import_commands(const char *);
+            test_image_import_commands(argv[2]);
         } else if (!strcmp(argv[1], "--terrain-storage-commands")) {
             test_terrain_storage_commands(argv[2]);
         } else {

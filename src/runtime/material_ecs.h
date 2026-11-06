@@ -66,6 +66,7 @@ void material_ecs_add_component(
     const ecs_component_desc *component,
     const void *value
 );
+Shader material_ecs_shader_snapshot(ecs_world *world, Shader shader);
 MaterialBreakProfile material_ecs_break_profile(materials *materials, ecs_entity entity);
 const char *material_ecs_generate_terrains(materials *materials);
 void material_ecs_sync_terrain_surfaces(materials *materials);

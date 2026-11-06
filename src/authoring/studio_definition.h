@@ -144,6 +144,40 @@
 #define STUDIO_TOGGLE_SPAWN_BREAK_NAME "Toggle Spawn Break"
 #define STUDIO_TOGGLE_SPAWN_BREAK_INPUTS(X) STUDIO_PROTOTYPE_EXEC_IN_PORTS(X)
 #define STUDIO_TOGGLE_SPAWN_BREAK_OUTPUTS(X) STUDIO_THEN_OUT_PORTS(X)
+/* Explicit choose/poll/review/commit/cancel protocol. UI owns phases; the
+ * host owns selected bytes and a detached, bounded import plan. */
+#define STUDIO_IMAGE_IMPORT_NAME "Studio Image Import"
+#define STUDIO_IMAGE_IMPORT_INPUTS(X)                                                                  \
+    STUDIO_PORT(X, "Exec", NATIVE_PARAMETER_EXEC, PIN_FLOW, NULL, PIN_CONTAINER_SINGLE)                \
+    STUDIO_PORT(X, "Operation", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)  \
+    STUDIO_PORT(X, "Resolution", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE) \
+    STUDIO_PORT(X, "Semantic", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)   \
+    STUDIO_PORT(X, "Destination", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)
+#define STUDIO_IMAGE_IMPORT_OUTPUTS(X)                                                             \
+    STUDIO_THEN_OUT_PORTS(X)                                                                       \
+    STUDIO_PORT(X, "Busy", NATIVE_PARAMETER_DATA, PIN_BOOL, "bool", PIN_CONTAINER_SINGLE)          \
+    STUDIO_PORT(X, "Ok", NATIVE_PARAMETER_DATA, PIN_BOOL, "bool", PIN_CONTAINER_SINGLE)            \
+    STUDIO_PORT(X, "Source", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE) \
+    STUDIO_PORT(X, "Status", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE) \
+    STUDIO_PORT(X, "Review", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)
+/* The authored texture inspector edits one selected asset through the same
+ * document history as the rest of Studio. Pixel reimport is explicit. */
+#define STUDIO_TEXTURE_ASSET_NAME "Studio Texture Asset"
+#define STUDIO_TEXTURE_ASSET_INPUTS(X)                                                                 \
+    STUDIO_PORT(X, "Exec", NATIVE_PARAMETER_EXEC, PIN_FLOW, NULL, PIN_CONTAINER_SINGLE)                \
+    STUDIO_PORT(X, "Operation", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)  \
+    STUDIO_PORT(X, "Resolution", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE) \
+    STUDIO_PORT(X, "Semantic", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)
+#define STUDIO_TEXTURE_ASSET_OUTPUTS(X)                                                                \
+    STUDIO_THEN_OUT_PORTS(X)                                                                           \
+    STUDIO_PORT(X, "Active", NATIVE_PARAMETER_DATA, PIN_BOOL, "bool", PIN_CONTAINER_SINGLE)            \
+    STUDIO_PORT(X, "Image", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)      \
+    STUDIO_PORT(X, "Source", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)     \
+    STUDIO_PORT(X, "Resolution", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE) \
+    STUDIO_PORT(X, "Semantic", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)   \
+    STUDIO_PORT(X, "Dirty", NATIVE_PARAMETER_DATA, PIN_BOOL, "bool", PIN_CONTAINER_SINGLE)             \
+    STUDIO_PORT(X, "Status", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)     \
+    STUDIO_PORT(X, "Info", NATIVE_PARAMETER_DATA, PIN_STR, "const char *", PIN_CONTAINER_SINGLE)
 #define STUDIO_OPERATIONS(X)                                                   \
     X(SCENE_OBJECTS,                                                           \
       STUDIO_NODE_SCENE_OBJECTS,                                               \
@@ -304,7 +338,23 @@
       SCRIPT_CAPABILITY_ACTION,                                                \
       false,                                                                   \
       true,                                                                    \
-      0)
+      0)                                                                       \
+    X(IMAGE_IMPORT,                                                            \
+      STUDIO_NODE_IMAGE_IMPORT,                                                \
+      STUDIO_IMAGE_IMPORT_NAME,                                                \
+      "studio_image_import",                                                   \
+      SCRIPT_CAPABILITY_ACTION,                                                \
+      false,                                                                   \
+      true,                                                                    \
+      5)                                                                       \
+    X(TEXTURE_ASSET,                                                           \
+      STUDIO_NODE_TEXTURE_ASSET,                                               \
+      STUDIO_TEXTURE_ASSET_NAME,                                               \
+      "studio_texture_asset",                                                  \
+      SCRIPT_CAPABILITY_ACTION,                                                \
+      false,                                                                   \
+      true,                                                                    \
+      8)
 extern const native_definition_pack STUDIO_DEFINITION_PACK;
 extern const native_type_definition STUDIO_TYPE_DEFINITIONS[2];
 extern const type_desc STUDIO_OBJECT_ROW_LAYOUT, STUDIO_CHOICE_LAYOUT;

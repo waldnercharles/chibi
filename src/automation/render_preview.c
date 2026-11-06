@@ -279,6 +279,7 @@ static bool valid_filename(const char *name)
 {
     size_t length = name ? strlen(name) : 0;
     return length > sizeof DECLARATIVE_ASSET_EXTENSION - 1 && length < 256 &&
+           !asset_texture_metadata_path(name) &&
            !strcmp(name + length - (sizeof DECLARATIVE_ASSET_EXTENSION - 1), DECLARATIVE_ASSET_EXTENSION) &&
            safe_component(name, 256);
 }
@@ -541,7 +542,8 @@ static behavior_asset **load_libraries(const char *content)
             continue;
         }
         size_t name_length = strlen(entry->d_name);
-        if (name_length < sizeof DECLARATIVE_ASSET_EXTENSION - 1 ||
+        if (asset_texture_metadata_path(entry->d_name) ||
+            name_length < sizeof DECLARATIVE_ASSET_EXTENSION - 1 ||
             strcmp(entry->d_name + name_length - (sizeof DECLARATIVE_ASSET_EXTENSION - 1), DECLARATIVE_ASSET_EXTENSION)) {
             continue;
         }

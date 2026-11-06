@@ -127,6 +127,7 @@ static bool read_asset(
             l->scene = scene_document_load(text, why, size);
             return l->scene != NULL;
         case REFERENCE_ASSET_UI: return read_markup(text, l, why, size);
+        case REFERENCE_ASSET_TEXTURE:
         case REFERENCE_ASSET_KIND_COUNT: break;
         default:
             l->graphs = behavior_asset_load(text);
@@ -191,6 +192,7 @@ static char *saved_source(const refactor_project *, reference_asset_kind kind, l
         case REFERENCE_ASSET_PROTOTYPE: return prototype_save(l->prototype);
         case REFERENCE_ASSET_SCENE:
             return scene_document_save(l->scene, project_components());
+        case REFERENCE_ASSET_TEXTURE:
         case REFERENCE_ASSET_KIND_COUNT: break;
         default: return behavior_asset_save(l->graphs);
     }
@@ -710,8 +712,8 @@ static bool name_taken(const work *w, reference_asset_kind kind, int asset, cons
 }
 
 static const char *const KIND_NAMES[REFERENCE_ASSET_KIND_COUNT] = {
-    "scene", "prototype", "behavior", "event",  "material",
-    "shape", "field",     "library",  "system", "ui document",
+    "scene", "prototype", "behavior", "event",       "material", "shape",
+    "field", "library",   "system",   "ui document", "texture",
 };
 
 static const reference **uses_of(const work *w, reference_symbol symbol)
@@ -781,6 +783,9 @@ static bool rename_event(work *w, const char *from, const char *to)
 static bool rename_asset(work *w, int asset, const char *to)
 {
     const reference_asset *a = asset_at(w, asset);
+    if (a->kind == REFERENCE_ASSET_TEXTURE) {
+        return fail(w, "Texture rename requires updating its PNG key and import metadata together");
+    }
     if (a->kind == REFERENCE_ASSET_EVENT) {
         return rename_event(w, a->name, to);
     }
@@ -1328,6 +1333,9 @@ static bool delete_member(work *w, reference_symbol symbol)
 static bool delete_asset(work *w, int asset)
 {
     const reference_asset *a = asset_at(w, asset);
+    if (a->kind == REFERENCE_ASSET_TEXTURE) {
+        return fail(w, "Texture deletion requires removing its PNG and import metadata together");
+    }
     if (a->unresolved || a->kind == REFERENCE_ASSET_SCENE) {
         return fail(
             w,

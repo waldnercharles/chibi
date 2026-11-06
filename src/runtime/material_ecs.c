@@ -780,6 +780,21 @@ void material_ecs_add_component(
     (void)result;
 }
 
+/* Generated entities outlive edits to the source's managed component row. */
+Shader material_ecs_shader_snapshot(ecs_world *world, Shader shader)
+{
+    if (shader.material) {
+        shader.material = ecs_world_intern_string(world, shader.material);
+    }
+    if (shader.shape) {
+        shader.shape = ecs_world_intern_string(world, shader.shape);
+    }
+    if (shader.parameters) {
+        shader.parameters = ecs_world_intern_string(world, shader.parameters);
+    }
+    return shader;
+}
+
 static void detach(materials *materials, ecs_entity source, material_mask mask, fluid_vec hit, float kick)
 {
     /* Moving fragments no longer share their terrain source's neighbors. */
@@ -802,7 +817,7 @@ static void detach(materials *materials, ecs_entity source, material_mask mask, 
     const Material *surface = Material_get_const(world, source);
     Material material = surface ? *surface : (Material){ 0 };
     const Shader *binding = Shader_get_const(world, source);
-    Shader shader = binding ? *binding : (Shader){ 0 };
+    Shader shader = material_ecs_shader_snapshot(world, binding ? *binding : (Shader){ 0 });
     bool has_shader = binding != NULL;
     const MaterialSurface3D *mesh_ptr = MaterialSurface3D_get_const(world, source);
     bool has_mesh = mesh_ptr != NULL;
@@ -810,7 +825,10 @@ static void detach(materials *materials, ecs_entity source, material_mask mask, 
     /* The fragment's local frame is its source's, so it inherits where that
      * frame sat when the material was laid out. */
     const MaterialFrame *laid_out = MaterialFrame_get_const(world, source);
+    /* A disabled surface still has the same implicit local-zero frame when
+     * enabled later; shader-only fragments retain their world-pose fallback. */
     MaterialFrame frame = laid_out ? *laid_out
+                        : has_mesh ? (MaterialFrame){ 0 }
                                    : (MaterialFrame){ transform.x,
                                                       transform.y,
                                                       orientation.radians };
@@ -1101,6 +1119,34 @@ void material_ecs_fade_fragments(materials *materials, float delta)
     }
 }
 
+/* Surface geometry's implicit coordinates are local zero, not the body's
+ * current world pose. Retain that frame before a fracture can inherit it. */
+static void freeze_surface_frames(materials *materials)
+{
+    ecs_world *world = materials->world;
+    bool added = false;
+    for (int i = 0; i < acount(materials->records); i++) {
+        material_record *record = &materials->records[i];
+        if (!record->mask || !ecs_entity_is_alive(world, record->entity) ||
+            (!record->fragment && ecs_entity_to_u64(record->terrain_source)) ||
+            MaterialFrame_get_const(world, record->entity)) {
+            continue;
+        }
+        const MaterialSurface3D
+            *surface = MaterialSurface3D_get_const(world, record->entity);
+        if (!surface || !surface->enabled) {
+            continue;
+        }
+        material_ecs_add_component(world, record->entity, &COMPONENT_MaterialFrame, &(MaterialFrame){ 0 });
+        added = true;
+    }
+    if (added) {
+        int result = ecs_world_apply_commands(world);
+        assert(result == ECS_OK);
+        (void)result;
+    }
+}
+
 const char *materials_prepare(materials *materials)
 {
     const char *error = configure(materials);
@@ -1159,6 +1205,7 @@ const char *materials_prepare(materials *materials)
             return error;
         }
     }
+    freeze_surface_frames(materials);
     /* Resolve authored sources after baking, including damage queued by Begin. */
     for (int i = 0; i < acount(materials->damage_requests); i++) {
         queue_damage(materials, materials->damage_requests[i]);

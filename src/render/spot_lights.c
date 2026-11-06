@@ -27,9 +27,8 @@ static bool pack(render_view_2d view, Transform position, const SpotLight *spot,
                         cf_dot_v3(axis, basis[1]),
                         cf_dot_v3(axis, basis[2]) };
     }
-    if (view.focal_distance > 0 && view.focal_distance - p.y < RENDER_MESH_NEAR) {
-        return false;
-    }
+    /* A source beyond the camera plane can still illuminate visible geometry.
+     * Clip its shadow segment in the shader, never the source itself. */
     p = (CF_V3){ p.x - view.center_x, -p.z - view.center_y, p.y };
     float peak = fmaxf(
                      (spot->color >> 24) & 255u,

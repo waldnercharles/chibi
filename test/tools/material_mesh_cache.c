@@ -278,6 +278,53 @@ TEST_CASE(mask_mesh_reuses_uploads_and_retires_replaced_geometry)
     return true;
 }
 
+TEST_CASE(live_cache_reset_and_mask_replacement_retire_old_gpu_buffers)
+{
+    REQUIRE(material_mask_carve(&mask, 0, 0, 8) > 0);
+    const render_mesh_surface *cut = surface((GlobalTransform2D){ 0 });
+    REQUIRE(cut && acount(cut->parts) == 1 && draw(cut));
+    uint64_t old_identity = cut->parts[0].dynamic_identity;
+    REQUIRE(render_material_raster_mesh_work(raster).dynamic_meshes == 1);
+    REQUIRE(center_blocks(false));
+
+    /* Scene reset must retire a live upload, including a still-visible cut
+     * surface. Clearing an already empty cache would not check this path. */
+    render_material_mesh_cache_clear(cache, raster);
+    REQUIRE(render_material_raster_mesh_work(raster).dynamic_meshes == 0);
+    material_mask_free(&mask);
+    mask = material_mask_new(8, 8, 4, false);
+    REQUIRE(mask.incarnation != old_identity);
+    const render_mesh_surface *restored = surface((GlobalTransform2D){ 0 });
+    REQUIRE(restored && acount(restored->parts) == 1);
+    REQUIRE(restored->parts[0].dynamic_identity == mask.incarnation);
+    REQUIRE(draw(restored));
+    render_mesh_material_work work = render_material_raster_mesh_work(raster);
+    REQUIRE(work.mesh_uploads == 1 && work.dynamic_meshes == 1);
+    REQUIRE(center_blocks(true));
+    REQUIRE(surface((GlobalTransform2D){ 0 }) == restored && draw(restored));
+    work = render_material_raster_mesh_work(raster);
+    REQUIRE(work.mesh_uploads == 0 && work.dynamic_meshes == 1);
+
+    /* Replacement also retires the old incarnation without an explicit reset.
+     * The new snapshot has no upload until its first draw. */
+    old_identity = mask.incarnation;
+    material_mask_free(&mask);
+    mask = material_mask_new(8, 8, 4, false);
+    REQUIRE(mask.incarnation != old_identity);
+    REQUIRE(material_mask_carve(&mask, 0, 0, 8) > 0);
+    const render_mesh_surface *replacement = surface((GlobalTransform2D){ 0 });
+    REQUIRE(replacement && acount(replacement->parts) == 1);
+    REQUIRE(replacement->parts[0].dynamic_identity == mask.incarnation);
+    REQUIRE(render_material_raster_mesh_work(raster).dynamic_meshes == 0);
+    REQUIRE(draw(replacement));
+    work = render_material_raster_mesh_work(raster);
+    REQUIRE(work.mesh_uploads == 1 && work.dynamic_meshes == 1);
+    REQUIRE(center_blocks(false));
+    render_material_mesh_cache_clear(cache, raster);
+    REQUIRE(render_material_raster_mesh_work(raster).dynamic_meshes == 0);
+    return true;
+}
+
 static const render_mesh_surface *height_surface(GlobalTransform2D placement)
 {
     MaterialSurface3D sampled = options;
@@ -467,6 +514,7 @@ void test_material_mesh_cache()
     cf_app_set_canvas_size(SIDE, SIDE);
     pu_setup(setup, teardown);
     RUN_TEST_CASE(mask_mesh_reuses_uploads_and_retires_replaced_geometry);
+    RUN_TEST_CASE(live_cache_reset_and_mask_replacement_retire_old_gpu_buffers);
     RUN_TEST_CASE(surface_height_displaces_geometry_once_and_rejects_dynamic_roots);
     RUN_TEST_CASE(material_height_cache_tracks_parameters_image_reload_and_sampling);
     pu_clear_setup();

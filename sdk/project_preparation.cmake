@@ -10,7 +10,7 @@ chibi_sdk_headers(chibi_shader_preparation PUBLIC authoring/shader_prepare.h
     authoring/parts_prepare.h authoring/mesh_prepare.h authoring/visual_prepare.h)
 target_include_directories(chibi_shader_preparation PRIVATE
     "${CHIBI_SDK_ROOT}/third_party/yyjson")
-target_link_libraries(chibi_shader_preparation PUBLIC chibi_visual_catalog chibi_graph_model chibi_player
+target_link_libraries(chibi_shader_preparation PUBLIC chibi_visual_catalog chibi_graph_model chibi_player chibi_image_preparation
     PRIVATE chibi_graph_compilation chibi_graph_authoring chibi_asset_text chibi_json chibi_image_catalog)
 
 # Players' pinned Vorbis decoder, compiled with private symbols, so preparation

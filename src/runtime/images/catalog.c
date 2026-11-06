@@ -361,6 +361,18 @@ bool render_image_pixels_prepared_write(
     afree(w.data);
     return true;
 }
+bool render_image_prepared_size(int width, int height, size_t *length, shader_error *error)
+{
+    uint64_t sink = UINT64_C(14695981039346656037);
+    execution_wire w = { .hash = &sink };
+    image_header(&w, &width, &height);
+    *length = 0;
+    if (w.error) {
+        return image_error(error, w.error);
+    }
+    *length = w.size + (size_t)width * height * 4;
+    return true;
+}
 bool render_image_prepared_write(const char *key, unsigned char **data, size_t *length, shader_error *error)
 {
     *data = NULL;

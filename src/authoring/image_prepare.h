@@ -10,6 +10,13 @@ void *image_prepare_png_read(const char *path, int *length, char *error, size_t 
 /* "png" or "jpg" when `bytes` decode as that image within the resident side
  * limit; NULL with `error` saying why not. */
 const char *image_prepare_check(const void *bytes, size_t length, char *error, size_t size);
+/* Detached decode into owned RGBA8 pixels; free(out->pixels). Runtime-sized
+ * decode retains the 2048 limit. Import decode permits source sides <=4096
+ * only for explicit derivative preparation; it never publishes those pixels. */
+const char *image_prepare_decode(const void *, size_t, shader_image_view *, char *, size_t);
+const char *image_prepare_import_decode(const void *, size_t, shader_image_view *, char *, size_t);
+/* Canonical RGBA8 PNG with no incidental metadata. Owned output, free(). */
+bool image_prepare_png_encode(const shader_image_view *, unsigned char **, size_t *, char *, size_t);
 /* Decodes a Radiance .hdr file into an owned sky; false with `error` saying
  * why when it isn't an equirectangular RGBE image within the sky limits. */
 bool image_prepare_sky_decode(const void *, size_t, render_sky *, char *error, size_t size);

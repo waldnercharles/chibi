@@ -232,7 +232,9 @@ if(CHIBI_SDK_BUILD_COMPILER AND CHIBI_SDK_BUILD_NATIVE)
     chibi_sdk_contract(chibi_scenario_document "${CHIBI_SDK_ROOT}/src/assets"
         chibi_asset_values chibi_input_runtime chibi_native_types chibi_asset_text)
     chibi_sdk_contract(chibi_shader_preparation "${CHIBI_SDK_ROOT}/src/authoring"
-        chibi_visual_catalog chibi_graph_model chibi_player chibi_graph_compilation chibi_graph_authoring chibi_asset_text chibi_json chibi_image_catalog)
+        chibi_visual_catalog chibi_graph_model chibi_player chibi_image_preparation chibi_graph_compilation chibi_graph_authoring chibi_asset_text chibi_json chibi_image_catalog)
+    chibi_sdk_contract(chibi_image_import "${CHIBI_SDK_ROOT}/src/authoring"
+        chibi_image_preparation chibi_shader_preparation chibi_asset_text chibi_support)
     chibi_sdk_contract(chibi_project_compilation "${CHIBI_SDK_ROOT}/src/authoring"
         chibi_source_catalog chibi_prototype_document chibi_scene_document chibi_player chibi_native_prepared
         chibi_shader_preparation chibi_graph_catalog chibi_host_native_default chibi_graph_compilation chibi_graph_authoring

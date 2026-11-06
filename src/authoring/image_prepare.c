@@ -86,7 +86,15 @@ static void *read_bytes(const char *key, int *length)
 }
 /* Decodes `length` bytes of a PNG, or else a JPEG, within the resident side
  * limit. */
-static bool decode_bytes(const void *bytes, int length, bool png, shader_image_view *out, char *error, size_t size)
+static bool decode_bytes_limit(
+    const void *bytes,
+    int length,
+    bool png,
+    int side_limit,
+    shader_image_view *out,
+    char *error,
+    size_t size
+)
 {
     int width = 0, height = 0;
     if (png) {
@@ -94,8 +102,8 @@ static bool decode_bytes(const void *bytes, int length, bool png, shader_image_v
     } else {
         chibi_image_cj_load_jpg_wh(bytes, length, &width, &height);
     }
-    if (!sides_valid(width, height)) {
-        return failure(error, size, IMAGE_SIDES_MESSAGE);
+    if (width < 1 || height < 1 || width > side_limit || height > side_limit) {
+        return failure(error, size, side_limit == 4096 ? "Import source dimensions must be between 1 and 4096 pixels per side" : IMAGE_SIDES_MESSAGE);
     }
     unsigned char *pixels = NULL;
     if (png) {
@@ -115,6 +123,10 @@ static bool decode_bytes(const void *bytes, int length, bool png, shader_image_v
     *out = (shader_image_view){ pixels, width, height };
     return true;
 }
+static bool decode_bytes(const void *bytes, int length, bool png, shader_image_view *out, char *error, size_t size)
+{
+    return decode_bytes_limit(bytes, length, png, RENDER_IMAGE_SIDE_MAX, out, error, size);
+}
 static bool decode(void *, const char *key, shader_image_view *out, char *error, size_t size)
 {
     const char *extension = strrchr(key, '.');
@@ -133,8 +145,20 @@ static bool decode(void *, const char *key, shader_image_view *out, char *error,
     free(bytes);
     return decoded;
 }
-const char *image_prepare_check(const void *bytes, size_t length, char *error, size_t size)
+static const char *decode_memory(
+    const void *bytes,
+    size_t length,
+    int side_limit,
+    shader_image_view *out,
+    char *error,
+    size_t size
+)
 {
+    *out = (shader_image_view){ 0 };
+    if (!bytes || !length || length > IMAGE_BYTES_MAX) {
+        failure(error, size, "Image source must contain 1 byte to 64 MiB of encoded data");
+        return NULL;
+    }
     static const unsigned char png_magic[] = { 0x89, 'P',  'N',  'G',
                                                '\r', '\n', 0x1a, '\n' };
     static const unsigned char jpg_magic[] = { 0xff, 0xd8, 0xff };
@@ -146,16 +170,66 @@ const char *image_prepare_check(const void *bytes, size_t length, char *error, s
         failure(error, size, "Expected a PNG or JPEG image");
         return NULL;
     }
-    if (length > IMAGE_BYTES_MAX) {
-        failure(error, size, "Image is over 64 MiB");
+    if (png && length >= 29 && ((const unsigned char *)bytes)[24] != 8) {
+        failure(error, size, "PNG source bit depth is unsupported: use an explicitly prepared 8-bit PNG control; original precision is never silently truncated");
         return NULL;
     }
-    shader_image_view view;
-    if (!decode_bytes(bytes, (int)length, png, &view, error, size)) {
+    if (!decode_bytes_limit(bytes, (int)length, png, side_limit, out, error, size)) {
         return NULL;
     }
-    free((void *)view.pixels);
     return png ? "png" : "jpg";
+}
+const char *image_prepare_decode(
+    const void *bytes,
+    size_t length,
+    shader_image_view *out,
+    char *error,
+    size_t size
+)
+{
+    return decode_memory(bytes, length, RENDER_IMAGE_SIDE_MAX, out, error, size);
+}
+const char *image_prepare_import_decode(
+    const void *bytes,
+    size_t length,
+    shader_image_view *out,
+    char *error,
+    size_t size
+)
+{
+    return decode_memory(bytes, length, 4096, out, error, size);
+}
+const char *image_prepare_check(const void *bytes, size_t length, char *error, size_t size)
+{
+    shader_image_view view;
+    const char *format = image_prepare_decode(bytes, length, &view, error, size);
+    free((void *)view.pixels);
+    return format;
+}
+bool image_prepare_png_encode(
+    const shader_image_view *view,
+    unsigned char **data,
+    size_t *length,
+    char *error,
+    size_t size
+)
+{
+    *data = NULL;
+    *length = 0;
+    if (!view || !view->pixels || !sides_valid(view->width, view->height)) {
+        return failure(error, size, IMAGE_SIDES_MESSAGE);
+    }
+    chibi_image_cp_image_t image = { view->width,
+                                     view->height,
+                                     (chibi_image_cp_pixel_t *)view->pixels };
+    chibi_image_cp_saved_png_t png = chibi_image_cp_save_png_to_memory(&image);
+    if (!png.data || png.size <= 0) {
+        free(png.data);
+        return failure(error, size, "Cannot encode the PNG derivative");
+    }
+    *data = png.data;
+    *length = (size_t)png.size;
+    return true;
 }
 void *image_prepare_png_read(const char *path, int *length, char *error, size_t size)
 {

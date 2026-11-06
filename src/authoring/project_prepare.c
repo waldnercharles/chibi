@@ -22,6 +22,7 @@
 #include "runtime/material_field_prepared.h"
 #include "runtime/native_prepared.h"
 #include "support/array.h"
+#include "support/asset_format.h"
 #include "support/xalloc.h"
 
 #include <assert.h>
@@ -255,7 +256,8 @@ static char **scene_files(const char *content)
     char **names = NULL;
     for (struct dirent *entry; dir && (entry = readdir(dir));) {
         size_t n = strlen(entry->d_name);
-        if (entry->d_name[0] != '.' && n > 4 && !strcmp(entry->d_name + n - 4, ".kdl")) {
+        if (entry->d_name[0] != '.' && !asset_texture_metadata_path(entry->d_name) &&
+            n > 4 && !strcmp(entry->d_name + n - 4, ".kdl")) {
             apush(names, xstrdup(entry->d_name));
         }
     }
@@ -419,16 +421,21 @@ static char *manifest(const player_asset *assets, const player_asset *icon, cons
     yyjson_mut_doc_free(doc);
     return text;
 }
-bool authoring_project_prepare(
+static bool prepare_project(
     const authoring_project_options *options,
     authoring_project_artifact *artifact,
+    const image_import_proposal *proposals,
+    int proposal_count,
+    authoring_visual_budget *budget,
     char *error,
     size_t size
 )
 {
-    assert(options && artifact && (!size || error));
-    assert(!artifact->data && !artifact->manifest);
-    *artifact = (authoring_project_artifact){ 0 };
+    assert(options && (artifact || budget) && (!size || error));
+    if (artifact) {
+        assert(!artifact->data && !artifact->manifest);
+        *artifact = (authoring_project_artifact){ 0 };
+    }
     if (size) {
         error[0] = 0;
     }
@@ -461,7 +468,8 @@ bool authoring_project_prepare(
     const ecs_component_desc **components = NULL;
     size_t module_bytes = 0;
     char *scene_path = NULL, *start = NULL;
-    if (chibi_project_open(&project, options->project, error, size) ||
+    if ((budget ? chibi_project_read(&project, options->project, error, size)
+                : chibi_project_open(&project, options->project, error, size)) ||
         !application_title_valid(&project, error, size) ||
         !application_icon_read(&project, &icon, error, size)) {
         goto done;
@@ -553,6 +561,25 @@ bool authoring_project_prepare(
     if (!prepared_scene || !prepare_scenes(&inputs, start, &scenes, error, size)) {
         goto done;
     }
+    for (int i = 0; i < acount(prepared); i++) {
+        apush(visual_scenes, prepared[i].scene);
+    }
+    apush(visual_scenes, prepared_scene);
+    for (int i = 0; i < acount(scenes); i++) {
+        apush(visual_scenes, scenes[i].scene);
+    }
+    if (budget) {
+        valid = authoring_visual_measure(
+            visual_scenes,
+            acount(visual_scenes),
+            proposals,
+            proposal_count,
+            budget,
+            error,
+            size
+        );
+        goto done;
+    }
     for (int i = 0; i < authoring_sources_count(sources); i++) {
         const authoring_source *source = authoring_sources_at(sources, i);
         unsigned char *bytes = NULL;
@@ -621,13 +648,6 @@ bool authoring_project_prepare(
             }
             goto done;
         }
-    }
-    for (int i = 0; i < acount(prepared); i++) {
-        apush(visual_scenes, prepared[i].scene);
-    }
-    apush(visual_scenes, prepared_scene);
-    for (int i = 0; i < acount(scenes); i++) {
-        apush(visual_scenes, scenes[i].scene);
     }
     if (!authoring_visual_prepare(visual_scenes, acount(visual_scenes), &assets, error, size)) {
         goto done;
@@ -716,4 +736,27 @@ done:
     authoring_mesh_unmount_content();
     clear_visuals();
     return valid;
+}
+
+bool authoring_project_prepare(
+    const authoring_project_options *options,
+    authoring_project_artifact *artifact,
+    char *error,
+    size_t size
+)
+{
+    return prepare_project(options, artifact, NULL, 0, NULL, error, size);
+}
+
+bool authoring_project_visual_measure(
+    const authoring_project_options *options,
+    const image_import_proposal *proposals,
+    int proposal_count,
+    authoring_visual_budget *budget,
+    char *error,
+    size_t size
+)
+{
+    assert(budget);
+    return prepare_project(options, NULL, proposals, proposal_count, budget, error, size);
 }

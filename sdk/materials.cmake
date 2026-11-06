@@ -26,7 +26,7 @@ foreach(header runtime/material_ecs.h runtime/material_flow.h runtime/material_m
 endforeach()
 target_include_directories(chibi_material_runtime PRIVATE "${material_private}")
 target_link_libraries(chibi_material_runtime PUBLIC chibi_ecs chibi_tasks
-    chibi_field_catalog chibi_native_capabilities chibi_mesh_runtime PRIVATE chibi_native_types chibi_shader_runtime
+    chibi_field_catalog chibi_native_capabilities chibi_mesh_runtime chibi_native_types PRIVATE chibi_shader_runtime
     chibi_entity_runtime chibi_particle_runtime chibi_spatial_runtime
     chibi_task_pool_runtime chibi_execution chibi_support chibi_save_runtime)
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")

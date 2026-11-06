@@ -2344,10 +2344,8 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     cf_draw_set_texture("background_tex", inputs.background.id ? inputs.background : hrc->black);
     cf_draw_set_texture("visibility_tex", inputs.material.visibility);
     cf_draw_set_texture("cover_tex", inputs.material.cover);
-    cf_draw_set_texture(
-        "spot_tex",
-        inputs.spot_count ? cf_canvas_get_target(hrc->spot_canvas) : hrc->black
-    );
+    int spot_enabled = inputs.spot_count > 0;
+    cf_draw_set_uniform("spot_enabled", &spot_enabled, CF_UNIFORM_TYPE_INT, 1);
     cf_draw_set_texture(
         "horizon_cardinal",
         horizon_directions
@@ -2425,8 +2423,11 @@ bool render_radiance_draw(HRC *hrc, render_radiance_inputs inputs, render_view_2
     cf_draw_set_uniform("debug_view", &debug, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("dither_phase", &phase, CF_UNIFORM_TYPE_FLOAT, 1);
     cf_draw_set_uniform("crop_uv", crop, CF_UNIFORM_TYPE_FLOAT4, 1);
-    cf_draw_push_filter(CF_DRAW_FILTER_LINEAR);
-    render_draw_fullscreen(hrc->bounce_canvas);
+    /* Reuse u_image for spots instead of a seventeenth WebGL sampler. Keep
+     * the spot target's former nearest filtering; custom bindings are unaffected.
+     * Without spots the shader ignores the borrowed bounce image. */
+    cf_draw_push_filter(CF_DRAW_FILTER_NEAREST);
+    render_draw_fullscreen(spot_enabled ? hrc->spot_canvas : hrc->bounce_canvas);
     cf_draw_pop_filter();
     cf_draw_pop_shader();
     cf_canvas_set_clear_color(output, cf_make_color_rgba_f(0, 0, 0, 1));

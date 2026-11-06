@@ -4,6 +4,7 @@
 #include "graph/document/problems.h"
 #include "graph/document/serialize.h"
 #include "support/array.h"
+#include "support/asset_format.h"
 #include "support/asset_text.h"
 #include "support/file_io.h"
 
@@ -43,7 +44,7 @@ static bool load_folder(
     struct dirent *entry;
     while ((entry = readdir(dir))) {
         size_t name_length = strlen(entry->d_name);
-        if (entry->d_name[0] == '.' ||
+        if (entry->d_name[0] == '.' || asset_texture_metadata_path(entry->d_name) ||
             name_length < sizeof DECLARATIVE_ASSET_EXTENSION - 1 ||
             strcmp(entry->d_name + name_length - (sizeof DECLARATIVE_ASSET_EXTENSION - 1), DECLARATIVE_ASSET_EXTENSION)) {
             continue;

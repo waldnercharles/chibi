@@ -79,8 +79,8 @@ static const char *read_host(
 )
 {
     const studio_node_service *service = host;
-    pin_value values[4] = { 0 };
-    assert(count <= 4 && context->value_storage);
+    pin_value values[8] = { 0 };
+    assert(count <= 8 && context->value_storage);
     const char *error = service->run(service->studio, op, inputs, context->value_storage, values);
     if (error) {
         return error;
@@ -133,8 +133,8 @@ STUDIO_OPERATIONS(CALLBACK)
 #define CALL(ID, OP, NAME, SOURCE, KIND, PURE, EFFECT, RESULTS)                \
     [OP] = { .service = "studio",                                              \
              .missing_service = MISSING,                                       \
-             .context = EFFECT ? NULL : ID##_context,                          \
-             .invoke = EFFECT ? ID##_invoke : NULL },
+             .context = EFFECT && !RESULTS ? NULL : ID##_context,              \
+             .invoke = EFFECT && !RESULTS ? ID##_invoke : NULL },
 const node_host_call STUDIO_CALLS[STUDIO_NODE_COUNT] = { STUDIO_OPERATIONS(CALL) };
 #undef CALL
 const node_access STUDIO_READ_ACCESS = { .flags = NODE_EFFECT_WORLD_READ };

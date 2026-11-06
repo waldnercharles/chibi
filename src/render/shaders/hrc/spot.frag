@@ -1,6 +1,5 @@
-// Direct spot lighting. A complete grid traversal visits every crossed texel,
-// including thin mask walls. Segments exceeding 512 cells fail closed rather
-// than declaring an unfinished visibility walk clear. No temporal feedback.
+// Direct spot lighting. Traverse every crossed texel in the known canvas,
+// including thin mask walls. No temporal feedback.
 layout(set=2,binding=0) uniform sampler2D u_albedo;
 layout(set=2,binding=1) uniform sampler2D u_cover;
 layout(set=2,binding=2) uniform sampler2D u_normal;
@@ -35,26 +34,33 @@ float visibility(vec2 begin, vec2 end, float receiver, float emitter, bool skip_
     vec2 delta=end-begin;
     vec2 direction=sign(delta);
     vec2 reciprocal=1.0/max(abs(delta),vec2(1e-20));
-    ivec2 cell=ivec2(floor(begin));
+    // Clip both endpoints to the known canvas, preserving the original t
+    // used for perspective height. Near-plane clipping can move the start
+    // of a volume sample's shadow ray outside the canvas.
+    float entered=0.0, end_t=1.0;
+    for(int axis=0;axis<2;axis++) {
+        if(direction[axis]==0.0) {
+            if(begin[axis]<0.0 || begin[axis]>=float(size[axis])) return 1.0;
+        } else {
+            float a=-begin[axis]/delta[axis];
+            float b=(float(size[axis])-begin[axis])/delta[axis];
+            entered=max(entered,min(a,b));
+            end_t=min(end_t,max(a,b));
+        }
+    }
+    if(entered>end_t) return 1.0;
+    ivec2 cell=ivec2(floor(clamp(begin+delta*entered,vec2(0),vec2(size)-vec2(0.001))));
     vec2 edge=vec2(cell)+max(direction,vec2(0));
-    vec2 next=(edge-begin)*direction*reciprocal;
+    vec2 next=max((edge-begin)*direction*reciprocal,vec2(entered));
     if(direction.x==0.0) next.x=1e20;
     if(direction.y==0.0) next.y=1e20;
-    // The padded material canvas is the known visibility domain. Clip only
-    // its far endpoint, retaining original t for perspective-correct height.
-    vec2 boundary=vec2(size)*max(direction,vec2(0));
-    vec2 exit_axis=(boundary-begin)*direction*reciprocal;
-    if(direction.x==0.0) exit_axis.x=1e20;
-    if(direction.y==0.0) exit_axis.y=1e20;
-    float end_t=min(1.0,min(exit_axis.x,exit_axis.y));
-    float entered=0.0;
     float transmission=1.0;
-    for(int i=0;i<512;i++) {
+    // Each iteration advances one axis. A clipped segment crosses at most
+    // width+height boundaries, including a zero-length corner crossing.
+    int steps=size.x+size.y+1;
+    for(int i=0;i<steps;i++) {
         float leave=min(min(next.x,next.y),end_t);
-        // A surface receiver excludes its own endpoint footprints. A volume
-        // sample has no surface footprint: even the first/last cell can
-        // contain the slab separating it from its light.
-        if((!skip_receiver || (i>0 && leave<1.0)) && all(greaterThanEqual(cell,ivec2(0))) && all(lessThan(cell,size))) {
+        if(all(greaterThanEqual(cell,ivec2(0))) && all(lessThan(cell,size))) {
             float cover=texelFetch(u_cover,cell,0).g;
             vec4 source=texelFetch(u_source,cell,0);
             float tau=max(source.a,0.0);
@@ -68,8 +74,9 @@ float visibility(vec2 begin, vec2 end, float receiver, float emitter, bool skip_
                 // that absorbs nothing does not occlude another light.
                 bool occluder=tau>0.01 || dot(source.rgb,vec3(.2126,.7152,.0722))<=0.0;
                 if(occluder && min(a,b)<top-bias && max(a,b)>top-u_thickness+bias) return 0.0;
-            } else {
-                // A planar absorbing mask without receiver relief still blocks.
+            } else if(!skip_receiver || entered>0.0) {
+                // Exclude the surface receiver's own planar absorption only.
+                // Slabs use their depth bias, including at the emitter cell.
                 transmission*=exp(-tau*length(delta)*(leave-entered));
                 if(transmission<0.001) return 0.0;
             }
@@ -80,6 +87,27 @@ float visibility(vec2 begin, vec2 end, float receiver, float emitter, bool skip_
         else { cell.y+=int(direction.y); next.y+=reciprocal.y; }
     }
     return 0.0;
+}
+
+// Keep the visible portion of the actual 3D segment before projecting.
+// RENDER_MESH_NEAR is one world unit: no known surface lies closer to the eye.
+float light_visibility(vec2 pixel, vec3 receiver, vec3 emitter, bool surface_receiver)
+{
+    if(u_projection.z>0.0) {
+        float near_height=u_projection.z-1.0;
+        if(receiver.z>near_height && emitter.z>near_height) return 1.0;
+        if(receiver.z>near_height) {
+            receiver=mix(receiver,emitter,(near_height-receiver.z)/(emitter.z-receiver.z));
+            pixel=(receiver.xy/(1.0-receiver.z/u_projection.z)-u_projection.xy)/(u_spacing*vec2(1,-1));
+            surface_receiver=false;
+        }
+        if(emitter.z>near_height) {
+            emitter=mix(receiver,emitter,(near_height-receiver.z)/(emitter.z-receiver.z));
+        }
+    }
+    float scale=u_projection.z>0.0?1.0-emitter.z/u_projection.z:1.0;
+    vec2 end=(emitter.xy/scale-u_projection.xy)/(u_spacing*vec2(1,-1));
+    return visibility(pixel,end,receiver.z,emitter.z,surface_receiver);
 }
 
 // Intersect the forward cone as well as the sphere before quadrature, so a
@@ -156,9 +184,7 @@ vec3 volume_light(vec2 pixel, float height, float coverage)
             if(cone<=0.0) continue;
             float visible=1.0;
             if(u_options[i].y>0.5) {
-                float scale=u_projection.z>0.0?max(1.0-source.z/u_projection.z,0.001):1.0;
-                vec2 end=(source.xy/scale-u_projection.xy)/(u_spacing*vec2(1,-1));
-                visible=visibility(pixel,end,point.z,source.z,false);
+                visible=light_visibility(pixel,point,source,false);
             }
             float attenuation=pow(max(1.0-distance/radius,0.0),2.0);
             // Beer attenuation on source→sample and the view's participating
@@ -186,7 +212,6 @@ void main()
     vec4 albedo=texelFetch(u_albedo,p,0);
     float height=albedo.a/cover.g;
     vec3 origin=surface_position(vec2(p)+0.5,height,u_projection,u_spacing);
-    vec2 size=vec2(textureSize(u_cover,0));
     for(int i=0;i<4;i++) {
         if(i>=u_count) break;
         vec3 delta=u_positions[i].xyz-origin;
@@ -200,10 +225,7 @@ void main()
         if(cone<=0.0 || diffuse<=0.0) continue;
         float visible=1.0;
         if(u_options[i].y>0.5) {
-            float scale=u_projection.z>0.0?max(1.0-u_positions[i].z/u_projection.z,0.001):1.0;
-            vec2 projected=u_positions[i].xy/scale;
-            vec2 end=(projected-u_projection.xy)/(u_spacing*vec2(1,-1));
-            visible=visibility(vec2(p)+0.5,end,height,u_positions[i].z,true);
+            visible=light_visibility(vec2(p)+0.5,origin,u_positions[i].xyz,true);
         }
         float attenuation=pow(max(1.0-distance/u_positions[i].w,0.0),2.0);
         vec3 incident=u_colors[i].rgb*u_colors[i].a*cone*attenuation*visible;

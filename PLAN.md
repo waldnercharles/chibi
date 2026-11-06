@@ -1,3 +1,79 @@
+# Texture assets in Studio, 2026-10-16
+
+Finish the approved import lifecycle in the existing Grey Rock candidates.
+The stable asset identity remains the `content/...png` image key. A sibling
+`.texture.kdl` records source, maximum size and import semantic; runtime packages
+continue to consume derived pixels. Shared SDK code owns validation, conflict
+checks and atomic publication. Studio's `.chibi` behavior owns interaction;
+the existing document history owns settings drafts and undo.
+
+- [x] Persist import configuration and safely reimport the same image key.
+- [x] Show textures and previews in the existing Assets browser and Properties.
+- [x] Edit, undo and save import settings using the existing document system.
+- [x] Drag a texture into a material as one undoable Image Texture node creation.
+- [x] Repackage SDK; verify bounded native import/settings/reimport/drag/history
+  and fresh-process reopen, plus web build and rendered control checks.
+
+Reuse the existing image-import and Studio selectors. No new tool registries,
+scripts, editor document kinds or game visual changes. Settings save separately
+from explicit pixel reimport; material sampling settings remain material-owned.
+
+Completed locally on 2026-10-16. Seven shared import command cases pass; the
+54-frame native workflow verifies settings and graph undo/redo, same-key reimport,
+and persisted settings, references and pixels in a fresh process (8.432 seconds
+under the 60-second supervisor). Native and web builds pass against installed
+SDKs. Browser inspection at 1280×720 verifies Assets previews and the scrolling
+inspector with fixed actions; browser import remains unsupported. Exact identities
+and limits are in [the checkpoint report](docs/grey-rock-checkpoint.md).
+The isolated candidates remain uncommitted and unmerged.
+
+# Grey Rock01 Studio checkpoint, 2026-10-16
+
+The user approved completing the shared engine and Studio texture workflow with
+Grey Rock01. Work in the isolated `grey-rock-checkpoint` engine and Studio
+checkouts. The engine index is the dependency snapshot
+`71d3d5832061d3e09edf53feb463ddde7113f7e8`, including E1 and the shared authored
+Height path. Preserve the original environment, rock-surface, Studio migration,
+and Voidweaver working trees. Game visuals and composition remain in Voidweaver.
+
+The authoritative assets remain editable project files and published terrain
+masks. Meshes, prepared images and SDK packages are derived. Studio and controller
+operations must share import validation and budget accounting; imports preserve
+their source files and reject conflicts or invalid input before publication.
+Four decoded 2048-square RGBA images already consume 64 MiB, so preflight must
+include the prepared visual collection's other resources and serialization
+overhead. Keep the current budget and present a useful resolution choice.
+
+Implementation checkpoints:
+
+- [x] Fix spotlight near-plane influence, emitter-cell occlusion and clear long
+  ray traversal in `render/spot_lights.c` and `shaders/hrc/spot.frag`.
+- [x] Preserve material coordinates through fracture and synchronize terrain
+  surface settings to live children without resetting edited masks in
+  `runtime/material_ecs*.c`; strengthen finite/seam checks.
+- [x] Export the public geometry API's SDK dependencies and compile a narrow
+  installed consumer. Review the inherited shared Height lifecycle.
+- [x] Add shared image-import preflight with decoded and prepared budget
+  diagnostics through the authoring SDK and controller. Reuse Studio's image
+  choices and document edit/history path; implement only the missing import and
+  budget UI in the selected isolated Studio baseline.
+- [x] Package this engine and build Studio against that exact installed SDK.
+- [x] Verify the Grey Rock01 import/swap/undo/save/reopen cycle and terrain edits
+  after a fresh process, including regenerated mesh and collision agreement.
+
+Use meaningful fail-first C regression cases in existing dispatchers. Root owns
+build and test scheduling; keep each admitted test invocation under the existing
+60-second supervisor, with configuration/build time separate. Perform bounded
+native and browser UI acceptance for affected controls; never reconstruct the
+quarantined full suites. Record exact source/package identities and each checked
+scope. Remote provider browsing and game visual tuning are outside this checkpoint.
+
+The native workflow passes across two fresh host processes. The original 4K scan
+also passes the controller import check. Browser verification found and repaired
+popup placement and a 17-sampler WebGL shader regression; browser file import
+remains unsupported. Exact package identities, validation scopes and remaining
+limits are recorded in [the checkpoint report](docs/grey-rock-checkpoint.md).
+
 # Voidweaver terrain surface geometry, 2026-10-16
 
 The user approved extending the visual study into the engine. The current

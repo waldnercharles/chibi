@@ -6,6 +6,7 @@
 #include "authoring/source_catalog_snapshot.h"
 #include "support/arena.h"
 #include "support/array.h"
+#include "support/asset_format.h"
 #include "support/asset_text.h"
 #include "support/xalloc.h"
 #include "types/array.h"
@@ -1091,6 +1092,9 @@ bool source_catalog_source_path(const char *root, const char *path)
 }
 bool source_catalog_edit_path(const char *root, const char *path)
 {
+    if (asset_texture_metadata_path(path)) {
+        return false;
+    }
     if (source_catalog_source_path(root, path)) {
         return true;
     }

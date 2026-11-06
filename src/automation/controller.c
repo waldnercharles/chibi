@@ -42,6 +42,7 @@
 #include "authoring/visual_prepare.h"
 #include "automation/content_hash.h"
 #include "automation/field_preview.h"
+#include "automation/image_import.h"
 #include "automation/material_bake.h"
 #include "automation/navigation.h"
 #include "automation/ui_inspect.h"
@@ -320,6 +321,21 @@ static const contract_field CONTRACT_IMPORT_SKY[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
     { "source", "string", true, "Radiance .hdr file to copy into the project, such as a download." },
     { "destination", "string", false, "New content/... .hdr path; defaults to content/skies/ and the source's file name. An existing file is kept and rejected." },
+};
+static const contract_field CONTRACT_PLAN_IMAGE_IMPORT[] = {
+    { "project_root", "string", false, "Saved project directory; defaults to the controller root." },
+    { "source", "string", true, "Absolute source PNG/JPEG path; the original remains unchanged." },
+    { "destination", "string", true, "New content/... .png key; existing paths are rejected." },
+    { "size", "string", false, "source, 1k or 2k maximum side, preserving aspect ratio without upscaling; defaults to 1k." },
+    { "semantic", "string", false, "color, scalar or normal resampling; defaults to color." },
+};
+static const contract_field CONTRACT_IMPORT_IMAGE[] = {
+    { "project_root", "string", false, "Saved project directory; defaults to the controller root." },
+    { "source", "string", true, "Absolute source PNG/JPEG path; the original remains unchanged." },
+    { "destination", "string", true, "New content/... .png key; existing paths are rejected." },
+    { "size", "string", false, "source, 1k or 2k maximum side, preserving aspect ratio without upscaling; defaults to 1k." },
+    { "semantic", "string", false, "color, scalar or normal resampling; defaults to color." },
+    { "plan_hash", "string", true, "Exact 16-digit hexadecimal plan hash returned by plan_image_import." },
 };
 static const contract_field CONTRACT_IMPORT_MODEL[] = {
     { "project_root", "string", false, "Project directory; defaults to the controller root." },
@@ -733,6 +749,24 @@ static const operation_descriptor CONTRACT_OPERATIONS[] = {
         false,
         false,
     },
+    { "plan_image_import",
+      "Prepare a derivative and measure the saved project's proposed visual "
+      "payload without writing files.",
+      CONTRACT_PLAN_IMAGE_IMPORT,
+      CONTRACT_FIELD_COUNT(CONTRACT_PLAN_IMAGE_IMPORT),
+      1,
+      true,
+      true,
+      false },
+    { "import_image",
+      "Recheck a reviewed image plan and atomically publish one derivative "
+      "within the visual-package budget.",
+      CONTRACT_IMPORT_IMAGE,
+      CONTRACT_FIELD_COUNT(CONTRACT_IMPORT_IMAGE),
+      1,
+      false,
+      false,
+      false },
     {
         "import_model",
         "Copy a glTF model into the project's content as one mesh, Standard "
@@ -989,7 +1023,8 @@ static const asset_family *family_by_kind(const char *kind)
 
 static bool valid_asset_filename(const asset_family *family, const char *filename)
 {
-    if (!filename || !filename[0] || filename[0] == '.' || strchr(filename, '/') ||
+    if (!filename || !filename[0] || filename[0] == '.' ||
+        asset_texture_metadata_path(filename) || strchr(filename, '/') ||
         strchr(filename, '\\') || strstr(filename, "..")) {
         return false;
     }
@@ -12886,6 +12921,8 @@ static int operation_requires_root(const char *operation)
            !strcmp(operation, "validate_project") ||
            !strcmp(operation, "new_asset") || !strcmp(operation, "bake_model") ||
            !strcmp(operation, "bake_material") ||
+           !strcmp(operation, "plan_image_import") ||
+           !strcmp(operation, "import_image") ||
            !strcmp(operation, "preview_field") ||
            !strcmp(operation, "import_sky") || !strcmp(operation, "import_model") ||
            !strcmp(operation, "search_nodes") || !strcmp(operation, "catalog") ||
@@ -12996,6 +13033,34 @@ char *chibi_automation_handle(const char *request, const char *default_root, int
         handle_preview_field(root, root_value, &result, exit_code);
     } else if (!strcmp(operation, "bake_material")) {
         handle_bake_material(root, root_value, &result, exit_code);
+    } else if (!strcmp(operation, "plan_image_import") || !strcmp(operation, "import_image")) {
+        char error[512] = { 0 };
+        native_capabilities *native = authoring_application_catalog_new(
+            studio_project_is(root),
+            error,
+            sizeof error
+        );
+        authoring_project_options options = {
+            .project = root,
+            .native = native,
+            .components = { REGISTRY_COMPONENTS, REGISTRY_COMPONENT_COUNT },
+            .modules = WORLD_MODULES_ALL
+        };
+        yyjson_mut_val *value = yyjson_mut_obj_add_obj(result.doc, result.root, "result");
+        int status = native ? automation_image_import(
+                                  &options,
+                                  root_value,
+                                  !strcmp(operation, "import_image"),
+                                  result.doc,
+                                  value,
+                                  error,
+                                  sizeof error
+                              )
+                            : CHIBI_AUTOMATION_VALIDATION_ERROR;
+        native_capabilities_free(native);
+        if (status != CHIBI_AUTOMATION_OK) {
+            response_error(&result, exit_code, status, error);
+        }
     } else if (!strcmp(operation, "preview_shader")) {
         response_error(&result, exit_code, CHIBI_AUTOMATION_INVALID_REQUEST, "preview_shader requires chibi_ctl --render");
     } else if (!strcmp(operation, "describe_contract")) {

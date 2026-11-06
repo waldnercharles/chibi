@@ -47,6 +47,14 @@ component Drive
 # Studio's OutlinerInput uses it; --outliner-move exercises its authored drop
 # event and scene-move covers the scene contract. It cannot run in this fixture.
 
+# Studio Image Import requires the Studio host's chooser and resident visual
+# catalogs, which this runtime-only catalog does not expose. Studio's authored
+# TextureImport behavior uses it; --studio-texture-import exercises import,
+# image selection, history, save and a fresh-process reopen through that host.
+# Studio Texture Asset likewise requires Studio's selected asset and document
+# history. TextureAsset.chibi and the same selector cover its settings/reimport
+# requests; it cannot execute in a runtime-only fixture.
+
 # External browsing requires an opted-in interactive host and real user input.
 # Source-native-features tests the authored requests without launching websites.
 function Open URL

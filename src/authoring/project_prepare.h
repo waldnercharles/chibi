@@ -1,6 +1,7 @@
 #ifndef CHIBI_AUTHORING_PROJECT_PREPARE_H
 #define CHIBI_AUTHORING_PROJECT_PREPARE_H
 #include "assets/project.h"
+#include "authoring/visual_prepare.h"
 #include "runtime/native_capabilities.h"
 #include "runtime/player_prepared.h"
 
@@ -29,6 +30,18 @@ bool authoring_project_prepare(
     size_t size
 );
 void authoring_project_artifact_free(authoring_project_artifact *);
+/* Offline saved-project query. Owns and clears authoring visual catalogs, just
+ * like project preparation; never call while a live Studio preview owns them.
+ * Prepares every saved prototype/scene and measures exact visual codec payloads
+ * with proposed images, without encoding executable modules or the player. */
+bool authoring_project_visual_measure(
+    const authoring_project_options *,
+    const image_import_proposal *,
+    int,
+    authoring_visual_budget *,
+    char *error,
+    size_t size
+);
 /* The manifest's application settings as preparation reads them: a title
  * that fits, and an icon that decodes as a PNG. */
 bool authoring_project_application_valid(const chibi_project *, char *error, size_t size);
